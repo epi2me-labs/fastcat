@@ -18,8 +18,8 @@ build:
     before_script:
         - *prep-image
     script:
-        make fastcat
-        ./fastcat -h
+        - make fastcat
+        - ./fastcat -h
 
 conda:
     extends: .deploy-conda
