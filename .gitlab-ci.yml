@@ -7,7 +7,7 @@ include:
 image: ${UBUNTUIMAGE}:20.04
 
 .prep-image: &prep-image |
-    apt update; apt install gcc zlib1g-dev
+    apt update; apt install -y gcc zlib1g-dev
 
 stages:
     - test
