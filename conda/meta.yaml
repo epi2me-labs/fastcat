@@ -22,7 +22,7 @@ requirements:
 
 test:
     commands:
-        fastcat -h
+        fastcat --help
 
 about:
     home: "https://github.com/epi2me-labs/fastcat"
