@@ -6,15 +6,26 @@ include:
 
 image: ${UBUNTUIMAGE}:20.04
 
+.prep-image: &prep-image |
+    apt update; apt install -y gcc zlib1g-dev
+
 stages:
     - test
     - release
+
+build:
+    stage: test
+    before_script:
+        - *prep-image
+    script:
+        - make fastcat
+        - ./fastcat -h
 
 conda:
     extends: .deploy-conda
     before_script:
         - cd conda
-        - apt update; apt install -y zlib1g-dev
+        - *prep-image
     only:
-        - branches
+        - tags
 
