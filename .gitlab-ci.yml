@@ -1,0 +1,35 @@
+include:
+    - project: "epi2melabs/ci-templates"
+      file: "push-github.yaml"
+    - project: "epi2melabs/ci-templates"
+      file: "deploy-conda.yaml"
+
+image: ${UBUNTUIMAGE}:18.04
+
+stages:
+    - test
+    - build
+    - predeploy
+    - deploy
+    - postdeploy
+
+
+conda:
+    extends: .deploy-conda
+    before_script:
+        - cd conda
+    script:
+        # prep conda
+        - wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        - bash Miniconda3-latest-Linux-x86_64.sh -b -p /tmp/miniconda
+        - source /tmp/miniconda/bin/activate
+        - conda init
+        - conda install -y anaconda-client conda-build conda-verify
+        # run the build
+        - cd conda
+        - conda build -c bioconda -c conda-forge .
+        - anaconda login --username $CONDA_USERNAME --password $CONDA_PASSWORD
+        - anaconda upload /tmp/miniconda/conda-bld/noarch/${CI_PROJECT_NAME}-*.tar.bz2
+    only:
+        - tags
+

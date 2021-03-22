@@ -1,0 +1,39 @@
+{% set name = "fastcat" %}
+{% set version = "0.0.1" %}
+
+
+package:
+    name: {{ name|lower }}
+    version: {{ version }}
+
+source:
+    path: ../
+
+build:
+    number: 0
+
+requirements:
+    build:
+        - {{ compiler('c') }}
+    host:
+        - zlib
+    run:
+        - zlib
+
+test:
+    commands:
+        fastcat -h
+
+about:
+    home: "https://github.com/epi2me-labs/fastcat"
+    license: Mozilla Public License 2.0 
+    license_family: OTHER
+    license_file: LICENSE
+    summary: "Concatenate fast/a/q/gz and calculate basic statistics"
+    doc_url: https://github.com/epi2me-labs/fastcat
+    dev_url: https://github.com/epi2me-labs/fastcat 
+
+extra:
+    recipe-maintainers:
+        - cjw85
+
