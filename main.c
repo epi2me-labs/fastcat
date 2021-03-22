@@ -3,8 +3,9 @@
 #include <string.h>
 #include <math.h>
 #include "kseq.h"
-KSEQ_INIT(gzFile, gzread)
+#include <argp.h>
 
+KSEQ_INIT(gzFile, gzread)
 
 static inline size_t max ( size_t a, size_t b ) { return a > b ? a : b; }
 static inline size_t min ( size_t a, size_t b ) { return a < b ? a : b; }
@@ -49,22 +50,85 @@ float mean_qual(char* qual, size_t len) {
 	return -10 * log10(qsum);
 }
 
+const char *argp_program_version;
+const char *argp_program_bug_address;
+static char doc[] = "fastcat -- concatenate and summarise .fastq(.gz) files.";
+static char args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz)...";
+static struct argp_option options[] = {
+    {"read",   'r',  "READ SUMMARY",  0,  "Per-read summary output"},
+    {"file",   'f',  "FILE SUMMARY",  0,  "Per-file summary output"},
+    {"sample", 's',  "SAMPLE NAME",   0,  "Sample name (if given adds a 'sample_name' column)"},
+    { 0 }
+};
+
+struct arguments {
+    char *perread;
+    char *perfile;
+    char *sample;
+    char **files;
+};
+
+static error_t parse_opt (int key, char *arg, struct argp_state *state) {
+    struct arguments *arguments = state->input;
+    switch (key) {
+        case 's':
+            arguments->sample = arg;
+            break;
+        case 'r':
+            arguments->perread = arg;
+            break;
+        case 'f':
+            arguments->perfile = arg;
+            break;
+        case ARGP_KEY_NO_ARGS:
+            argp_usage (state);
+            break;
+        case ARGP_KEY_ARG:
+            arguments->files = &state->argv[state->next - 1];
+            state->next = state->argc;
+            break;
+        defualt:
+            return ARGP_ERR_UNKNOWN;
+    }
+    return 0;
+}
+
+static struct argp argp = {options, parse_opt, args_doc, doc};
 
 int main(int argc, char **argv) {
-    if (argc < 4) {
-        fprintf(stderr, "Usage: %s per-read.txt pre-file.txt reads1.fastq(.gz) reads2.fastq(.gz) ... | gzip > all_reads.fastq.gz\n", argv[0]);
-        argc == 2 && strcmp(argv[1], "-h") == 0 ? exit(0) : exit(1);
+    struct arguments args;
+    args.perread = "read-summary.txt";
+    args.perfile = "file-summary.txt";
+    args.sample = "";
+
+    argp_parse(&argp, argc, argv, 0, 0, &args);
+    char *sample;
+    if (strcmp(args.sample, "")) {
+        fprintf(stderr, "Adding sample\n");
+        sample = calloc(strlen(args.sample) + 2, sizeof(char)); 
+        strcpy(sample, args.sample);
+        strcat(sample, "\t");
+    } else {
+        sample = "";
     }
 
-    FILE* outfp = fopen(argv[1], "w");
-    fprintf(outfp, "read_id\tfilename\tread_length\tmean_quality\n");
-    FILE* summaryfp = fopen(argv[2], "w");
-	fprintf(summaryfp, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
+    int nfile = 0;
+    for( ; args.files[nfile] ; nfile++);
+
+    FILE* outfp = fopen(args.perread, "w");
+    FILE* summaryfp = fopen(args.perfile, "w");
+    if (strcmp(args.sample, "")) {
+        fprintf(outfp, "read_id\tfilename\tsample_name\tread_length\tmean_quality\n");
+	    fprintf(summaryfp, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
+    } else {
+        fprintf(outfp, "read_id\tfilename\tread_length\tmean_quality\n");
+	    fprintf(summaryfp, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
+    }
 	
 	gzFile fp;
 	kseq_t *seq;
-    for (size_t i=3; i<argc; ++i) {
-        fp = gzopen(argv[i], "r");
+    for (size_t i=0; i<nfile; ++i) {
+        fp = gzopen(args.files[i], "r");
         seq = kseq_init(fp);
         size_t n = 0, slen=0;
         size_t minl=UINTMAX_MAX, maxl=0;
@@ -79,14 +143,14 @@ int main(int argc, char **argv) {
 			}
 			float mean_q = mean_qual(seq->qual.s, seq->qual.l);
             meanq += mean_q;
-		    fprintf(outfp, "%s\t%s\t%zu\t%1.2f\n", seq->name.s, argv[i], seq->seq.l, mean_q);
+		    fprintf(outfp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, args.files[i], sample, seq->seq.l, mean_q);
 			if (seq->comment.l > 0) {
 				fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
 			} else {
 				fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
 			}
         }
-        fprintf(summaryfp, "%s\t%zu\t%zu\t%zu\t%zu\t%1.2f\n", argv[i], n, slen, minl, maxl, meanq/n);
+        fprintf(summaryfp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", args.files[i], sample, n, slen, minl, maxl, meanq/n);
         kseq_destroy(seq);
         gzclose(fp);
     }

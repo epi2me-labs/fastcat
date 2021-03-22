@@ -4,8 +4,18 @@ A simple utility to concatenate .fastq(.gz) files whilst creating a summary
 of the sequences:
 
 ```
-./fastcat per-read.txt per-file.txt reads1.fastq(.gz) reads2.fastq(.gz) ... \
-    | gzip > all_reads.fastq.gz
+Usage: fastcat [OPTION...] reads1.fastq(.gz) reads2.fastq(.gz)...
+fastcat -- concatenate and summarise .fastq(.gz) files.
+
+  -f, --file=FILE SUMMARY    Per-file summary output
+  -r, --read=READ SUMMARY    Per-read summary output
+  -s, --sample=SAMPLE NAME   Sample name (if given adds a 'sample_name' column)
+
+  -?, --help                 Give this help list
+      --usage                Give a short usage message
+
+Mandatory or optional arguments to long options are also mandatory or optional
+for any corresponding short options.
 ```
 
 The program writes the input sequences to `stdout` in .fastq format to be
