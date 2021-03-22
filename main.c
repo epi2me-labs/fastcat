@@ -6,6 +6,9 @@
 KSEQ_INIT(gzFile, gzread)
 
 
+static inline size_t max ( size_t a, size_t b ) { return a > b ? a : b; }
+static inline size_t min ( size_t a, size_t b ) { return a < b ? a : b; }
+
 const float qprobs[100] = {
 	1.00000000e+00, 7.94328235e-01, 6.30957344e-01, 5.01187234e-01,
     3.98107171e-01, 3.16227766e-01, 2.51188643e-01, 1.99526231e-01,
@@ -48,28 +51,34 @@ float mean_qual(char* qual, size_t len) {
 
 
 int main(int argc, char **argv) {
-    if (argc < 3) {
-        fprintf(stderr, "Usage: %s output.txt reads1.fastq(.gz) reads2.fastq(.gz) ... | gzip > all_reads.fastq.gz\n", argv[0]);
+    if (argc < 4) {
+        fprintf(stderr, "Usage: %s per-read.txt pre-file.txt reads1.fastq(.gz) reads2.fastq(.gz) ... | gzip > all_reads.fastq.gz\n", argv[0]);
         argc == 2 && strcmp(argv[1], "-h") == 0 ? exit(0) : exit(1);
     }
 
     FILE* outfp = fopen(argv[1], "w");
     fprintf(outfp, "read_id\tfilename\tread_length\tmean_quality\n");
-	fprintf(stderr, "filename\tn_seqs\tn_bases\n");
+    FILE* summaryfp = fopen(argv[2], "w");
+	fprintf(summaryfp, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
 	
 	gzFile fp;
 	kseq_t *seq;
-    for (size_t i=2; i<argc; ++i) {
+    for (size_t i=3; i<argc; ++i) {
         fp = gzopen(argv[i], "r");
         seq = kseq_init(fp);
         size_t n = 0, slen=0;
+        size_t minl=UINTMAX_MAX, maxl=0;
+        double meanq = 0; // this may lose precision
         while (kseq_read(seq) >= 0) {
             ++n ; slen += seq->seq.l;
+            minl = min(minl, seq->seq.l);
+            maxl = max(maxl, seq->seq.l);
 			if (seq->qual.l == 0) {
 				fprintf(stderr, "No quality string found for '%s' (FASTA is unsupported).\n", seq->name.s);
 				return 1;
 			}
 			float mean_q = mean_qual(seq->qual.s, seq->qual.l);
+            meanq += mean_q;
 		    fprintf(outfp, "%s\t%s\t%zu\t%1.2f\n", seq->name.s, argv[i], seq->seq.l, mean_q);
 			if (seq->comment.l > 0) {
 				fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
@@ -77,11 +86,12 @@ int main(int argc, char **argv) {
 				fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
 			}
         }
-        fprintf(stderr, "%s\t%zu\t%zu\n", argv[i], n, slen);
+        fprintf(summaryfp, "%s\t%zu\t%zu\t%zu\t%zu\t%1.2f\n", argv[i], n, slen, minl, maxl, meanq/n);
         kseq_destroy(seq);
         gzclose(fp);
     }
 	fclose(outfp);
+	fclose(summaryfp);
 
 	return 0;
 }
