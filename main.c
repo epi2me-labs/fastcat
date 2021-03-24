@@ -50,10 +50,12 @@ float mean_qual(char* qual, size_t len) {
 	return -10 * log10(qsum);
 }
 
-const char *argp_program_version;
-const char *argp_program_bug_address;
-static char doc[] = "fastcat -- concatenate and summarise .fastq(.gz) files.";
-static char args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz)...";
+const char *argp_program_version = "0.1.0";
+const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
+static char doc[] = 
+  "fastcat -- concatenate and summarise .fastq(.gz) files.\
+  \vInput files may be given on stdin by specifing the input as '-'.";
+static char args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz) ...";
 static struct argp_option options[] = {
     {"read",   'r',  "READ SUMMARY",  0,  "Per-read summary output"},
     {"file",   'f',  "FILE SUMMARY",  0,  "Per-file summary output"},
@@ -95,6 +97,40 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 
 static struct argp argp = {options, parse_opt, args_doc, doc};
 
+
+int process_file(char* fname, char* sample, FILE* outfp, FILE* summaryfp) {
+
+	gzFile fp;
+	kseq_t *seq;
+        
+    fp = gzopen(fname, "r");
+    seq = kseq_init(fp);
+    size_t n = 0, slen=0;
+    size_t minl=UINTMAX_MAX, maxl=0;
+    double meanq = 0; // this may lose precision
+    while (kseq_read(seq) >= 0) {
+        ++n ; slen += seq->seq.l;
+        minl = min(minl, seq->seq.l);
+        maxl = max(maxl, seq->seq.l);
+    	if (seq->qual.l == 0) {
+    		fprintf(stderr, "No quality string found for '%s' (FASTA is unsupported).\n", seq->name.s);
+    		return 1;
+    	}
+    	float mean_q = mean_qual(seq->qual.s, seq->qual.l);
+        meanq += mean_q;
+        fprintf(outfp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, sample, seq->seq.l, mean_q);
+    	if (seq->comment.l > 0) {
+    		fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
+    	} else {
+    		fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
+    	}
+    }
+    fprintf(summaryfp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, sample, n, slen, minl, maxl, meanq/n);
+    kseq_destroy(seq);
+    gzclose(fp);
+}
+
+
 int main(int argc, char **argv) {
     struct arguments args;
     args.perread = "read-summary.txt";
@@ -124,35 +160,22 @@ int main(int argc, char **argv) {
         fprintf(outfp, "read_id\tfilename\tread_length\tmean_quality\n");
 	    fprintf(summaryfp, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
     }
-	
-	gzFile fp;
-	kseq_t *seq;
-    for (size_t i=0; i<nfile; ++i) {
-        fp = gzopen(args.files[i], "r");
-        seq = kseq_init(fp);
-        size_t n = 0, slen=0;
-        size_t minl=UINTMAX_MAX, maxl=0;
-        double meanq = 0; // this may lose precision
-        while (kseq_read(seq) >= 0) {
-            ++n ; slen += seq->seq.l;
-            minl = min(minl, seq->seq.l);
-            maxl = max(maxl, seq->seq.l);
-			if (seq->qual.l == 0) {
-				fprintf(stderr, "No quality string found for '%s' (FASTA is unsupported).\n", seq->name.s);
-				return 1;
-			}
-			float mean_q = mean_qual(seq->qual.s, seq->qual.l);
-            meanq += mean_q;
-		    fprintf(outfp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, args.files[i], sample, seq->seq.l, mean_q);
-			if (seq->comment.l > 0) {
-				fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
-			} else {
-				fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
-			}
+
+    if (nfile==1 && strcmp(args.files[0], "-") == 0) {
+        char *ln = NULL;
+        size_t n = 0;
+        ssize_t nchr = 0;
+        while ((nchr = getline (&ln, &n, stdin)) != -1) {
+            ln[strcspn(ln, "\r\n")] = 0;
+            int rtn = process_file(ln, sample, outfp, summaryfp);
+            if (rtn != 0) return rtn;
         }
-        fprintf(summaryfp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", args.files[i], sample, n, slen, minl, maxl, meanq/n);
-        kseq_destroy(seq);
-        gzclose(fp);
+        free(ln);
+    } else { 
+        for (size_t i=0; i<nfile; ++i) {
+            int rtn = process_file(args.files[i], sample, outfp, summaryfp);
+            if (rtn != 0) return rtn;
+        }
     }
 	fclose(outfp);
 	fclose(summaryfp);
