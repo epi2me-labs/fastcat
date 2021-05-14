@@ -55,7 +55,7 @@ float mean_qual(char* qual, size_t len) {
 const char filetypes[4][9] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
 size_t nfiletypes = 4;
 
-const char *argp_program_version = "0.1.0";
+const char *argp_program_version = "0.2.0";
 const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
 static char doc[] = 
   "fastcat -- concatenate and summarise .fastq(.gz) files.\
