@@ -13,7 +13,7 @@ KSEQ_INIT(gzFile, gzread)
 static inline size_t max ( size_t a, size_t b ) { return a > b ? a : b; }
 static inline size_t min ( size_t a, size_t b ) { return a < b ? a : b; }
 
-const float qprobs[100] = {
+const double qprobs[100] = {
     1.00000000e+00, 7.94328235e-01, 6.30957344e-01, 5.01187234e-01,
     3.98107171e-01, 3.16227766e-01, 2.51188643e-01, 1.99526231e-01,
     1.58489319e-01, 1.25892541e-01, 1.00000000e-01, 7.94328235e-02,
@@ -41,11 +41,20 @@ const float qprobs[100] = {
     2.51188643e-10, 1.99526231e-10, 1.58489319e-10, 1.25892541e-10};
 
 
+void kahan_sum(double* sum, double term, double* c) {
+    double y = term + *c;
+    double t = *sum + y;
+    *c = (t - *sum) - y;
+    *sum = t;
+}
+
+
 float mean_qual(char* qual, size_t len) {
-    float qsum = 0;
+    double qsum = 0;
+    double c = 0;
     for (size_t i=0; i<len; ++i) {
         int q = (int)(qual[i]) - 33;
-        qsum += qprobs[q];
+        kahan_sum(&qsum, qprobs[q], &c);
     }
     qsum /= len;
     return -10 * log10(qsum);
@@ -55,7 +64,7 @@ float mean_qual(char* qual, size_t len) {
 const char filetypes[4][9] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
 size_t nfiletypes = 4;
 
-const char *argp_program_version = "0.2.0";
+const char *argp_program_version = "0.2.1";
 const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
 static char doc[] = 
   "fastcat -- concatenate and summarise .fastq(.gz) files.\
@@ -66,29 +75,48 @@ static struct argp_option options[] = {
     {"read",    'r',  "READ SUMMARY",  0,  "Per-read summary output"},
     {"file",    'f',  "FILE SUMMARY",  0,  "Per-file summary output"},
     {"sample",  's',  "SAMPLE NAME",   0,  "Sample name (if given adds a 'sample_name' column)"},
+    {"min_length",  'a',  "MIN READ LENGTH",   0,  "minimum read length to output (excluded reads remain listed in summaries)"},
+    {"max_length",  'b',  "MAX READ LENGTH",   0,  "maximum read length to output (excluded reads remain listed in summaries)"},
+    {"min_qscore",  'q',  "MIN READ QSCOROE",  0,  "minimum read Qscore to output (excluded reads remain listed in summaries)"},
     {"recurse", 'x',              0,   0,  "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files."},
     { 0 }
 };
 
-struct arguments {
+
+typedef struct arguments {
     char *perread;
     char *perfile;
     char *sample;
+    size_t min_length;
+    size_t max_length;
+    float min_qscore;
     size_t recurse;
+    FILE *perread_fp;
+    FILE *perfile_fp;
     char **files;
-};
+} arguments_t;
+
 
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
-    struct arguments *arguments = state->input;
+    arguments_t *arguments = state->input;
     switch (key) {
-        case 's':
-            arguments->sample = arg;
-            break;
         case 'r':
             arguments->perread = arg;
             break;
         case 'f':
             arguments->perfile = arg;
+            break;
+        case 's':
+            arguments->sample = arg;
+            break;
+        case 'a':
+            arguments->min_length = atoi(arg);
+            break;
+        case 'b':
+            arguments->max_length = atoi(arg);
+            break;
+        case 'q':
+            arguments->min_qscore = (float)atof(arg);
             break;
         case 'x':
             arguments->recurse = 1;
@@ -108,10 +136,11 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 
 static struct argp argp = {options, parse_opt, args_doc, doc};
 
-// defined below -- recursion
-int process_file(char* fname, char* sample, size_t recurse, FILE* outfp, FILE* summaryfp);
 
-void process_dir(const char *name, char* sample, size_t recurse, FILE* outfp, FILE* summaryfp) {
+// defined below -- recursion
+int process_file(char* fname, arguments_t *args);
+
+void process_dir(const char *name, arguments_t *args) {
     DIR *dir;
     struct dirent *entry;
     char* search;
@@ -128,13 +157,13 @@ void process_dir(const char *name, char* sample, size_t recurse, FILE* outfp, FI
             if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
                 continue;
             }
-            process_dir(path, sample, recurse, outfp, summaryfp);
+            process_dir(path, args);
         } else {
             for (size_t i=0; i<nfiletypes; ++i) {
                 search = strstr(entry->d_name, filetypes[i]);
                 if (search != NULL) {
                     fprintf(stderr, "Processsing %s\n", path);
-                    process_file(path, sample, recurse, outfp, summaryfp);
+                    process_file(path, args);
                     break;
                 }
             }
@@ -143,8 +172,8 @@ void process_dir(const char *name, char* sample, size_t recurse, FILE* outfp, FI
     closedir(dir);
 }
 
-int process_file(char* fname, char* sample, size_t recurse, FILE* outfp, FILE* summaryfp) {
 
+int process_file(char* fname, arguments_t* args) {
     struct stat finfo;
     int res = stat(fname, &finfo);
     if (res == -1) {
@@ -152,8 +181,8 @@ int process_file(char* fname, char* sample, size_t recurse, FILE* outfp, FILE* s
         return 0;
     }
     if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
-        if (recurse) {
-            process_dir(fname, sample, recurse, outfp, summaryfp);
+        if (args->recurse) {
+            process_dir(fname, args);
         } else {
             fprintf(stderr, "Warning: input '%s' is a directory and -x (recursive mode) was not given.\n", fname);
         }
@@ -165,9 +194,9 @@ int process_file(char* fname, char* sample, size_t recurse, FILE* outfp, FILE* s
 
     fp = gzopen(fname, "r");
     seq = kseq_init(fp);
-    size_t n = 0, slen=0;
-    size_t minl=UINTMAX_MAX, maxl=0;
-    double meanq = 0; // this may lose precision
+    size_t n = 0, slen = 0;
+    size_t minl = UINTMAX_MAX, maxl = 0;
+    double meanq = 0.0, c = 0.0;
     while (kseq_read(seq) >= 0) {
         ++n ; slen += seq->seq.l;
         minl = min(minl, seq->seq.l);
@@ -177,15 +206,17 @@ int process_file(char* fname, char* sample, size_t recurse, FILE* outfp, FILE* s
             return 1;
         }
         float mean_q = mean_qual(seq->qual.s, seq->qual.l);
-        meanq += mean_q;
-        fprintf(outfp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, sample, seq->seq.l, mean_q);
-        if (seq->comment.l > 0) {
-            fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
-        } else {
-            fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
+        kahan_sum(&meanq, mean_q, &c);
+        fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
+        if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
+            if (seq->comment.l > 0) {
+                fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
+            } else {
+                fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
+            }
         }
     }
-    fprintf(summaryfp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, sample, n, slen, minl, maxl, meanq/n);
+    fprintf(args->perfile_fp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, args->sample, n, slen, minl, maxl, meanq/n);
     kseq_destroy(seq);
     gzclose(fp);
     return 0;
@@ -193,13 +224,18 @@ int process_file(char* fname, char* sample, size_t recurse, FILE* outfp, FILE* s
 
 
 int main(int argc, char **argv) {
-    struct arguments args;
+    arguments_t args;
     args.perread = "read-summary.txt";
     args.perfile = "file-summary.txt";
     args.sample = "";
+    args.min_length = 0;
+    args.max_length = (size_t)-1;;
+    args.min_qscore = 0;
     args.recurse = 0;
-
     argp_parse(&argp, argc, argv, 0, 0, &args);
+    args.perread_fp = fopen(args.perread, "w");
+    args.perfile_fp = fopen(args.perfile, "w");
+
     char *sample;
     if (strcmp(args.sample, "")) {
         fprintf(stderr, "Adding sample\n");
@@ -216,11 +252,11 @@ int main(int argc, char **argv) {
     FILE* outfp = fopen(args.perread, "w");
     FILE* summaryfp = fopen(args.perfile, "w");
     if (strcmp(args.sample, "")) {
-        fprintf(outfp, "read_id\tfilename\tsample_name\tread_length\tmean_quality\n");
-        fprintf(summaryfp, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
+        fprintf(args.perread_fp, "read_id\tfilename\tsample_name\tread_length\tmean_quality\n");
+        fprintf(args.perfile_fp, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
     } else {
-        fprintf(outfp, "read_id\tfilename\tread_length\tmean_quality\n");
-        fprintf(summaryfp, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
+        fprintf(args.perread_fp, "read_id\tfilename\tread_length\tmean_quality\n");
+        fprintf(args.perfile_fp, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
     }
 
     if (nfile==1 && strcmp(args.files[0], "-") == 0) {
@@ -229,17 +265,17 @@ int main(int argc, char **argv) {
         ssize_t nchr = 0;
         while ((nchr = getline (&ln, &n, stdin)) != -1) {
             ln[strcspn(ln, "\r\n")] = 0;
-            int rtn = process_file(ln, sample, args.recurse, outfp, summaryfp);
+            int rtn = process_file(ln, &args);
             if (rtn != 0) return rtn;
         }
         free(ln);
     } else { 
         for (size_t i=0; i<nfile; ++i) {
-            int rtn = process_file(args.files[i], sample, args.recurse, outfp, summaryfp);
+            int rtn = process_file(args.files[i], &args);
             if (rtn != 0) return rtn;
         }
     }
-    fclose(outfp);
-    fclose(summaryfp);
+    fclose(args.perread_fp);
+    fclose(args.perfile_fp);
     return 0;
 }
