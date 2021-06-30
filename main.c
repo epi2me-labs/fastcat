@@ -14,7 +14,7 @@ static inline size_t max ( size_t a, size_t b ) { return a > b ? a : b; }
 static inline size_t min ( size_t a, size_t b ) { return a < b ? a : b; }
 
 const float qprobs[100] = {
-	1.00000000e+00, 7.94328235e-01, 6.30957344e-01, 5.01187234e-01,
+    1.00000000e+00, 7.94328235e-01, 6.30957344e-01, 5.01187234e-01,
     3.98107171e-01, 3.16227766e-01, 2.51188643e-01, 1.99526231e-01,
     1.58489319e-01, 1.25892541e-01, 1.00000000e-01, 7.94328235e-02,
     6.30957344e-02, 5.01187234e-02, 3.98107171e-02, 3.16227766e-02,
@@ -42,13 +42,13 @@ const float qprobs[100] = {
 
 
 float mean_qual(char* qual, size_t len) {
-	float qsum = 0;
-	for (size_t i=0; i<len; ++i) {
-		int q = (int)(qual[i]) - 33;
-		qsum += qprobs[q];
-	}
+    float qsum = 0;
+    for (size_t i=0; i<len; ++i) {
+        int q = (int)(qual[i]) - 33;
+        qsum += qprobs[q];
+    }
     qsum /= len;
-	return -10 * log10(qsum);
+    return -10 * log10(qsum);
 }
 
 
@@ -66,7 +66,7 @@ static struct argp_option options[] = {
     {"read",    'r',  "READ SUMMARY",  0,  "Per-read summary output"},
     {"file",    'f',  "FILE SUMMARY",  0,  "Per-file summary output"},
     {"sample",  's',  "SAMPLE NAME",   0,  "Sample name (if given adds a 'sample_name' column)"},
-	{"recurse", 'x',              0,   0,  "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files."},
+    {"recurse", 'x',              0,   0,  "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files."},
     { 0 }
 };
 
@@ -74,7 +74,7 @@ struct arguments {
     char *perread;
     char *perfile;
     char *sample;
-	size_t recurse;
+    size_t recurse;
     char **files;
 };
 
@@ -90,9 +90,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
         case 'f':
             arguments->perfile = arg;
             break;
-		case 'x':
-			arguments->recurse = 1;
-			break;
+        case 'x':
+            arguments->recurse = 1;
+            break;
         case ARGP_KEY_NO_ARGS:
             argp_usage (state);
             break;
@@ -114,30 +114,30 @@ int process_file(char* fname, char* sample, size_t recurse, FILE* outfp, FILE* s
 void process_dir(const char *name, char* sample, size_t recurse, FILE* outfp, FILE* summaryfp) {
     DIR *dir;
     struct dirent *entry;
-	char* search;
+    char* search;
 
     if (!(dir = opendir(name)))
         return;
 
     while ((entry = readdir(dir)) != NULL) {
-		char *path = calloc(strlen(name) + strlen(entry->d_name) + 1, sizeof(char));
-		strcpy(path, name);
-		strcat(path, "/");
-		strcat(path, entry->d_name);
+        char *path = calloc(strlen(name) + strlen(entry->d_name) + 1, sizeof(char));
+        strcpy(path, name);
+        strcat(path, "/");
+        strcat(path, entry->d_name);
         if (entry->d_type == DT_DIR) {
             if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
                 continue;
-			}
-			process_dir(path, sample, recurse, outfp, summaryfp);
+            }
+            process_dir(path, sample, recurse, outfp, summaryfp);
         } else {
-			for (size_t i=0; i<nfiletypes; ++i) {
-			    search = strstr(entry->d_name, filetypes[i]);
-				if (search != NULL) {
-					fprintf(stderr, "Processsing %s\n", path);
-					process_file(path, sample, recurse, outfp, summaryfp);
-					break;
-				}
-			}
+            for (size_t i=0; i<nfiletypes; ++i) {
+                search = strstr(entry->d_name, filetypes[i]);
+                if (search != NULL) {
+                    fprintf(stderr, "Processsing %s\n", path);
+                    process_file(path, sample, recurse, outfp, summaryfp);
+                    break;
+                }
+            }
         }
     }
     closedir(dir);
@@ -152,17 +152,17 @@ int process_file(char* fname, char* sample, size_t recurse, FILE* outfp, FILE* s
         return 0;
     }
     if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
-		if (recurse) {
-		    process_dir(fname, sample, recurse, outfp, summaryfp);
+        if (recurse) {
+            process_dir(fname, sample, recurse, outfp, summaryfp);
         } else {
             fprintf(stderr, "Warning: input '%s' is a directory and -x (recursive mode) was not given.\n", fname);
-		}
-		return 0;
+        }
+        return 0;
     }
 
-	gzFile fp;
-	kseq_t *seq;
-        
+    gzFile fp;
+    kseq_t *seq;
+
     fp = gzopen(fname, "r");
     seq = kseq_init(fp);
     size_t n = 0, slen=0;
@@ -172,18 +172,18 @@ int process_file(char* fname, char* sample, size_t recurse, FILE* outfp, FILE* s
         ++n ; slen += seq->seq.l;
         minl = min(minl, seq->seq.l);
         maxl = max(maxl, seq->seq.l);
-    	if (seq->qual.l == 0) {
-    		fprintf(stderr, "No quality string found for '%s' (FASTA is unsupported).\n", seq->name.s);
-    		return 1;
-    	}
-    	float mean_q = mean_qual(seq->qual.s, seq->qual.l);
+        if (seq->qual.l == 0) {
+            fprintf(stderr, "No quality string found for '%s' (FASTA is unsupported).\n", seq->name.s);
+            return 1;
+        }
+        float mean_q = mean_qual(seq->qual.s, seq->qual.l);
         meanq += mean_q;
         fprintf(outfp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, sample, seq->seq.l, mean_q);
-    	if (seq->comment.l > 0) {
-    		fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
-    	} else {
-    		fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
-    	}
+        if (seq->comment.l > 0) {
+            fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
+        } else {
+            fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
+        }
     }
     fprintf(summaryfp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, sample, n, slen, minl, maxl, meanq/n);
     kseq_destroy(seq);
@@ -197,7 +197,7 @@ int main(int argc, char **argv) {
     args.perread = "read-summary.txt";
     args.perfile = "file-summary.txt";
     args.sample = "";
-	args.recurse = 0;
+    args.recurse = 0;
 
     argp_parse(&argp, argc, argv, 0, 0, &args);
     char *sample;
@@ -217,10 +217,10 @@ int main(int argc, char **argv) {
     FILE* summaryfp = fopen(args.perfile, "w");
     if (strcmp(args.sample, "")) {
         fprintf(outfp, "read_id\tfilename\tsample_name\tread_length\tmean_quality\n");
-	    fprintf(summaryfp, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
+        fprintf(summaryfp, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
     } else {
         fprintf(outfp, "read_id\tfilename\tread_length\tmean_quality\n");
-	    fprintf(summaryfp, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
+        fprintf(summaryfp, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
     }
 
     if (nfile==1 && strcmp(args.files[0], "-") == 0) {
@@ -239,8 +239,7 @@ int main(int argc, char **argv) {
             if (rtn != 0) return rtn;
         }
     }
-	fclose(outfp);
-	fclose(summaryfp);
-
-	return 0;
+    fclose(outfp);
+    fclose(summaryfp);
+    return 0;
 }
