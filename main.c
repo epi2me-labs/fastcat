@@ -9,8 +9,8 @@
 #include "kseq.h"
 #include "args.h"
 #include "fastqcomments.h"
+#include "writer.h"
 
-KSEQ_INIT(gzFile, gzread)
 
 static inline size_t max ( size_t a, size_t b ) { return a > b ? a : b; }
 static inline size_t min ( size_t a, size_t b ) { return a < b ? a : b; }
@@ -66,9 +66,9 @@ const char filetypes[4][9] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
 size_t nfiletypes = 4;
 
 // defined below -- recursion
-int process_file(char* fname, arguments_t *args);
+int process_file(char* fname, writer writer, arguments_t *args);
 
-void process_dir(const char *name, arguments_t *args) {
+void process_dir(const char *name, writer writer, arguments_t *args) {
     DIR *dir;
     struct dirent *entry;
     char* search;
@@ -85,13 +85,13 @@ void process_dir(const char *name, arguments_t *args) {
             if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
                 continue;
             }
-            process_dir(path, args);
+            process_dir(path, writer, args);
         } else {
             for (size_t i=0; i<nfiletypes; ++i) {
                 search = strstr(entry->d_name, filetypes[i]);
                 if (search != NULL) {
                     fprintf(stderr, "Processsing %s\n", path);
-                    process_file(path, args);
+                    process_file(path, writer, args);
                     break;
                 }
             }
@@ -101,7 +101,7 @@ void process_dir(const char *name, arguments_t *args) {
 }
 
 
-int process_file(char* fname, arguments_t* args) {
+int process_file(char* fname, writer writer, arguments_t* args) {
     struct stat finfo;
     int res = stat(fname, &finfo);
     if (res == -1) {
@@ -110,7 +110,7 @@ int process_file(char* fname, arguments_t* args) {
     }
     if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
         if (args->recurse) {
-            process_dir(fname, args);
+            process_dir(fname, writer, args);
         } else {
             fprintf(stderr, "Warning: input '%s' is a directory and -x (recursive mode) was not given.\n", fname);
         }
@@ -149,11 +149,7 @@ int process_file(char* fname, arguments_t* args) {
 
         fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
-            if (seq->comment.l > 0) {
-                fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
-            } else {
-                fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
-            }
+            write_read(writer, seq, 0, "");
         }
     }
     fprintf(args->perfile_fp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, args->sample, n, slen, minl, maxl, meanq/n);
@@ -168,6 +164,7 @@ int main(int argc, char **argv) {
     // TODO: move this into parse_argments and have a cleanup?
     args.perread_fp = fopen(args.perread, "w");
     args.perfile_fp = fopen(args.perfile, "w");
+    writer writer = initialize_writer("bla", 1);
 
     char *sample;
     if (strcmp(args.sample, "")) {
@@ -196,17 +193,18 @@ int main(int argc, char **argv) {
         ssize_t nchr = 0;
         while ((nchr = getline (&ln, &n, stdin)) != -1) {
             ln[strcspn(ln, "\r\n")] = 0;
-            int rtn = process_file(ln, &args);
+            int rtn = process_file(ln, writer, &args);
             if (rtn != 0) return rtn;
         }
         free(ln);
     } else { 
         for (size_t i=0; i<nfile; ++i) {
-            int rtn = process_file(args.files[i], &args);
+            int rtn = process_file(args.files[i], writer, &args);
             if (rtn != 0) return rtn;
         }
     }
     fclose(args.perread_fp);
     fclose(args.perfile_fp);
+    destroy_writer(writer);
     return 0;
 }

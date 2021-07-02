@@ -6,7 +6,7 @@ else
     ARGP ?=
 endif
 
-fastcat: main.c args.c fastqcomments.c
+fastcat: main.c args.c fastqcomments.c writer.c
 	gcc -o fastcat $^ $(ARGP) -lz -lm
 
 
