@@ -7,7 +7,7 @@ include:
 image: ${UBUNTUIMAGE}:20.04
 
 .prep-image: &prep-image |
-    apt update; apt install -y gcc zlib1g-dev valgrind
+    apt update; DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends gcc zlib1g-dev valgrind
 
 stages:
     - test
