@@ -20,7 +20,7 @@ build:
     script:
         - make fastcat
         - ./fastcat --help
-        - valgrind --error-exitcode=1 --tool=memcheck ./fastcat bc1.fastq.gz bc2.fastq.gz || (ret=$$?; exit $$ret)
+        - make mem_check
 
 conda:
     extends: .deploy-conda

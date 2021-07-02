@@ -7,7 +7,7 @@
 
 // The caller is responsible for freeing meta and meta->comment
 read_meta parse_read_meta(kstring_t comment) {
-    char* data = calloc(comment.l, sizeof(char));
+    char* data = calloc(comment.l + 1, sizeof(char));
     strncpy(data, comment.s, comment.l);
     read_meta meta = calloc(1, sizeof (_read_meta));
     meta->comment = data;

@@ -136,15 +136,15 @@ int process_file(char* fname, arguments_t* args) {
         float mean_q = mean_qual(seq->qual.s, seq->qual.l);
         kahan_sum(&meanq, mean_q, &c);
         read_meta meta = parse_read_meta(seq->comment);
-            fprintf(stderr, "%s\n", seq->name.s);
-            fprintf(stderr, "%s\n", seq->comment.s);
-            fprintf(stderr, "%i\n", seq->comment.l);
-            fprintf(stderr, "  runid: %s\n", meta->runid);
-            fprintf(stderr, "  flow_cell_id: %s\n", meta->flow_cell_id);
-            fprintf(stderr, "  barcode: %s\n", meta->barcode);
-            fprintf(stderr, "  alias: %s\n", meta->barcode_alias);
-            fprintf(stderr, "  ibarcode: %lu\n", meta->ibarcode);
-            fprintf(stderr, "  rnumber: %lu\n", meta->read_number);
+        fprintf(stderr, "%s\n", seq->name.s);
+        fprintf(stderr, "%s\n", seq->comment.s);
+        fprintf(stderr, "%lu\n", seq->comment.l);
+        fprintf(stderr, "  runid: %s\n", meta->runid);
+        fprintf(stderr, "  flow_cell_id: %s\n", meta->flow_cell_id);
+        fprintf(stderr, "  barcode: %s\n", meta->barcode);
+        fprintf(stderr, "  alias: %s\n", meta->barcode_alias);
+        fprintf(stderr, "  ibarcode: %lu\n", meta->ibarcode);
+        fprintf(stderr, "  rnumber: %lu\n", meta->read_number);
         destroy_read_meta(meta);
 
         fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
@@ -182,8 +182,6 @@ int main(int argc, char **argv) {
     int nfile = 0;
     for( ; args.files[nfile] ; nfile++);
 
-    FILE* outfp = fopen(args.perread, "w");
-    FILE* summaryfp = fopen(args.perfile, "w");
     if (strcmp(args.sample, "")) {
         fprintf(args.perread_fp, "read_id\tfilename\tsample_name\tread_length\tmean_quality\n");
         fprintf(args.perfile_fp, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
