@@ -9,8 +9,14 @@ typedef struct {
     char* flow_cell_id;
     char* barcode;
     size_t ibarcode;
-} read_meta;
+    char* barcode_alias;
+    size_t read_number;
+} _read_meta;
+
+typedef _read_meta* read_meta;
 
 read_meta parse_read_meta(kstring_t comment);
+
+void destroy_read_meta(read_meta meta);
 
 #endif

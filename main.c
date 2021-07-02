@@ -135,17 +135,17 @@ int process_file(char* fname, arguments_t* args) {
         }
         float mean_q = mean_qual(seq->qual.s, seq->qual.l);
         kahan_sum(&meanq, mean_q, &c);
-        read_meta meta;
-        if (seq->comment.l > 0) {
-            meta = parse_read_meta(seq->comment);
+        read_meta meta = parse_read_meta(seq->comment);
             fprintf(stderr, "%s\n", seq->name.s);
             fprintf(stderr, "%s\n", seq->comment.s);
-            fprintf(stderr, "  runid: %s\n", meta.runid);
-            fprintf(stderr, "  flow_cell_id: %s\n", meta.flow_cell_id);
-            fprintf(stderr, "  barcode: %s\n", meta.barcode);
-            fprintf(stderr, "  ibarcode: %lu\n", meta.ibarcode);
-            free(meta.comment);
-        }
+            fprintf(stderr, "%i\n", seq->comment.l);
+            fprintf(stderr, "  runid: %s\n", meta->runid);
+            fprintf(stderr, "  flow_cell_id: %s\n", meta->flow_cell_id);
+            fprintf(stderr, "  barcode: %s\n", meta->barcode);
+            fprintf(stderr, "  alias: %s\n", meta->barcode_alias);
+            fprintf(stderr, "  ibarcode: %lu\n", meta->ibarcode);
+            fprintf(stderr, "  rnumber: %lu\n", meta->read_number);
+        destroy_read_meta(meta);
 
         fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
