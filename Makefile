@@ -7,4 +7,4 @@ else
 endif
 
 fastcat:
-	gcc -o fastcat main.c $(ARGP) -lz -lm
+	gcc -o fastcat main.c args.c fastqcomments.c $(ARGP) -lz -lm

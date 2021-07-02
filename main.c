@@ -5,8 +5,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+
 #include "kseq.h"
-#include <argp.h>
+#include "args.h"
+#include "fastqcomments.h"
 
 KSEQ_INIT(gzFile, gzread)
 
@@ -60,82 +62,8 @@ float mean_qual(char* qual, size_t len) {
     return -10 * log10(qsum);
 }
 
-
 const char filetypes[4][9] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
 size_t nfiletypes = 4;
-
-const char *argp_program_version = "0.2.1";
-const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
-static char doc[] = 
-  "fastcat -- concatenate and summarise .fastq(.gz) files.\
-  \vInput files may be given on stdin by specifing the input as '-'.\
-  When the -x option is given inputs may be directories.";
-static char args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz) ...";
-static struct argp_option options[] = {
-    {"read",    'r',  "READ SUMMARY",  0,  "Per-read summary output"},
-    {"file",    'f',  "FILE SUMMARY",  0,  "Per-file summary output"},
-    {"sample",  's',  "SAMPLE NAME",   0,  "Sample name (if given adds a 'sample_name' column)"},
-    {"min_length",  'a',  "MIN READ LENGTH",   0,  "minimum read length to output (excluded reads remain listed in summaries)"},
-    {"max_length",  'b',  "MAX READ LENGTH",   0,  "maximum read length to output (excluded reads remain listed in summaries)"},
-    {"min_qscore",  'q',  "MIN READ QSCOROE",  0,  "minimum read Qscore to output (excluded reads remain listed in summaries)"},
-    {"recurse", 'x',              0,   0,  "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files."},
-    { 0 }
-};
-
-
-typedef struct arguments {
-    char *perread;
-    char *perfile;
-    char *sample;
-    size_t min_length;
-    size_t max_length;
-    float min_qscore;
-    size_t recurse;
-    FILE *perread_fp;
-    FILE *perfile_fp;
-    char **files;
-} arguments_t;
-
-
-static error_t parse_opt (int key, char *arg, struct argp_state *state) {
-    arguments_t *arguments = state->input;
-    switch (key) {
-        case 'r':
-            arguments->perread = arg;
-            break;
-        case 'f':
-            arguments->perfile = arg;
-            break;
-        case 's':
-            arguments->sample = arg;
-            break;
-        case 'a':
-            arguments->min_length = atoi(arg);
-            break;
-        case 'b':
-            arguments->max_length = atoi(arg);
-            break;
-        case 'q':
-            arguments->min_qscore = (float)atof(arg);
-            break;
-        case 'x':
-            arguments->recurse = 1;
-            break;
-        case ARGP_KEY_NO_ARGS:
-            argp_usage (state);
-            break;
-        case ARGP_KEY_ARG:
-            arguments->files = &state->argv[state->next - 1];
-            state->next = state->argc;
-            break;
-        defualt:
-            return ARGP_ERR_UNKNOWN;
-    }
-    return 0;
-}
-
-static struct argp argp = {options, parse_opt, args_doc, doc};
-
 
 // defined below -- recursion
 int process_file(char* fname, arguments_t *args);
@@ -207,6 +135,18 @@ int process_file(char* fname, arguments_t* args) {
         }
         float mean_q = mean_qual(seq->qual.s, seq->qual.l);
         kahan_sum(&meanq, mean_q, &c);
+        read_meta meta;
+        if (seq->comment.l > 0) {
+            meta = parse_read_meta(seq->comment);
+            fprintf(stderr, "%s\n", seq->name.s);
+            fprintf(stderr, "%s\n", seq->comment.s);
+            fprintf(stderr, "  runid: %s\n", meta.runid);
+            fprintf(stderr, "  flow_cell_id: %s\n", meta.flow_cell_id);
+            fprintf(stderr, "  barcode: %s\n", meta.barcode);
+            fprintf(stderr, "  ibarcode: %lu\n", meta.ibarcode);
+            free(meta.comment);
+        }
+
         fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
             if (seq->comment.l > 0) {
@@ -224,15 +164,8 @@ int process_file(char* fname, arguments_t* args) {
 
 
 int main(int argc, char **argv) {
-    arguments_t args;
-    args.perread = "read-summary.txt";
-    args.perfile = "file-summary.txt";
-    args.sample = "";
-    args.min_length = 0;
-    args.max_length = (size_t)-1;;
-    args.min_qscore = 0;
-    args.recurse = 0;
-    argp_parse(&argp, argc, argv, 0, 0, &args);
+    arguments_t args = parse_arguments(argc, argv);
+    // TODO: move this into parse_argments and have a cleanup?
     args.perread_fp = fopen(args.perread, "w");
     args.perfile_fp = fopen(args.perfile, "w");
 
