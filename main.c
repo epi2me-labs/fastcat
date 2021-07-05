@@ -145,13 +145,12 @@ int process_file(char* fname, writer writer, arguments_t* args) {
         //fprintf(stderr, "  alias: %s\n", meta->barcode_alias);
         //fprintf(stderr, "  ibarcode: %lu\n", meta->ibarcode);
         //fprintf(stderr, "  rnumber: %lu\n", meta->read_number);
-        destroy_read_meta(meta);
-
-
-        fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
+        //TODO handle no barcode case
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
             write_read(writer, seq, meta->ibarcode, "");
         }
+        fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
+        destroy_read_meta(meta);
     }
     fprintf(args->perfile_fp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, args->sample, n, slen, minl, maxl, meanq/n);
     kseq_destroy(seq);
@@ -165,6 +164,7 @@ int main(int argc, char **argv) {
     // TODO: move this into parse_argments and have a cleanup?
     args.perread_fp = fopen(args.perread, "w");
     args.perfile_fp = fopen(args.perfile, "w");
+    // TODO: handle no barcode case
     writer writer = initialize_writer("bla", 0);
 
     char *sample;
