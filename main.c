@@ -136,20 +136,21 @@ int process_file(char* fname, writer writer, arguments_t* args) {
         float mean_q = mean_qual(seq->qual.s, seq->qual.l);
         kahan_sum(&meanq, mean_q, &c);
         read_meta meta = parse_read_meta(seq->comment);
-        fprintf(stderr, "%s\n", seq->name.s);
-        fprintf(stderr, "%s\n", seq->comment.s);
-        fprintf(stderr, "%lu\n", seq->comment.l);
-        fprintf(stderr, "  runid: %s\n", meta->runid);
-        fprintf(stderr, "  flow_cell_id: %s\n", meta->flow_cell_id);
-        fprintf(stderr, "  barcode: %s\n", meta->barcode);
-        fprintf(stderr, "  alias: %s\n", meta->barcode_alias);
-        fprintf(stderr, "  ibarcode: %lu\n", meta->ibarcode);
-        fprintf(stderr, "  rnumber: %lu\n", meta->read_number);
+        //fprintf(stderr, "%s\n", seq->name.s);
+        //fprintf(stderr, "%s\n", seq->comment.s);
+        //fprintf(stderr, "%lu\n", seq->comment.l);
+        //fprintf(stderr, "  runid: %s\n", meta->runid);
+        //fprintf(stderr, "  flow_cell_id: %s\n", meta->flow_cell_id);
+        //fprintf(stderr, "  barcode: %s\n", meta->barcode);
+        //fprintf(stderr, "  alias: %s\n", meta->barcode_alias);
+        //fprintf(stderr, "  ibarcode: %lu\n", meta->ibarcode);
+        //fprintf(stderr, "  rnumber: %lu\n", meta->read_number);
         destroy_read_meta(meta);
+
 
         fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
-            write_read(writer, seq, 0, "");
+            write_read(writer, seq, meta->ibarcode, "");
         }
     }
     fprintf(args->perfile_fp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, args->sample, n, slen, minl, maxl, meanq/n);
@@ -164,7 +165,7 @@ int main(int argc, char **argv) {
     // TODO: move this into parse_argments and have a cleanup?
     args.perread_fp = fopen(args.perread, "w");
     args.perfile_fp = fopen(args.perfile, "w");
-    writer writer = initialize_writer("bla", 1);
+    writer writer = initialize_writer("bla", 0);
 
     char *sample;
     if (strcmp(args.sample, "")) {
