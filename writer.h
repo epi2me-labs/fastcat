@@ -21,6 +21,6 @@ writer initialize_writer(char* path, char* output);
 
 void destroy_writer(writer writer);
 
-void write_read(writer writer, kseq_t* seq, size_t barcode, char* alias);
+void write_read(writer writer, kseq_t* seq, size_t barcode);
 
 #endif

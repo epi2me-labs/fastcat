@@ -1,4 +1,5 @@
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <dirent.h>
 
 #include <zlib.h>
@@ -147,7 +148,7 @@ int process_file(char* fname, writer writer, arguments_t* args) {
         //fprintf(stderr, "  rnumber: %lu\n", meta->read_number);
         //TODO handle no barcode case
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
-            write_read(writer, seq, meta->ibarcode, "");
+            write_read(writer, seq, meta->ibarcode);
         }
         fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
         destroy_read_meta(meta);
@@ -164,8 +165,16 @@ int main(int argc, char **argv) {
     // TODO: move this into parse_argments and have a cleanup?
     args.perread_fp = fopen(args.perread, "w");
     args.perfile_fp = fopen(args.perfile, "w");
-    // TODO: handle no barcode case
-    writer writer = initialize_writer("bla", 0);
+    if (args.demultiplex_dir != NULL) {
+        int rtn = mkdir(args.demultiplex_dir, 0700);
+        if (rtn == -1) {
+            fprintf(stderr,
+               "Error: Cannot create output directory '%s'. Check location is writeable and does not already exist.\n",
+               args.demultiplex_dir);
+            return 1;
+        }
+    }
+    writer writer = initialize_writer("bla", args.demultiplex_dir);
 
     char *sample;
     if (strcmp(args.sample, "")) {
