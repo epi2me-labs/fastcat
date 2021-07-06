@@ -1,14 +1,17 @@
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <dirent.h>
 
 #include <zlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#include "kseq.h"
-#include <argp.h>
 
-KSEQ_INIT(gzFile, gzread)
+#include "kseq.h"
+#include "args.h"
+#include "fastqcomments.h"
+#include "writer.h"
+
 
 static inline size_t max ( size_t a, size_t b ) { return a > b ? a : b; }
 static inline size_t min ( size_t a, size_t b ) { return a < b ? a : b; }
@@ -60,87 +63,13 @@ float mean_qual(char* qual, size_t len) {
     return -10 * log10(qsum);
 }
 
-
 const char filetypes[4][9] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
 size_t nfiletypes = 4;
 
-const char *argp_program_version = "0.2.1";
-const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
-static char doc[] = 
-  "fastcat -- concatenate and summarise .fastq(.gz) files.\
-  \vInput files may be given on stdin by specifing the input as '-'.\
-  When the -x option is given inputs may be directories.";
-static char args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz) ...";
-static struct argp_option options[] = {
-    {"read",    'r',  "READ SUMMARY",  0,  "Per-read summary output"},
-    {"file",    'f',  "FILE SUMMARY",  0,  "Per-file summary output"},
-    {"sample",  's',  "SAMPLE NAME",   0,  "Sample name (if given adds a 'sample_name' column)"},
-    {"min_length",  'a',  "MIN READ LENGTH",   0,  "minimum read length to output (excluded reads remain listed in summaries)"},
-    {"max_length",  'b',  "MAX READ LENGTH",   0,  "maximum read length to output (excluded reads remain listed in summaries)"},
-    {"min_qscore",  'q',  "MIN READ QSCOROE",  0,  "minimum read Qscore to output (excluded reads remain listed in summaries)"},
-    {"recurse", 'x',              0,   0,  "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files."},
-    { 0 }
-};
-
-
-typedef struct arguments {
-    char *perread;
-    char *perfile;
-    char *sample;
-    size_t min_length;
-    size_t max_length;
-    float min_qscore;
-    size_t recurse;
-    FILE *perread_fp;
-    FILE *perfile_fp;
-    char **files;
-} arguments_t;
-
-
-static error_t parse_opt (int key, char *arg, struct argp_state *state) {
-    arguments_t *arguments = state->input;
-    switch (key) {
-        case 'r':
-            arguments->perread = arg;
-            break;
-        case 'f':
-            arguments->perfile = arg;
-            break;
-        case 's':
-            arguments->sample = arg;
-            break;
-        case 'a':
-            arguments->min_length = atoi(arg);
-            break;
-        case 'b':
-            arguments->max_length = atoi(arg);
-            break;
-        case 'q':
-            arguments->min_qscore = (float)atof(arg);
-            break;
-        case 'x':
-            arguments->recurse = 1;
-            break;
-        case ARGP_KEY_NO_ARGS:
-            argp_usage (state);
-            break;
-        case ARGP_KEY_ARG:
-            arguments->files = &state->argv[state->next - 1];
-            state->next = state->argc;
-            break;
-        defualt:
-            return ARGP_ERR_UNKNOWN;
-    }
-    return 0;
-}
-
-static struct argp argp = {options, parse_opt, args_doc, doc};
-
-
 // defined below -- recursion
-int process_file(char* fname, arguments_t *args);
+int process_file(char* fname, writer writer, arguments_t *args);
 
-void process_dir(const char *name, arguments_t *args) {
+void process_dir(const char *name, writer writer, arguments_t *args) {
     DIR *dir;
     struct dirent *entry;
     char* search;
@@ -157,13 +86,13 @@ void process_dir(const char *name, arguments_t *args) {
             if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
                 continue;
             }
-            process_dir(path, args);
+            process_dir(path, writer, args);
         } else {
             for (size_t i=0; i<nfiletypes; ++i) {
                 search = strstr(entry->d_name, filetypes[i]);
                 if (search != NULL) {
                     fprintf(stderr, "Processsing %s\n", path);
-                    process_file(path, args);
+                    process_file(path, writer, args);
                     break;
                 }
             }
@@ -173,7 +102,7 @@ void process_dir(const char *name, arguments_t *args) {
 }
 
 
-int process_file(char* fname, arguments_t* args) {
+int process_file(char* fname, writer writer, arguments_t* args) {
     struct stat finfo;
     int res = stat(fname, &finfo);
     if (res == -1) {
@@ -182,7 +111,7 @@ int process_file(char* fname, arguments_t* args) {
     }
     if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
         if (args->recurse) {
-            process_dir(fname, args);
+            process_dir(fname, writer, args);
         } else {
             fprintf(stderr, "Warning: input '%s' is a directory and -x (recursive mode) was not given.\n", fname);
         }
@@ -207,16 +136,18 @@ int process_file(char* fname, arguments_t* args) {
         }
         float mean_q = mean_qual(seq->qual.s, seq->qual.l);
         kahan_sum(&meanq, mean_q, &c);
-        fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
+        read_meta meta = parse_read_meta(seq->comment);
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
-            if (seq->comment.l > 0) {
-                fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
-            } else {
-                fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
-            }
+            write_read(writer, seq, meta->ibarcode);
         }
+        if(writer->perread != NULL) {
+            fprintf(writer->perread, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
+        }
+        destroy_read_meta(meta);
     }
-    fprintf(args->perfile_fp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, args->sample, n, slen, minl, maxl, meanq/n);
+    if(writer->perfile != NULL) {
+        fprintf(writer->perfile, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, args->sample, n, slen, minl, maxl, meanq/n);
+    }
     kseq_destroy(seq);
     gzclose(fp);
     return 0;
@@ -224,18 +155,7 @@ int process_file(char* fname, arguments_t* args) {
 
 
 int main(int argc, char **argv) {
-    arguments_t args;
-    args.perread = "read-summary.txt";
-    args.perfile = "file-summary.txt";
-    args.sample = "";
-    args.min_length = 0;
-    args.max_length = (size_t)-1;;
-    args.min_qscore = 0;
-    args.recurse = 0;
-    argp_parse(&argp, argc, argv, 0, 0, &args);
-    args.perread_fp = fopen(args.perread, "w");
-    args.perfile_fp = fopen(args.perfile, "w");
-
+    arguments_t args = parse_arguments(argc, argv);
     char *sample;
     if (strcmp(args.sample, "")) {
         fprintf(stderr, "Adding sample\n");
@@ -245,19 +165,11 @@ int main(int argc, char **argv) {
     } else {
         sample = "";
     }
+    writer writer = initialize_writer("bla", args.demultiplex_dir, args.perread, args.perfile, sample);
+    if (writer == NULL) exit(1);
 
     int nfile = 0;
     for( ; args.files[nfile] ; nfile++);
-
-    FILE* outfp = fopen(args.perread, "w");
-    FILE* summaryfp = fopen(args.perfile, "w");
-    if (strcmp(args.sample, "")) {
-        fprintf(args.perread_fp, "read_id\tfilename\tsample_name\tread_length\tmean_quality\n");
-        fprintf(args.perfile_fp, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
-    } else {
-        fprintf(args.perread_fp, "read_id\tfilename\tread_length\tmean_quality\n");
-        fprintf(args.perfile_fp, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
-    }
 
     if (nfile==1 && strcmp(args.files[0], "-") == 0) {
         char *ln = NULL;
@@ -265,17 +177,16 @@ int main(int argc, char **argv) {
         ssize_t nchr = 0;
         while ((nchr = getline (&ln, &n, stdin)) != -1) {
             ln[strcspn(ln, "\r\n")] = 0;
-            int rtn = process_file(ln, &args);
+            int rtn = process_file(ln, writer, &args);
             if (rtn != 0) return rtn;
         }
         free(ln);
     } else { 
         for (size_t i=0; i<nfile; ++i) {
-            int rtn = process_file(args.files[i], &args);
+            int rtn = process_file(args.files[i], writer, &args);
             if (rtn != 0) return rtn;
         }
     }
-    fclose(args.perread_fp);
-    fclose(args.perfile_fp);
+    destroy_writer(writer);
     return 0;
 }
