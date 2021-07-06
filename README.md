@@ -1,16 +1,29 @@
 # fastcat
 
 A simple utility to concatenate .fastq(.gz) files whilst creating a summary
-of the sequences:
+of the sequences. Can also demultiplex reads according to Guppy/MinKNOW
+.fastq record headers.
 
 ```
 Usage: fastcat [OPTION...] reads1.fastq(.gz) reads2.fastq(.gz) ...
 fastcat -- concatenate and summarise .fastq(.gz) files.
 
+  -a, --min_length=MIN READ LENGTH
+                             minimum read length to output (excluded reads
+                             remain listed in summaries).
+  -b, --max_length=MAX READ LENGTH
+                             maximum read length to output (excluded reads
+                             remain listed in summaries).
+  -d, --demultiplex=OUT DIR  Separate barcoded samples using fastq header
+                             information. Option value is top-level output
+                             directory.
   -f, --file=FILE SUMMARY    Per-file summary output
+  -q, --min_qscore=MIN READ QSCOROE
+                             minimum read Qscore to output (excluded reads
+                             remain listed in summaries).
   -r, --read=READ SUMMARY    Per-read summary output
   -s, --sample=SAMPLE NAME   Sample name (if given adds a 'sample_name'
-                             column)
+                             column).
   -x, --recurse              Search directories recursively for '.fastq',
                              '.fq', '.fastq.gz', and '.fq.gz' files.
   -?, --help                 Give this help list
@@ -22,6 +35,8 @@ for any corresponding short options.
 
 Input files may be given on stdin by specifing the input as '-'.  When the -x
 option is given inputs may be directories.
+
+Report bugs to chris.wright@nanoporetech.com.
 ```
 
 The program writes the input sequences to `stdout` in .fastq format to be
