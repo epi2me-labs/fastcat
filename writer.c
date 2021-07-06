@@ -1,9 +1,11 @@
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "writer.h"
 
-writer initialize_writer(char* path, size_t to_stdout) {
+writer initialize_writer(char* path, char* output_dir) {
      writer writer = calloc(1, sizeof(_writer));
-     writer->to_stdout = to_stdout;
+     writer->output = output_dir; // TODO: take a copy
      writer->handles = calloc(MAX_BARCODES, sizeof(gzFile));
      writer->nreads = calloc(MAX_BARCODES, sizeof(size_t));
      return writer;
@@ -26,7 +28,7 @@ void destroy_writer(writer writer) {
 void write_read(writer writer, kseq_t* seq, size_t barcode, char* alias) {
     // TODO: reads per file
     writer->nreads[barcode]++;
-    if (writer->to_stdout) {
+    if (writer->output == NULL) {
         if (seq->comment.l > 0) {
             fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
         }
@@ -36,9 +38,18 @@ void write_read(writer writer, kseq_t* seq, size_t barcode, char* alias) {
     }
     else {
         if (writer->handles[barcode] == NULL) {
-            char* filepath = calloc(21, sizeof(char));
-            sprintf(filepath, "barcode%04lu.fastq.gz", barcode);
+            // TODO handle unclassified/missing
+            char* path = calloc(strlen(writer->output) + 14, sizeof(char));
+            sprintf(path, "%s/barcode%04lu/", writer->output, barcode);
+            int rtn = mkdir(path, 0700);
+            if (rtn == -1) {
+                fprintf(stderr, "Failed to create barcode directory '%s\n'.", path);
+                exit(1);
+            }
+            char* filepath = calloc(strlen(path) + 21, sizeof(char));
+            sprintf(filepath, "%sbarcode%04lu.fastq.gz", path, barcode);
             writer->handles[barcode] = gzopen(filepath, "wb");
+            free(path);
             free(filepath);
         }
         gzFile handle = writer->handles[barcode];

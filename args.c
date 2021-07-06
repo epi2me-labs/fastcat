@@ -17,8 +17,8 @@ static struct argp_option options[] = {
         "Per-file summary output"},
     {"sample", 's',"SAMPLE NAME",   0,
         "Sample name (if given adds a 'sample_name' column)."},
-    {"separate_samples", 'p', 0,  0,
-        "Separate barcoded samples using fastq header information."},
+    {"demultiplex", 'd', "OUT DIR",  0,
+        "Separate barcoded samples using fastq header information. Option value is top-level output directory."},
     {"min_length", 'a', "MIN READ LENGTH", 0,
         "minimum read length to output (excluded reads remain listed in summaries)."},
     {"max_length", 'b', "MAX READ LENGTH", 0,
@@ -49,8 +49,8 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
         case 'b':
             arguments->max_length = atoi(arg);
             break;
-        case 'p':
-            arguments->demultiplex = 1;
+        case 'd':
+            arguments->demultiplex_dir = arg;
             break;
         case 'q':
             arguments->min_qscore = (float)atof(arg);
@@ -83,7 +83,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.max_length = (size_t)-1;;
     args.min_qscore = 0;
     args.recurse = 0;
-    args.demultiplex = 0;
+    args.demultiplex_dir = NULL;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     return args;
 }

@@ -10,14 +10,14 @@ KSEQ_INIT(gzFile, gzread)
 
 typedef struct {
     char* path;
-    size_t to_stdout;
+    char* output;
     gzFile* handles;
     size_t* nreads;
 } _writer;
 
 typedef _writer* writer;
 
-writer initialize_writer(char* path, size_t to_stdout);
+writer initialize_writer(char* path, char* output);
 
 void destroy_writer(writer writer);
 
