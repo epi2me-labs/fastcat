@@ -34,7 +34,7 @@ read_meta parse_read_meta(kstring_t comment) {
             }
             else if (!strcmp(key, "barcode")) {
                 meta->barcode = pch;
-                meta->ibarcode = atoi(pch+7);
+                meta->ibarcode = atoi(pch+7);  // "unclassified" -> 0
             }
             else if (!strcmp(key, "barcode_alias")) {
                 meta->barcode_alias = pch;
