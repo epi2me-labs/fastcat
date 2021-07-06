@@ -1,10 +1,6 @@
-{% set name = "fastcat" %}
-{% set version = "0.2.0" %}
-
-
 package:
-    name: {{ name|lower }}
-    version: {{ version }}
+  name: {{ environ.get('CONDA_PKG') }}
+  version: {{ environ.get('CONDA_PKG_VERSION') }}
 
 source:
     path: ../
