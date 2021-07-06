@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Parsing Guppy/MinKNOW fastq key=value header comments.
 - Ability to demultiplex inputs based on "barcode" key in headers.
+### Changed
+- Per-read and per-file summary files now optional.
 
 ## [v0.2.1]
 ### Added
