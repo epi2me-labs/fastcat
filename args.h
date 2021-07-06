@@ -10,8 +10,6 @@ typedef struct arguments {
     float min_qscore;
     size_t recurse;
     char* demultiplex_dir;
-    FILE *perread_fp;
-    FILE *perfile_fp;
     char **files;
 } arguments_t;
 

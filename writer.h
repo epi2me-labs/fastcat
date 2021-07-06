@@ -13,11 +13,13 @@ typedef struct {
     char* output;
     gzFile* handles;
     size_t* nreads;
+    FILE* perread;
+    FILE* perfile;
 } _writer;
 
 typedef _writer* writer;
 
-writer initialize_writer(char* path, char* output);
+writer initialize_writer(char* path, char* output_dir, char* perread, char* perfile, char* sample);
 
 void destroy_writer(writer writer);
 

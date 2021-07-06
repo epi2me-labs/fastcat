@@ -137,23 +137,17 @@ int process_file(char* fname, writer writer, arguments_t* args) {
         float mean_q = mean_qual(seq->qual.s, seq->qual.l);
         kahan_sum(&meanq, mean_q, &c);
         read_meta meta = parse_read_meta(seq->comment);
-        //fprintf(stderr, "%s\n", seq->name.s);
-        //fprintf(stderr, "%s\n", seq->comment.s);
-        //fprintf(stderr, "%lu\n", seq->comment.l);
-        //fprintf(stderr, "  runid: %s\n", meta->runid);
-        //fprintf(stderr, "  flow_cell_id: %s\n", meta->flow_cell_id);
-        //fprintf(stderr, "  barcode: %s\n", meta->barcode);
-        //fprintf(stderr, "  alias: %s\n", meta->barcode_alias);
-        //fprintf(stderr, "  ibarcode: %lu\n", meta->ibarcode);
-        //fprintf(stderr, "  rnumber: %lu\n", meta->read_number);
-        //TODO handle no barcode case
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
             write_read(writer, seq, meta->ibarcode);
         }
-        fprintf(args->perread_fp, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
+        if(writer->perread != NULL) {
+            fprintf(writer->perread, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
+        }
         destroy_read_meta(meta);
     }
-    fprintf(args->perfile_fp, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, args->sample, n, slen, minl, maxl, meanq/n);
+    if(writer->perfile != NULL) {
+        fprintf(writer->perfile, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, args->sample, n, slen, minl, maxl, meanq/n);
+    }
     kseq_destroy(seq);
     gzclose(fp);
     return 0;
@@ -162,20 +156,6 @@ int process_file(char* fname, writer writer, arguments_t* args) {
 
 int main(int argc, char **argv) {
     arguments_t args = parse_arguments(argc, argv);
-    // TODO: move this into parse_argments and have a cleanup?
-    args.perread_fp = fopen(args.perread, "w");
-    args.perfile_fp = fopen(args.perfile, "w");
-    if (args.demultiplex_dir != NULL) {
-        int rtn = mkdir(args.demultiplex_dir, 0700);
-        if (rtn == -1) {
-            fprintf(stderr,
-               "Error: Cannot create output directory '%s'. Check location is writeable and does not already exist.\n",
-               args.demultiplex_dir);
-            return 1;
-        }
-    }
-    writer writer = initialize_writer("bla", args.demultiplex_dir);
-
     char *sample;
     if (strcmp(args.sample, "")) {
         fprintf(stderr, "Adding sample\n");
@@ -185,17 +165,11 @@ int main(int argc, char **argv) {
     } else {
         sample = "";
     }
+    writer writer = initialize_writer("bla", args.demultiplex_dir, args.perread, args.perfile, sample);
+    if (writer == NULL) exit(1);
 
     int nfile = 0;
     for( ; args.files[nfile] ; nfile++);
-
-    if (strcmp(args.sample, "")) {
-        fprintf(args.perread_fp, "read_id\tfilename\tsample_name\tread_length\tmean_quality\n");
-        fprintf(args.perfile_fp, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
-    } else {
-        fprintf(args.perread_fp, "read_id\tfilename\tread_length\tmean_quality\n");
-        fprintf(args.perfile_fp, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
-    }
 
     if (nfile==1 && strcmp(args.files[0], "-") == 0) {
         char *ln = NULL;
@@ -213,8 +187,6 @@ int main(int argc, char **argv) {
             if (rtn != 0) return rtn;
         }
     }
-    fclose(args.perread_fp);
-    fclose(args.perfile_fp);
     destroy_writer(writer);
     return 0;
 }

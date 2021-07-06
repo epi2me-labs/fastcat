@@ -76,8 +76,8 @@ static struct argp argp = {options, parse_opt, args_doc, doc};
 
 arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;
-    args.perread = "read-summary.txt";
-    args.perfile = "file-summary.txt";
+    args.perread = NULL;
+    args.perfile = NULL;
     args.sample = "";
     args.min_length = 0;
     args.max_length = (size_t)-1;;
