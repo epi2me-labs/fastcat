@@ -58,6 +58,12 @@ void destroy_writer(writer writer) {
 
 void write_read(writer writer, kseq_t* seq, size_t barcode) {
     // TODO: reads per file
+    if (barcode > MAX_BARCODES - 1) {
+        fprintf(stderr,
+            "ERROR: Read's barcode number (%lu) is greater than MAX_BARCODES (%i)\n",
+            barcode, MAX_BARCODES);
+        exit(1);
+    }
     writer->nreads[barcode]++;
     if (writer->output == NULL) {
         if (seq->comment.l > 0) {

@@ -6,7 +6,8 @@
 #include "kseq.h"
 KSEQ_INIT(gzFile, gzread)
 
-#define MAX_BARCODES 8
+// barcode 0 is reserved for "unclassified"
+#define MAX_BARCODES 1025
 
 typedef struct {
     char* path;
