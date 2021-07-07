@@ -16,7 +16,9 @@ read_meta parse_read_meta(kstring_t comment) {
     meta->barcode = "";
     meta->ibarcode = 0;
     meta->barcode_alias = "";
+    meta->start_time = "";
     meta->read_number = 0;
+    meta->channel = 0;
 
     char* pch;
     pch = strtok(meta->comment, " =");
@@ -41,6 +43,12 @@ read_meta parse_read_meta(kstring_t comment) {
             }
             else if (!strcmp(key, "read")) {
                 meta->read_number = atoi(pch);
+            }
+            else if (!strcmp(key, "ch")) {
+                meta->channel = atoi(pch);
+            }
+            else if (!strcmp(key, "start_time")) {
+                meta->start_time = pch;
             }
             key = NULL;
         }

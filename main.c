@@ -138,10 +138,7 @@ int process_file(char* fname, writer writer, arguments_t* args) {
         kahan_sum(&meanq, mean_q, &c);
         read_meta meta = parse_read_meta(seq->comment);
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
-            write_read(writer, seq, meta->ibarcode);
-        }
-        if(writer->perread != NULL) {
-            fprintf(writer->perread, "%s\t%s\t%s%zu\t%1.2f\n", seq->name.s, fname, args->sample, seq->seq.l, mean_q);
+            write_read(writer, seq, meta, mean_q, fname, args->sample);
         }
         destroy_read_meta(meta);
     }

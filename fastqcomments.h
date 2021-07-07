@@ -10,7 +10,9 @@ typedef struct {
     char* barcode;
     size_t ibarcode;
     char* barcode_alias;
+    char* start_time;
     size_t read_number;
+    size_t channel;
 } _read_meta;
 
 typedef _read_meta* read_meta;

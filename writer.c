@@ -2,6 +2,7 @@
 #include <sys/types.h>
 
 #include "writer.h"
+#include "fastqcomments.h"
 
 writer initialize_writer(char* path, char* output_dir, char* perread, char* perfile, char* sample) {
     if (output_dir != NULL) {
@@ -19,19 +20,17 @@ writer initialize_writer(char* path, char* output_dir, char* perread, char* perf
      writer->nreads = calloc(MAX_BARCODES, sizeof(size_t));
      if (perread != NULL) {
          writer->perread = fopen(perread, "w");
-        if (strcmp(sample, "")) {
-            fprintf(writer->perread, "read_id\tfilename\tsample_name\tread_length\tmean_quality\n");
-        } else {
-            fprintf(writer->perread, "read_id\tfilename\tread_length\tmean_quality\n");
-        }
+        fprintf(writer->perread, "read_id\tfilename\t");
+        if (strcmp(sample, ""))
+            fprintf(writer->perread, "sample_name\t");
+        fprintf(writer->perread, "read_length\tmean_quality\tchannel\tread_number\tstart_time\n");
      }
      if (perfile != NULL) {
          writer->perfile = fopen(perfile, "w");
-         if (strcmp(sample, "")) {
-             fprintf(writer->perfile, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
-         } else {
-             fprintf(writer->perfile, "filename\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
-         }
+         fprintf(writer->perfile, "filename\t\n");
+         if (strcmp(sample, ""))
+             fprintf(writer->perfile, "sample_name\t");
+         fprintf(writer->perfile, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
      }
      return writer;
 }
@@ -56,8 +55,9 @@ void destroy_writer(writer writer) {
 }
 
 
-void write_read(writer writer, kseq_t* seq, size_t barcode) {
+void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* fname, char* sample) {
     // TODO: reads per file
+    size_t barcode = meta->ibarcode;
     if (barcode > MAX_BARCODES - 1) {
         fprintf(stderr,
             "ERROR: Read's barcode number (%lu) is greater than MAX_BARCODES (%i)\n",
@@ -65,6 +65,12 @@ void write_read(writer writer, kseq_t* seq, size_t barcode) {
         exit(1);
     }
     writer->nreads[barcode]++;
+
+    if(writer->perread != NULL) {
+        fprintf(writer->perread, "%s\t%s\t%s%zu\t%1.2f\t%lu\t%lu\t%s\n",
+            seq->name.s, fname, sample, seq->seq.l, mean_q, meta->channel, meta->read_number, meta->start_time);
+    }
+
     if (writer->output == NULL) {
         if (seq->comment.l > 0) {
             fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);

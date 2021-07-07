@@ -4,6 +4,8 @@
 #include <zlib.h>
 
 #include "kseq.h"
+#include "fastqcomments.h"
+
 KSEQ_INIT(gzFile, gzread)
 
 // barcode 0 is reserved for "unclassified"
@@ -24,6 +26,6 @@ writer initialize_writer(char* path, char* output_dir, char* perread, char* perf
 
 void destroy_writer(writer writer);
 
-void write_read(writer writer, kseq_t* seq, size_t barcode);
+void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* fname, char* sample);
 
 #endif
