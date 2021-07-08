@@ -22,7 +22,9 @@ typedef struct {
 
 typedef _writer* writer;
 
-writer initialize_writer(char* path, char* output_dir, char* perread, char* perfile, char* sample);
+char* strip_path(char* input);
+
+writer initialize_writer(char* output_dir, char* perread, char* perfile, char* sample);
 
 void destroy_writer(writer writer);
 

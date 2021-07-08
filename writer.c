@@ -4,7 +4,16 @@
 #include "writer.h"
 #include "fastqcomments.h"
 
-writer initialize_writer(char* path, char* output_dir, char* perread, char* perfile, char* sample) {
+char* strip_path(char* input) {
+    if (input == NULL) return NULL;
+    size_t len = strlen(input);
+    if (input[len - 1] == '/') len--;
+    char* output = calloc(len + 1, sizeof(char));
+    memcpy(output, input, len);
+    return output;
+}
+
+writer initialize_writer(char* output_dir, char* perread, char* perfile, char* sample) {
     if (output_dir != NULL) {
         int rtn = mkdir(output_dir, 0700);
         if (rtn == -1) {
@@ -15,7 +24,7 @@ writer initialize_writer(char* path, char* output_dir, char* perread, char* perf
         }
      }
      writer writer = calloc(1, sizeof(_writer));
-     writer->output = output_dir; // TODO: take a copy
+     writer->output = strip_path(output_dir);
      writer->handles = calloc(MAX_BARCODES, sizeof(gzFile));
      writer->nreads = calloc(MAX_BARCODES, sizeof(size_t));
      if (perread != NULL) {
@@ -43,12 +52,9 @@ void destroy_writer(writer writer) {
            gzclose(writer->handles[i]);
        }
     }
-    if (writer->perread != NULL) {
-        fclose(writer->perread);
-    }
-    if (writer->perfile != NULL) {
-        fclose(writer->perfile);
-    }
+    if (writer->perread != NULL) fclose(writer->perread);
+    if (writer->perfile != NULL) fclose(writer->perfile);
+    if (writer->output != NULL) free(writer->output);
     free(writer->handles);
     free(writer->nreads);
     free(writer);

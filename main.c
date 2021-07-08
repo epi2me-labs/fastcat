@@ -78,12 +78,11 @@ void process_dir(const char *name, writer writer, arguments_t *args) {
         return;
 
     while ((entry = readdir(dir)) != NULL) {
-        char *path = calloc(strlen(name) + strlen(entry->d_name) + 1, sizeof(char));
-        strcpy(path, name);
-        strcat(path, "/");
-        strcat(path, entry->d_name);
+        char *path = calloc(strlen(name) + strlen(entry->d_name) + 2, sizeof(char));
+        sprintf(path, "%s/%s", name, entry->d_name);
         if (entry->d_type == DT_DIR) {
             if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                free(path);
                 continue;
             }
             process_dir(path, writer, args);
@@ -91,12 +90,13 @@ void process_dir(const char *name, writer writer, arguments_t *args) {
             for (size_t i=0; i<nfiletypes; ++i) {
                 search = strstr(entry->d_name, filetypes[i]);
                 if (search != NULL) {
-                    fprintf(stderr, "Processsing %s\n", path);
+                    fprintf(stderr, "Processing %s\n", path);
                     process_file(path, writer, args);
                     break;
                 }
             }
         }
+        free(path);
     }
     closedir(dir);
 }
@@ -111,7 +111,9 @@ int process_file(char* fname, writer writer, arguments_t* args) {
     }
     if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
         if (args->recurse) {
-            process_dir(fname, writer, args);
+            char* sfname = strip_path(fname);
+            process_dir(sfname, writer, args);
+            free(sfname);
         } else {
             fprintf(stderr, "Warning: input '%s' is a directory and -x (recursive mode) was not given.\n", fname);
         }
@@ -153,7 +155,7 @@ int process_file(char* fname, writer writer, arguments_t* args) {
 
 int main(int argc, char **argv) {
     arguments_t args = parse_arguments(argc, argv);
-    char *sample;
+    char *sample = NULL;
     if (strcmp(args.sample, "")) {
         fprintf(stderr, "Adding sample\n");
         sample = calloc(strlen(args.sample) + 2, sizeof(char)); 
@@ -162,7 +164,7 @@ int main(int argc, char **argv) {
     } else {
         sample = "";
     }
-    writer writer = initialize_writer("bla", args.demultiplex_dir, args.perread, args.perfile, sample);
+    writer writer = initialize_writer(args.demultiplex_dir, args.perread, args.perfile, sample);
     if (writer == NULL) exit(1);
 
     int nfile = 0;
@@ -185,5 +187,6 @@ int main(int argc, char **argv) {
         }
     }
     destroy_writer(writer);
+    if (sample != "") free(sample);
     return 0;
 }
