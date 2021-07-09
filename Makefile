@@ -12,4 +12,4 @@ fastcat: main.c args.c fastqcomments.c writer.c
 
 .PHONY: mem_check
 mem_check: fastcat
-	valgrind --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s ./fastcat bc0.fastq.gz bc1.fastq.gz bc2.fastq.gz > /dev/null
+	valgrind --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s ./fastcat test_data/data/*.fastq.gz > /dev/null

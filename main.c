@@ -140,7 +140,7 @@ int process_file(char* fname, writer writer, arguments_t* args) {
         kahan_sum(&meanq, mean_q, &c);
         read_meta meta = parse_read_meta(seq->comment);
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
-            write_read(writer, seq, meta, mean_q, fname, args->sample);
+            write_read(writer, seq, meta, mean_q, fname);
         }
         destroy_read_meta(meta);
     }
@@ -155,16 +155,7 @@ int process_file(char* fname, writer writer, arguments_t* args) {
 
 int main(int argc, char **argv) {
     arguments_t args = parse_arguments(argc, argv);
-    char *sample = NULL;
-    if (strcmp(args.sample, "")) {
-        fprintf(stderr, "Adding sample\n");
-        sample = calloc(strlen(args.sample) + 2, sizeof(char)); 
-        strcpy(sample, args.sample);
-        strcat(sample, "\t");
-    } else {
-        sample = "";
-    }
-    writer writer = initialize_writer(args.demultiplex_dir, args.perread, args.perfile, sample);
+    writer writer = initialize_writer(args.demultiplex_dir, args.perread, args.perfile, args.sample);
     if (writer == NULL) exit(1);
 
     int nfile = 0;
@@ -187,6 +178,5 @@ int main(int argc, char **argv) {
         }
     }
     destroy_writer(writer);
-    if (sample != "") free(sample);
     return 0;
 }

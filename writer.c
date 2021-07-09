@@ -27,18 +27,22 @@ writer initialize_writer(char* output_dir, char* perread, char* perfile, char* s
      writer->output = strip_path(output_dir);
      writer->handles = calloc(MAX_BARCODES, sizeof(gzFile));
      writer->nreads = calloc(MAX_BARCODES, sizeof(size_t));
+     if (strcmp(sample, "")) {
+         // sample is used just for printing to summary, pre-add a tab
+         writer->sample = calloc(strlen(sample) + 2, sizeof(char)); 
+         strcpy(writer->sample, sample);
+         strcat(writer->sample, "\t");
+     }
      if (perread != NULL) {
-         writer->perread = fopen(perread, "w");
+        writer->perread = fopen(perread, "w");
         fprintf(writer->perread, "read_id\tfilename\t");
-        if (strcmp(sample, ""))
-            fprintf(writer->perread, "sample_name\t");
+        if (writer->sample != NULL) fprintf(writer->perread, "sample_name\t");
         fprintf(writer->perread, "read_length\tmean_quality\tchannel\tread_number\tstart_time\n");
      }
      if (perfile != NULL) {
          writer->perfile = fopen(perfile, "w");
          fprintf(writer->perfile, "filename\t\n");
-         if (strcmp(sample, ""))
-             fprintf(writer->perfile, "sample_name\t");
+         if (writer->sample != NULL) fprintf(writer->perfile, "sample_name\t");
          fprintf(writer->perfile, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
      }
      return writer;
@@ -52,6 +56,7 @@ void destroy_writer(writer writer) {
            gzclose(writer->handles[i]);
        }
     }
+    if (writer->sample != NULL) free(writer->sample);
     if (writer->perread != NULL) fclose(writer->perread);
     if (writer->perfile != NULL) fclose(writer->perfile);
     if (writer->output != NULL) free(writer->output);
@@ -61,7 +66,7 @@ void destroy_writer(writer writer) {
 }
 
 
-void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* fname, char* sample) {
+void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* fname) {
     // TODO: reads per file
     size_t barcode = meta->ibarcode;
     if (barcode > MAX_BARCODES - 1) {
@@ -73,8 +78,10 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
     writer->nreads[barcode]++;
 
     if(writer->perread != NULL) {
+        // sample has tab pre-added in init
+        char* s = writer->sample == NULL ? "" : writer->sample;
         fprintf(writer->perread, "%s\t%s\t%s%zu\t%1.2f\t%lu\t%lu\t%s\n",
-            seq->name.s, fname, sample, seq->seq.l, mean_q, meta->channel, meta->read_number, meta->start_time);
+            seq->name.s, fname, s, seq->seq.l, mean_q, meta->channel, meta->read_number, meta->start_time);
     }
 
     if (writer->output == NULL) {
