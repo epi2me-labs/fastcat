@@ -3,7 +3,7 @@
 
 #include "args.h"
 
-const char *argp_program_version = "0.3.5";
+const char *argp_program_version = "0.3.6";
 const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
 static char doc[] = 
   "fastcat -- concatenate and summarise .fastq(.gz) files.\

@@ -145,7 +145,9 @@ int process_file(char* fname, writer writer, arguments_t* args) {
         destroy_read_meta(meta);
     }
     if(writer->perfile != NULL) {
-        fprintf(writer->perfile, "%s\t%s%zu\t%zu\t%zu\t%zu\t%1.2f\n", fname, args->sample, n, slen, minl, maxl, meanq/n);
+        fprintf(writer->perfile, "%s\t", fname);
+        if (writer->sample != NULL) fprintf(writer->perfile, "%s\t", args->sample);
+        fprintf(writer->perfile, "%zu\t%zu\t%zu\t%zu\t%1.2f\n", n, slen, minl, maxl, meanq/n);
     }
     kseq_destroy(seq);
     gzclose(fp);

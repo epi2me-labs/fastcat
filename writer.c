@@ -41,9 +41,9 @@ writer initialize_writer(char* output_dir, char* perread, char* perfile, char* s
      }
      if (perfile != NULL) {
          writer->perfile = fopen(perfile, "w");
-         fprintf(writer->perfile, "filename\t\n");
+         fprintf(writer->perfile, "filename\t");
          if (writer->sample != NULL) fprintf(writer->perfile, "sample_name\t");
-         fprintf(writer->perfile, "filename\tsample_name\tn_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
+         fprintf(writer->perfile, "n_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
      }
      return writer;
 }
