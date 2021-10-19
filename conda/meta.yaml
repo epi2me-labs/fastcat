@@ -13,6 +13,7 @@ requirements:
         - {{ compiler('c') }}
     host:
         - zlib
+        - argp-standalone # [osx]
     run:
         - zlib
 
