@@ -2,6 +2,7 @@ include:
     - project: "epi2melabs/ci-templates"
       file: "push-github.yaml"
     - project: "epi2melabs/ci-templates"
+      ref: macos
       file: "push-conda.yaml"
 
 image: ${UBUNTUIMAGE}:20.04
@@ -55,10 +56,18 @@ deploy-checks:
     rules:
         - if: '$CI_COMMIT_TAG =~ /^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$/'
 
+
 conda:
     extends: .deploy-conda
     before_script:
         - *prep-image
+        - export CONDA_PKG=${CI_PROJECT_NAME}
+        - export CONDA_PKG_VERSION=${CI_COMMIT_TAG/v/}
+        - cd conda
+
+conda-mac:
+    extends: .deploy-conda-mac
+    before_script:
         - export CONDA_PKG=${CI_PROJECT_NAME}
         - export CONDA_PKG_VERSION=${CI_COMMIT_TAG/v/}
         - cd conda

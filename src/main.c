@@ -157,7 +157,7 @@ int process_file(char* fname, writer writer, arguments_t* args) {
 
 int main(int argc, char **argv) {
     arguments_t args = parse_arguments(argc, argv);
-    writer writer = initialize_writer(args.demultiplex_dir, args.perread, args.perfile, args.sample);
+    writer writer = initialize_writer(args.demultiplex_dir, args.perread, args.perfile, args.sample, args.reheader);
     if (writer == NULL) exit(1);
 
     int nfile = 0;

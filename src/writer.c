@@ -13,7 +13,7 @@ char* strip_path(char* input) {
     return output;
 }
 
-writer initialize_writer(char* output_dir, char* perread, char* perfile, char* sample) {
+writer initialize_writer(char* output_dir, char* perread, char* perfile, char* sample, size_t reheader) {
     if (output_dir != NULL) {
         int rtn = mkdir(output_dir, 0700);
         if (rtn == -1) {
@@ -27,6 +27,7 @@ writer initialize_writer(char* output_dir, char* perread, char* perfile, char* s
      writer->output = strip_path(output_dir);
      writer->handles = calloc(MAX_BARCODES, sizeof(gzFile));
      writer->nreads = calloc(MAX_BARCODES, sizeof(size_t));
+     writer->reheader = reheader;
      if (strcmp(sample, "")) {
          // sample is used just for printing to summary, pre-add a tab
          writer->sample = calloc(strlen(sample) + 2, sizeof(char)); 
@@ -65,6 +66,28 @@ void destroy_writer(writer writer) {
     free(writer);
 }
 
+void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
+    int (*write)(void*, const char*, ...) = handle == stdout ? &fprintf : &gzprintf;
+
+    static const char* reheader_fmt = "@%s RD:Z:%s BC:Z:%s BA:Z:%s FC:Z:%s ST:Z:%s RN:i:%lu CH:i:%lu\n%s\n+\n%s\n";
+    static const char* wcomment_fmt = "@%s %s\n%s\n+\n%s\n";
+    static const char* nocomment_fmt = "@%s\n%s\n+\n%s\n";
+
+    if (writer->reheader && meta->valid) {
+        (*write)(
+            handle, reheader_fmt,
+            seq->name.s, meta->runid, meta->barcode, meta->barcode_alias,
+            meta->flow_cell_id, meta->start_time, meta->read_number, meta->channel, 
+            seq->seq.s, seq->qual.s);
+    }
+    else if (seq->comment.l > 0) {
+        (*write)(handle, wcomment_fmt, seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
+    }
+    else {
+        (*write)(handle, nocomment_fmt, seq->name.s, seq->seq.s, seq->qual.s);
+    }
+}
+
 
 void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* fname) {
     // TODO: reads per file
@@ -77,6 +100,10 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
     }
     writer->nreads[barcode]++;
 
+    static const char* reheader_fmt = "@%s RD:Z:%s BC:Z:%s BA:Z:%s FC:Z:%s ST:Z:%s RN:i:%lu CH:i:%lu\n%s\n+\n%s\n";
+    static const char* wcomment_fmt = "@%s %s\n%s\n+\n%s\n";
+    static const char* nocomment_fmt = "@%s\n%s\n+\n%s\n";
+
     if(writer->perread != NULL) {
         // sample has tab pre-added in init
         char* s = writer->sample == NULL ? "" : writer->sample;
@@ -85,12 +112,7 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
     }
 
     if (writer->output == NULL) {
-        if (seq->comment.l > 0) {
-            fprintf(stdout, "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
-        }
-        else {
-            fprintf(stdout, "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
-        }
+        _write_read(writer, seq, meta, stdout);
     }
     else {
         if (writer->handles[barcode] == NULL) {
@@ -120,12 +142,6 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
             free(filepath);
         }
         gzFile handle = writer->handles[barcode];
-        ssize_t nbytes;
-        if (seq->comment.l > 0) {
-            gzprintf(writer->handles[barcode], "@%s %s\n%s\n+\n%s\n", seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
-        }
-        else {
-            gzprintf(writer->handles[barcode], "@%s\n%s\n+\n%s\n", seq->name.s, seq->seq.s, seq->qual.s);
-        }
+        _write_read(writer, seq, meta, writer->handles[barcode]);
     }
 }

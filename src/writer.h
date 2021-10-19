@@ -17,6 +17,7 @@ typedef struct {
     gzFile* handles;
     size_t* nreads;
     char* sample;
+    size_t reheader;
     FILE* perread;
     FILE* perfile;
 } _writer;
@@ -25,7 +26,7 @@ typedef _writer* writer;
 
 char* strip_path(char* input);
 
-writer initialize_writer(char* output_dir, char* perread, char* perfile, char* sample);
+writer initialize_writer(char* output_dir, char* perread, char* perfile, char* sample, size_t reheader);
 
 void destroy_writer(writer writer);
 

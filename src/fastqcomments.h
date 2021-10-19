@@ -13,6 +13,7 @@ typedef struct {
     char* start_time;
     size_t read_number;
     size_t channel;
+    size_t valid;
 } _read_meta;
 
 typedef _read_meta* read_meta;

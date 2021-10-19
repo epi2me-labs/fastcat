@@ -9,6 +9,7 @@ typedef struct arguments {
     size_t max_length;
     float min_qscore;
     size_t recurse;
+    size_t reheader;
     char* demultiplex_dir;
     char **files;
 } arguments_t;

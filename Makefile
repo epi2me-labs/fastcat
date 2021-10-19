@@ -6,8 +6,8 @@ else
     ARGP ?=
 endif
 
-fastcat: main.c args.c fastqcomments.c writer.c
-	gcc -o fastcat $^ $(ARGP) -lz -lm
+fastcat: src/main.c src/args.c src/fastqcomments.c src/writer.c
+	gcc -I src -o fastcat $^ $(ARGP) -lz -lm
 
 
 .PHONY: mem_check
