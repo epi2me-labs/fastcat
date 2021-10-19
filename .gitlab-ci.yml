@@ -2,7 +2,6 @@ include:
     - project: "epi2melabs/ci-templates"
       file: "push-github.yaml"
     - project: "epi2melabs/ci-templates"
-      ref: macos
       file: "push-conda.yaml"
 
 image: ${UBUNTUIMAGE}:20.04
@@ -15,9 +14,9 @@ stages:
     - prerelease
     - release
 
-# Insist that the version in __init__.py matches the git tag
+# Insist that the version in src/args.c matches the git tag
 .check-versions: &check-versions |
-    CVER="v"$(grep argp_program_version args.c | awk '{gsub("\"","",$5); gsub(";","",$5); print $5}')
+    CVER="v"$(grep argp_program_version src/args.c | awk '{gsub("\"","",$5); gsub(";","",$5); print $5}')
     TAGVER=${CI_COMMIT_TAG}
     if [[ "${CVER}" != "${TAGVER}" ]]; then
         echo "Mismatching TAG and PACKAGE versions:"
