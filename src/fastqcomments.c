@@ -5,7 +5,7 @@
 #include "kstring.h"
 #include "fastqcomments.h"
 
-// The caller is responsible for freeing meta and meta->comment
+// The caller is responsible for calling destroy_read_meta on the returned object.
 read_meta parse_read_meta(kstring_t comment) {
     char* data = calloc(comment.l + 1, sizeof(char));
     strncpy(data, comment.s, comment.l);
@@ -19,6 +19,8 @@ read_meta parse_read_meta(kstring_t comment) {
     meta->start_time = "";
     meta->read_number = 0;
     meta->channel = 0;
+    meta->valid = 0;  // tracks all fields present
+    size_t nfields = 7;
 
     char* pch;
     pch = strtok(meta->comment, " =");
@@ -30,30 +32,38 @@ read_meta parse_read_meta(kstring_t comment) {
         else {
             if (!strcmp(key, "runid")) {
                 meta->runid = pch;
+                meta->valid += 1;
             }
             else if (!strcmp(key, "flow_cell_id")) {
                 meta->flow_cell_id = pch;
+                meta->valid += 1;
             }
             else if (!strcmp(key, "barcode")) {
                 meta->barcode = pch;
                 meta->ibarcode = atoi(pch+7);  // "unclassified" -> 0
+                meta->valid += 1;
             }
             else if (!strcmp(key, "barcode_alias")) {
                 meta->barcode_alias = pch;
+                meta->valid += 1;
             }
             else if (!strcmp(key, "read")) {
                 meta->read_number = atoi(pch);
+                meta->valid += 1;
             }
             else if (!strcmp(key, "ch")) {
                 meta->channel = atoi(pch);
+                meta->valid += 1;
             }
             else if (!strcmp(key, "start_time")) {
                 meta->start_time = pch;
+                meta->valid += 1;
             }
             key = NULL;
         }
         pch = strtok(NULL, " =");
     }
+    meta->valid = (meta->valid == nfields);
     return meta;
 }
 

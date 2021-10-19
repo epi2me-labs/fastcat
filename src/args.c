@@ -3,7 +3,7 @@
 
 #include "args.h"
 
-const char *argp_program_version = "0.3.6";
+const char *argp_program_version = "0.3.7";
 const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
 static char doc[] = 
   "fastcat -- concatenate and summarise .fastq(.gz) files.\
@@ -27,6 +27,8 @@ static struct argp_option options[] = {
         "minimum read Qscore to output (excluded reads remain listed in summaries)."},
     {"recurse", 'x', 0, 0,
         "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files."},
+    {"reheader", 'H', 0, 0,
+        "Rewrite fastq header comments as SAM tags (useful for passing through minimap2)."},
     { 0 }
 };
 
@@ -58,6 +60,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
         case 'x':
             arguments->recurse = 1;
             break;
+        case 'H':
+            arguments->reheader = 1;
+            break;
         case ARGP_KEY_NO_ARGS:
             argp_usage (state);
             break;
@@ -80,10 +85,11 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.perfile = NULL;
     args.sample = "";
     args.min_length = 0;
-    args.max_length = (size_t)-1;;
+    args.max_length = (size_t)-1;
     args.min_qscore = 0;
     args.recurse = 0;
     args.demultiplex_dir = NULL;
+    args.reheader = 0;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     return args;
 }
