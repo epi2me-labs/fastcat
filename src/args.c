@@ -3,7 +3,7 @@
 
 #include "args.h"
 
-const char *argp_program_version = "0.3.7";
+const char *argp_program_version = "0.3.8";
 const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
 static char doc[] = 
   "fastcat -- concatenate and summarise .fastq(.gz) files.\
@@ -70,7 +70,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             arguments->files = &state->argv[state->next - 1];
             state->next = state->argc;
             break;
-        defualt:
+        default:
             return ARGP_ERR_UNKNOWN;
     }
     return 0;

@@ -69,7 +69,7 @@ void destroy_writer(writer writer) {
 void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
     int (*write)(void*, const char*, ...) = handle == stdout ? &fprintf : &gzprintf;
 
-    static const char* reheader_fmt = "@%s RD:Z:%s BC:Z:%s BA:Z:%s FC:Z:%s ST:Z:%s RN:i:%lu CH:i:%lu\n%s\n+\n%s\n";
+    static const char* reheader_fmt = "@%s RD:Z:%s\tBC:Z:%s\tBA:Z:%s\tFC:Z:%s\tST:Z:%s\tRN:i:%lu\tCH:i:%lu\n%s\n+\n%s\n";
     static const char* wcomment_fmt = "@%s %s\n%s\n+\n%s\n";
     static const char* nocomment_fmt = "@%s\n%s\n+\n%s\n";
 
@@ -99,10 +99,6 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
         exit(1);
     }
     writer->nreads[barcode]++;
-
-    static const char* reheader_fmt = "@%s RD:Z:%s BC:Z:%s BA:Z:%s FC:Z:%s ST:Z:%s RN:i:%lu CH:i:%lu\n%s\n+\n%s\n";
-    static const char* wcomment_fmt = "@%s %s\n%s\n+\n%s\n";
-    static const char* nocomment_fmt = "@%s\n%s\n+\n%s\n";
 
     if(writer->perread != NULL) {
         // sample has tab pre-added in init
@@ -141,7 +137,6 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
             free(path);
             free(filepath);
         }
-        gzFile handle = writer->handles[barcode];
         _write_read(writer, seq, meta, writer->handles[barcode]);
     }
 }
