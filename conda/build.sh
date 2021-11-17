@@ -2,9 +2,10 @@
 
 NAME=fastcat
 
+export HTS_CONF_ARGS="--prefix=${PREFIX} --enable-libcurl --with-libdeflate --enable-plugins --enable-gcs --enable-s3"
 export EXTRA_CFLAGS="-I$PREFIX/include"
 export EXTRA_LDFLAGS="-L$PREFIX/lib"
-export EXTRA_LIBS="-ldl"
+export EXTRA_LIBS="-ldl -ldeflate"
 
 OS=$(uname)
 if [[ "$OS" == "Darwin" ]]; then

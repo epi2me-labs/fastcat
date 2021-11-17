@@ -8,13 +8,13 @@
 #include "htslib/faidx.h"
 #include "args.h"
 
-const char *argp_program_version = "0.4.0";
+const char *argp_program_version = "0.4.1";
 const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
 static char doc[] = 
- "bamstats -- summarise rears/alignments in one or more BAM files.\
- \vThe program creates a simple TSV file containing statistics for \
- each primary alignment stored within the input BAM files.";
-static char args_doc[] = "<reference.fasta> <reads.bam> [<reads.bam> ...]";
+"bamstats -- summarise rears/alignments in one or more BAM files.\
+\vThe program creates a simple TSV file containing statistics for \
+each primary alignment stored within the input BAM files.";
+static char args_doc[] = "<reads.bam>";
 static struct argp_option options[] = {
     {0, 0, 0, 0,
         "General options:"},
@@ -79,24 +79,13 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case ARGP_KEY_ARG:
             if (state->arg_num == 0) {
-                arguments->ref = arg;
-                if (!file_exists(arg)) {
-                    argp_error(state, "Cannot access reference input file: '%s'.", arg);
-                }
-                faidx_t *fai = fai_load(arg);
-                if (fai == NULL) {
-                    argp_error(state, "Cannot read .fasta(.gz) file: '%s'.", arg);
-                }
-                fai_destroy(fai);
-                break;
-            } else {
                 arguments->bam = (const char**)(&state->argv[state->next - 1]);
                 state->next = state->argc;
                 break;
             }
             break;
         case ARGP_KEY_END:
-            if (state->arg_num < 2)
+            if (state->arg_num != 1)
                 argp_usage (state);
             break;
         default:

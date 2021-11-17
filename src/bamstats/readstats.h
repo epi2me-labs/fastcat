@@ -2,13 +2,16 @@
 #define _MODBAMBED_COUNTS_H
 
 #include <stdbool.h>
+#include "htslib/sam.h"
 
 #include "args.h"
 
 
 /** Generates base counts from a region of a bam.
  *
- *  @param bam_file input aligment file.
+ *  @param fp htsFile pointer
+ *  @param idx hts_idx_t pointer
+ *  @param hdr sam_hdr_t pointer
  *  @param chr bam target name.
  *  @param start start position of chr to consider.
  *  @param end end position of chr to consider.
@@ -23,19 +26,25 @@
  *
  */
 void process_bams(
-    const char **bam_file, const char *chr, int start, int end,
+    htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
+    const char *chr, int start, int end,
     const char *read_group, const char tag_name[2], const int tag_value);
 
 
 /* Process and print a single region using a threadpool
  *
- * @param args program arguments.
- * @param chr reference sequence to process.
- * @param start reference coordinate to process (0-based).
- * @param end reference coordiate to process (exclusive).
- * @param ref reference sequence.
+ *  @param fp htsFile pointer
+ *  @param idx hts_idx_t pointer
+ *  @param hdr sam_hdr_t pointer
+ *  @param args program arguments.
+ *  @param chr reference sequence to process.
+ *  @param start reference coordinate to process (0-based).
+ *  @param end reference coordiate to process (exclusive).
+ *  @param ref reference sequence.
  *
  */
-void process_region(arguments_t args, const char *chr, int start, int end, char *ref);
+void process_region(
+    htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
+    arguments_t args, const char *chr, int start, int end, char *ref);
 
 #endif

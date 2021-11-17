@@ -7,10 +7,20 @@
 #include <sys/resource.h>
 #include <time.h>
 #include "htslib/faidx.h"
+#include "htslib/sam.h"
 
 #include "readstats.h"
 #include "args.h"
 #include "common.h"
+
+
+void write_header() {
+    fprintf(stdout,
+"name\tref\tcoverage\tref_coverage\t"\
+"\tqstart\tqend\trstart\trend\t"\
+"aligned_ref_len\tdirection\tlength\tread_length"\
+"match\tins\tdel\tsub\tiden\tacc\n");
+}
 
 
 int main(int argc, char *argv[]) {
@@ -43,23 +53,26 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "WARNING: Results from multiple files will not be coordinate sorted.\n");
     }
 
-    // load ref sequence
-    faidx_t *fai = fai_load(args.ref);
-    if (fai == NULL) {
-        fprintf(stderr,
-            "ERROR: Failed to parse reference file\n");
+    write_header();
+
+    htsFile *fp = hts_open(args.bam[0], "rb");
+    hts_idx_t *idx = sam_index_load(fp, args.bam[0]);
+    sam_hdr_t *hdr = sam_hdr_read(fp);
+    if (hdr == 0 || idx == 0 || fp == 0) {
+        hts_close(fp); hts_idx_destroy(idx); sam_hdr_destroy(hdr);
+        fprintf(stderr, "Failed to read .bam file '%s'.\n", args.bam[0]);
         exit(EXIT_FAILURE);
     }
+
+
     if (args.region == NULL) {
         // process all regions
-        int nseq = faidx_nseq(fai);
-        for (int i = 0; i < nseq; ++i) {
-            const char *chr = faidx_iseq(fai, i);
-            int len = faidx_seq_len(fai, chr);
-            int alen;
-            char *ref = faidx_fetch_seq(fai, chr, 0, len, &alen);
-            process_region(args, chr, 0, len, ref);
-            free(ref);
+        for (int i=0; i < hdr->n_targets; ++i) {
+            const char* chr = sam_hdr_tid2name(hdr, i);
+            size_t ref_length = (size_t)sam_hdr_tid2len(hdr, i);
+            process_region(
+                fp, idx, hdr,    
+                args, chr, 0, ref_length, NULL);
         }
     } else {
         // process given region
@@ -74,20 +87,21 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "ERROR: Failed to parse region: '%s'.\n", args.region);
             exit(EXIT_FAILURE);
         }
-        // simplify things for later by fetching whole chr
-        int len;
-        char *ref = fai_fetch(fai, chr, &len);
-        if (len < 0) {
-            fprintf(stderr, "ERROR: Failed to fetch reference region: '%s'.\n", args.region);
+        int tid = sam_hdr_name2tid(hdr, chr);
+        if (tid < 0) {
+            fprintf(stderr, "ERROR: Failed to find reference '%s' in BAM header.\n", chr);
             exit(EXIT_FAILURE);
         }
-        end = min(end, len);
-        process_region(args, chr, start, end, ref);
-
+        size_t ref_length = (size_t)sam_hdr_tid2len(hdr, tid);
+        end = min(end, ref_length);
+        process_region(
+            fp, idx, hdr,    
+            args, chr, start, end, NULL);
         free(chr);
-        free(ref);
     }
-    fai_destroy(fai);
+    hts_close(fp);
+    hts_idx_destroy(idx);
+    sam_hdr_destroy(hdr);
     clock_t end = clock();
     fprintf(stderr, "Total time: %fs\n", (double)(end - begin) / CLOCKS_PER_SEC);
     exit(EXIT_SUCCESS);

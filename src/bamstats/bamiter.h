@@ -19,7 +19,9 @@ typedef struct {
 
 /** Set up a bam file for reading (filtered) records.
  *
- *  @param bam_file input aligment file.
+ *  @param fp htsFile pointer
+ *  @param idx hts_idx_t pointer
+ *  @param hdr sam_hdr_t pointer
  *  @param chr bam target name.
  *  @param start start position of chr to consider.
  *  @param end end position of chr to consider.
@@ -31,7 +33,8 @@ typedef struct {
  *
  */
 mplp_data *create_bam_iter_data(
-    const char *bam_file, const char *chr, int start, int end,
+    htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
+    const char *chr, int start, int end,
     const char *read_group, const char tag_name[2], const int tag_value);
 
 /** Clean up auxiliary bam reading data.
