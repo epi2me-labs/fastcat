@@ -7,9 +7,9 @@
 #include <string.h>
 #include <math.h>
 
-#include "kseq.h"
+#include "../kseq.h"
+#include "../fastqcomments.h"
 #include "args.h"
-#include "fastqcomments.h"
 #include "writer.h"
 
 
