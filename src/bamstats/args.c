@@ -8,7 +8,7 @@
 #include "htslib/faidx.h"
 #include "args.h"
 
-const char *argp_program_version = "0.4.0";
+const char *argp_program_version = "0.4.1";
 const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
 static char doc[] = 
 "bamstats -- summarise rears/alignments in one or more BAM files.\
