@@ -2,7 +2,7 @@
 #include <sys/types.h>
 
 #include "writer.h"
-#include "fastqcomments.h"
+#include "../fastqcomments.h"
 
 char* strip_path(char* input) {
     if (input == NULL) return NULL;

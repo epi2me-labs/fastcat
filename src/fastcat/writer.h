@@ -3,8 +3,8 @@
 
 #include <zlib.h>
 
-#include "kseq.h"
-#include "fastqcomments.h"
+#include "../kseq.h"
+#include "../fastqcomments.h"
 
 KSEQ_INIT(gzFile, gzread)
 

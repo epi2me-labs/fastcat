@@ -13,7 +13,10 @@ if [[ "$OS" == "Darwin" ]]; then
     export EXTRA_CFLAGS="${EXTRA_CFLAGS} -isysroot ${CONDA_BUILD_SYSROOT} -mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}"
 fi
 
-make clean $NAME
+make clean
 
 mkdir -p $PREFIX/bin
-cp $NAME $PREFIX/bin && chmod +x $PREFIX/bin/$NAME
+for binary in fastcat bamstats; do
+    make $binary
+    cp $binary $PREFIX/bin && chmod +x $PREFIX/bin/$binary
+done

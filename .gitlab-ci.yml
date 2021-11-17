@@ -6,8 +6,14 @@ include:
 
 image: ${UBUNTUIMAGE}:20.04
 
+variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+
+
 .prep-image: &prep-image |
-    apt update; DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends gcc zlib1g-dev valgrind
+    DEBIAN_FRONTEND=noninteractive
+    apt update -qq
+    apt install -y --no-install-recommends gcc autoconf valgrind make curl wget zlib1g-dev libbz2-dev libreadline-dev libssl-dev libffi-dev liblzma-dev libcurl4-gnutls-dev
 
 stages:
     - test
@@ -45,7 +51,10 @@ build:
     script:
         - make fastcat
         - ./fastcat --help
-        - make mem_check
+        - make mem_check_fastcat
+        - make bamstats
+        - ./bamstats --help
+        - make mem_check_bamstats
 
 deploy-checks:
     stage: prerelease

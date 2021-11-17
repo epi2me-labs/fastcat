@@ -20,6 +20,7 @@ requirements:
 test:
     commands:
         fastcat --help
+        bamstats --help
 
 about:
     home: "https://github.com/epi2me-labs/fastcat"
