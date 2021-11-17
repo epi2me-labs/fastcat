@@ -67,4 +67,4 @@ mem_check_fastcat: fastcat
 .PHONY: mem_check_bamstats
 mem_check_bamstats: bamstats
 	valgrind --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./bamstats test/bamstats/ecoli.fasta.gz test/bamstats/400ecoli.bam
+		./bamstats test/bamstats/400ecoli.bam

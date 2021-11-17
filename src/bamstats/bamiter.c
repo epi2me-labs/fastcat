@@ -5,8 +5,10 @@
 #include "common.h"
 
 /** Set up a bam file for reading (filtered) records.
- *
- *  @param bam_file input aligment file.
+ *  
+ *  @param fp htsFile pointer
+ *  @param idx hts_idx_t pointer
+ *  @param hdr sam_hdr_t pointer
  *  @param chr bam target name.
  *  @param start start position of chr to consider.
  *  @param end end position of chr to consider.
@@ -18,30 +20,14 @@
  *
  */
 mplp_data *create_bam_iter_data(
-        const char *bam_file, const char *chr, int start, int end,
+        htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
+        const char *chr, int start, int end,
         const char *read_group, const char tag_name[2], const int tag_value) {
 
-    // open bam etc.
-    htsFile *fp = hts_open(bam_file, "rb");
-    hts_idx_t *idx = sam_index_load(fp, bam_file);
-    sam_hdr_t *hdr = sam_hdr_read(fp);
-    if (hdr == 0 || idx == 0 || fp == 0) {
-        hts_close(fp); hts_idx_destroy(idx); sam_hdr_destroy(hdr);
-        fprintf(stderr, "Failed to read .bam file '%s'.\n", bam_file);
-        return NULL;
-    }
-
     // find the target index for query below
-    int mytid = -1;
-    for (int i=0; i < hdr->n_targets; ++i) {
-        if(!strcmp(hdr->target_name[i], chr)) {
-            mytid = i;
-            break;
-        }
-    }
-    if (mytid == -1) {
-        hts_close(fp); hts_idx_destroy(idx); sam_hdr_destroy(hdr);
-        fprintf(stderr, "Failed to find reference sequence '%s' in bam '%s'.\n", chr, bam_file);
+    int mytid = sam_hdr_name2tid(hdr, chr);
+    if (mytid < 0) {
+        fprintf(stderr, "Failed to find reference sequence '%s' in bam.\n", chr);
         return NULL;
     }
 
@@ -62,9 +48,6 @@ mplp_data *create_bam_iter_data(
  */
 void destroy_bam_iter_data(mplp_data *data) {
     bam_itr_destroy(data->iter);
-    hts_close(data->fp);
-    hts_idx_destroy(data->idx);
-    sam_hdr_destroy(data->hdr);
     free(data);
 }
 

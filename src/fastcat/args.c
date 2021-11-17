@@ -6,9 +6,9 @@
 const char *argp_program_version = "0.4.0";
 const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
 static char doc[] = 
-  "fastcat -- concatenate and summarise .fastq(.gz) files.\
-  \vInput files may be given on stdin by specifing the input as '-'.\
-  When the -x option is given inputs may be directories.";
+"fastcat -- concatenate and summarise .fastq(.gz) files.\
+\vInput files may be given on stdin by specifing the input as '-'.\
+When the -x option is given inputs may be directories.";
 static char args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz) ...";
 static struct argp_option options[] = {
     {"read", 'r', "READ SUMMARY",  0,

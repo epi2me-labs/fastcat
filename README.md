@@ -1,6 +1,10 @@
 # fastcat
 
-A simple utility to concatenate .fastq(.gz) files whilst creating a summary
+A set of simply utilities for creating summaries from standard bioinformatics formats.
+
+### fastcat
+
+This eponymous tool concatenates .fastq(.gz) files whilst creating a summary
 of the sequences. Can also demultiplex reads according to Guppy/MinKNOW
 .fastq record headers.
 
@@ -70,3 +74,38 @@ SRR12447499_1.fastq.gz  15484   7812439  424         612         13.16
 ```
 where the `mean_quality` column is the mean of the per-read `mean_quality` values.
 
+### bamstats
+
+The `bamstats` utility is a re-implementation of the `stats_from_bam` program
+from [pomoxis](github.com/nanoporetech/pomoxis). It creates read-level summary
+statistics of alignments found in a BAM file and reports these in a TSV file.
+
+```
+Usage: bamstats [OPTION...] <reads.bam>
+bamstats -- summarise rears/alignments in one or more BAM files.
+
+ General options:
+  -r, --region=chr:start-end Genomic region to process.
+  -t, --threads=THREADS      Number of threads for BAM processing.
+
+ Read filtering options:
+
+  -g, --read_group=RG        Only process reads from given read group.
+      --haplotype=VAL        Only process reads from a given haplotype.
+                             Equivalent to --tag_name HP --tag_value VAL.
+      --tag_name=TN          Only process reads with a given tag (see
+                             --tag_value).
+      --tag_value=VAL        Only process reads with a given tag value.
+
+  -?, --help                 Give this help list
+      --usage                Give a short usage message
+  -V, --version              Print program version
+
+Mandatory or optional arguments to long options are also mandatory or optional
+for any corresponding short options.
+
+The program creates a simple TSV file containing statistics for each primary
+alignment stored within the input BAM files.
+
+Report bugs to chris.wright@nanoporetech.com.
+```
