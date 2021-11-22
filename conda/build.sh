@@ -2,10 +2,11 @@
 
 NAME=fastcat
 
-export HTS_CONF_ARGS="--prefix=${PREFIX} --enable-libcurl --with-libdeflate --enable-plugins --enable-gcs --enable-s3"
+# don't enable libdeflate -- seems to cause hangs when used with threaded decompression
+export HTS_CONF_ARGS="--prefix=${PREFIX} --enable-libcurl --enable-plugins --enable-gcs --enable-s3"
 export EXTRA_CFLAGS="-I$PREFIX/include"
 export EXTRA_LDFLAGS="-L$PREFIX/lib"
-export EXTRA_LIBS="-ldl -ldeflate"
+export EXTRA_LIBS="-ldl"
 
 OS=$(uname)
 if [[ "$OS" == "Darwin" ]]; then

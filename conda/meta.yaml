@@ -20,14 +20,12 @@ requirements:
         - bzip2
         - xz
         - zlib
-        - libdeflate >=1.7,<1.8.0a0
         - openssl  # [not osx]
     run:
         - libcurl
         - bzip2
         - xz
         - zlib
-        - libdeflate >=1.7,<1.8.0a0
         - openssl  # [not osx]
 
 test:
