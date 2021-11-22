@@ -10,6 +10,7 @@ typedef struct {
     hts_idx_t *idx;
     sam_hdr_t *hdr;
     hts_itr_t *iter;
+    int min_start;
     int min_mapQ;
     char tag_name[2];
     int tag_value;
@@ -25,6 +26,7 @@ typedef struct {
  *  @param chr bam target name.
  *  @param start start position of chr to consider.
  *  @param end end position of chr to consider.
+ *  @param overlap_start whether reads overhanging start should be included.
  *  @param read_group by which to filter alignments.
  *  @param tag_name by which to filter alignments.
  *  @param tag_value associated with tag_name.
@@ -34,7 +36,7 @@ typedef struct {
  */
 mplp_data *create_bam_iter_data(
     htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
-    const char *chr, int start, int end,
+    const char *chr, int start, int end, bool overlap_start,
     const char *read_group, const char tag_name[2], const int tag_value);
 
 /** Clean up auxiliary bam reading data.
