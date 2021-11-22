@@ -12,6 +12,7 @@
  *  @param chr bam target name.
  *  @param start start position of chr to consider.
  *  @param end end position of chr to consider.
+ *  @param overlap_start whether reads overhanging start should be included.
  *  @param read_group by which to filter alignments.
  *  @param tag_name by which to filter alignments.
  *  @param tag_value associated with tag_name.
@@ -21,7 +22,7 @@
  */
 mplp_data *create_bam_iter_data(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
-        const char *chr, int start, int end,
+        const char *chr, int start, int end, bool overlap_start,
         const char *read_group, const char tag_name[2], const int tag_value) {
 
     // find the target index for query below
@@ -35,8 +36,9 @@ mplp_data *create_bam_iter_data(
     mplp_data *data = xalloc(1, sizeof(mplp_data), "pileup init data");
     data->fp = fp; data->idx = idx; data->hdr = hdr;
     data->iter = bam_itr_queryi(idx, mytid, start, end);
+    data->min_start = overlap_start ? 0 : start;
     memcpy(data->tag_name, tag_name, 2); data->tag_value = tag_value;
-    data->min_mapQ = 1; data->read_group = read_group;
+    data->min_mapQ = 0; data->read_group = read_group;
 
     return data;
 }
@@ -71,6 +73,8 @@ int read_bam(void *data, bam1_t *b) {
         if (ret<0) break;
         // only take primary alignments
         if (b->core.flag & (BAM_FUNMAP | BAM_FSECONDARY | BAM_FSUPPLEMENTARY | BAM_FQCFAIL | BAM_FDUP)) continue;
+        // maybe remove reads overlapping start
+        if (b->core.pos < aux->min_start) continue;
         // filter by mapping quality
         if ((int)b->core.qual < aux->min_mapQ) continue;
         // filter by tag

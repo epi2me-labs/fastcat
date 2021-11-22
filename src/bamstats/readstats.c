@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
+#include <pthread.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include <unistd.h>
 #include "htslib/sam.h"
 #include "htslib/faidx.h"
+#include "thread_pool_internal.h"
 #include "htslib/thread_pool.h"
 
 #include "../common.h"
@@ -96,13 +98,14 @@ inline size_t get_query_end(bam1_t* b) {
  */
 void process_bams(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
-        const char *chr, int start, int end,
+        const char *chr, int start, int end, bool overlap_start,
         const char *read_group, const char tag_name[2], const int tag_value) {
 
     // setup bam reading - reuse our pileup structure, but actually just need iterator
     mplp_data* bam = create_bam_iter_data(
         fp, idx, hdr,
-        chr, start, end, read_group, tag_name, tag_value);
+        chr, start, end, overlap_start,
+        read_group, tag_name, tag_value);
     if (bam == NULL) return;
 
     int res;
@@ -169,22 +172,46 @@ void process_bams(
     return;
 }
 
+static int worker_id(hts_tpool *p) {
+    int i;
+    pthread_t s = pthread_self();
+    for (i = 0; i < p->tsize; i++) {
+        if (pthread_equal(s, p->t[i].tid))
+            return i;
+    }
+    return -1;
+}
 
-//typedef struct twarg {
-//    arguments_t args;
-//    const char *chr;
-//    int start;
-//    int end;
-//} twarg;
-//
-//
-//void pileup_worker(void *arg) {
-//    twarg j = *(twarg *)arg;
-//    process_bams(
-//        j.args.bam, j.chr, j.start, j.end,
-//        j.args.read_group, j.args.tag_name, j.args.tag_value);
-//    free(arg);
-//}
+
+typedef struct twarg {
+    arguments_t args;
+    const char *chr;
+    int start;
+    int end;
+    bool overlap_start;
+    hts_tpool *pool;
+    htsFile **fps;
+    hts_idx_t **idxs;
+    sam_hdr_t **hdrs;
+} twarg;
+
+
+void *bam_worker(void *arg) {
+    int *rtn = xalloc(1, sizeof(int), "worker_result");
+    twarg j = *(twarg *)arg;
+    int tid = worker_id(j.pool);
+    if (tid < 0) {
+        fprintf(stderr, "Could not retrieve thread ID in worker function\n");
+        rtn[0] = 1; return rtn;
+    }
+    process_bams(
+        j.fps[tid], j.idxs[tid], j.hdrs[tid],
+        j.chr, j.start, j.end, j.overlap_start,
+        j.args.read_group, j.args.tag_name, j.args.tag_value);
+    free(arg);
+    rtn[0] = 0;
+    return rtn;
+}
 
 
 /* Process and print a single region using a threadpool
@@ -200,25 +227,72 @@ void process_bams(
  *
  */
 #ifdef NOTHREADS
-void process_region(
-        htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
+int process_region(
+        htsFile **fps, hts_idx_t **idxs, sam_hdr_t **hdrs,
         arguments_t args, const char *chr, int start, int end, char *ref) {
     fprintf(stderr, "Processing: %s:%d-%d\n", chr, start, end);
     process_bams(
-        fp, idx, hdr,    
+        fps[0], idxs[0], hdrs[0],    
         chr, start, end,
         args.read_group, args.tag_name, args.tag_value);
+    return 0;
 }
 #else
 void process_region(
-        htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
+        htsFile **fps, hts_idx_t **idxs, sam_hdr_t **hdrs,
         arguments_t args, const char *chr, int start, int end, char *ref) {
     //TODO: Implement this properly
     fprintf(stderr, "Processing: %s:%d-%d\n", chr, start, end);
-    process_bams(
-        fp, idx, hdr,    
-        chr, start, end,
-        args.read_group, args.tag_name, args.tag_value);
+    hts_tpool *p = hts_tpool_init(args.threads);
+    hts_tpool_process *q = hts_tpool_process_init(p, 2 * args.threads, 0);
+    hts_tpool_result *r;
+    const int width = 100000;
+
+    int nregs = 1 + (end - start) / width; float done = 0;
+    bool overlap_start = true; // process reads overlapping start?
+    for (int rstart = start; rstart < end; rstart += width) {
+        twarg *tw_args = xalloc(1, sizeof(*tw_args), "thread worker args");  // freed in worker
+        tw_args->args = args;
+        tw_args->chr = chr; tw_args->start = rstart; tw_args->end=min(rstart + width, end);
+        tw_args->overlap_start = overlap_start;
+        tw_args->fps = fps; tw_args->hdrs = hdrs; tw_args->idxs = idxs;
+        tw_args->pool = p;
+        int blk;
+        do {
+            blk = hts_tpool_dispatch2(p, q, bam_worker, tw_args, 1);
+            if ((r = hts_tpool_next_result(q))) {
+                int* res = (int*)hts_tpool_result_data(r);
+                if (*res == 0) {
+                    done++;
+                    fprintf(stderr, "\r%.1f %%", 100*done/nregs);
+                } else {
+                    fprintf(stderr, "\nPool worker failed with: %d\n", *res);
+                }
+                free(res);
+                hts_tpool_delete_result(r, 0);
+            }
+        } while (blk == -1);
+        overlap_start = false; // all subsequent blocks, don't double count reads
+    }
+
+    // wait for jobs, then collect.
+    hts_tpool_process_flush(q);
+    while ((r = hts_tpool_next_result(q))) {
+        int* res = (int*)hts_tpool_result_data(r);
+        if (*res == 0) {
+            done++;
+            fprintf(stderr, "\r%.1f %%", 100*done/nregs);
+        } else {
+            fprintf(stderr, "\nPool worker failed with: %d\n", *res);
+        }
+        free(res);
+        hts_tpool_delete_result(r, 0);
+    }
+    fprintf(stderr, "\r100 %%  ");
+    fprintf(stderr, "\n");
+    // clean up pool
+    hts_tpool_process_destroy(q);
+    hts_tpool_destroy(p);
 }
 #endif
 
