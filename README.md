@@ -2,6 +2,25 @@
 
 A set of simply utilities for creating summaries from standard bioinformatics formats.
 
+### Installation
+
+All tools are distributed in a single package from our conda channel, they can be installed
+into an isolated conda environment with:
+
+```
+mamba create -n fastcat -c conda-forge -c epi2melabs fastcat
+```
+
+#### Compilation
+
+Although not recommended, compilation from source is via make:
+
+```
+make fastcat bamstats
+```
+
+Several libraries are assumed to be present on the system for linking.
+
 ### fastcat
 
 This eponymous tool concatenates .fastq(.gz) files whilst creating a summary
