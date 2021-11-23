@@ -20,13 +20,14 @@ requirements:
         - bzip2
         - xz
         - zlib
-        - openssl  # [not osx]
+        # to be installable into python 3.6 envs
+        - openssl==1.1.1l  # [not osx]
     run:
         - libcurl
         - bzip2
         - xz
         - zlib
-        - openssl  # [not osx]
+        - openssl==1.1.1l  # [not osx]
 
 test:
     commands:
