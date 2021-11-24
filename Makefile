@@ -9,7 +9,8 @@ endif
 
 
 CC ?= gcc
-CFLAGS ?= -fpic -msse3 -O3 
+CFLAGS ?= -fpic -msse3 -O3
+STATIC_HTSLIB ?= htslib/libhts.a
 EXTRA_CFLAGS ?=
 EXTRA_LDFLAGS ?=
 EXTRA_LIBS ?=
@@ -47,7 +48,7 @@ fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcom
 		-o $@
 
 
-bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o htslib/libhts.a
+bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib -Wall -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -58,6 +59,11 @@ bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/b
 .PHONY: clean
 clean:
 	rm -rf fastcat bamstats src/fastcat/*.o src/bamstats/*.o src/*.o
+
+
+.PHONY: clean_htslib
+clean_htslib:
+	cd htslib && make clean
 
 .PHONY: mem_check_fastcat
 mem_check_fastcat: fastcat

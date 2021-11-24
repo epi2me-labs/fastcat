@@ -12,23 +12,11 @@ requirements:
     build:
         - {{ compiler('c') }}
     host:
-        - autoconf
         - argp-standalone # [osx]
-        - make
-        - binutils # [not osx]
-        - libcurl
-        - bzip2
-        - xz
-        - zlib
-        # to be installable into python 3.6 envs
-        - openssl==1.1.1l  # [not osx]
+        # linked to all the same stuff as bioconda builds
+        - bioconda::htslib
     run:
-        - libcurl
-        - bzip2
-        - xz
-        - zlib
-        - openssl==1.1.1l  # [not osx]
-
+        - bioconda::htslib
 test:
     commands:
         fastcat --help
