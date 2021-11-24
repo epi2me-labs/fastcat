@@ -18,7 +18,7 @@
 void write_header() {
     fprintf(stdout,
 "name\tref\tcoverage\tref_coverage\t"\
-"\tqstart\tqend\trstart\trend\t"\
+"qstart\tqend\trstart\trend\t"\
 "aligned_ref_len\tdirection\tlength\tread_length\t"\
 "match\tins\tdel\tsub\tiden\tacc\n");
 }
