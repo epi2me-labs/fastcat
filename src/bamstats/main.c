@@ -107,12 +107,12 @@ int main(int argc, char *argv[]) {
         free(chr);
     }
 
-    if (pool)
-        hts_tpool_destroy(pool);
-
-    hts_close(fp);
-    hts_idx_destroy(idx);
     sam_hdr_destroy(hdr);
+    hts_idx_destroy(idx);
+    hts_close(fp);
+    if (pool) { // must be after fp
+        hts_tpool_destroy(pool);
+    }
 
     clock_t end = clock();
     fprintf(stderr, "Total CPU time: %fs\n", (double)(end - begin) / CLOCKS_PER_SEC);
