@@ -134,13 +134,16 @@ void process_bams(
             fprintf(stderr, "Read '%s' contains non-integer 'NM' tag.\n", qname);
             exit(EXIT_FAILURE); 
         }
-		size_t* stats = create_cigar_stats(b);
-		size_t match, ins, delt;
-        match = stats[0]; ins = stats[1]; delt = stats[2];
-		size_t sub = NM - ins - delt;
-		size_t length = match + ins + delt;
-		float iden = 100 * ((float)(match - sub)) / match;
-		float acc = 100 - 100 * ((float)(NM)) / length;
+        size_t* stats = create_cigar_stats(b);
+        size_t match, ins, delt;
+        // some aligners like to get fancy
+        match = stats[BAM_CMATCH] + stats[BAM_CEQUAL] + stats[BAM_CDIFF];
+        ins = stats[BAM_CINS];
+        delt = stats[BAM_CDEL];
+        size_t sub = NM - ins - delt;
+        size_t length = match + ins + delt;
+        float iden = 100 * ((float)(match - sub)) / match;
+        float acc = 100 - 100 * ((float)(NM)) / length;
         // we only deal in primary/soft-clipped alignments so length
         // ok qseq member is the length of the intact query sequence.
         uint32_t read_length = b->core.l_qseq;

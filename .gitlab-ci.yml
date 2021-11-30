@@ -3,6 +3,8 @@ include:
       file: "push-github.yaml"
     - project: "epi2melabs/ci-templates"
       file: "push-conda.yaml"
+    - project: "epi2melabs/ci-templates"
+      file: "snippets.yaml"
 
 image: ${UBUNTUIMAGE}:20.04
 
@@ -20,30 +22,6 @@ stages:
     - prerelease
     - release
 
-# Insist that the version in src/args.c matches the git tag
-.check-versions: &check-versions |
-    CVER="v"$(grep argp_program_version src/version.h | awk '{gsub("\"","",$5); gsub(";","",$5); print $5}')
-    TAGVER=${CI_COMMIT_TAG}
-    if [[ "${CVER}" != "${TAGVER}" ]]; then
-        echo "Mismatching TAG and PACKAGE versions:"
-        echo " -     TAG:'$TAGVER'"
-        echo " - PACKAGE:'$CVER'"
-        exit 1
-    else
-        echo "TAG and PACKAGE versions agree: '${CVER}'"
-    fi
-
-# Insist a CHANGELOG entry has been made for tags
-.check-changelog: &check-changelog |
-    TAGVER=${CI_COMMIT_TAG}
-    MATCHES=$(grep -c "## \[${TAGVER}\]" CHANGELOG.md || exit 0)
-    if [[ "${MATCHES}" != "1" ]]; then
-        echo "Expected one match to '${CI_COMMIT_TAG}' in CHANGELOG, found ${MATCHES}"
-        exit 1
-    else
-        echo "Found CHANGELOG.md entry for tag"
-    fi
-
 build:
     stage: test
     before_script:
@@ -59,8 +37,8 @@ build:
 deploy-checks:
     stage: prerelease
     script:
-        - *check-versions
-        - *check-changelog
+        - !reference [.check, argp-c-version]
+        - !reference [.check, changelog]
     rules:
         - if: '$CI_COMMIT_TAG =~ /^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$/'
 
