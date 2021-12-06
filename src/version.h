@@ -1,2 +1,2 @@
 
-const char *argp_program_version = "0.4.9";
+const char *argp_program_version = "0.4.10";

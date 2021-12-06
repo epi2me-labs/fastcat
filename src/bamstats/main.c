@@ -64,10 +64,10 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    hts_tpool *pool = NULL;
+    htsThreadPool p = {NULL, 0};
     if (args.threads > 1 ) {
-        pool = hts_tpool_init(args.threads);
-        hts_set_opt(fp, HTS_OPT_THREAD_POOL, &pool);
+        p.pool = hts_tpool_init(args.threads);
+        hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
     }
 
     if (args.region == NULL) {
@@ -110,8 +110,8 @@ int main(int argc, char *argv[]) {
     sam_hdr_destroy(hdr);
     hts_idx_destroy(idx);
     hts_close(fp);
-    if (pool) { // must be after fp
-        hts_tpool_destroy(pool);
+    if (p.pool) { // must be after fp
+        hts_tpool_destroy(p.pool);
     }
 
     clock_t end = clock();
