@@ -1,15 +1,17 @@
 OS := $(shell uname)
 ifeq ($(OS), Darwin)
 	# mainly for dev builds using homebrew things
-    EXTRA_LDFLAGS ?= -L/usr/local/Cellar/openssl@1.1/1.1.1k/lib
-    ARGP ?= /usr/local/Cellar/argp-standalone/1.3/lib/libargp.a
+    EXTRA_LDFLAGS ?= -L$(shell brew --prefix openssl@1.1)/lib
+    ARGP ?= $(shell brew --prefix argp-standalone)/lib/libargp.a
+	ARGP_INC ?= -I$(shell brew --prefix argp-standalone)/include
 else
     ARGP ?=
+	ARGP_INC ?=
 endif
 
 
 CC ?= gcc
-CFLAGS ?= -fpic -msse3 -O3
+CFLAGS ?= -fpic -msse3 -O3 ${ARGP_INC}
 STATIC_HTSLIB ?= htslib/libhts.a
 EXTRA_CFLAGS ?=
 EXTRA_LDFLAGS ?=
@@ -31,6 +33,7 @@ htslib/libhts.a:
 	cd htslib/ \
 		&& autoheader \
 		&& autoconf \
+		&& autoreconf --install \
 		&& CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" ./configure $(HTS_CONF_ARGS) \
 		&& make -j 4
 
