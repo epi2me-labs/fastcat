@@ -1,6 +1,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <errno.h>
 
 #include <zlib.h>
 #include <stdio.h>
@@ -69,13 +70,16 @@ size_t nfiletypes = 4;
 // defined below -- recursion
 int process_file(char* fname, writer writer, arguments_t *args);
 
-void process_dir(const char *name, writer writer, arguments_t *args) {
+int process_dir(const char *name, writer writer, arguments_t *args) {
+    int status = 0;
     DIR *dir;
     struct dirent *entry;
     char* search;
 
-    if (!(dir = opendir(name)))
-        return;
+    if (!(dir = opendir(name))) {
+        fprintf(stderr, "Error: could not process directory %s: %s\n", name, strerror(errno));
+        return errno;
+    }
 
     while ((entry = readdir(dir)) != NULL) {
         char *path = calloc(strlen(name) + strlen(entry->d_name) + 2, sizeof(char));
@@ -85,13 +89,15 @@ void process_dir(const char *name, writer writer, arguments_t *args) {
                 free(path);
                 continue;
             }
-            process_dir(path, writer, args);
+            int rtn = process_dir(path, writer, args);
+            status = max(status, rtn);
         } else {
             for (size_t i=0; i<nfiletypes; ++i) {
                 search = strstr(entry->d_name, filetypes[i]);
                 if (search != NULL) {
                     fprintf(stderr, "Processing %s\n", path);
-                    process_file(path, writer, args);
+                    int rtn = process_file(path, writer, args);
+                    status = max(status, rtn);
                     break;
                 }
             }
@@ -99,25 +105,29 @@ void process_dir(const char *name, writer writer, arguments_t *args) {
         free(path);
     }
     closedir(dir);
+    return status;
 }
 
 
 int process_file(char* fname, writer writer, arguments_t* args) {
+    int status = 0;
     struct stat finfo;
     int res = stat(fname, &finfo);
     if (res == -1) {
-        fprintf(stderr, "Warning: file '%s' cannot be read.\n", fname);
-        return 0;
+        // Failure will bubble up through process_file, process_dir to main
+        fprintf(stderr, "Error: could not process file %s: %s\n", fname, strerror(errno));
+        return errno;
     }
     if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
         if (args->recurse) {
             char* sfname = strip_path(fname);
-            process_dir(sfname, writer, args);
+            int rtn = process_dir(sfname, writer, args);
+            status = max(status, rtn);
             free(sfname);
         } else {
             fprintf(stderr, "Warning: input '%s' is a directory and -x (recursive mode) was not given.\n", fname);
         }
-        return 0;
+        return status;
     }
 
     gzFile fp;
@@ -161,6 +171,7 @@ int main(int argc, char **argv) {
     if (writer == NULL) exit(1);
 
     int nfile = 0;
+    int status = 0;
     for( ; args.files[nfile] ; nfile++);
 
     if (nfile==1 && strcmp(args.files[0], "-") == 0) {
@@ -170,15 +181,20 @@ int main(int argc, char **argv) {
         while ((nchr = getline (&ln, &n, stdin)) != -1) {
             ln[strcspn(ln, "\r\n")] = 0;
             int rtn = process_file(ln, writer, &args);
-            if (rtn != 0) return rtn;
+            status = max(status, rtn);
         }
         free(ln);
-    } else { 
+    } else {
         for (size_t i=0; i<nfile; ++i) {
             int rtn = process_file(args.files[i], writer, &args);
-            if (rtn != 0) return rtn;
+            status = max(status, rtn);
         }
     }
     destroy_writer(writer);
-    return 0;
+
+    if (status != 0) {
+        fprintf(stderr, "Completed processing with errors. Outputs may be incomplete.\n");
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
 }

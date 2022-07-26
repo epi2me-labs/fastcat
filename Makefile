@@ -71,7 +71,7 @@ clean_htslib:
 .PHONY: mem_check_fastcat
 mem_check_fastcat: fastcat
 	valgrind --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./fastcat test_data/data/*.fastq.gz > /dev/null
+		./fastcat test/data/*.fastq.gz > /dev/null
 
 .PHONY: mem_check_bamstats
 mem_check_bamstats: bamstats
