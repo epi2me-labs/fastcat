@@ -1,12 +1,12 @@
 OS := $(shell uname)
 ifeq ($(OS), Darwin)
-	# mainly for dev builds using homebrew things
+    # mainly for dev builds using homebrew things
     EXTRA_LDFLAGS ?= -L$(shell brew --prefix openssl@1.1)/lib
     ARGP ?= $(shell brew --prefix argp-standalone)/lib/libargp.a
-	ARGP_INC ?= -I$(shell brew --prefix argp-standalone)/include
+    ARGP_INC ?= -I$(shell brew --prefix argp-standalone)/include
 else
     ARGP ?=
-	ARGP_INC ?=
+    ARGP_INC ?=
 endif
 
 
@@ -20,7 +20,7 @@ EXTRA_LIBS ?=
 HTS_CONF_ARGS ?=
 NOTHREADS ?=
 ifeq ($(NOTHREADS), 1)
-	CFLAGS += -DNOTHREADS
+    CFLAGS += -DNOTHREADS
 endif
 
 
