@@ -9,10 +9,12 @@
 #include <math.h>
 
 #include "../kseq.h"
+KSEQ_INIT(gzFile, gzread)
+#define KSEQ_DECLARED
+
 #include "../fastqcomments.h"
 #include "args.h"
 #include "writer.h"
-
 
 static inline size_t max ( size_t a, size_t b ) { return a > b ? a : b; }
 static inline size_t min ( size_t a, size_t b ) { return a < b ? a : b; }
@@ -138,14 +140,12 @@ int process_file(char* fname, writer writer, arguments_t* args) {
     size_t n = 0, slen = 0;
     size_t minl = UINTMAX_MAX, maxl = 0;
     double meanq = 0.0, c = 0.0;
-    while (kseq_read(seq) >= 0) {
+    status = 0;
+    while ((status = kseq_read(seq)) >= 0) {
         ++n ; slen += seq->seq.l;
         minl = min(minl, seq->seq.l);
         maxl = max(maxl, seq->seq.l);
-        if (seq->qual.l == 0) {
-            fprintf(stderr, "No quality string found for '%s' (FASTA is unsupported).\n", seq->name.s);
-            return 1;
-        }
+        if (seq->qual.l == 0) { status = -99; break; }
         float mean_q = mean_qual(seq->qual.s, seq->qual.l);
         kahan_sum(&meanq, mean_q, &c);
         read_meta meta = parse_read_meta(seq->comment);
@@ -154,14 +154,40 @@ int process_file(char* fname, writer writer, arguments_t* args) {
         }
         destroy_read_meta(meta);
     }
+
+    // handle errors
+    switch (status) {
+        case -1:
+            status = EXIT_SUCCESS;
+            break;
+        case -2:
+            status = EXIT_FAILURE;
+            fprintf(stderr, "Truncated quality string found for record in file '%s'.\n", fname);
+            break;
+        case -3:
+            status = EXIT_FAILURE;
+            fprintf(stderr, "Error reading file '%s', possibly truncated\n", fname);
+            break;
+        case -99:
+            status = EXIT_FAILURE;
+            fprintf(stderr, "No quality string found for record in file '%s' (FASTA is unsupported).\n", fname);
+            break;
+        default:
+            status = EXIT_FAILURE;
+            fprintf(stderr, "Unknown error reading file '%s'.\n", fname);
+    }
+
+    // summary entries
     if(writer->perfile != NULL) {
         fprintf(writer->perfile, "%s\t", fname);
         if (writer->sample != NULL) fprintf(writer->perfile, "%s\t", args->sample);
         fprintf(writer->perfile, "%zu\t%zu\t%zu\t%zu\t%1.2f\n", n, slen, minl, maxl, meanq/n);
     }
+
+    // cleanup
     kseq_destroy(seq);
     gzclose(fp);
-    return 0;
+    return status;
 }
 
 

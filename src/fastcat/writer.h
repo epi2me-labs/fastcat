@@ -3,10 +3,14 @@
 
 #include <zlib.h>
 
-#include "../kseq.h"
-#include "../fastqcomments.h"
 
-KSEQ_INIT(gzFile, gzread)
+// this gives us kseq_t for below
+#ifndef KSEQ_DECLARED
+#include "../kseq.h"
+KSEQ_DECLARE(gzFile)
+#endif
+
+#include "../fastqcomments.h"
 
 // barcode 0 is reserved for "unclassified"
 #define MAX_BARCODES 1025
