@@ -59,7 +59,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             arguments->min_qscore = (float)atof(arg);
             break;
         case 'x':
-            arguments->recurse = 1;
+            arguments->recurse = -1;  // 0: stops recursion
             break;
         case 'H':
             arguments->reheader = 1;
@@ -88,7 +88,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.min_length = 0;
     args.max_length = (size_t)-1;
     args.min_qscore = 0;
-    args.recurse = 0;
+    args.recurse = 1; // always allow descent into TLD
     args.demultiplex_dir = NULL;
     args.reheader = 0;
     argp_parse(&argp, argc, argv, 0, 0, &args);
