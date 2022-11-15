@@ -70,35 +70,30 @@ const char filetypes[4][9] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
 size_t nfiletypes = 4;
 
 // defined below -- recursion
-int process_file(char* fname, writer writer, arguments_t *args);
+int process_file(char* fname, writer writer, arguments_t *args, int recurse);
 
-int process_dir(const char *name, writer writer, arguments_t *args) {
+int process_dir(const char *name, writer writer, arguments_t *args, int recurse) {
     int status = 0;
     DIR *dir;
     struct dirent *entry;
     char* search;
 
+    // read all files in directory
     if (!(dir = opendir(name))) {
         fprintf(stderr, "Error: could not process directory %s: %s\n", name, strerror(errno));
         return errno;
     }
-
     while ((entry = readdir(dir)) != NULL) {
         char *path = calloc(strlen(name) + strlen(entry->d_name) + 2, sizeof(char));
         sprintf(path, "%s/%s", name, entry->d_name);
-        if (entry->d_type == DT_DIR) {
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-                free(path);
-                continue;
-            }
-            int rtn = process_dir(path, writer, args);
-            status = max(status, rtn);
+        if ((entry->d_type == DT_DIR) && (recurse != 0)) {
+            // skip
         } else {
             for (size_t i=0; i<nfiletypes; ++i) {
                 search = strstr(entry->d_name, filetypes[i]);
                 if (search != NULL) {
                     fprintf(stderr, "Processing %s\n", path);
-                    int rtn = process_file(path, writer, args);
+                    int rtn = process_file(path, writer, args, recurse - 1);
                     status = max(status, rtn);
                     break;
                 }
@@ -107,27 +102,49 @@ int process_dir(const char *name, writer writer, arguments_t *args) {
         free(path);
     }
     closedir(dir);
+
+    // start again and look at child directories
+    if (!(dir = opendir(name))) {
+        fprintf(stderr, "Error: could not process directory %s: %s\n", name, strerror(errno));
+        return errno;
+    }
+    while ((entry = readdir(dir)) != NULL) {
+        char *path = calloc(strlen(name) + strlen(entry->d_name) + 2, sizeof(char));
+        sprintf(path, "%s/%s", name, entry->d_name);
+        if ((entry->d_type == DT_DIR) && (recurse != 0)) {
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                free(path);
+                continue;
+            }
+            int rtn = process_dir(path, writer, args, recurse - 1);
+            status = max(status, rtn);
+        } else {
+            // skip
+        }
+        free(path);
+    }
+    closedir(dir);
+
     return status;
 }
 
 
-int process_file(char* fname, writer writer, arguments_t* args) {
+int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
     int status = 0;
     struct stat finfo;
     int res = stat(fname, &finfo);
     if (res == -1) {
-        // Failure will bubble up through process_file, process_dir to main
         fprintf(stderr, "Error: could not process file %s: %s\n", fname, strerror(errno));
         return errno;
     }
+
+    // handle directory input
     if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
-        if (args->recurse) {
+        if (recurse != 0) {
             char* sfname = strip_path(fname);
-            int rtn = process_dir(sfname, writer, args);
+            int rtn = process_dir(sfname, writer, args, recurse - 1);
             status = max(status, rtn);
             free(sfname);
-        } else {
-            fprintf(stderr, "Warning: input '%s' is a directory and -x (recursive mode) was not given.\n", fname);
         }
         return status;
     }
@@ -204,15 +221,16 @@ int main(int argc, char **argv) {
         char *ln = NULL;
         size_t n = 0;
         ssize_t nchr = 0;
+        int recurse = 0;
         while ((nchr = getline (&ln, &n, stdin)) != -1) {
             ln[strcspn(ln, "\r\n")] = 0;
-            int rtn = process_file(ln, writer, &args);
+            int rtn = process_file(ln, writer, &args, recurse);
             status = max(status, rtn);
         }
         free(ln);
     } else {
         for (size_t i=0; i<nfile; ++i) {
-            int rtn = process_file(args.files[i], writer, &args);
+            int rtn = process_file(args.files[i], writer, &args, args.recurse);
             status = max(status, rtn);
         }
     }

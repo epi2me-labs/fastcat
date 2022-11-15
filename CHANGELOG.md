@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v0.5.0]
+### Changed
+- Behaviour of `-x/--recurse`. Top-level directory input will always be searched for
+  data. Turning on recursion now exclusively refers to descending into child (and
+  subsequent) directories.
+
 ## [v0.4.12]
 ### Fixed
 - Updated kseq.h to allow exit on broken fastq/a stream.
