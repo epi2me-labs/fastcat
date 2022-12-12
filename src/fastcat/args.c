@@ -8,9 +8,11 @@ const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
 static char doc[] = 
 "fastcat -- concatenate and summarise .fastq(.gz) files.\
 \vInput files may be given on stdin by specifing the input as '-'. \
-When the -x option is given inputs may be directories. The command \
+Also accepts directories as input and looks for .fastq(.gz) files in \
+the top-level directory. Recurses into sub-directories when the \
+-x option is given. The command \
 will exit non-zero if any file encountered cannot be read.";
-static char args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz) ...";
+static char args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz) dir-with-fastq ...";
 static struct argp_option options[] = {
     {"read", 'r', "READ SUMMARY",  0,
         "Per-read summary output"},
