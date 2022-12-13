@@ -19,8 +19,17 @@ void write_header() {
     fprintf(stdout,
 "name\tref\tcoverage\tref_coverage\t"\
 "qstart\tqend\trstart\trend\t"\
-"aligned_ref_len\tdirection\tlength\tread_length\t"\
+"aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\t"\
 "match\tins\tdel\tsub\tiden\tacc\n");
+}
+
+inline void write_stats(size_t *stats, const char* chr, FILE* fh) {
+    if (fh != NULL) {
+        fprintf(fh,
+            "%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
+            chr, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6]
+        );
+    }
 }
 
 
@@ -70,6 +79,13 @@ int main(int argc, char *argv[]) {
         hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
     }
 
+    FILE* flagstats = NULL;
+    if (args.flagstats != NULL) {
+        flagstats = fopen(args.flagstats, "w");
+        fprintf(flagstats, "ref\ttotal\tprimary\tsecondary\tsupplementary\tqcfail\tduplicate\n");
+    }
+
+    size_t* flag_counts = xalloc(8, sizeof(size_t), "counts");
     if (args.region == NULL) {
         // process all regions
         for (int i=0; i < hdr->n_targets; ++i) {
@@ -78,7 +94,10 @@ int main(int argc, char *argv[]) {
             process_bams(
                 fp, idx, hdr,
                 chr, 0, ref_length, true,
-                args.read_group, args.tag_name, args.tag_value);
+                args.read_group, args.tag_name, args.tag_value,
+                flag_counts);
+            write_stats(flag_counts, chr, flagstats);
+            memset(flag_counts, 0, 8 * sizeof(size_t));
         }
     } else {
         // process given region
@@ -103,8 +122,15 @@ int main(int argc, char *argv[]) {
         process_bams(
             fp, idx, hdr,
             chr, start, end, true,
-            args.read_group, args.tag_name, args.tag_value);
+            args.read_group, args.tag_name, args.tag_value,
+            flag_counts);
+        write_stats(flag_counts, chr, flagstats);
         free(chr);
+    }
+    free(flag_counts);
+    
+    if (flagstats != NULL) {
+        fclose(flagstats);
     }
 
     sam_hdr_destroy(hdr);

@@ -89,17 +89,26 @@ inline size_t get_query_end(bam1_t* b) {
  *  @param chr bam target name.
  *  @param start start position of chr to consider.
  *  @param end end position of chr to consider.
+ *  @param overlap_start whether reads overhanging start should be included.
  *  @param read_group by which to filter alignments.
  *  @param tag_name by which to filter alignments.
  *  @param tag_value associated with tag_name.
+ *  @param flag_counts size_t flag_counts[8] for output.
  *  @returns void. Prints output to stdout.
  *
  */
 void process_bams(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
         const char *chr, int start, int end, bool overlap_start,
-        const char *read_group, const char tag_name[2], const int tag_value) {
+        const char *read_group, const char tag_name[2], const int tag_value,
+        size_t *flag_counts) {
     fprintf(stderr, "Processing: %s:%d-%d\n", chr, start, end);
+
+    // counting alignment flags
+    // total, primary, ..., unused
+    const size_t flag_mask[8] = {
+        0, 0, BAM_FSECONDARY, BAM_FSUPPLEMENTARY, BAM_FUNMAP, BAM_FQCFAIL, BAM_FDUP, 0};
+    memset(flag_counts, 0, 8 * sizeof(size_t));
 
     // setup bam reading - reuse our pileup structure, but actually just need iterator
     mplp_data* bam = create_bam_iter_data(
@@ -121,6 +130,14 @@ void process_bams(
     ref_length = (size_t)sam_hdr_tid2len(hdr, tid);
 
     while ((res = read_bam(bam, b) >= 0)) {
+        flag_counts[0] += 1;
+        flag_counts[1] += ((b->core.flag & (BAM_FSUPPLEMENTARY | BAM_FSECONDARY)) == 0);
+        for (size_t i=2; i<6; ++i){
+            flag_counts[i] += ((b->core.flag & flag_mask[i]) != 0); 
+        }
+        // only take primary alignments for further processing
+        if (b->core.flag & (BAM_FUNMAP | BAM_FSECONDARY | BAM_FSUPPLEMENTARY | BAM_FQCFAIL | BAM_FDUP)) continue;
+
         char* qname = bam_get_qname(b);
 
         // get NM tag
@@ -149,6 +166,7 @@ void process_bams(
         uint32_t read_length = b->core.l_qseq;
         size_t qstart = get_query_start(b);
         size_t qend = get_query_end(b);
+        float mean_quality = mean_qual_from_bam(bam_get_qual(b), read_length);
 
         float coverage = 100 * ((float)(qend - qstart)) / read_length;
         size_t rstart = b->core.pos;
@@ -160,11 +178,11 @@ void process_bams(
         fprintf(stdout,
             "%s\t%s\t%.4f\t%.4f\t" \
             "%lu\t%lu\t%lu\t%lu\t" \
-            "%lu\t%c\t%lu\t%u\t" \
+            "%lu\t%c\t%lu\t%u\t%.3f\t" \
             "%lu\t%lu\t%lu\t%lu\t%.3f\t%.3f\n",
             qname, chr, coverage, ref_cover,
             qstart, qend, rstart, rend,
-            aligned_ref_len, direction, length, read_length,
+            aligned_ref_len, direction, length, read_length, mean_quality,
             match, ins, delt, sub, iden, acc);
 		free(stats);
     }
