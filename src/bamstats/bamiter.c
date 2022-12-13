@@ -72,7 +72,7 @@ int read_bam(void *data, bam1_t *b) {
         ret = aux->iter ? sam_itr_next(aux->fp, aux->iter, b) : sam_read1(aux->fp, aux->hdr, b);
         if (ret<0) break;
         // only take primary alignments
-        if (b->core.flag & (BAM_FUNMAP | BAM_FSECONDARY | BAM_FSUPPLEMENTARY | BAM_FQCFAIL | BAM_FDUP)) continue;
+        //if (b->core.flag & (BAM_FUNMAP | BAM_FSECONDARY | BAM_FSUPPLEMENTARY | BAM_FQCFAIL | BAM_FDUP)) continue;
         // maybe remove reads overlapping start
         if (b->core.pos < aux->min_start) continue;
         // filter by mapping quality

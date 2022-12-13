@@ -22,6 +22,8 @@ static struct argp_option options[] = {
         "Genomic region to process."},
     {"threads", 't', "THREADS", 0,
         "Number of threads for BAM processing."},
+    {"flagstats", 'f', "FLAGSTATS", 0,
+        "File for outputting alignment flag counts."},
     {0, 0, 0, 0,
         "Read filtering options:"},
     {"read_group", 'g', "RG", 0,
@@ -51,6 +53,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'g':
             arguments->read_group = arg;
+            break;
+        case 'f':
+            arguments->flagstats = arg;
             break;
         case 0x100:
             if (strlen(arg) > 2) {
@@ -99,6 +104,7 @@ static struct argp argp = {options, parse_opt, args_doc, doc};
 arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;
     args.bam = NULL;
+    args.flagstats = NULL;
     args.ref = NULL;
     args.region = NULL;
     args.read_group = NULL;

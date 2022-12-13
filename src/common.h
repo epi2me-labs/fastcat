@@ -36,4 +36,10 @@ void *xalloc(size_t num, size_t size, char* msg);
  */
 char *substring(char *string, int position, int length);
 
+// https://en.wikipedia.org/wiki/Kahan_summation_algorithm
+void kahan_sum(double* sum, double term, double* c);
+
+float mean_qual(char* qual, size_t len);
+float mean_qual_from_bam(u_int8_t* qual, size_t len);
+
 #endif
