@@ -4,15 +4,23 @@
 #include <stdint.h>
 
 
-/** Simple integer min/max
+/** Simple min/max
  * @param a
  * @param b
  *
  * @returns the min/max of a and b
  *
  */
-static inline int max ( int a, int b ) { return a > b ? a : b; }
-static inline int min ( int a, int b ) { return a < b ? a : b; }
+#define min(a, b) ({ \
+    typeof (a) _a = (a); \
+    typeof (b) _b = (b); \
+    _a < _b ? _a : _b; \
+})
+#define max(a, b) ({ \
+    typeof (a) _a = (a); \
+    typeof (b) _b = (b); \
+    _a > _b ? _a : _b; \
+})
 
 
 /** Allocates zero-initialised memory with a message on failure.
