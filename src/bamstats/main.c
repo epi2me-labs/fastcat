@@ -23,6 +23,15 @@ void write_header() {
 "match\tins\tdel\tsub\tiden\tacc\n");
 }
 
+// stats array should have 8 entries
+// total, primary, BAM_FSECONDARY, BAM_FSUPPLEMENTARY, BAM_FUNMAP, BAM_FQCFAIL, BAM_FDUP, unused
+// note: HTS spec makes a distinction between "unmapped" (flag & 4) and "unplaced". Unplaced
+//       are not necessarily unmapped but lack definitive coords, this is mainly for paired-end
+//       but we'll keep the distinction here.
+void write_stats_header(FILE* fh) {
+    fprintf(fh, "ref\ttotal\tprimary\tsecondary\tsupplementary\t\tunmapped\tqcfail\tduplicate\n");
+}
+
 inline void write_stats(size_t *stats, const char* chr, FILE* fh) {
     if (fh != NULL) {
         fprintf(fh,
@@ -82,7 +91,7 @@ int main(int argc, char *argv[]) {
     FILE* flagstats = NULL;
     if (args.flagstats != NULL) {
         flagstats = fopen(args.flagstats, "w");
-        fprintf(flagstats, "ref\ttotal\tprimary\tsecondary\tsupplementary\tqcfail\tduplicate\n");
+        write_stats_header(flagstats);
     }
 
     size_t* flag_counts = xalloc(8, sizeof(size_t), "counts");
@@ -95,8 +104,18 @@ int main(int argc, char *argv[]) {
                 fp, idx, hdr,
                 chr, 0, ref_length, true,
                 args.read_group, args.tag_name, args.tag_value,
-                flag_counts);
+                flag_counts, args.unmapped);
             write_stats(flag_counts, chr, flagstats);
+            memset(flag_counts, 0, 8 * sizeof(size_t));
+        }
+        // Also do unplaced reads
+        if (args.unmapped) {
+            process_bams(
+                fp, idx, hdr,
+                "*", 0, INT64_MAX, true,
+                args.read_group, args.tag_name, args.tag_value,
+                flag_counts, args.unmapped);
+            write_stats(flag_counts, "*", flagstats);
             memset(flag_counts, 0, 8 * sizeof(size_t));
         }
     } else {
@@ -123,8 +142,9 @@ int main(int argc, char *argv[]) {
             fp, idx, hdr,
             chr, start, end, true,
             args.read_group, args.tag_name, args.tag_value,
-            flag_counts);
+            flag_counts, args.unmapped);
         write_stats(flag_counts, chr, flagstats);
+        memset(flag_counts, 0, 8 * sizeof(size_t));
         free(chr);
     }
     free(flag_counts);

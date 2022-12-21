@@ -13,6 +13,7 @@ typedef struct arguments {
     char tag_name[2];
     int tag_value;
     int threads;
+    bool unmapped;
 } arguments_t;
 
 arguments_t parse_arguments(int argc, char** argv);

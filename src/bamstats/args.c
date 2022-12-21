@@ -26,6 +26,8 @@ static struct argp_option options[] = {
         "File for outputting alignment flag counts."},
     {0, 0, 0, 0,
         "Read filtering options:"},
+    {"unmapped", 'u', 0, 0,
+        "Include unmapped/unplaced reads in output.", 3},
     {"read_group", 'g', "RG", 0,
         "Only process reads from given read group.", 3},
     {"tag_name", 0x100, "TN", 0,
@@ -56,6 +58,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'f':
             arguments->flagstats = arg;
+            break;
+        case 'u':
+            arguments->unmapped = true;
             break;
         case 0x100:
             if (strlen(arg) > 2) {
@@ -107,6 +112,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.flagstats = NULL;
     args.ref = NULL;
     args.region = NULL;
+    args.unmapped = false;
     args.read_group = NULL;
     args.tag_name[0] = '\0';
     args.tag_value = -1;
