@@ -20,13 +20,14 @@
  *  @param tag_name by which to filter alignments.
  *  @param tag_value associated with tag_name.
  *  @param flag_counts size_t flag_counts[8] for output.
+ *  @param unmapped bool include unmapped reads in output.
  *  @returns void. Prints output to stdout.
  *
  */
 void process_bams(
     htsFile *fps, hts_idx_t *idxs, sam_hdr_t *hdrs,
-    const char *chr, int start, int end, bool overlap_start,
+    const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
     const char *read_group, const char tag_name[2], const int tag_value,
-    size_t *flag_counts);
+    size_t *flag_counts, bool unmapped);
 
 #endif

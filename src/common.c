@@ -104,6 +104,7 @@ void kahan_sum(double* sum, double term, double* c) {
 
 
 float mean_qual(char* qual, size_t len) {
+    if (len == 0 ) return nanf("");
     double qsum = 0;
     double c = 0;
     for (size_t i=0; i<len; ++i) {
@@ -115,6 +116,7 @@ float mean_qual(char* qual, size_t len) {
 }
 
 float mean_qual_from_bam(u_int8_t* qual, size_t len) {
+    if (len == 0 || qual[0] == 0xff ) return nanf("");
     double qsum = 0;
     double c = 0;
     for (size_t i=0; i<len; ++i) {

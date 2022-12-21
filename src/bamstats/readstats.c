@@ -93,16 +93,23 @@ inline size_t get_query_end(bam1_t* b) {
  *  @param read_group by which to filter alignments.
  *  @param tag_name by which to filter alignments.
  *  @param tag_value associated with tag_name.
- *  @param flag_counts size_t flag_counts[8] for output.
+ *  @param flag_counts size_t flag_counts[8] for output, will be cleared before use.
+ *  @param unmapped bool include unmapped reads in output.
  *  @returns void. Prints output to stdout.
  *
  */
 void process_bams(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
-        const char *chr, int start, int end, bool overlap_start,
+        const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
         const char *read_group, const char tag_name[2], const int tag_value,
-        size_t *flag_counts) {
-    fprintf(stderr, "Processing: %s:%d-%d\n", chr, start, end);
+        size_t *flag_counts, bool unmapped) {
+    if (chr != NULL) {
+        if (strcmp(chr, "*") == 0) {
+            fprintf(stderr, "Processing: Unplaced reads\n");
+        } else {
+            fprintf(stderr, "Processing: %s:%lld-%lld\n", chr, start, end);
+        }
+    }
 
     // counting alignment flags
     // total, primary, ..., unused
@@ -122,22 +129,46 @@ void process_bams(
     uint8_t *tag;
     // find the target length for query below
     size_t ref_length = 0;
-    int tid = sam_hdr_name2tid(hdr, chr);
-    if (tid < 0) {
-        fprintf(stderr, "Failed to find reference sequence '%s' in bam.\n", chr);
-        exit(EXIT_FAILURE);
+    if (strcmp(chr, "*") != 0) {
+        int tid = sam_hdr_name2tid(hdr, chr);
+        if (tid < 0) {
+            fprintf(stderr, "Failed to find reference sequence '%s' in bam.\n", chr);
+            exit(EXIT_FAILURE);
+        }
+        ref_length = (size_t)sam_hdr_tid2len(hdr, tid);
     }
-    ref_length = (size_t)sam_hdr_tid2len(hdr, tid);
+    
+    const int NOTPRIMARY = BAM_FSUPPLEMENTARY | BAM_FSECONDARY | BAM_FUNMAP; 
 
     while ((res = read_bam(bam, b) >= 0)) {
         flag_counts[0] += 1;
-        flag_counts[1] += ((b->core.flag & (BAM_FSUPPLEMENTARY | BAM_FSECONDARY)) == 0);
+        flag_counts[1] += ((b->core.flag & (NOTPRIMARY)) == 0);
         for (size_t i=2; i<6; ++i){
             flag_counts[i] += ((b->core.flag & flag_mask[i]) != 0); 
         }
-        // only take primary alignments for further processing
-        if (b->core.flag & (BAM_FUNMAP | BAM_FSECONDARY | BAM_FSUPPLEMENTARY | BAM_FQCFAIL | BAM_FDUP)) continue;
+        // write a record for unmapped/unplaced
+        if ((b->core.flag & BAM_FUNMAP) && unmapped) {
+            // an unmapped read can still have a RNAME and POS, but we
+            // ignore that here, because its not a thing we care about
+            char* qname = bam_get_qname(b);
+            uint32_t read_length = b->core.l_qseq;
+            float mean_quality = mean_qual_from_bam(bam_get_qual(b), read_length);
+            fprintf(stdout,
+                "%s\t*\tnan\tnan\t" \
+                "nan\tnan\tnan\tnan\t" \
+                "0\t*\t0\t%u\t%.3f\t" \
+                "0\t0\t0\t0\tnan\tnan\n",
+                qname, //chr, coverage, ref_cover,
+                //qstart, qend, rstart, rend,
+                //aligned_ref_len, direction, length,
+                    read_length, mean_quality
+                //match, ins, delt, sub, iden, acc
+            );
+            continue;
+        }
 
+        // only take "good" primary alignments for further processing
+        if (b->core.flag & (NOTPRIMARY | BAM_FQCFAIL | BAM_FDUP)) continue;
         char* qname = bam_get_qname(b);
 
         // get NM tag
@@ -162,7 +193,7 @@ void process_bams(
         float iden = 100 * ((float)(match - sub)) / match;
         float acc = 100 - 100 * ((float)(NM)) / length;
         // we only deal in primary/soft-clipped alignments so length
-        // ok qseq member is the length of the intact query sequence.
+        // of qseq member is the length of the intact query sequence.
         uint32_t read_length = b->core.l_qseq;
         size_t qstart = get_query_start(b);
         size_t qend = get_query_end(b);

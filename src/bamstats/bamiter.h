@@ -36,7 +36,7 @@ typedef struct {
  */
 mplp_data *create_bam_iter_data(
     htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
-    const char *chr, int start, int end, bool overlap_start,
+    const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
     const char *read_group, const char tag_name[2], const int tag_value);
 
 /** Clean up auxiliary bam reading data.

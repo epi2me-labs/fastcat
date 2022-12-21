@@ -22,21 +22,33 @@
  */
 mplp_data *create_bam_iter_data(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
-        const char *chr, int start, int end, bool overlap_start,
+        const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
         const char *read_group, const char tag_name[2], const int tag_value) {
 
+    mplp_data *data = xalloc(1, sizeof(mplp_data), "pileup init data");
+
     // find the target index for query below
-    int mytid = sam_hdr_name2tid(hdr, chr);
-    if (mytid < 0) {
-        fprintf(stderr, "Failed to find reference sequence '%s' in bam.\n", chr);
-        return NULL;
+    if (chr == NULL) {  // all reads
+        data->iter = NULL;
+    } else {
+        int mytid;
+        if (strcmp(chr, "*") == 0) { // unplaced
+            mytid = HTS_IDX_NOCOOR;
+            start = 0; end = INT64_MAX;
+        } else {
+            mytid = sam_hdr_name2tid(hdr, chr);
+            if (mytid < 0) {
+                fprintf(stderr, "Failed to find reference sequence '%s' in bam.\n", chr);
+                free(data);
+                return NULL;
+            }
+        }
+        data->iter = bam_itr_queryi(idx, mytid, start, end);
     }
 
     // setup bam interator
-    mplp_data *data = xalloc(1, sizeof(mplp_data), "pileup init data");
     data->fp = fp; data->idx = idx; data->hdr = hdr;
-    data->iter = bam_itr_queryi(idx, mytid, start, end);
-    data->min_start = overlap_start ? 0 : start;
+    data->min_start = overlap_start ? -1 : start; // unmapped reads have pos -1
     memcpy(data->tag_name, tag_name, 2); data->tag_value = tag_value;
     data->min_mapQ = 0; data->read_group = read_group;
 
@@ -113,7 +125,8 @@ int read_bam(void *data, bam1_t *b) {
  */
 int *qpos2rpos(bam1_t *b) {
     // we only deal in primary/soft-clipped alignments so length
-    // ok qseq member is the length of the intact query sequence.
+    // of qseq member is the length of the intact query sequence.
+    // TODO: add check for alignment being primary / no hard clipping
     uint32_t qlen = b->core.l_qseq;
     uint32_t *cigar = bam_get_cigar(b);
     int *posmap = xalloc(qlen, sizeof(uint32_t), "pos_map");
