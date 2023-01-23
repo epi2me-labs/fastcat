@@ -7,6 +7,7 @@
 typedef struct arguments {
     const char** bam;
     char* flagstats;
+    char *sample;
     char* ref;
     char* region;
     char* read_group;

@@ -86,6 +86,7 @@ inline size_t get_query_end(bam1_t* b) {
  *  @param fp htsFile pointer
  *  @param idx hts_idx_t pointer
  *  @param hdr sam_hdr_t pointer
+ *  @param sample sample name.
  *  @param chr bam target name.
  *  @param start start position of chr to consider.
  *  @param end end position of chr to consider.
@@ -99,7 +100,7 @@ inline size_t get_query_end(bam1_t* b) {
  *
  */
 void process_bams(
-        htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
+        htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr, const char *sample,
         const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
         const char *read_group, const char tag_name[2], const int tag_value,
         size_t *flag_counts, bool unmapped) {
@@ -153,17 +154,31 @@ void process_bams(
             char* qname = bam_get_qname(b);
             uint32_t read_length = b->core.l_qseq;
             float mean_quality = mean_qual_from_bam(bam_get_qual(b), read_length);
-            fprintf(stdout,
-                "%s\t*\tnan\tnan\t" \
-                "nan\tnan\tnan\tnan\t" \
-                "0\t*\t0\t%u\t%.3f\t" \
-                "0\t0\t0\t0\tnan\tnan\n",
-                qname, //chr, coverage, ref_cover,
-                //qstart, qend, rstart, rend,
-                //aligned_ref_len, direction, length,
-                    read_length, mean_quality
-                //match, ins, delt, sub, iden, acc
-            );
+            if (sample == NULL) {
+                fprintf(stdout,
+                    "%s\t*\tnan\tnan\t" \
+                    "nan\tnan\tnan\tnan\t" \
+                    "0\t*\t0\t%u\t%.3f\t" \
+                    "0\t0\t0\t0\tnan\tnan\n",
+                    qname, //chr, coverage, ref_cover,
+                    //qstart, qend, rstart, rend,
+                    //aligned_ref_len, direction, length,
+                        read_length, mean_quality
+                    //match, ins, delt, sub, iden, acc
+                );
+            } else {
+                fprintf(stdout,
+                    "%s\t%s\t*\tnan\tnan\t" \
+                    "nan\tnan\tnan\tnan\t" \
+                    "0\t*\t0\t%u\t%.3f\t" \
+                    "0\t0\t0\t0\tnan\tnan\n",
+                    qname, sample, //chr, coverage, ref_cover,
+                    //qstart, qend, rstart, rend,
+                    //aligned_ref_len, direction, length,
+                        read_length, mean_quality
+                    //match, ins, delt, sub, iden, acc
+                );
+            }
             continue;
         }
 
@@ -206,15 +221,27 @@ void process_bams(
         float ref_cover = 100 * ((float)(aligned_ref_len)) / ref_length;
         char direction = "+-"[bam_is_rev(b)];
 
-        fprintf(stdout,
-            "%s\t%s\t%.4f\t%.4f\t" \
-            "%lu\t%lu\t%lu\t%lu\t" \
-            "%lu\t%c\t%lu\t%u\t%.3f\t" \
-            "%lu\t%lu\t%lu\t%lu\t%.3f\t%.3f\n",
-            qname, chr, coverage, ref_cover,
-            qstart, qend, rstart, rend,
-            aligned_ref_len, direction, length, read_length, mean_quality,
-            match, ins, delt, sub, iden, acc);
+        if (sample == NULL) {
+            fprintf(stdout,
+                "%s\t%s\t%.4f\t%.4f\t" \
+                "%lu\t%lu\t%lu\t%lu\t" \
+                "%lu\t%c\t%lu\t%u\t%.3f\t" \
+                "%lu\t%lu\t%lu\t%lu\t%.3f\t%.3f\n",
+                qname, chr, coverage, ref_cover,
+                qstart, qend, rstart, rend,
+                aligned_ref_len, direction, length, read_length, mean_quality,
+                match, ins, delt, sub, iden, acc);
+        } else {
+            fprintf(stdout,
+                "%s\t%s\t%s\t%.4f\t%.4f\t" \
+                "%lu\t%lu\t%lu\t%lu\t" \
+                "%lu\t%c\t%lu\t%u\t%.3f\t" \
+                "%lu\t%lu\t%lu\t%lu\t%.3f\t%.3f\n",
+                qname, sample, chr, coverage, ref_cover,
+                qstart, qend, rstart, rend,
+                aligned_ref_len, direction, length, read_length, mean_quality,
+                match, ins, delt, sub, iden, acc);
+        }
 		free(stats);
     }
 

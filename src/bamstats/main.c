@@ -15,12 +15,20 @@
 #include "common.h"
 
 
-void write_header() {
-    fprintf(stdout,
-"name\tref\tcoverage\tref_coverage\t"\
-"qstart\tqend\trstart\trend\t"\
-"aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\t"\
-"match\tins\tdel\tsub\tiden\tacc\n");
+void write_header(const char* sample) {
+    if (sample == NULL) {
+        fprintf(stdout,
+            "name\tref\tcoverage\tref_coverage\t"\
+            "qstart\tqend\trstart\trend\t"\
+            "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\t"\
+            "match\tins\tdel\tsub\tiden\tacc\n");
+    } else {
+        fprintf(stdout,
+            "name\tsample_name\tref\tcoverage\tref_coverage\t"\
+            "qstart\tqend\trstart\trend\t"\
+            "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\t"\
+            "match\tins\tdel\tsub\tiden\tacc\n");
+    }
 }
 
 // stats array should have 8 entries
@@ -28,16 +36,27 @@ void write_header() {
 // note: HTS spec makes a distinction between "unmapped" (flag & 4) and "unplaced". Unplaced
 //       are not necessarily unmapped but lack definitive coords, this is mainly for paired-end
 //       but we'll keep the distinction here.
-void write_stats_header(FILE* fh) {
-    fprintf(fh, "ref\ttotal\tprimary\tsecondary\tsupplementary\t\tunmapped\tqcfail\tduplicate\n");
+void write_stats_header(FILE* fh, const char* sample) {
+    if (sample == NULL) {
+        fprintf(fh, "ref\ttotal\tprimary\tsecondary\tsupplementary\tunmapped\tqcfail\tduplicate\n");
+    } else {
+        fprintf(fh, "ref\tsample_name\ttotal\tprimary\tsecondary\tsupplementary\tunmapped\tqcfail\tduplicate\n");
+    }
 }
 
-inline void write_stats(size_t *stats, const char* chr, FILE* fh) {
+static inline void write_stats(size_t *stats, const char* chr, const char* sample, FILE* fh) {
     if (fh != NULL) {
-        fprintf(fh,
-            "%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
-            chr, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6]
-        );
+        if (sample == NULL) {
+            fprintf(fh,
+                "%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
+                chr, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6]
+            );
+        } else {
+            fprintf(fh,
+                "%s\t%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
+                chr, sample, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6]
+            );
+        }
     }
 }
 
@@ -72,7 +91,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "WARNING: Results from multiple files will not be coordinate sorted.\n");
     }
 
-    write_header();
+    write_header(args.sample);
 
     htsFile *fp = hts_open(args.bam[0], "rb");
     hts_idx_t *idx = sam_index_load(fp, args.bam[0]);
@@ -91,7 +110,7 @@ int main(int argc, char *argv[]) {
     FILE* flagstats = NULL;
     if (args.flagstats != NULL) {
         flagstats = fopen(args.flagstats, "w");
-        write_stats_header(flagstats);
+        write_stats_header(flagstats, args.sample);
     }
 
     size_t* flag_counts = xalloc(8, sizeof(size_t), "counts");
@@ -101,21 +120,21 @@ int main(int argc, char *argv[]) {
             const char* chr = sam_hdr_tid2name(hdr, i);
             size_t ref_length = (size_t)sam_hdr_tid2len(hdr, i);
             process_bams(
-                fp, idx, hdr,
+                fp, idx, hdr, args.sample,
                 chr, 0, ref_length, true,
                 args.read_group, args.tag_name, args.tag_value,
                 flag_counts, args.unmapped);
-            write_stats(flag_counts, chr, flagstats);
+            write_stats(flag_counts, chr, args.sample, flagstats);
             memset(flag_counts, 0, 8 * sizeof(size_t));
         }
         // Also do unplaced reads
         if (args.unmapped) {
             process_bams(
-                fp, idx, hdr,
+                fp, idx, hdr, args.sample,
                 "*", 0, INT64_MAX, true,
                 args.read_group, args.tag_name, args.tag_value,
                 flag_counts, args.unmapped);
-            write_stats(flag_counts, "*", flagstats);
+            write_stats(flag_counts, "*", args.sample, flagstats);
             memset(flag_counts, 0, 8 * sizeof(size_t));
         }
     } else {
@@ -139,11 +158,11 @@ int main(int argc, char *argv[]) {
         size_t ref_length = (size_t)sam_hdr_tid2len(hdr, tid);
         end = min(end, ref_length);
         process_bams(
-            fp, idx, hdr,
+            fp, idx, hdr, args.sample,
             chr, start, end, true,
             args.read_group, args.tag_name, args.tag_value,
             flag_counts, args.unmapped);
-        write_stats(flag_counts, chr, flagstats);
+        write_stats(flag_counts, chr, args.sample, flagstats);
         memset(flag_counts, 0, 8 * sizeof(size_t));
         free(chr);
     }
