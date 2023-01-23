@@ -22,6 +22,8 @@ static struct argp_option options[] = {
         "Genomic region to process."},
     {"threads", 't', "THREADS", 0,
         "Number of threads for BAM processing."},
+    {"sample", 's',"SAMPLE NAME",   0,
+        "Sample name (if given, adds a 'sample_name' column)."},
     {"flagstats", 'f', "FLAGSTATS", 0,
         "File for outputting alignment flag counts."},
     {0, 0, 0, 0,
@@ -58,6 +60,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'f':
             arguments->flagstats = arg;
+            break;
+        case 's':
+            arguments->sample = arg;
             break;
         case 'u':
             arguments->unmapped = true;
@@ -110,6 +115,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;
     args.bam = NULL;
     args.flagstats = NULL;
+    args.sample = NULL;
     args.ref = NULL;
     args.region = NULL;
     args.unmapped = false;

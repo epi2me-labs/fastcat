@@ -19,7 +19,7 @@ static struct argp_option options[] = {
     {"file", 'f', "FILE SUMMARY",  0,
         "Per-file summary output"},
     {"sample", 's',"SAMPLE NAME",   0,
-        "Sample name (if given adds a 'sample_name' column)."},
+        "Sample name (if given, adds a 'sample_name' column)."},
     {"demultiplex", 'd', "OUT DIR",  0,
         "Separate barcoded samples using fastq header information. Option value is top-level output directory."},
     {"min_length", 'a', "MIN READ LENGTH", 0,
