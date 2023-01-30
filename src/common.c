@@ -67,6 +67,16 @@ char *substring(char *string, int position, int length) {
    return ptr;
 }
 
+int replace_char(char *str, char orig, char rep) {
+    char *ix = str;
+    int n = 0;
+    while((ix = strchr(ix, orig)) != NULL) {
+        *ix++ = rep;
+        n++;
+    }
+    return n;
+}
+
 const double qprobs[100] = {
     1.00000000e+00, 7.94328235e-01, 6.30957344e-01, 5.01187234e-01,
     3.98107171e-01, 3.16227766e-01, 2.51188643e-01, 1.99526231e-01,

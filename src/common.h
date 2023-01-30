@@ -44,6 +44,17 @@ void *xalloc(size_t num, size_t size, char* msg);
  */
 char *substring(char *string, int position, int length);
 
+/** Globally replace a char in a char*
+ * 
+ * @param str char* source string
+ * @param orig original character
+ * @param rep replacement
+ * @returns number of times replacement made
+ *
+ */
+int replace_char(char *str, char orig, char rep);
+
+
 // https://en.wikipedia.org/wiki/Kahan_summation_algorithm
 void kahan_sum(double* sum, double term, double* c);
 
