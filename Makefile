@@ -25,7 +25,7 @@ endif
 
 
 .PHONY: default
-default: fastcat bamstats
+default: fastcat bamstats bamindex
 
 
 htslib/libhts.a:
@@ -58,10 +58,16 @@ bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/b
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
+bamindex: src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/common.o $(STATIC_HTSLIB)
+	$(CC) -Isrc -Ihtslib -Wall -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
+		$^ $(ARGP) \
+		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
+		-o $@
 
 .PHONY: clean
 clean:
-	rm -rf fastcat bamstats src/fastcat/*.o src/bamstats/*.o src/*.o
+	rm -rf fastcat bamstats bamindex src/fastcat/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
 
 
 .PHONY: clean_htslib
@@ -77,3 +83,8 @@ mem_check_fastcat: fastcat
 mem_check_bamstats: bamstats
 	valgrind --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
 		./bamstats test/bamstats/400ecoli.bam
+
+.PHONY: mem_check_bamindex
+mem_check_bamindex: bamindex
+	valgrind --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
+		./bamindex build test/bamindex/400.bam
