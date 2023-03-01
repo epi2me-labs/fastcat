@@ -33,6 +33,9 @@ build:
         - make bamstats
         - ./bamstats --help
         - make mem_check_bamstats
+        - make bamindex
+        - ./bamindex build --help
+        - make mem_check_bamindex
 
 deploy-checks:
     stage: prerelease

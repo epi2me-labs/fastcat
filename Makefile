@@ -4,14 +4,16 @@ ifeq ($(OS), Darwin)
     EXTRA_LDFLAGS ?= -L$(shell brew --prefix openssl@1.1)/lib
     ARGP ?= $(shell brew --prefix argp-standalone)/lib/libargp.a
     ARGP_INC ?= -I$(shell brew --prefix argp-standalone)/include
+    CFLAGS ?= -fpic -O3 ${ARGP_INC}
 else
     ARGP ?=
     ARGP_INC ?=
+    CFLAGS ?= -fpic -msse3 -O3 ${ARGP_INC}
 endif
 
+VALGRIND ?= valgrind
 
 CC ?= gcc
-CFLAGS ?= -fpic -msse3 -O3 ${ARGP_INC}
 STATIC_HTSLIB ?= htslib/libhts.a
 EXTRA_CFLAGS ?=
 EXTRA_LDFLAGS ?=
@@ -25,7 +27,7 @@ endif
 
 
 .PHONY: default
-default: fastcat bamstats
+default: fastcat bamstats bamindex
 
 
 htslib/libhts.a:
@@ -58,10 +60,16 @@ bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/b
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
+bamindex: src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o $(STATIC_HTSLIB)
+	$(CC) -Isrc -Ihtslib -Wall -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
+		$^ $(ARGP) \
+		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
+		-o $@
 
 .PHONY: clean
 clean:
-	rm -rf fastcat bamstats src/fastcat/*.o src/bamstats/*.o src/*.o
+	rm -rf fastcat bamstats bamindex src/fastcat/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
 
 
 .PHONY: clean_htslib
@@ -70,10 +78,32 @@ clean_htslib:
 
 .PHONY: mem_check_fastcat
 mem_check_fastcat: fastcat
-	valgrind --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
+	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
 		./fastcat test/data/*.fastq.gz > /dev/null
 
 .PHONY: mem_check_bamstats
 mem_check_bamstats: bamstats
-	valgrind --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
+	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
 		./bamstats test/bamstats/400ecoli.bam
+
+.PHONY: mem_check_bamindex-build
+mem_check_bamindex-build: bamindex
+	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
+		./bamindex build test/bamindex/400.bam
+
+test/bamindex/400.bam.bci: bamindex
+	./bamindex dump test/bamindex/400.bam.bci
+
+
+.PHONY: mem_check_bamindex-dump
+mem_check_bamindex-dump: bamindex test/bamindex/400.bam.bci
+	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
+		./bamindex dump test/bamindex/400.bam.bci
+
+.PHONY: mem_check_bamindex-fetch
+mem_check_bamindex-fetch: bamindex test/bamindex/400.bam.bci
+	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all --track-origins=yes -s \
+		./bamindex fetch test/bamindex/400.bam --chunk 5 > /dev/null
+
+.PHONY: mem_check_bamindex
+mem_check_bamindex: mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamindex-fetch
