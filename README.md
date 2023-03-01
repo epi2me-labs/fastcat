@@ -128,3 +128,77 @@ alignment stored within the input BAM files.
 
 Report bugs to chris.wright@nanoporetech.com.
 ```
+
+
+### bamindex
+
+The `bamindex` program is a rather curious program that will create a positional index
+of alignments in a BAM file. It is intended to be used  within workflows to allow
+parallel processing of records in a BAM file, each worker processing a contiguous chunk
+of the file. This is most useful with unaligned BAM files.
+
+The program was insired by [bri](https://github.com/jts/bri) by Jared Simpson at [OICR](https://oicr.on.ca/);
+which is far cooler.
+
+There are three subcommands:
+
+**bamindex index**
+
+```
+$ ./bamindex build --help
+Usage: build [OPTION...] <reads.bam>
+bamindex build -- create a BAM index corresponding to batches of records.
+
+ General options:
+  -c, --chunk_size=SIZE      Number of records in a chunk.
+  -t, --threads=THREADS      Number of threads for BAM processing.
+
+  -?, --help                 Give this help list
+      --usage                Give a short usage message
+  -V, --version              Print program version
+
+Mandatory or optional arguments to long options are also mandatory or optional
+for any corresponding short options.
+
+The program creates a simple index of file offsets for each of every (n * M)th
+alignment record. No care is taken to keep records corresponding to the same
+query together, or any other such niceities. Its intended to be used simply
+with unaligned, unsorted BAMs.
+```
+
+**bamindex fetch**
+
+```
+$ ./bamindex fetch --help
+Usage: fetch [OPTION...] <reads.bam.bci>
+bamindex fetch -- fetch records from a BAM according to an index.
+
+ General options:
+  -c, --chunk=SIZE           Chunk index to retrieve.
+  -t, --threads=THREADS      Number of threads for BAM processing.
+
+  -?, --help                 Give this help list
+      --usage                Give a short usage message
+  -V, --version              Print program version
+
+Mandatory or optional arguments to long options are also mandatory or optional
+for any corresponding short options.
+
+The program simply will fetch a batch of records from a BAM fileusing and index
+and a chunk ID.
+```
+
+**bamindex dump**
+
+```
+$ ./bamindex dump --help 
+Usage: dump [OPTION...] <reads.bam.bci>
+bamindex dump -- dump a BAM chunk index to stdout as text.
+
+  -?, --help                 Give this help list
+      --usage                Give a short usage message
+  -V, --version              Print program version
+
+The program simply writes the contents of an index to stdout for human
+inspection. It has no other purpose.
+```
