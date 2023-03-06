@@ -21,7 +21,7 @@ fi
 make clean clean_htslib
 
 mkdir -p $PREFIX/bin
-for binary in fastcat bamstats; do
+for binary in fastcat bamstats bamindex; do
     make $binary
     cp $binary $PREFIX/bin && chmod +x $PREFIX/bin/$binary
 done
