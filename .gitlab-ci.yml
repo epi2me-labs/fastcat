@@ -58,7 +58,7 @@ conda:
         - *before-script
 
 conda-arm:
-    extends: .deploy-conda-arm
+    extends: .deploy-conda-linux-arm
     before_script:
         - *prep-image
         - *before-script
