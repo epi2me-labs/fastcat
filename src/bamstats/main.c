@@ -94,9 +94,8 @@ int main(int argc, char *argv[]) {
     write_header(args.sample);
 
     htsFile *fp = hts_open(args.bam[0], "rb");
-    hts_idx_t *idx = sam_index_load(fp, args.bam[0]);
     sam_hdr_t *hdr = sam_hdr_read(fp);
-    if (hdr == 0 || idx == 0 || fp == 0) {
+    if (hdr == 0 || fp == 0) {
         fprintf(stderr, "Failed to read .bam file '%s'.\n", args.bam[0]);
         exit(EXIT_FAILURE);
     }
@@ -108,37 +107,40 @@ int main(int argc, char *argv[]) {
     }
 
     FILE* flagstats = NULL;
+    flag_stats* flag_counts = NULL;
     if (args.flagstats != NULL) {
         flagstats = fopen(args.flagstats, "w");
         write_stats_header(flagstats, args.sample);
+        flag_counts = create_flag_stats(
+            args.region == NULL ? hdr->n_targets : 1, args.unmapped
+        );
     }
 
-    size_t* flag_counts = xalloc(8, sizeof(size_t), "counts");
     if (args.region == NULL) {
-        // process all regions
-        for (int i=0; i < hdr->n_targets; ++i) {
-            const char* chr = sam_hdr_tid2name(hdr, i);
-            size_t ref_length = (size_t)sam_hdr_tid2len(hdr, i);
-            process_bams(
-                fp, idx, hdr, args.sample,
-                chr, 0, ref_length, true,
-                args.read_group, args.tag_name, args.tag_value,
-                flag_counts, args.unmapped);
-            write_stats(flag_counts, chr, args.sample, flagstats);
-            memset(flag_counts, 0, 8 * sizeof(size_t));
-        }
-        // Also do unplaced reads
-        if (args.unmapped) {
-            process_bams(
-                fp, idx, hdr, args.sample,
-                "*", 0, INT64_MAX, true,
-                args.read_group, args.tag_name, args.tag_value,
-                flag_counts, args.unmapped);
-            write_stats(flag_counts, "*", args.sample, flagstats);
-            memset(flag_counts, 0, 8 * sizeof(size_t));
+        // iterate over the entire file
+        process_bams(
+            fp, NULL, hdr, args.sample,
+            NULL, 0, INT64_MAX, true,
+            args.read_group, args.tag_name, args.tag_value,
+            flag_counts, args.unmapped);
+
+        // write flagstat counts if requested
+        if (flag_counts != NULL) {
+            for (int i=0; i < hdr->n_targets; ++i) {
+                const char* chr = sam_hdr_tid2name(hdr, i);
+                write_stats(flag_counts->counts[i], chr, args.sample, flagstats);
+            }
+            if (args.unmapped) {
+                write_stats(flag_counts->unmapped, "*", args.sample, flagstats);
+            }
         }
     } else {
         // process given region
+        hts_idx_t *idx = sam_index_load(fp, args.bam[0]);
+        if (idx == 0){
+            fprintf(stderr, "Cannot find index file for '%s', which is required for processing by region.\n", args.bam[0]);
+            exit(EXIT_FAILURE);
+        }
         int start, end;
         char *chr = xalloc(strlen(args.region) + 1, sizeof(char), "chr");
         strcpy(chr, args.region);
@@ -162,18 +164,19 @@ int main(int argc, char *argv[]) {
             chr, start, end, true,
             args.read_group, args.tag_name, args.tag_value,
             flag_counts, args.unmapped);
-        write_stats(flag_counts, chr, args.sample, flagstats);
-        memset(flag_counts, 0, 8 * sizeof(size_t));
+        if (flag_counts != NULL) {
+            write_stats(flag_counts->counts[0], chr, args.sample, flagstats);
+        }
         free(chr);
+        hts_idx_destroy(idx);
     }
-    free(flag_counts);
-    
+
     if (flagstats != NULL) {
         fclose(flagstats);
     }
 
+    if (flag_counts != NULL) destroy_flag_stats(flag_counts);
     sam_hdr_destroy(hdr);
-    hts_idx_destroy(idx);
     hts_close(fp);
     if (p.pool) { // must be after fp
         hts_tpool_destroy(p.pool);
