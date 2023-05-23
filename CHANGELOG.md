@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.11.0]
 ### Changed
+- Bamstats can now be run without a BAM index.
 - `fastcat -H` now wraps all known header fields into SAM tags regardless of whether the header was "valid" (i.e. all expected fields were present) or not.
 
 ## [v0.10.2]
