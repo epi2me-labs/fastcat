@@ -70,35 +70,12 @@ void destroy_writer(writer writer) {
 void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
     int (*write)(void*, const char*, ...) = handle == stdout ? &fprintf : &gzprintf;
 
-    static const char* reheader_fmt = "@%s RD:Z:%s\tBC:Z:%s\tBA:Z:%s\tFC:Z:%s\tST:Z:%s\tRN:i:%lu\tCH:i:%lu\n%s\n+\n%s\n";
     static const char* wcomment_fmt = "@%s %s\n%s\n+\n%s\n";
     static const char* nocomment_fmt = "@%s\n%s\n+\n%s\n";
 
-    if (writer->reheader) {
-        // If we have all items, write individual tags, else just a generic comment tag.
-        // We could write out the explicit tags we have but a) thats effort b) any
-        // files from a device will have all these fields c) doesn't clearly indicate
-        // something went wrong d) allows us to pass on arbitrary information (so
-        // is probably how we should have done this in the first place).
-        if (meta->valid) {
-            (*write)(
-                handle, reheader_fmt,
-                seq->name.s, meta->runid, meta->barcode, meta->barcode_alias,
-                meta->flow_cell_id, meta->start_time, meta->read_number, meta->channel, 
-                seq->seq.s, seq->qual.s);
-        }
-        else {
-            char* buf = xalloc(seq->comment.l + 6, sizeof(char), "Temporary buffer");
-            strncpy(buf, "CO:Z:", 5);
-            strncat(buf, seq->comment.s, seq->comment.l);
-            // remove tabs to space (because multi-tags are tab delimited), this is fine because the existing comments should only contain space as delimiter (not information).
-            replace_char(buf, '\t', ' ');
-            (*write)(handle, wcomment_fmt, seq->name.s, buf, seq->seq.s, seq->qual.s);
-            free(buf);
-        }
-    }
-    else if (seq->comment.l > 0) {
-        (*write)(handle, wcomment_fmt, seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
+    if (seq->comment.l > 0) {
+        char* output_comment = writer->reheader ? meta->tags_str->s : seq->comment.s;
+        (*write)(handle, wcomment_fmt, seq->name.s, output_comment, seq->seq.s, seq->qual.s);
     }
     else {
         (*write)(handle, nocomment_fmt, seq->name.s, seq->seq.s, seq->qual.s);
