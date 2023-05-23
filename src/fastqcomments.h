@@ -1,7 +1,7 @@
 #ifndef FASTCAT_FASTQCOMMENTS_H
 #define FASTCAT_FASTQCOMMENTS_H
 
-#include "kstring.h"
+#include "htslib/kstring.h"
 
 typedef struct {
     char* comment;
@@ -13,13 +13,20 @@ typedef struct {
     char* start_time;
     size_t read_number;
     size_t channel;
-    size_t valid;
+    kstring_t* rest;
+    kstring_t* tags_str;
 } _read_meta;
 
 typedef _read_meta* read_meta;
 
-read_meta parse_read_meta(kstring_t comment);
 
+// constructor
+read_meta create_read_meta(const kstring_t* comment);
+
+// destructor
 void destroy_read_meta(read_meta meta);
+
+// parser
+read_meta parse_read_meta(kstring_t comment);
 
 #endif

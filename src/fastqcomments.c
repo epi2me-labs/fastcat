@@ -2,15 +2,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "kstring.h"
+#include "common.h"
 #include "fastqcomments.h"
 
-// The caller is responsible for calling destroy_read_meta on the returned object.
-read_meta parse_read_meta(kstring_t comment) {
-    char* data = calloc(comment.l + 1, sizeof(char));
-    strncpy(data, comment.s, comment.l);
-    read_meta meta = calloc(1, sizeof (_read_meta));
-    meta->comment = data;
+
+// like `ksprintf()`, but will put the optional delimiter `d` before the added string if
+// `s` is not empty (and skip the delimiter otherwise)
+#define ksprintf_with_opt_delim(s, d, fmt, ...) \
+    ksprintf(s, "%s" fmt, s->l == 0 ? "" : d, __VA_ARGS__)
+
+
+read_meta create_read_meta(const kstring_t* comment) {
+    read_meta meta = xalloc(1, sizeof(_read_meta), "meta");
+    meta->comment = xalloc(comment->l + 1, sizeof(char), "meta->comment");
+    strncpy(meta->comment, comment->s, comment->l);
     meta->runid = "";
     meta->flow_cell_id = "";
     meta->barcode = "";
@@ -19,56 +24,79 @@ read_meta parse_read_meta(kstring_t comment) {
     meta->start_time = "";
     meta->read_number = 0;
     meta->channel = 0;
-    meta->valid = 0;  // tracks all fields present
-    size_t nfields = 7;
+    meta->rest = xalloc(1, sizeof(kstring_t), "meta->rest");
+    ks_initialize(meta->rest);
+    meta->tags_str = xalloc(1, sizeof(kstring_t), "meta->tags_str");
+    ks_initialize(meta->tags_str);
 
-    char* pch;
-    pch = strtok(meta->comment, " =");
-    char* key = NULL;
+    return meta;
+}
+
+void destroy_read_meta(read_meta meta) {
+    free(meta->comment);
+    free(meta->rest->s);
+    free(meta->rest);
+    free(meta->tags_str->s);
+    free(meta->tags_str);
+    free(meta);
+}
+
+// The caller is responsible for calling destroy_read_meta on the returned object.
+read_meta parse_read_meta(kstring_t comment) {
+    read_meta meta = create_read_meta(&comment);
+
+    char *pch, *key, *value, *p1, *p2;
+    pch = strtok_r(meta->comment, " ", &p1);
     while (pch != NULL) {
-        if (key == NULL) {
-            key = pch;
-        }
-        else {
+        // split words on `=`
+        key = strtok_r(pch, "=", &p2);
+        value = strtok_r(NULL, "", &p2);
+
+        // if there was no `=` in the word, value will be NULL --> add word to `rest`
+        if (value == NULL) {
+            ksprintf_with_opt_delim(meta->rest, " ", "%s", key);
+        } else {
             if (!strcmp(key, "runid")) {
                 meta->runid = pch;
-                meta->valid += 1;
+                ksprintf_with_opt_delim(meta->tags_str, "\t", "RD:Z:%s", value);
             }
             else if (!strcmp(key, "flow_cell_id")) {
                 meta->flow_cell_id = pch;
-                meta->valid += 1;
+                ksprintf_with_opt_delim(meta->tags_str, "\t", "FC:Z:%s", value);
             }
             else if (!strcmp(key, "barcode")) {
                 meta->barcode = pch;
                 meta->ibarcode = atoi(pch+7);  // "unclassified" -> 0
-                meta->valid += 1;
+                ksprintf_with_opt_delim(meta->tags_str, "\t", "BC:Z:%s", value);
             }
             else if (!strcmp(key, "barcode_alias")) {
                 meta->barcode_alias = pch;
-                meta->valid += 1;
+                ksprintf_with_opt_delim(meta->tags_str, "\t", "BA:Z:%s", value);
             }
             else if (!strcmp(key, "read")) {
                 meta->read_number = atoi(pch);
-                meta->valid += 1;
+                ksprintf_with_opt_delim(meta->tags_str, "\t", "RN:i:%s", value);
             }
             else if (!strcmp(key, "ch")) {
                 meta->channel = atoi(pch);
-                meta->valid += 1;
+                ksprintf_with_opt_delim(meta->tags_str, "\t", "CH:i:%s", value);
             }
             else if (!strcmp(key, "start_time")) {
                 meta->start_time = pch;
-                meta->valid += 1;
+                ksprintf_with_opt_delim(meta->tags_str, "\t", "ST:Z:%s", value);
+            } else {
+                // the word was an unknown key-value pair --> add `key=val` to rest
+                ksprintf_with_opt_delim(meta->rest, " ", "%s=%s", key, value);
             }
-            key = NULL;
         }
-        pch = strtok(NULL, " =");
+        pch = strtok_r(NULL, " ", &p1);
     }
-    meta->valid = (meta->valid == nfields);
+
+    // if there is a `rest`, add it to the tags (also check that the first char of rest
+    // is not ' ', in which case something must have gone wrong)
+    if (meta->rest->l != 0 && meta->rest->s[0] != ' ') {
+        ksprintf_with_opt_delim(meta->tags_str, "\t", "CO:Z:%s", meta->rest->s);
+    }
+
     return meta;
-}
-
-
-void destroy_read_meta(read_meta meta) {
-    free(meta->comment);
-    free(meta);
 }

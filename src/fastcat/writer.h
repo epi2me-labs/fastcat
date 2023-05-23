@@ -6,7 +6,7 @@
 
 // this gives us kseq_t for below
 #ifndef KSEQ_DECLARED
-#include "../kseq.h"
+#include "htslib/kseq.h"
 KSEQ_DECLARE(gzFile)
 #endif
 

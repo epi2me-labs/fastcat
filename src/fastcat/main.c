@@ -8,7 +8,7 @@
 #include <string.h>
 #include <math.h>
 
-#include "../kseq.h"
+#include "htslib/kseq.h"
 KSEQ_INIT(gzFile, gzread)
 #define KSEQ_DECLARED
 
