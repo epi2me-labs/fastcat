@@ -8,7 +8,7 @@ All tools are distributed in a single package from our conda channel, they can b
 into an isolated conda environment with:
 
 ```
-mamba create -n fastcat -c conda-forge -c bioconda -c epi2melabs fastcat
+mamba create -n fastcat -c conda-forge -c bioconda -c nanoporetech fastcat
 ```
 
 #### Compilation
