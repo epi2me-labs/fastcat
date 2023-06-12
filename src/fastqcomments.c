@@ -21,7 +21,7 @@ read_meta create_read_meta(const kstring_t* comment) {
     meta->barcode = "";
     meta->ibarcode = 0;
     meta->barcode_alias = "";
-    meta->start_time = "";
+    meta->start_time = "2000-01-01T00:00:00Z";
     meta->read_number = 0;
     meta->channel = 0;
     meta->rest = xalloc(1, sizeof(kstring_t), "meta->rest");
@@ -57,32 +57,32 @@ read_meta parse_read_meta(kstring_t comment) {
             ksprintf_with_opt_delim(meta->rest, " ", "%s", key);
         } else {
             if (!strcmp(key, "runid")) {
-                meta->runid = pch;
+                meta->runid = value;
                 ksprintf_with_opt_delim(meta->tags_str, "\t", "RD:Z:%s", value);
             }
             else if (!strcmp(key, "flow_cell_id")) {
-                meta->flow_cell_id = pch;
+                meta->flow_cell_id = value;
                 ksprintf_with_opt_delim(meta->tags_str, "\t", "FC:Z:%s", value);
             }
             else if (!strcmp(key, "barcode")) {
-                meta->barcode = pch;
-                meta->ibarcode = atoi(pch+7);  // "unclassified" -> 0
+                meta->barcode = value;
+                meta->ibarcode = atoi(value+7);  // "unclassified" -> 0
                 ksprintf_with_opt_delim(meta->tags_str, "\t", "BC:Z:%s", value);
             }
             else if (!strcmp(key, "barcode_alias")) {
-                meta->barcode_alias = pch;
+                meta->barcode_alias = value;
                 ksprintf_with_opt_delim(meta->tags_str, "\t", "BA:Z:%s", value);
             }
             else if (!strcmp(key, "read")) {
-                meta->read_number = atoi(pch);
+                meta->read_number = atoi(value);
                 ksprintf_with_opt_delim(meta->tags_str, "\t", "RN:i:%s", value);
             }
             else if (!strcmp(key, "ch")) {
-                meta->channel = atoi(pch);
+                meta->channel = atoi(value);
                 ksprintf_with_opt_delim(meta->tags_str, "\t", "CH:i:%s", value);
             }
             else if (!strcmp(key, "start_time")) {
-                meta->start_time = pch;
+                meta->start_time = value;
                 ksprintf_with_opt_delim(meta->tags_str, "\t", "ST:Z:%s", value);
             } else {
                 // the word was an unknown key-value pair --> add `key=val` to rest
