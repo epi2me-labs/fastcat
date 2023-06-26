@@ -1,0 +1,6 @@
+filename	sample_name	n_seqs	n_bases	min_length	max_length	mean_quality
+../data/bc1.fastq.gz	sample	10	5904	281	878	12.86
+../data/bc0.fastq.gz	sample	10	4599	191	965	9.86
+../data/bc2.fastq.gz	sample	10	5812	259	990	12.19
+../data/bcEmpty.fastq.gz	sample	10	4599	191	965	9.86
+../data/bcMangled.fastq.gz	sample	20	9990	470	517	13.27
