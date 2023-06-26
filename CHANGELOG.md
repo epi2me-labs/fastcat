@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [v0.11.2]
+### Changed
+- Reverted the change of the default value of the `start_time` field to an empty string (it had been set to `"2000-01-01T00:00:00Z"` in v0.11.1).
+
 ## [v0.11.1]
 ### Fixed
 - Bug in `fastcat` per-read summary stats.
