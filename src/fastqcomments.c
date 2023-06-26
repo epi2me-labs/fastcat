@@ -21,7 +21,7 @@ read_meta create_read_meta(const kstring_t* comment) {
     meta->barcode = "";
     meta->ibarcode = 0;
     meta->barcode_alias = "";
-    meta->start_time = "2000-01-01T00:00:00Z";
+    meta->start_time = "";
     meta->read_number = 0;
     meta->channel = 0;
     meta->rest = xalloc(1, sizeof(kstring_t), "meta->rest");
