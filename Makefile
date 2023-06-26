@@ -107,3 +107,17 @@ mem_check_bamindex-fetch: bamindex test/bamindex/400.bam.bci
 
 .PHONY: mem_check_bamindex
 mem_check_bamindex: mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamindex-fetch
+
+.PHONY: regression_test_fastcat
+regression_test_fastcat: fastcat
+	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
+	mkdir test/test-tmp && \
+	cd test/test-tmp && \
+	../../fastcat ../data -s sample -H -f per-file-stats.tsv -r per-read-stats.tsv \
+		| paste -d '|' - - - - | sort | tr '|' '\n' | gzip > concat.sorted.fastq.gz && \
+	bash -c 'diff <(sort per-file-stats.tsv) \
+		<(sort ../fastcat_expected_results/per-file-stats.tsv)' && \
+	bash -c 'diff <(sort per-read-stats.tsv) \
+		<(sort ../fastcat_expected_results/per-read-stats.tsv)' && \
+	zdiff concat.sorted.fastq.gz ../fastcat_expected_results/concat.sorted.fastq.gz
+	rm -r test/test-tmp
