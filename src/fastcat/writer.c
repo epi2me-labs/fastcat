@@ -37,7 +37,7 @@ writer initialize_writer(char* output_dir, char* perread, char* perfile, char* s
      }
      if (perread != NULL) {
         writer->perread = fopen(perread, "w");
-        fprintf(writer->perread, "read_id\tfilename\t");
+        fprintf(writer->perread, "read_id\tfilename\trunid\t");
         if (writer->sample != NULL) fprintf(writer->perread, "sample_name\t");
         fprintf(writer->perread, "read_length\tmean_quality\tchannel\tread_number\tstart_time\n");
      }
@@ -97,8 +97,9 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
     if(writer->perread != NULL) {
         // sample has tab pre-added in init
         char* s = writer->sample == NULL ? "" : writer->sample;
-        fprintf(writer->perread, "%s\t%s\t%s%zu\t%1.2f\t%lu\t%lu\t%s\n",
-            seq->name.s, fname, s, seq->seq.l, mean_q, meta->channel, meta->read_number, meta->start_time);
+        fprintf(writer->perread, "%s\t%s\t%s\t%s%zu\t%1.2f\t%lu\t%lu\t%s\n",
+            seq->name.s, fname, meta->runid, s, seq->seq.l, \
+                mean_q, meta->channel, meta->read_number, meta->start_time);
     }
 
     if (writer->output == NULL) {

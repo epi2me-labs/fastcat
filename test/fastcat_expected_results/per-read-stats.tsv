@@ -1,61 +1,61 @@
-read_id	filename	sample_name	read_length	mean_quality	channel	read_number	start_time
-959b96ca-5864-427a-ab22-53154ecb3511	../data/bc1.fastq.gz	sample	672	12.98	81	15	2021-04-20T17:00:40Z
-28f9c419-4d76-462e-9151-a746969ab2f2	../data/bc1.fastq.gz	sample	694	10.05	412	19	2021-04-20T17:00:41Z
-cad9e07d-b2b2-47ad-a51c-2b5727a88552	../data/bc1.fastq.gz	sample	562	12.94	363	18	2021-04-20T17:00:41Z
-4916f252-0f9d-428d-94af-69b42e4734aa	../data/bc1.fastq.gz	sample	283	8.91	210	33	2021-04-20T17:00:42Z
-3533a366-8bdd-4a12-82ec-280562b04527	../data/bc1.fastq.gz	sample	852	14.23	222	26	2021-04-20T17:00:42Z
-533ce526-194b-43af-91e8-13c6e95a7645	../data/bc1.fastq.gz	sample	449	15.32	396	35	2021-04-20T17:00:43Z
-450143b6-075b-4bd7-8585-cc9ba8128c02	../data/bc1.fastq.gz	sample	531	14.09	503	61	2021-04-20T17:00:44Z
-efe4925d-b0b4-4939-b3cb-7af80a70c036	../data/bc1.fastq.gz	sample	281	12.37	130	40	2021-04-20T17:00:45Z
-2b1179cc-be33-4d83-b902-7ccdf9c03f38	../data/bc1.fastq.gz	sample	702	13.34	328	78	2021-04-20T17:00:48Z
-b0de027e-fc5f-481d-a4e6-3a1b8521d39c	../data/bc1.fastq.gz	sample	878	14.34	185	69	2021-04-20T17:00:48Z
-32e13a1c-4171-4706-b6ce-a32c0f65fa16	../data/bc0.fastq.gz	sample	326	12.31	282	9	2021-04-20T17:00:40Z
-b87f011e-b802-4993-8f56-fd240b2e784f	../data/bc0.fastq.gz	sample	407	9.13	213	19	2021-04-20T17:00:41Z
-6f64aedb-bb8e-4777-b494-43e661841e06	../data/bc0.fastq.gz	sample	355	9.98	67	13	2021-04-20T17:00:41Z
-c372fb2c-dd45-4feb-81b2-c167c3d1ce93	../data/bc0.fastq.gz	sample	317	8.14	337	18	2021-04-20T17:00:41Z
-18d04e8d-2816-4986-8e1b-e5be676837fc	../data/bc0.fastq.gz	sample	965	7.57	507	18	2021-04-20T17:00:41Z
-aa81ca34-9310-42fd-9893-33112e283acc	../data/bc0.fastq.gz	sample	691	12.05	244	19	2021-04-20T17:00:41Z
-c746fb2f-78f6-4a0a-9c75-39465c855c8d	../data/bc0.fastq.gz	sample	191	8.99	379	35	2021-04-20T17:00:42Z
-99a108d2-8e72-42bf-bebf-ad8373cfe450	../data/bc0.fastq.gz	sample	456	8.61	177	38	2021-04-20T17:00:42Z
-5d01447f-f17b-4acb-b87e-d60d8aeeccc8	../data/bc0.fastq.gz	sample	659	12.16	417	21	2021-04-20T17:00:41Z
-b0279f8e-e988-44c5-895f-201b68217623	../data/bc0.fastq.gz	sample	232	9.62	435	32	2021-04-20T17:00:43Z
-1d0fded8-95e7-4b53-858f-8391da5d6537	../data/bc2.fastq.gz	sample	259	7.77	190	13	2021-04-20T17:00:40Z
-0e9a279b-b513-4ecf-96d9-7403749cb7e8	../data/bc2.fastq.gz	sample	772	10.60	216	41	2021-04-20T17:00:43Z
-50664f3b-7ba8-4d9e-b710-8f14cbec660f	../data/bc2.fastq.gz	sample	485	12.28	143	65	2021-04-20T17:00:45Z
-6a9931a5-783b-4ffa-9a98-c9e3bd8c985e	../data/bc2.fastq.gz	sample	357	13.76	236	32	2021-04-20T17:00:45Z
-09ab577f-c1d9-4fad-b08a-67de01d26b12	../data/bc2.fastq.gz	sample	728	13.02	469	54	2021-04-20T17:00:45Z
-a243792f-4322-4b22-b99f-fb5163642791	../data/bc2.fastq.gz	sample	990	12.54	324	48	2021-04-20T17:00:45Z
-c1ee6f3c-6c2e-4701-a8e9-567557463305	../data/bc2.fastq.gz	sample	632	13.21	62	48	2021-04-20T17:00:46Z
-ed89256b-9cce-45b4-866d-c7033fc6f901	../data/bc2.fastq.gz	sample	367	12.43	279	82	2021-04-20T17:00:46Z
-3124fa05-5b9a-4b78-ab24-168c4110ee8b	../data/bc2.fastq.gz	sample	712	15.69	442	67	2021-04-20T17:00:46Z
-8e042016-4de9-4d95-ae78-d671855c9416	../data/bc2.fastq.gz	sample	510	10.63	269	78	2021-04-20T17:00:47Z
-32e13a1c-4171-4706-b6ce-a32c0f65fa16	../data/bcEmpty.fastq.gz	sample	326	12.31	0	0	
-b87f011e-b802-4993-8f56-fd240b2e784f	../data/bcEmpty.fastq.gz	sample	407	9.13	0	0	
-6f64aedb-bb8e-4777-b494-43e661841e06	../data/bcEmpty.fastq.gz	sample	355	9.98	0	0	
-c372fb2c-dd45-4feb-81b2-c167c3d1ce93	../data/bcEmpty.fastq.gz	sample	317	8.14	0	0	
-18d04e8d-2816-4986-8e1b-e5be676837fc	../data/bcEmpty.fastq.gz	sample	965	7.57	0	0	
-aa81ca34-9310-42fd-9893-33112e283acc	../data/bcEmpty.fastq.gz	sample	691	12.05	0	0	
-c746fb2f-78f6-4a0a-9c75-39465c855c8d	../data/bcEmpty.fastq.gz	sample	191	8.99	0	0	
-99a108d2-8e72-42bf-bebf-ad8373cfe450	../data/bcEmpty.fastq.gz	sample	456	8.61	0	0	
-5d01447f-f17b-4acb-b87e-d60d8aeeccc8	../data/bcEmpty.fastq.gz	sample	659	12.16	0	0	
-b0279f8e-e988-44c5-895f-201b68217623	../data/bcEmpty.fastq.gz	sample	232	9.62	0	0	
-SRR12480552.4	../data/bcMangled.fastq.gz	sample	489	13.57	0	0	
-SRR12480552.12	../data/bcMangled.fastq.gz	sample	470	10.86	0	0	
-SRR12480552.6	../data/bcMangled.fastq.gz	sample	499	12.98	0	0	
-SRR12480552.25	../data/bcMangled.fastq.gz	sample	517	15.36	0	0	
-SRR12480552.30	../data/bcMangled.fastq.gz	sample	486	13.94	0	0	
-SRR12480552.33	../data/bcMangled.fastq.gz	sample	502	11.66	0	0	
-SRR12480552.48	../data/bcMangled.fastq.gz	sample	512	14.60	0	0	
-SRR12480552.69	../data/bcMangled.fastq.gz	sample	493	14.11	0	0	
-SRR12480552.75	../data/bcMangled.fastq.gz	sample	515	10.33	0	0	
-SRR12480552.13	../data/bcMangled.fastq.gz	sample	512	15.31	0	0	
-SRR12480552.4	../data/bcMangled.fastq.gz	sample	489	13.57	0	0	
-SRR12480552.12	../data/bcMangled.fastq.gz	sample	470	10.86	0	0	
-SRR12480552.6	../data/bcMangled.fastq.gz	sample	499	12.98	0	0	
-SRR12480552.25	../data/bcMangled.fastq.gz	sample	517	15.36	0	0	
-SRR12480552.30	../data/bcMangled.fastq.gz	sample	486	13.94	0	0	
-SRR12480552.33	../data/bcMangled.fastq.gz	sample	502	11.66	0	0	
-SRR12480552.48	../data/bcMangled.fastq.gz	sample	512	14.60	0	0	
-SRR12480552.69	../data/bcMangled.fastq.gz	sample	493	14.11	0	0	
-SRR12480552.75	../data/bcMangled.fastq.gz	sample	515	10.33	0	0	
-SRR12480552.13	../data/bcMangled.fastq.gz	sample	512	15.32	0	0	
+read_id	filename	runid	sample_name	read_length	mean_quality	channel	read_number	start_time
+959b96ca-5864-427a-ab22-53154ecb3511	../data/bc1.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	672	12.98	81	15	2021-04-20T17:00:40Z
+28f9c419-4d76-462e-9151-a746969ab2f2	../data/bc1.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	694	10.05	412	19	2021-04-20T17:00:41Z
+cad9e07d-b2b2-47ad-a51c-2b5727a88552	../data/bc1.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	562	12.94	363	18	2021-04-20T17:00:41Z
+4916f252-0f9d-428d-94af-69b42e4734aa	../data/bc1.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	283	8.91	210	33	2021-04-20T17:00:42Z
+3533a366-8bdd-4a12-82ec-280562b04527	../data/bc1.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	852	14.23	222	26	2021-04-20T17:00:42Z
+533ce526-194b-43af-91e8-13c6e95a7645	../data/bc1.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	449	15.32	396	35	2021-04-20T17:00:43Z
+450143b6-075b-4bd7-8585-cc9ba8128c02	../data/bc1.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	531	14.09	503	61	2021-04-20T17:00:44Z
+efe4925d-b0b4-4939-b3cb-7af80a70c036	../data/bc1.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	281	12.37	130	40	2021-04-20T17:00:45Z
+2b1179cc-be33-4d83-b902-7ccdf9c03f38	../data/bc1.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	702	13.34	328	78	2021-04-20T17:00:48Z
+b0de027e-fc5f-481d-a4e6-3a1b8521d39c	../data/bc1.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	878	14.34	185	69	2021-04-20T17:00:48Z
+32e13a1c-4171-4706-b6ce-a32c0f65fa16	../data/bc0.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	326	12.31	282	9	2021-04-20T17:00:40Z
+b87f011e-b802-4993-8f56-fd240b2e784f	../data/bc0.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	407	9.13	213	19	2021-04-20T17:00:41Z
+6f64aedb-bb8e-4777-b494-43e661841e06	../data/bc0.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	355	9.98	67	13	2021-04-20T17:00:41Z
+c372fb2c-dd45-4feb-81b2-c167c3d1ce93	../data/bc0.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	317	8.14	337	18	2021-04-20T17:00:41Z
+18d04e8d-2816-4986-8e1b-e5be676837fc	../data/bc0.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	965	7.57	507	18	2021-04-20T17:00:41Z
+aa81ca34-9310-42fd-9893-33112e283acc	../data/bc0.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	691	12.05	244	19	2021-04-20T17:00:41Z
+c746fb2f-78f6-4a0a-9c75-39465c855c8d	../data/bc0.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	191	8.99	379	35	2021-04-20T17:00:42Z
+99a108d2-8e72-42bf-bebf-ad8373cfe450	../data/bc0.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	456	8.61	177	38	2021-04-20T17:00:42Z
+5d01447f-f17b-4acb-b87e-d60d8aeeccc8	../data/bc0.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	659	12.16	417	21	2021-04-20T17:00:41Z
+b0279f8e-e988-44c5-895f-201b68217623	../data/bc0.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	232	9.62	435	32	2021-04-20T17:00:43Z
+1d0fded8-95e7-4b53-858f-8391da5d6537	../data/bc2.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	259	7.77	190	13	2021-04-20T17:00:40Z
+0e9a279b-b513-4ecf-96d9-7403749cb7e8	../data/bc2.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	772	10.60	216	41	2021-04-20T17:00:43Z
+50664f3b-7ba8-4d9e-b710-8f14cbec660f	../data/bc2.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	485	12.28	143	65	2021-04-20T17:00:45Z
+6a9931a5-783b-4ffa-9a98-c9e3bd8c985e	../data/bc2.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	357	13.76	236	32	2021-04-20T17:00:45Z
+09ab577f-c1d9-4fad-b08a-67de01d26b12	../data/bc2.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	728	13.02	469	54	2021-04-20T17:00:45Z
+a243792f-4322-4b22-b99f-fb5163642791	../data/bc2.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	990	12.54	324	48	2021-04-20T17:00:45Z
+c1ee6f3c-6c2e-4701-a8e9-567557463305	../data/bc2.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	632	13.21	62	48	2021-04-20T17:00:46Z
+ed89256b-9cce-45b4-866d-c7033fc6f901	../data/bc2.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	367	12.43	279	82	2021-04-20T17:00:46Z
+3124fa05-5b9a-4b78-ab24-168c4110ee8b	../data/bc2.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	712	15.69	442	67	2021-04-20T17:00:46Z
+8e042016-4de9-4d95-ae78-d671855c9416	../data/bc2.fastq.gz	5a21d8a6996146deceeaea3784244c52741cae93	sample	510	10.63	269	78	2021-04-20T17:00:47Z
+32e13a1c-4171-4706-b6ce-a32c0f65fa16	../data/bcEmpty.fastq.gz		sample	326	12.31	0	0	
+b87f011e-b802-4993-8f56-fd240b2e784f	../data/bcEmpty.fastq.gz		sample	407	9.13	0	0	
+6f64aedb-bb8e-4777-b494-43e661841e06	../data/bcEmpty.fastq.gz		sample	355	9.98	0	0	
+c372fb2c-dd45-4feb-81b2-c167c3d1ce93	../data/bcEmpty.fastq.gz		sample	317	8.14	0	0	
+18d04e8d-2816-4986-8e1b-e5be676837fc	../data/bcEmpty.fastq.gz		sample	965	7.57	0	0	
+aa81ca34-9310-42fd-9893-33112e283acc	../data/bcEmpty.fastq.gz		sample	691	12.05	0	0	
+c746fb2f-78f6-4a0a-9c75-39465c855c8d	../data/bcEmpty.fastq.gz		sample	191	8.99	0	0	
+99a108d2-8e72-42bf-bebf-ad8373cfe450	../data/bcEmpty.fastq.gz		sample	456	8.61	0	0	
+5d01447f-f17b-4acb-b87e-d60d8aeeccc8	../data/bcEmpty.fastq.gz		sample	659	12.16	0	0	
+b0279f8e-e988-44c5-895f-201b68217623	../data/bcEmpty.fastq.gz		sample	232	9.62	0	0	
+SRR12480552.4	../data/bcMangled.fastq.gz	0000000000000000000000000000000000000000	sample	489	13.57	0	0	
+SRR12480552.12	../data/bcMangled.fastq.gz	0000000000000000000000000000000000000000	sample	470	10.86	0	0	
+SRR12480552.6	../data/bcMangled.fastq.gz	0000000000000000000000000000000000000000	sample	499	12.98	0	0	
+SRR12480552.25	../data/bcMangled.fastq.gz	0000000000000000000000000000000000000000	sample	517	15.36	0	0	
+SRR12480552.30	../data/bcMangled.fastq.gz	0000000000000000000000000000000000000000	sample	486	13.94	0	0	
+SRR12480552.33	../data/bcMangled.fastq.gz	0000000000000000000000000000000000000000	sample	502	11.66	0	0	
+SRR12480552.48	../data/bcMangled.fastq.gz	0000000000000000000000000000000000000000	sample	512	14.60	0	0	
+SRR12480552.69	../data/bcMangled.fastq.gz	0000000000000000000000000000000000000000	sample	493	14.11	0	0	
+SRR12480552.75	../data/bcMangled.fastq.gz	0000000000000000000000000000000000000000	sample	515	10.33	0	0	
+SRR12480552.13	../data/bcMangled.fastq.gz	0000000000000000000000000000000000000000	sample	512	15.31	0	0	
+SRR12480552.4	../data/bcMangled.fastq.gz		sample	489	13.57	0	0	
+SRR12480552.12	../data/bcMangled.fastq.gz		sample	470	10.86	0	0	
+SRR12480552.6	../data/bcMangled.fastq.gz		sample	499	12.98	0	0	
+SRR12480552.25	../data/bcMangled.fastq.gz		sample	517	15.36	0	0	
+SRR12480552.30	../data/bcMangled.fastq.gz		sample	486	13.94	0	0	
+SRR12480552.33	../data/bcMangled.fastq.gz		sample	502	11.66	0	0	
+SRR12480552.48	../data/bcMangled.fastq.gz		sample	512	14.60	0	0	
+SRR12480552.69	../data/bcMangled.fastq.gz		sample	493	14.11	0	0	
+SRR12480552.75	../data/bcMangled.fastq.gz		sample	515	10.33	0	0	
+SRR12480552.13	../data/bcMangled.fastq.gz		sample	512	15.32	0	0	

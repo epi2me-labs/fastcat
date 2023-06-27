@@ -18,13 +18,13 @@
 void write_header(const char* sample) {
     if (sample == NULL) {
         fprintf(stdout,
-            "name\tref\tcoverage\tref_coverage\t"\
+            "name\trunid\tref\tcoverage\tref_coverage\t"\
             "qstart\tqend\trstart\trend\t"\
             "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\t"\
             "match\tins\tdel\tsub\tiden\tacc\n");
     } else {
         fprintf(stdout,
-            "name\tsample_name\tref\tcoverage\tref_coverage\t"\
+            "name\trunid\tsample_name\tref\tcoverage\tref_coverage\t"\
             "qstart\tqend\trstart\trend\t"\
             "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\t"\
             "match\tins\tdel\tsub\tiden\tacc\n");

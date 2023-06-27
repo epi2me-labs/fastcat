@@ -173,8 +173,15 @@ void process_bams(
     int res;
     bam1_t *b = bam_init1();
     uint8_t *tag;
+    char *runid = "";
 
     while ((res = read_bam(bam, b) >= 0)) {
+        // get run ID
+        tag = bam_aux_get((const bam1_t*) b, "RD");
+        if (tag != NULL){
+            runid = bam_aux2Z(tag);
+        }
+
         // write a record for unmapped/unplaced
         if (b->core.flag & BAM_FUNMAP){
             if (unmapped) {
@@ -185,11 +192,11 @@ void process_bams(
                 float mean_quality = mean_qual_from_bam(bam_get_qual(b), read_length);
                 if (sample == NULL) {
                     fprintf(stdout,
-                        "%s\t*\tnan\tnan\t" \
+                        "%s\t%s\t*\tnan\tnan\t" \
                         "nan\tnan\tnan\tnan\t" \
                         "0\t*\t0\t%u\t%.3f\t" \
                         "0\t0\t0\t0\tnan\tnan\n",
-                        qname, //chr, coverage, ref_cover,
+                        qname, runid, //chr, coverage, ref_cover,
                         //qstart, qend, rstart, rend,
                         //aligned_ref_len, direction, length,
                             read_length, mean_quality
@@ -197,11 +204,11 @@ void process_bams(
                     );
                 } else {
                     fprintf(stdout,
-                        "%s\t%s\t*\tnan\tnan\t" \
+                        "%s\t%s\t%s\t*\tnan\tnan\t" \
                         "nan\tnan\tnan\tnan\t" \
                         "0\t*\t0\t%u\t%.3f\t" \
                         "0\t0\t0\t0\tnan\tnan\n",
-                        qname, sample, //chr, coverage, ref_cover,
+                        qname, runid, sample, //chr, coverage, ref_cover,
                         //qstart, qend, rstart, rend,
                         //aligned_ref_len, direction, length,
                             read_length, mean_quality
@@ -231,7 +238,7 @@ void process_bams(
 
         // get NM tag
         tag = bam_aux_get((const bam1_t*) b, "NM");
-        if (tag == NULL){ // tag isn't present or is currupt
+        if (tag == NULL){ // tag isn't present or is corrupt
             fprintf(stderr, "Read '%s' does not contain 'NM' tag.\n", qname);
             exit(EXIT_FAILURE);
         }
@@ -273,24 +280,24 @@ void process_bams(
 
         if (sample == NULL) {
             fprintf(stdout,
-                "%s\t%s\t" \
+                "%s\t%s\t%s\t" \
                 "%.4f\t%.4f\t" \
                 "%lu\t%lu\t%lu\t%lu\t" \
                 "%lu\t%c\t%lu\t%u\t%.3f\t" \
                 "%lu\t%lu\t%lu\t%lu\t%.3f\t%.3f\n",
-                qname, (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid),
+                qname, runid, (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid),
                 coverage, ref_cover,
                 qstart, qend, rstart, rend,
                 aligned_ref_len, direction, length, read_length, mean_quality,
                 match, ins, delt, sub, iden, acc);
         } else {
             fprintf(stdout,
-                "%s\t%s\t%s\t" \
+                "%s\t%s\t%s\t%s\t" \
                 "%.4f\t%.4f\t" \
                 "%lu\t%lu\t%lu\t%lu\t" \
                 "%lu\t%c\t%lu\t%u\t%.3f\t" \
                 "%lu\t%lu\t%lu\t%lu\t%.3f\t%.3f\n",
-                qname, sample, (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid),
+                qname, runid, sample, (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid),
                 coverage, ref_cover,
                 qstart, qend, rstart, rend,
                 aligned_ref_len, direction, length, read_length, mean_quality,

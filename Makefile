@@ -114,10 +114,13 @@ regression_test_fastcat: fastcat
 	mkdir test/test-tmp && \
 	cd test/test-tmp && \
 	../../fastcat ../data -s sample -H -f per-file-stats.tsv -r per-read-stats.tsv \
-		| paste -d '|' - - - - | sort | tr '|' '\n' | gzip > concat.sorted.fastq.gz && \
+		> concat.sorted.fastq && \
 	bash -c 'diff <(sort per-file-stats.tsv) \
 		<(sort ../fastcat_expected_results/per-file-stats.tsv)' && \
 	bash -c 'diff <(sort per-read-stats.tsv) \
 		<(sort ../fastcat_expected_results/per-read-stats.tsv)' && \
-	zdiff concat.sorted.fastq.gz ../fastcat_expected_results/concat.sorted.fastq.gz
+	bash -c "diff \
+		<(cat concat.sorted.fastq | paste -d '|' - - - - | sort | tr '|' '\n') \
+		<(zcat ../fastcat_expected_results/concat.sorted.fastq.gz | \
+			paste -d '|' - - - - | sort | tr '|' '\n')"
 	rm -r test/test-tmp
