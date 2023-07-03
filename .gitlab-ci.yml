@@ -43,6 +43,8 @@ deploy-checks:
     script:
         - !reference [.check, argp-c-version]
         - !reference [.check, changelog]
+        - export LICENSE_FILE="BSD-4-CLAUSE"
+        - !reference [.check, license]
     rules:
         - if: '$CI_COMMIT_TAG =~ /^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$/'
 
