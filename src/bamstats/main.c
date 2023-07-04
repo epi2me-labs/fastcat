@@ -20,13 +20,13 @@ void write_header(const char* sample) {
         fprintf(stdout,
             "name\trunid\tref\tcoverage\tref_coverage\t"\
             "qstart\tqend\trstart\trend\t"\
-            "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\t"\
+            "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\tstart_time\t"\
             "match\tins\tdel\tsub\tiden\tacc\n");
     } else {
         fprintf(stdout,
             "name\trunid\tsample_name\tref\tcoverage\tref_coverage\t"\
             "qstart\tqend\trstart\trend\t"\
-            "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\t"\
+            "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\tstart_time\t"\
             "match\tins\tdel\tsub\tiden\tacc\n");
     }
 }

@@ -173,13 +173,21 @@ void process_bams(
     int res;
     bam1_t *b = bam_init1();
     uint8_t *tag;
-    char *runid = "";
+    char *runid;
+    char *start_time;
 
     while ((res = read_bam(bam, b) >= 0)) {
         // get run ID
+        runid = "";
         tag = bam_aux_get((const bam1_t*) b, "RD");
         if (tag != NULL){
             runid = bam_aux2Z(tag);
+        }
+        // get start time
+        start_time = "";
+        tag = bam_aux_get((const bam1_t*) b, "ST");
+        if (tag != NULL){
+            start_time = bam_aux2Z(tag);
         }
 
         // write a record for unmapped/unplaced
@@ -194,24 +202,26 @@ void process_bams(
                     fprintf(stdout,
                         "%s\t%s\t*\tnan\tnan\t" \
                         "nan\tnan\tnan\tnan\t" \
-                        "0\t*\t0\t%u\t%.3f\t" \
+                        "0\t*\t0\t" \
+                        "%u\t%.2f\t%s\t" \
                         "0\t0\t0\t0\tnan\tnan\n",
                         qname, runid, //chr, coverage, ref_cover,
                         //qstart, qend, rstart, rend,
                         //aligned_ref_len, direction, length,
-                            read_length, mean_quality
+                        read_length, mean_quality, start_time
                         //match, ins, delt, sub, iden, acc
                     );
                 } else {
                     fprintf(stdout,
                         "%s\t%s\t%s\t*\tnan\tnan\t" \
                         "nan\tnan\tnan\tnan\t" \
-                        "0\t*\t0\t%u\t%.3f\t" \
+                        "0\t*\t0\t" \
+                        "%u\t%.2f\t%s\t" \
                         "0\t0\t0\t0\tnan\tnan\n",
                         qname, runid, sample, //chr, coverage, ref_cover,
                         //qstart, qend, rstart, rend,
                         //aligned_ref_len, direction, length,
-                            read_length, mean_quality
+                        read_length, mean_quality, start_time
                         //match, ins, delt, sub, iden, acc
                     );
                 }
@@ -283,24 +293,24 @@ void process_bams(
                 "%s\t%s\t%s\t" \
                 "%.4f\t%.4f\t" \
                 "%lu\t%lu\t%lu\t%lu\t" \
-                "%lu\t%c\t%lu\t%u\t%.3f\t" \
-                "%lu\t%lu\t%lu\t%lu\t%.3f\t%.3f\n",
+                "%lu\t%c\t%lu\t%u\t%.2f\t%s\t" \
+                "%lu\t%lu\t%lu\t%lu\t%.2f\t%.2f\n",
                 qname, runid, (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid),
                 coverage, ref_cover,
                 qstart, qend, rstart, rend,
-                aligned_ref_len, direction, length, read_length, mean_quality,
+                aligned_ref_len, direction, length, read_length, mean_quality, start_time,
                 match, ins, delt, sub, iden, acc);
         } else {
             fprintf(stdout,
                 "%s\t%s\t%s\t%s\t" \
                 "%.4f\t%.4f\t" \
                 "%lu\t%lu\t%lu\t%lu\t" \
-                "%lu\t%c\t%lu\t%u\t%.3f\t" \
-                "%lu\t%lu\t%lu\t%lu\t%.3f\t%.3f\n",
+                "%lu\t%c\t%lu\t%u\t%.2f\t%s\t" \
+                "%lu\t%lu\t%lu\t%lu\t%.2f\t%.2f\n",
                 qname, runid, sample, (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid),
                 coverage, ref_cover,
                 qstart, qend, rstart, rend,
-                aligned_ref_len, direction, length, read_length, mean_quality,
+                aligned_ref_len, direction, length, read_length, mean_quality, start_time,
                 match, ins, delt, sub, iden, acc);
         }
 		free(stats);

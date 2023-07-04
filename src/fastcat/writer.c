@@ -97,7 +97,7 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
     if(writer->perread != NULL) {
         // sample has tab pre-added in init
         char* s = writer->sample == NULL ? "" : writer->sample;
-        fprintf(writer->perread, "%s\t%s\t%s\t%s%zu\t%1.2f\t%lu\t%lu\t%s\n",
+        fprintf(writer->perread, "%s\t%s\t%s\t%s%zu\t%.2f\t%lu\t%lu\t%s\n",
             seq->name.s, fname, meta->runid, s, seq->seq.l, \
                 mean_q, meta->channel, meta->read_number, meta->start_time);
     }
