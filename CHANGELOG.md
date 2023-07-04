@@ -9,15 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Column with start time from MinKNOW header to `bamstats` output.
 
 ### Changed
-- `bamstats` now prints `mean_quality`, `iden`, and `acc` values with 2 decimal places instead of 3 (the reason being that `fastcat` already uses 2 decimal places for `mean_quality` and more precision is unnecessary).
+- `bamstats` now prints `mean_quality`, `iden`, and `acc` values with 2 decimal
+  places instead of 3 (the reason being that `fastcat` already uses 2 decimal
+  places for `mean_quality` and more precision is unnecessary).
 
 ## [v0.12.0]
 ### Added
-- Column with run ID from MinKNOW header to `fastcat` per-read stats and `bamstats` output.
+- Column with run ID from MinKNOW header to `fastcat` per-read stats and
+  `bamstats` output.
 
 ## [v0.11.2]
 ### Changed
-- Reverted the change of the default value of the `start_time` field to an empty string (it had been set to `"2000-01-01T00:00:00Z"` in v0.11.1).
+- Reverted the change of the default value of the `start_time` field to an empty
+  string (it had been set to `"2000-01-01T00:00:00Z"` in v0.11.1).
 
 ## [v0.11.1]
 ### Fixed
@@ -26,7 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.11.0]
 ### Changed
 - Bamstats can now be run without a BAM index.
-- `fastcat -H` now wraps all known header fields into SAM tags regardless of whether the header was "valid" (i.e. all expected fields were present) or not.
+- `fastcat -H` now wraps all known header fields into SAM tags regardless of
+  whether the header was "valid" (i.e. all expected fields were present) or not.
 
 ## [v0.10.2]
 ### Added
