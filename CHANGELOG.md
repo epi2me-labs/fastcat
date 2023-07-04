@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.13.0]
+### Added
+- Column with start time from MinKNOW header to `bamstats` output.
+
+### Changed
+- `bamstats` now prints `mean_quality`, `iden`, and `acc` values with 2 decimal places instead of 3 (the reason being that `fastcat` already uses 2 decimal places for `mean_quality` and more precision is unnecessary).
+
 ## [v0.12.0]
 ### Added
 - Column with run ID from MinKNOW header to `fastcat` per-read stats and `bamstats` output.
