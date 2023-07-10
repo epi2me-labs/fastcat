@@ -150,7 +150,14 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
     if(writer->perfile != NULL) {
         fprintf(writer->perfile, "%s\t", fname);
         if (writer->sample != NULL) fprintf(writer->perfile, "%s\t", args->sample);
-        fprintf(writer->perfile, "%zu\t%zu\t%zu\t%zu\t%.2f\n", n, slen, minl, maxl, meanq/n);
+        if (n == 0) {
+            // there were no reads in the input file
+            fprintf(writer->perfile, "0\t0\t0\t0\t0.00\n");
+        } else {
+            fprintf(writer->perfile, "%zu\t%zu\t%zu\t%zu\t%.2f\n",
+                n, slen, minl, maxl, meanq/n
+            );
+        }
     }
 
     // cleanup

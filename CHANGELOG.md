@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.13.1]
+### Fixed
+- Bug writing `UINTMAX_MAX` for `min_length` and `nan` for `mean_quality` of a
+  file in fastcat per-file stats if there were no reads in that file.
+
 ## [v0.13.0]
 ### Added
 - Column with start time from MinKNOW header to `bamstats` output.
