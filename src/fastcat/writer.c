@@ -5,6 +5,11 @@
 #include "common.h"
 #include "../fastqcomments.h"
 
+// default buffer size for writing to gzip, this is large enough that most reads will not require
+// the write buffer to be resized. See _gzsnprintf() below.
+// The size is also used with gzbuffer() when opening gzFile handles.
+#define GZBUFSIZE 131072  // 128 kB
+
 char* strip_path(char* input) {
     if (input == NULL) return NULL;
     size_t len = strlen(input);
@@ -13,6 +18,28 @@ char* strip_path(char* input) {
     memcpy(output, input, len);
     return output;
 }
+
+
+// Safely write a formatted string to a gzFile pointer
+int _gzsnprintf(gzFile file, const char *format, ...) {
+    va_list myargs;
+    va_start(myargs, format);
+    int bufsize = GZBUFSIZE;
+    char* buf = (char*) xalloc(bufsize, sizeof(char), "gzbuffer");
+    int written = vsnprintf(buf, bufsize, format, myargs);
+    va_end(myargs);
+    if (written > bufsize) {
+        bufsize = written;
+        buf = (char *) realloc(buf, bufsize);
+        va_start(myargs, format);
+        written = vsnprintf(buf, bufsize, format, myargs);
+        va_end(myargs);
+    }
+    gzputs(file, buf);
+    free(buf);
+    return written;
+}
+
 
 writer initialize_writer(char* output_dir, char* perread, char* perfile, char* sample, size_t reheader) {
     if (output_dir != NULL) {
@@ -68,7 +95,8 @@ void destroy_writer(writer writer) {
 }
 
 void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
-    int (*write)(void*, const char*, ...) = handle == stdout ? &fprintf : &gzprintf;
+    
+    int (*write)(void*, const char*, ...) = handle == stdout ? &fprintf : &_gzsnprintf;
 
     static const char* wcomment_fmt = "@%s %s\n%s\n+\n%s\n";
     static const char* nocomment_fmt = "@%s\n%s\n+\n%s\n";
@@ -129,6 +157,7 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
                 exit(1);
             }
             writer->handles[barcode] = gzopen(filepath, "wb");
+            gzbuffer(writer->handles[barcode], GZBUFSIZE);
             free(path);
             free(filepath);
         }
