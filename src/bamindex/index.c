@@ -30,7 +30,7 @@ char* generate_index_filename(const char* input_bam, const char* input_index) {
     return out_fn;
 }
 
-bc_idx_t *bc_idx_init() {
+bc_idx_t *bc_idx_init(void) {
     bc_idx_t *h = (bc_idx_t*)calloc(1, sizeof(bc_idx_t));
     if (h == NULL) return NULL;
     // any init?
@@ -50,16 +50,20 @@ bc_idx_t *bc_idx_init1(const size_t chunk_size) {
 void bc_idx_destroy(bc_idx_t *h) {
     if (h->stored > 0) {
         for (size_t i=0; i<h->stored; ++i) {
-            free(h->recs[i].qname);
+            if (h->recs[i].qname != NULL) {
+                free(h->recs[i].qname);
+            }
         }
-        free(h->recs);
+        if (h->recs != NULL) {
+            free(h->recs);
+        }
     }
     free(h);
 }
 
 bc_idx_t *bc_idx_read(FILE *fp) {
     char buf[MAGIC_LEN];
-    int magic_len = fread(&(buf), sizeof(char), MAGIC_LEN, fp);
+    size_t magic_len = fread(&(buf), sizeof(char), MAGIC_LEN, fp);
     if (magic_len != MAGIC_LEN || memcmp(buf, FILE_MAGIC, MAGIC_LEN)) {
         fprintf(stderr, "Invalid BAM chunk index binary header.\n");
         return NULL;
@@ -69,19 +73,37 @@ bc_idx_t *bc_idx_read(FILE *fp) {
         fprintf(stderr, "Failed to allocate header.\n");
         return NULL;
     }
-    fread(&(h->version), sizeof(h->version), 1, fp);
-    fread(&(h->chunk_size), sizeof(h->chunk_size), 1, fp);
-    fread(&(h->n_chunks), sizeof(h->n_chunks), 1, fp);
+    size_t items = 0;
+    items += fread(&(h->version), sizeof(h->version), 1, fp);
+    items += fread(&(h->chunk_size), sizeof(h->chunk_size), 1, fp);
+    items += fread(&(h->n_chunks), sizeof(h->n_chunks), 1, fp);
+    if (items != 3) {
+        bc_idx_destroy(h);
+        fprintf(stderr, "Invalid BAM chunk index binary header.\n");
+        return NULL;
+    }
 
     h->stored = h->n_chunks;
     h->recs = (bc_rec_t*)calloc(h->stored, sizeof(bc_rec_t));
 
-    for (size_t i=0; i<h->n_chunks; ++i) {
+    size_t valid = 0;
+    char *msg = "Failed to read index contents. File is currupt.\n";
+    for (size_t i=0; i<h->n_chunks; ++i, ++valid) {
         bc_rec_t *r = &(h->recs[i]);
-        fread(&(r->file_offset), sizeof(r->file_offset), 1, fp);
-        fread(&(r->lqname), sizeof(r->lqname), 1, fp);
+        if (fread(&(r->file_offset), sizeof(r->file_offset), 1, fp) != 1) {
+            fputs(msg, stderr); break;
+        }
+        if (fread(&(r->lqname), sizeof(r->lqname), 1, fp) != 1) {
+            fputs(msg, stderr); break;
+        }
         r->qname = (char*)calloc(r->lqname, sizeof(char));
-        fread(r->qname, sizeof(char), r->lqname, fp);
+        if (fread(r->qname, sizeof(char), r->lqname, fp) != r->lqname) {
+            fputs(msg, stderr); break;
+        }
+    }
+    if (valid != h->stored) {
+        bc_idx_destroy(h);
+        return NULL;
     }
     return h;
 }

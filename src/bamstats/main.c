@@ -76,11 +76,11 @@ int main(int argc, char *argv[]) {
     // process can open, check this ahead of time.
 #ifndef WASM
     struct rlimit reslimit;
-    int nfile = 0; for (; args.bam[nfile]; nfile++);
+    size_t nfile = 0; for (; args.bam[nfile]; nfile++);
     if (getrlimit(RLIMIT_NOFILE, &reslimit) == 0) {
         if (nfile * args.threads > reslimit.rlim_cur - 100) {
             fprintf(stderr,
-                "ERROR: Too many BAM files provided (%i). Try running "
+                "ERROR: Too many BAM files provided (%zu). Try running "
                 "samtools merge on subsets of files to produce fewer files", nfile);
             exit(EXIT_FAILURE);
         }
@@ -158,7 +158,7 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
         size_t ref_length = (size_t)sam_hdr_tid2len(hdr, tid);
-        end = min(end, ref_length);
+        end = min(end, (int)ref_length);
         process_bams(
             fp, idx, hdr, args.sample,
             chr, start, end, true,

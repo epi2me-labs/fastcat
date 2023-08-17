@@ -96,7 +96,8 @@ void destroy_writer(writer writer) {
 
 void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
     
-    int (*write)(void*, const char*, ...) = handle == stdout ? &fprintf : &_gzsnprintf;
+    int (*write)(void*, const char*, ...);
+    if (handle == stdout) { write = &fprintf; } else { write = &_gzsnprintf; }
 
     static const char* wcomment_fmt = "@%s %s\n%s\n+\n%s\n";
     static const char* nocomment_fmt = "@%s\n%s\n+\n%s\n";

@@ -19,8 +19,8 @@ typedef struct bc_idx_t {
 
 
 char* generate_index_filename(const char* input_bam, const char* input_index);
-bc_idx_t *bc_idx_init();
-bc_idx_t *bc_idx_init1();
+bc_idx_t *bc_idx_init(void);
+bc_idx_t *bc_idx_init1(size_t every);
 void bc_idx_destroy(bc_idx_t *h);
 bc_idx_t *bc_idx_read(FILE *fp);
 int bc_idx_write_header(FILE* fp, bc_idx_t* idx);

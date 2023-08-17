@@ -106,7 +106,7 @@ inline size_t get_query_end(bam1_t* b) {
     uint32_t end_offset = b->core.l_qseq;
     uint32_t qlen = end_offset;
     uint32_t *cigar = bam_get_cigar(b);
-    for (size_t i=b->core.n_cigar - 1; i >= 0; --i){
+    for (int i=b->core.n_cigar - 1; i >= 0; --i){
         uint32_t op = bam_cigar_op(cigar[i]);
         if (op == BAM_CHARD_CLIP) {
             if (end_offset != qlen) {
@@ -159,7 +159,7 @@ void process_bams(
         if (strcmp(chr, "*") == 0) {
             fprintf(stderr, "Processing: Unplaced reads\n");
         } else {
-            fprintf(stderr, "Processing: %s:%lld-%lld\n", chr, start, end);
+            fprintf(stderr, "Processing: %s:%zu-%zu\n", chr, (size_t)start, (size_t)end);
         }
     }
 

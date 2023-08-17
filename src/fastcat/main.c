@@ -172,7 +172,7 @@ int main(int argc, char **argv) {
     writer writer = initialize_writer(args.demultiplex_dir, args.perread, args.perfile, args.sample, args.reheader);
     if (writer == NULL) exit(1);
 
-    int nfile = 0;
+    size_t nfile = 0;
     int status = 0;
     for( ; args.files[nfile] ; nfile++);
 

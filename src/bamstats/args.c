@@ -17,17 +17,17 @@ each primary alignment stored within the input BAM files.";
 static char args_doc[] = "<reads.bam>";
 static struct argp_option options[] = {
     {0, 0, 0, 0,
-        "General options:"},
+        "General options:", 0},
     {"region", 'r', "chr:start-end", 0,
-        "Genomic region to process."},
+        "Genomic region to process.", 0},
     {"threads", 't', "THREADS", 0,
-        "Number of threads for BAM processing."},
+        "Number of threads for BAM processing.", 0},
     {"sample", 's',"SAMPLE NAME",   0,
-        "Sample name (if given, adds a 'sample_name' column)."},
+        "Sample name (if given, adds a 'sample_name' column).", 0},
     {"flagstats", 'f', "FLAGSTATS", 0,
-        "File for outputting alignment flag counts."},
+        "File for outputting alignment flag counts.", 0},
     {0, 0, 0, 0,
-        "Read filtering options:"},
+        "Read filtering options:", 0},
     {"unmapped", 'u', 0, 0,
         "Include unmapped/unplaced reads in output.", 3},
     {"read_group", 'g', "RG", 0,
@@ -109,7 +109,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     return 0;
 }
 
-static struct argp argp = {options, parse_opt, args_doc, doc};
+static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
 
 arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;

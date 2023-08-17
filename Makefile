@@ -25,6 +25,15 @@ ifeq ($(NOTHREADS), 1)
     CFLAGS += -DNOTHREADS
 endif
 
+# we can't do pedantic because min/max macros lead to:
+#     "ISO C forbids braced-groups within expressions [-Werror=pedantic]"
+ifeq ($(shell $(CC) --version | grep clag | wc -l), 0)
+    WARNINGS = -Werror -Wall -Wextra -Wno-incompatible-pointer-types
+else
+    WARNINGS = -Werror -Wall -Wextra -Wpedantic -Wno-language-extension-token -Wno-gnu-statement-expression -Wno-incompatible-function-pointer-types
+endif
+
+
 
 .PHONY: default
 default: fastcat bamstats bamindex
@@ -41,12 +50,12 @@ htslib/libhts.a:
 
 
 src/%.o: src/%.c
-	$(CC) -Isrc -Ihtslib -c -pthread -Wall -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	$(CC) -Isrc -Ihtslib -c -pthread $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $^ -o $@
 
 
 fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o $(STATIC_HTSLIB)
-	$(CC) -Isrc -Wall -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	$(CC) -Isrc $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
 		-lz -lm $(EXTRA_LIBS) \
@@ -54,14 +63,14 @@ fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcom
 
 
 bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o $(STATIC_HTSLIB)
-	$(CC) -Isrc -Ihtslib -Wall -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
 bamindex: src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o $(STATIC_HTSLIB)
-	$(CC) -Isrc -Ihtslib -Wall -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \

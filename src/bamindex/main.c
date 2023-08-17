@@ -24,7 +24,7 @@ enum command_mode get_mode(const char *modestr) {
     return MODE_INVALID;
 }
 
-void fprint_commands();
+void fprint_commands(void);
 
 const char *mode_string(const enum command_mode mode) {
     switch (mode) {
@@ -66,7 +66,7 @@ const char *mode_description(const enum command_mode mode) {
     return NULL;
 }
 
-void fprint_commands() {
+void fprint_commands(void) {
     for (enum command_mode i = 0; i < ncommand; i++) {
         fprintf(
             stderr, "* bamindex %-14s%s\n", mode_string(i), mode_description(i));
@@ -105,3 +105,4 @@ int main(int argc, char *argv[]) {
 
     return ret;
 }
+
