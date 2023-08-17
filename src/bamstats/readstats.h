@@ -29,6 +29,7 @@ flag_stats* create_flag_stats(size_t n_refs, bool store_unmapped);
  */
 void destroy_flag_stats(flag_stats* stats);
 
+
 /** Generates alignment stats from a region of a bam.
  *
  *  @param fp htsFile pointer

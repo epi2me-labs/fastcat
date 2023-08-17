@@ -16,19 +16,13 @@
 
 
 void write_header(const char* sample) {
-    if (sample == NULL) {
-        fprintf(stdout,
-            "name\trunid\tref\tcoverage\tref_coverage\t"\
-            "qstart\tqend\trstart\trend\t"\
-            "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\tstart_time\t"\
-            "match\tins\tdel\tsub\tiden\tacc\n");
-    } else {
-        fprintf(stdout,
-            "name\trunid\tsample_name\tref\tcoverage\tref_coverage\t"\
-            "qstart\tqend\trstart\trend\t"\
-            "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\tstart_time\t"\
-            "match\tins\tdel\tsub\tiden\tacc\n");
-    }
+    char *sn = sample == NULL ? "" : "\tsample_name";
+    fprintf(stdout, 
+        "name\trunid%s\tref\tcoverage\tref_coverage\t"\
+        "qstart\tqend\trstart\trend\t"\
+        "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\tstart_time\t"\
+        "match\tins\tdel\tsub\tiden\tacc\tduplex\n",
+        sn);
 }
 
 // stats array should have 8 entries
@@ -37,24 +31,21 @@ void write_header(const char* sample) {
 //       are not necessarily unmapped but lack definitive coords, this is mainly for paired-end
 //       but we'll keep the distinction here.
 void write_stats_header(FILE* fh, const char* sample) {
-    if (sample == NULL) {
-        fprintf(fh, "ref\ttotal\tprimary\tsecondary\tsupplementary\tunmapped\tqcfail\tduplicate\n");
-    } else {
-        fprintf(fh, "ref\tsample_name\ttotal\tprimary\tsecondary\tsupplementary\tunmapped\tqcfail\tduplicate\n");
-    }
+    char *sn = sample == NULL ? "" : "\tsample_name";
+    fprintf(fh, "ref%s\ttotal\tprimary\tsecondary\tsupplementary\tunmapped\tqcfail\tduplicate\tduplex\tduplex_forming\n", sn);
 }
 
 static inline void write_stats(size_t *stats, const char* chr, const char* sample, FILE* fh) {
     if (fh != NULL) {
         if (sample == NULL) {
             fprintf(fh,
-                "%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
-                chr, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6]
+                "%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
+                chr, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6], stats[7], stats[8]
             );
         } else {
             fprintf(fh,
-                "%s\t%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
-                chr, sample, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6]
+                "%s\t%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
+                chr, sample, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6], stats[7], stats[8]
             );
         }
     }

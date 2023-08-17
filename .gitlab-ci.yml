@@ -34,6 +34,7 @@ build:
         - make bamstats
         - ./bamstats --help
         - make mem_check_bamstats
+        - make mem_check_bamstats_duplex
         - make bamindex
         - ./bamindex build --help
         - make mem_check_bamindex
