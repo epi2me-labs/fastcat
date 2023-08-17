@@ -52,7 +52,7 @@ void *xrealloc(void *ptr, size_t size, char* msg){
  *  @returns string pointer.
  *
  */
-char *substring(char *string, int position, int length) {
+char *substring(char *string, size_t position, size_t length) {
    char *ptr;
    size_t i;
 

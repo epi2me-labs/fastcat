@@ -45,7 +45,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     return 0;
 }
 
-static struct argp argp = {options, parse_opt, args_doc, doc};
+static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
 
 static arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;
@@ -85,3 +85,4 @@ int main_dump(int argc, char *argv[]) {
     fprintf(stderr, "Total CPU time: %fs\n", (double)(end - begin) / CLOCKS_PER_SEC);
     return EXIT_SUCCESS;
 }
+

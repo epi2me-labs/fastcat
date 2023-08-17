@@ -32,11 +32,11 @@ be used simply with unaligned, unsorted BAMs.";
 static char args_doc[] = "<reads.bam>";
 static struct argp_option options[] = {
     {0, 0, 0, 0,
-        "General options:"},
+        "General options:", 0},
     {"threads", 't', "THREADS", 0,
-        "Number of threads for BAM processing."},
+        "Number of threads for BAM processing.", 0},
     {"chunk_size", 'c', "SIZE", 0,
-        "Number of records in a chunk."},
+        "Number of records in a chunk.", 0},
     { 0 }
 };
 
@@ -68,7 +68,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     return 0;
 }
 
-static struct argp argp = {options, parse_opt, args_doc, doc};
+static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
 
 static arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;

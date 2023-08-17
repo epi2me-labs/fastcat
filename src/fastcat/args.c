@@ -15,23 +15,23 @@ will exit non-zero if any file encountered cannot be read.";
 static char args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz) dir-with-fastq ...";
 static struct argp_option options[] = {
     {"read", 'r', "READ SUMMARY",  0,
-        "Per-read summary output"},
+        "Per-read summary output", 0},
     {"file", 'f', "FILE SUMMARY",  0,
-        "Per-file summary output"},
-    {"sample", 's',"SAMPLE NAME",   0,
-        "Sample name (if given, adds a 'sample_name' column)."},
+        "Per-file summary output", 0},
+    {"sample", 's', "SAMPLE NAME",   0,
+        "Sample name (if given, adds a 'sample_name' column).", 0},
     {"demultiplex", 'd', "OUT DIR",  0,
-        "Separate barcoded samples using fastq header information. Option value is top-level output directory."},
+        "Separate barcoded samples using fastq header information. Option value is top-level output directory.", 0},
     {"min_length", 'a', "MIN READ LENGTH", 0,
-        "minimum read length to output (excluded reads remain listed in summaries)."},
+        "minimum read length to output (excluded reads remain listed in summaries).", 0},
     {"max_length", 'b', "MAX READ LENGTH", 0,
-        "maximum read length to output (excluded reads remain listed in summaries)."},
+        "maximum read length to output (excluded reads remain listed in summaries).", 0},
     {"min_qscore", 'q', "MIN READ QSCOROE", 0,
-        "minimum read Qscore to output (excluded reads remain listed in summaries)."},
+        "minimum read Qscore to output (excluded reads remain listed in summaries).", 0},
     {"recurse", 'x', 0, 0,
-        "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files."},
+        "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files.", 0},
     {"reheader", 'H', 0, 0,
-        "Rewrite fastq header comments as SAM tags (useful for passing through minimap2)."},
+        "Rewrite fastq header comments as SAM tags (useful for passing through minimap2).", 0},
     { 0 }
 };
 
@@ -79,7 +79,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     return 0;
 }
 
-static struct argp argp = {options, parse_opt, args_doc, doc};
+static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
 
 
 arguments_t parse_arguments(int argc, char** argv) {

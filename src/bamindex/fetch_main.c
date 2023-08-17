@@ -23,11 +23,11 @@ static char doc[] =
 static char args_doc[] = "<reads.bam.bci>";
 static struct argp_option options[] = {
     {0, 0, 0, 0,
-        "General options:"},
+        "General options:", 0},
     {"threads", 't', "THREADS", 0,
-        "Number of threads for BAM processing."},
+        "Number of threads for BAM processing.", 0},
     {"chunk", 'c', "SIZE", 0,
-        "Chunk index to retrieve."},
+        "Chunk index to retrieve.", 0},
     { 0 }
 };
 
@@ -66,7 +66,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     return 0;
 }
 
-static struct argp argp = {options, parse_opt, args_doc, doc};
+static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
 
 static arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;
@@ -133,7 +133,7 @@ void index_fetch(const char* bam_fname, const char* index_fname, int chunk, int 
         fprintf(stderr, "Failed to write the SAM header.\n");
         exit(EXIT_FAILURE);
     }
-    while ((sam_read1(fp, h, b) >= 0) && (written < (int)(idx->chunk_size))) {
+    while ((sam_read1(fp, h, b) >= 0) && (written < (idx->chunk_size))) {
         if((sam_write1(out_fp, h, b) < 0)) {
             fprintf(stderr, "Failed to write output record.");
             exit(EXIT_FAILURE);
@@ -158,7 +158,7 @@ int main_fetch(int argc, char *argv[]) {
     clock_t begin = clock();
     arguments_t args = parse_arguments(argc, argv);
     index_fetch(args.bam, args.index, args.chunk_idx, args.threads);
-    free(args.index);
+    free((char*)args.index);
     clock_t end = clock();
     fprintf(stderr, "Total CPU time: %fs\n", (double)(end - begin) / CLOCKS_PER_SEC);
     return EXIT_SUCCESS;
