@@ -123,14 +123,30 @@ inline size_t get_query_end(bam1_t* b) {
 }
 
 
-static inline void process_flagstat_counts(bam1_t* b, size_t* counts) {
+static inline void process_flagstat_counts(const bam1_t* b, size_t* counts, const int duplex_code ) {
     counts[0] += 1;
     counts[1] += ((b->core.flag & (NOTPRIMARY)) == 0);
     for (size_t i=2; i<6; ++i){
         counts[i] += ((b->core.flag & FLAG_MASK[i]) != 0);
     }
+    counts[7] += (duplex_code == 1);
+    counts[8] += (duplex_code == -1);
 }
 
+// Get duplex tag
+int get_duplex_tag(bam1_t* b) {
+    int res = 0;  // default simple
+    uint8_t *duplex_tag = bam_aux_get(b, "dx");
+    if (duplex_tag != NULL) {  // or tag isn't present or is corrupt
+        res = bam_aux2i(duplex_tag);
+        // a valid zero cannot be differentiated from an EINVAL zero
+        // but we assume simplex in the latter case so it works out
+        if (res == 0 && errno == EINVAL) {
+            res = 0;  // tag was not integer, assume simplex
+        }
+    }
+    return res;
+}
 
 /** Generates alignment stats from a region of a bam.
  *
@@ -189,7 +205,9 @@ void process_bams(
         if (tag != NULL){
             start_time = bam_aux2Z(tag);
         }
-
+        // get duplex code
+        int duplex_code = get_duplex_tag(b);
+        
         // write a record for unmapped/unplaced
         if (b->core.flag & BAM_FUNMAP){
             if (unmapped) {
@@ -204,12 +222,13 @@ void process_bams(
                         "nan\tnan\tnan\tnan\t" \
                         "0\t*\t0\t" \
                         "%u\t%.2f\t%s\t" \
-                        "0\t0\t0\t0\tnan\tnan\n",
+                        "0\t0\t0\t0\tnan\tnan\t%d\n",
                         qname, runid, //chr, coverage, ref_cover,
                         //qstart, qend, rstart, rend,
                         //aligned_ref_len, direction, length,
-                        read_length, mean_quality, start_time
+                        read_length, mean_quality, start_time,
                         //match, ins, delt, sub, iden, acc
+                        duplex_code
                     );
                 } else {
                     fprintf(stdout,
@@ -217,17 +236,18 @@ void process_bams(
                         "nan\tnan\tnan\tnan\t" \
                         "0\t*\t0\t" \
                         "%u\t%.2f\t%s\t" \
-                        "0\t0\t0\t0\tnan\tnan\n",
+                        "0\t0\t0\t0\tnan\tnan\t%d\n",
                         qname, runid, sample, //chr, coverage, ref_cover,
                         //qstart, qend, rstart, rend,
                         //aligned_ref_len, direction, length,
-                        read_length, mean_quality, start_time
+                        read_length, mean_quality, start_time,
                         //match, ins, delt, sub, iden, acc
+                        duplex_code
                     );
                 }
                 // add to flagstat counts if required
                 if (flag_counts != NULL) {
-                    process_flagstat_counts(b, flag_counts->unmapped);
+                    process_flagstat_counts(b, flag_counts->unmapped, duplex_code);
                 }
             }
             continue;
@@ -239,7 +259,7 @@ void process_bams(
             // there will be as many dynamic arrays as references in the BAM header
             size_t* counts = (chr != NULL) ? flag_counts->counts[0]
                                            : flag_counts->counts[b->core.tid];
-            process_flagstat_counts(b, counts);
+            process_flagstat_counts(b, counts, duplex_code);
         }
 
         // only take "good" primary alignments for further processing
@@ -294,24 +314,24 @@ void process_bams(
                 "%.4f\t%.4f\t" \
                 "%lu\t%lu\t%lu\t%lu\t" \
                 "%lu\t%c\t%lu\t%u\t%.2f\t%s\t" \
-                "%lu\t%lu\t%lu\t%lu\t%.2f\t%.2f\n",
+                "%lu\t%lu\t%lu\t%lu\t%.2f\t%.2f\t%d\n",
                 qname, runid, (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid),
                 coverage, ref_cover,
                 qstart, qend, rstart, rend,
                 aligned_ref_len, direction, length, read_length, mean_quality, start_time,
-                match, ins, delt, sub, iden, acc);
+                match, ins, delt, sub, iden, acc, duplex_code);
         } else {
             fprintf(stdout,
                 "%s\t%s\t%s\t%s\t" \
                 "%.4f\t%.4f\t" \
                 "%lu\t%lu\t%lu\t%lu\t" \
                 "%lu\t%c\t%lu\t%u\t%.2f\t%s\t" \
-                "%lu\t%lu\t%lu\t%lu\t%.2f\t%.2f\n",
+                "%lu\t%lu\t%lu\t%lu\t%.2f\t%.2f\t%d\n",
                 qname, runid, sample, (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid),
                 coverage, ref_cover,
                 qstart, qend, rstart, rend,
                 aligned_ref_len, direction, length, read_length, mean_quality, start_time,
-                match, ins, delt, sub, iden, acc);
+                match, ins, delt, sub, iden, acc, duplex_code);
         }
 		free(stats);
     }

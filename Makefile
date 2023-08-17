@@ -95,6 +95,11 @@ mem_check_bamstats: bamstats
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
 		./bamstats test/bamstats/400ecoli.bam
 
+.PHONY: mem_check_bamstats_duplex
+mem_check_bamstats: bamstats
+	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
+		./bamstats test/bamstats/310dx.bam
+
 .PHONY: mem_check_bamindex-build
 mem_check_bamindex-build: bamindex
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
