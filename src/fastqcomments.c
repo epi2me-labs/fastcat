@@ -45,7 +45,7 @@ void destroy_read_meta(read_meta meta) {
 read_meta parse_read_meta(kstring_t comment) {
     read_meta meta = create_read_meta(&comment);
 
-    char *pch, *key, *value, *p1, *p2;
+    char *pch=NULL, *key=NULL, *value=NULL, *p1=NULL, *p2=NULL;
     pch = strtok_r(meta->comment, " ", &p1);
     while (pch != NULL) {
         // split words on `=`
