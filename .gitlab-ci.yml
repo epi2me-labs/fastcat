@@ -76,3 +76,14 @@ conda-mac-arm:
     extends: .deploy-conda-mac-arm
     before_script:
         - *before-script
+
+test-conda-arm:
+    stage: test
+    extends: .deploy-conda-linux-arm
+    variables:
+        UPLOAD: "no"
+    before_script:
+        - *prep-image
+        - *before-script
+    rules:
+    - if: $CI_COMMIT_BRANCH != null

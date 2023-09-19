@@ -27,7 +27,7 @@ endif
 
 # we can't do pedantic because min/max macros lead to:
 #     "ISO C forbids braced-groups within expressions [-Werror=pedantic]"
-ifeq ($(shell $(CC) --version | grep clag | wc -l), 0)
+ifeq ($(shell $(CC) --version | grep clang | wc -l), 0)
     WARNINGS = -Werror -Wall -Wextra -Wno-incompatible-pointer-types
 else
     WARNINGS = -Werror -Wall -Wextra -Wpedantic -Wno-language-extension-token -Wno-gnu-statement-expression -Wno-incompatible-function-pointer-types

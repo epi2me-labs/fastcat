@@ -14,7 +14,7 @@ char* generate_index_filename(const char* input_bam, const char* input_index) {
     char* out_fn;
 
     if(input_index != NULL) {
-        out_fn = malloc(strlen(input_index));
+        out_fn = calloc(sizeof(char), strlen(input_index) + 1);
         if(out_fn == NULL) {
             exit(EXIT_FAILURE);
         }
