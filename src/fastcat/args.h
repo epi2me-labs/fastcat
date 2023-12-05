@@ -11,6 +11,7 @@ typedef struct arguments {
     int recurse;
     size_t reheader;
     char* demultiplex_dir;
+    char* histograms;
     char **files;
 } arguments_t;
 

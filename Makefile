@@ -54,7 +54,7 @@ src/%.o: src/%.c
 		$(CFLAGS) $(EXTRA_CFLAGS) $^ -o $@
 
 
-fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o $(STATIC_HTSLIB)
+fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o src/stats.o $(STATIC_HTSLIB)
 	$(CC) -Isrc $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -62,7 +62,7 @@ fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcom
 		-o $@
 
 
-bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o $(STATIC_HTSLIB)
+bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/stats.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -89,6 +89,11 @@ clean_htslib:
 mem_check_fastcat: fastcat
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
 		./fastcat test/data/*.fastq.gz > /dev/null
+
+.PHONY: mem_check_fastcat_demultiplex
+mem_check_fastcat_demultiplex: fastcat
+	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
+		./fastcat test/data/*.fastq.gz --demultiplex demulitplex > /dev/null
 
 .PHONY: mem_check_bamstats
 mem_check_bamstats: bamstats

@@ -22,6 +22,12 @@
     _a > _b ? _a : _b; \
 })
 
+/** mkdir a directory structure recursively, but fail if pre-exists.
+ *
+ * @param path directory path to ensure exists
+ *
+ */
+int mkdir_hier(char* path);
 
 /** Allocates zero-initialised memory with a message on failure.
  *

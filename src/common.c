@@ -1,11 +1,87 @@
+#include <errno.h>
 #include <math.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "common.h"
+
+
+/* The following two functions were adpated from:
+ * https://gist.github.com/JonathonReinhart/8c0d90191c38af2dcadb102c4e202950
+ */
+static int maybe_mkdir(const char* path, mode_t mode) {
+    struct stat st;
+    errno = 0;
+
+    // Try to make the directory
+    if (mkdir(path, mode) == 0)
+        return 0;
+
+    // If it fails for any reason but EEXIST, fail
+    if (errno != EEXIST)
+        return -1;
+
+    // Check if the existing path is a directory
+    if (stat(path, &st) != 0)
+        return -1;
+
+    // If not, fail with ENOTDIR
+    if (!S_ISDIR(st.st_mode)) {
+        errno = ENOTDIR;
+        return -1;
+    }
+
+    errno = 0;
+    return 0;
+}
+
+/** mkdir a directory structure recursively, but fail if pre-exists.
+ *
+ * @param path directory path to ensure exists
+ *
+ */
+int mkdir_hier(char *path) {
+
+    char *_path = NULL;
+    char *p; 
+    int result = -1;
+    mode_t mode = 0700;
+    errno = 0;
+
+    // if we can just make the directory, fine. If it exists
+    // already then exit
+    if (mkdir(path, mode) != 0 && errno == EEXIST)
+        return -1;
+        
+    _path = strdup(path);
+    if (_path == NULL)
+        goto out;
+
+    for (p = _path + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            if (maybe_mkdir(_path, mode) != 0)
+                goto out;
+            *p = '/';
+        }
+    }   
+
+    if (maybe_mkdir(_path, mode) != 0)
+        goto out;
+
+    result = 0;
+out:
+    free(_path);
+    return result;
+}
+
+
 
 
 /** Allocates zero-initialised memory with a message on failure.

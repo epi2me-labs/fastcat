@@ -30,6 +30,7 @@ build:
         - make fastcat
         - ./fastcat --help
         - make mem_check_fastcat
+        - make mem_check_fastcat_demultiplex
         - make regression_test_fastcat
         - make bamstats
         - ./bamstats --help

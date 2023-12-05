@@ -3,12 +3,15 @@
 
 #include "writer.h"
 #include "common.h"
+#include "stats.h"
 #include "../fastqcomments.h"
 
 // default buffer size for writing to gzip, this is large enough that most reads will not require
 // the write buffer to be resized. See _gzsnprintf() below.
 // The size is also used with gzbuffer() when opening gzFile handles.
 #define GZBUFSIZE 131072  // 128 kB
+
+
 
 char* strip_path(char* input) {
     if (input == NULL) return NULL;
@@ -41,20 +44,37 @@ int _gzsnprintf(gzFile file, const char *format, ...) {
 }
 
 
-writer initialize_writer(char* output_dir, char* perread, char* perfile, char* sample, size_t reheader) {
-    if (output_dir != NULL) {
-        int rtn = mkdir(output_dir, 0700);
+writer initialize_writer(char* output_dir, char* histograms, char* perread, char* perfile, char* sample, size_t reheader) {
+    if (output_dir != NULL) {  // demultiplexing
+        int rtn = mkdir_hier(output_dir);
         if (rtn == -1) {
             fprintf(stderr,
-               "Error: Cannot create output directory '%s'. Check location is writeable and does not already exist.\n",
+               "Error: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
                output_dir);
             return NULL;
         }
      }
+     else {
+         // histograms go in their own directory when not demultiplexing
+         int rtn = mkdir_hier(histograms);
+         if (rtn == -1) {
+            fprintf(stderr,
+                "Error: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
+                histograms);
+            exit(EXIT_FAILURE);
+         }
+     }
+
      writer writer = calloc(1, sizeof(_writer));
      writer->output = strip_path(output_dir);
+     writer->histograms = strip_path(histograms);
      writer->handles = calloc(MAX_BARCODES, sizeof(gzFile));
      writer->nreads = calloc(MAX_BARCODES, sizeof(size_t));
+     writer->l_stats = calloc(MAX_BARCODES, sizeof(read_stats*));
+     writer->q_stats = calloc(MAX_BARCODES, sizeof(read_stats*));
+     // we want at least 1 stats accumulator (when not demultiplexing)
+     writer->l_stats[0] = create_length_stats();
+     writer->q_stats[0] = create_qual_stats(QUAL_HIST_WIDTH);
      writer->reheader = reheader;
      if (strcmp(sample, "")) {
          // sample is used just for printing to summary, pre-add a tab
@@ -78,19 +98,35 @@ writer initialize_writer(char* output_dir, char* perread, char* perfile, char* s
 }
 
 
+void _write_stats(char* hist_dir, char* plex_dir, size_t barcode, read_stats* stats, char* type);
+
 void destroy_writer(writer writer) {
     for(size_t i=0; i < MAX_BARCODES; ++i) {
-       if(writer->handles[i] != NULL) {
-           gzflush(writer->handles[i], Z_FINISH);
-           gzclose(writer->handles[i]);
-       }
+        if(writer->handles[i] != NULL) {
+            gzflush(writer->handles[i], Z_FINISH);
+            gzclose(writer->handles[i]);
+        }
+
+        if(writer->l_stats[i] != NULL) {
+            _write_stats(writer->histograms, writer->output, i, writer->l_stats[i], "length\0");
+            destroy_length_stats(writer->l_stats[i]);
+        }
+
+        if(writer->q_stats[i] != NULL) {
+            _write_stats(writer->histograms, writer->output, i, writer->q_stats[i], "quality\0");
+            destroy_qual_stats(writer->q_stats[i]);
+        }
+
     }
     if (writer->sample != NULL) free(writer->sample);
     if (writer->perread != NULL) fclose(writer->perread);
     if (writer->perfile != NULL) fclose(writer->perfile);
     if (writer->output != NULL) free(writer->output);
+    if (writer->histograms != NULL) free(writer->histograms);
     free(writer->handles);
     free(writer->nreads);
+    free(writer->l_stats);
+    free(writer->q_stats);
     free(writer);
 }
 
@@ -109,6 +145,40 @@ void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
     else {
         (*write)(handle, nocomment_fmt, seq->name.s, seq->seq.s, seq->qual.s);
     }
+}
+
+
+void _write_stats(char* hist_dir, char* plex_dir, size_t barcode, read_stats* stats, char* type) {
+    // write out length stats
+    // we assume here the directories have been created already
+    char* filepath;
+    if (plex_dir == NULL) {
+        // main output is to stdout, i.e. all read together
+        filepath = calloc(strlen(hist_dir) + strlen(type) + 7, sizeof(char));
+        sprintf(filepath, "%s/%s.hist", hist_dir, type);
+    }
+    else {
+        // demultiplexing
+        char* path;
+        if (barcode == 0) {
+            // unclassified/missing
+            path = calloc(strlen(plex_dir) + 15, sizeof(char));
+            sprintf(path, "%s/unclassified/", plex_dir);
+            filepath = calloc(strlen(path) + strlen(type) + 19, sizeof(char));
+            sprintf(filepath, "%sunclassified.%s.hist", path, type);
+        }
+        else {
+            path = calloc(strlen(plex_dir) + 14, sizeof(char));
+            sprintf(path, "%s/barcode%04lu/", plex_dir, barcode);
+            filepath = calloc(strlen(path) + strlen(type) + 18, sizeof(char));
+            sprintf(filepath, "%sbarcode%04lu.%s.hist", path, barcode, type);
+        }
+        free(path);
+    }
+    FILE* fp = fopen(filepath, "w");
+    print_stats(stats, false, true, fp);
+    fclose(fp);
+    free(filepath);
 }
 
 
@@ -132,9 +202,13 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
     }
 
     if (writer->output == NULL) {
+        // all reads to stdout
         _write_read(writer, seq, meta, stdout);
+        add_length_count(writer->l_stats[0], seq->seq.l);
+        add_qual_count(writer->q_stats[0], mean_q);
     }
     else {
+        // demultiplexing reads
         if (writer->handles[barcode] == NULL) {
             char* path;
             char* filepath;
@@ -152,7 +226,7 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
                 sprintf(filepath, "%sbarcode%04lu.fastq.gz", path, barcode);
             }
             
-            int rtn = mkdir(path, 0700);
+            int rtn = mkdir_hier(path);
             if (rtn == -1) {
                 fprintf(stderr, "Failed to create barcode directory '%s\n'.", path);
                 exit(1);
@@ -162,6 +236,15 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
             free(path);
             free(filepath);
         }
+        // all of the above was just to open the handle, now use it
         _write_read(writer, seq, meta, writer->handles[barcode]);
+
+        // handle stats
+        if (writer->l_stats[barcode] == NULL) {
+            writer->l_stats[barcode] = create_length_stats();
+            writer->q_stats[barcode] = create_qual_stats(QUAL_HIST_WIDTH);
+        }
+        add_length_count(writer->l_stats[barcode], seq->seq.l);
+        add_qual_count(writer->q_stats[barcode], mean_q);
     }
 }
