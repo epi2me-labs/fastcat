@@ -77,6 +77,14 @@ int main(int argc, char *argv[]) {
         }
     }
 #endif
+    
+    int rtn = mkdir_hier(args.histograms);
+    if (rtn == -1) {
+        fprintf(stderr,
+           "Error: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
+           args.histograms);
+        exit(EXIT_FAILURE);
+    }
 
     if (nfile > 1) {
         fprintf(stderr, "WARNING: Results from multiple files will not be coordinate sorted.\n");
@@ -107,13 +115,19 @@ int main(int argc, char *argv[]) {
         );
     }
 
+    read_stats* length_stats = create_length_stats();
+    read_stats* qual_stats = create_qual_stats(QUAL_HIST_WIDTH);
+    read_stats* acc_stats = create_qual_stats(ACC_HIST_WIDTH);
+    read_stats* cov_stats = create_qual_stats(COV_HIST_WIDTH);
+
     if (args.region == NULL) {
         // iterate over the entire file
         process_bams(
             fp, NULL, hdr, args.sample,
             NULL, 0, INT64_MAX, true,
             args.read_group, args.tag_name, args.tag_value,
-            flag_counts, args.unmapped);
+            flag_counts, args.unmapped,
+            length_stats, qual_stats, acc_stats, cov_stats);
 
         // write flagstat counts if requested
         if (flag_counts != NULL) {
@@ -154,13 +168,43 @@ int main(int argc, char *argv[]) {
             fp, idx, hdr, args.sample,
             chr, start, end, true,
             args.read_group, args.tag_name, args.tag_value,
-            flag_counts, args.unmapped);
+            flag_counts, args.unmapped,
+            length_stats, qual_stats, acc_stats, cov_stats);
         if (flag_counts != NULL) {
             write_stats(flag_counts->counts[0], chr, args.sample, flagstats);
         }
         free(chr);
         hts_idx_destroy(idx);
     }
+
+    char* path = calloc(strlen(args.histograms) + 13, sizeof(char));
+    sprintf(path, "%s/length.hist", args.histograms);
+    FILE* stats_fp = fopen(path, "w");
+    print_stats(length_stats, false, true, stats_fp);
+    fclose(stats_fp); free(path);
+
+    path = calloc(strlen(args.histograms) + 14, sizeof(char));
+    sprintf(path, "%s/quality.hist", args.histograms);
+    stats_fp = fopen(path, "w");
+    print_stats(qual_stats, false, true, stats_fp);
+    fclose(stats_fp); free(path);
+
+    path = calloc(strlen(args.histograms) + 15, sizeof(char));
+    sprintf(path, "%s/accuracy.hist", args.histograms);
+    stats_fp = fopen(path, "w");
+    print_stats(acc_stats, false, true, stats_fp);
+    fclose(stats_fp); free(path);
+
+    path = calloc(strlen(args.histograms) + 15, sizeof(char));
+    sprintf(path, "%s/coverage.hist", args.histograms);
+    stats_fp = fopen(path, "w");
+    print_stats(cov_stats, false, true, stats_fp);
+    fclose(stats_fp); free(path);
+
+    destroy_length_stats(length_stats);
+    destroy_qual_stats(qual_stats);
+    destroy_qual_stats(acc_stats);
+    destroy_qual_stats(cov_stats);
 
     if (flagstats != NULL) {
         fclose(flagstats);

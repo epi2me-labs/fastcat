@@ -28,7 +28,8 @@ of the sequences. Can also demultiplex reads according to Guppy/MinKNOW
 .fastq record headers.
 
 ```
-Usage: fastcat [OPTION...] reads1.fastq(.gz) reads2.fastq(.gz) ...
+Usage: fastcat [OPTION...]
+            reads1.fastq(.gz) reads2.fastq(.gz) dir-with-fastq ...
 fastcat -- concatenate and summarise .fastq(.gz) files.
 
   -a, --min_length=MIN READ LENGTH
@@ -41,11 +42,17 @@ fastcat -- concatenate and summarise .fastq(.gz) files.
                              information. Option value is top-level output
                              directory.
   -f, --file=FILE SUMMARY    Per-file summary output
+      --histograms=DIRECTORY Directory for outputting histogram information.
+                             When --demultiplex is enabled histograms are
+                             written to per-sample demultiplexed output
+                             directories. (default: fastcat-histograms)
+  -H, --reheader             Rewrite fastq header comments as SAM tags (useful
+                             for passing through minimap2).
   -q, --min_qscore=MIN READ QSCOROE
                              minimum read Qscore to output (excluded reads
                              remain listed in summaries).
   -r, --read=READ SUMMARY    Per-read summary output
-  -s, --sample=SAMPLE NAME   Sample name (if given adds a 'sample_name'
+  -s, --sample=SAMPLE NAME   Sample name (if given, adds a 'sample_name'
                              column).
   -x, --recurse              Search directories recursively for '.fastq',
                              '.fq', '.fastq.gz', and '.fq.gz' files.
@@ -56,10 +63,10 @@ fastcat -- concatenate and summarise .fastq(.gz) files.
 Mandatory or optional arguments to long options are also mandatory or optional
 for any corresponding short options.
 
-Input files may be given on stdin by specifing the input as '-'.  When the -x
-option is given inputs may be directories.
-
-Report bugs to chris.wright@nanoporetech.com.
+Input files may be given on stdin by specifing the input as '-'. Also accepts
+directories as input and looks for .fastq(.gz) files in the top-level
+directory. Recurses into sub-directories when the -x option is given. The
+command will exit non-zero if any file encountered cannot be read.
 ```
 
 The program writes the input sequences to `stdout` in .fastq format to be
@@ -93,18 +100,52 @@ SRR12447499_1.fastq.gz  15484   7812439  424         612         13.16
 ```
 where the `mean_quality` column is the mean of the per-read `mean_quality` values.
 
+Additionally as its a common thing to want to do, the program will write
+the two files:
+
+* `length.hist` - read length histogram, and
+* `quality.hist` - read mean base-quality score histogram.
+
+When data is demultiplexed one such file will be written to the demultiplexed
+samples' directories. When demultiplexing is not enabled the files will be
+placed in a directory according to the `--histograms` option. The format of the
+histogram files is a tab-separated file of sparse, ordered intervals `[upper, lower)`:
+
+```
+lower    upper    count
+```
+
+The final bin may be unbounded, which is signified by a `0` entry for the upper
+bin edge.
+
+
 ### bamstats
 
 The `bamstats` utility is a re-implementation of the `stats_from_bam` program
 from [pomoxis](github.com/nanoporetech/pomoxis). It creates read-level summary
 statistics of alignments found in a BAM file and reports these in a TSV file.
 
+Additionally as its a common thing to want to do, the program will write
+the four files:
+
+* `length.hist` - read length histogram,
+* `quality.hist` - read mean base-quality score histogram,
+* `accuracy.hist` - read alignment accuracy histogram, and
+* `coverage.hist` - read alignment coverage histogram.
+
+These files are as described for the `fastcat` program.
+
 ```
 Usage: bamstats [OPTION...] <reads.bam>
 bamstats -- summarise rears/alignments in one or more BAM files.
 
  General options:
+  -f, --flagstats=FLAGSTATS  File for outputting alignment flag counts.
+      --histograms=DIRECTORY Directory for outputting histogram information.
+                             (default: bamstats-histograms)
   -r, --region=chr:start-end Genomic region to process.
+  -s, --sample=SAMPLE NAME   Sample name (if given, adds a 'sample_name'
+                             column).
   -t, --threads=THREADS      Number of threads for BAM processing.
 
  Read filtering options:
@@ -115,6 +156,7 @@ bamstats -- summarise rears/alignments in one or more BAM files.
       --tag_name=TN          Only process reads with a given tag (see
                              --tag_value).
       --tag_value=VAL        Only process reads with a given tag value.
+  -u, --unmapped             Include unmapped/unplaced reads in output.
 
   -?, --help                 Give this help list
       --usage                Give a short usage message
@@ -125,8 +167,6 @@ for any corresponding short options.
 
 The program creates a simple TSV file containing statistics for each primary
 alignment stored within the input BAM files.
-
-Report bugs to chris.wright@nanoporetech.com.
 ```
 
 

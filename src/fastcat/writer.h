@@ -10,6 +10,7 @@
 KSEQ_DECLARE(gzFile)
 #endif
 
+#include "../stats.h"
 #include "../fastqcomments.h"
 
 // barcode 0 is reserved for "unclassified"
@@ -18,8 +19,11 @@ KSEQ_DECLARE(gzFile)
 typedef struct {
     char* path;
     char* output;
+    char* histograms;
     gzFile* handles;
     size_t* nreads;
+    read_stats** l_stats;
+    read_stats** q_stats;
     char* sample;
     size_t reheader;
     FILE* perread;
@@ -30,7 +34,7 @@ typedef _writer* writer;
 
 char* strip_path(char* input);
 
-writer initialize_writer(char* output_dir, char* perread, char* perfile, char* sample, size_t reheader);
+writer initialize_writer(char* output_dir, char* histograms, char* perread, char* perfile, char* sample, size_t reheader);
 
 void destroy_writer(writer writer);
 

@@ -22,6 +22,8 @@ static struct argp_option options[] = {
         "Sample name (if given, adds a 'sample_name' column).", 0},
     {"demultiplex", 'd', "OUT DIR",  0,
         "Separate barcoded samples using fastq header information. Option value is top-level output directory.", 0},
+    {"histograms", 0x400, "DIRECTORY", 0,
+        "Directory for outputting histogram information. When --demultiplex is enabled histograms are written to per-sample demultiplexed output directories. (default: fastcat-histograms)", 0},
     {"min_length", 'a', "MIN READ LENGTH", 0,
         "minimum read length to output (excluded reads remain listed in summaries).", 0},
     {"max_length", 'b', "MAX READ LENGTH", 0,
@@ -56,6 +58,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'd':
             arguments->demultiplex_dir = arg;
+            break;
+        case 0x400:
+            arguments->histograms = arg;
             break;
         case 'q':
             arguments->min_qscore = (float)atof(arg);
@@ -92,6 +97,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.min_qscore = 0;
     args.recurse = 1; // always allow descent into TLD
     args.demultiplex_dir = NULL;
+    args.histograms = "fastcat-histograms";
     args.reheader = 0;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     return args;

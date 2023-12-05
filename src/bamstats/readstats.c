@@ -15,6 +15,7 @@
 #include "thread_pool_internal.h"
 
 #include "../common.h"
+#include "../stats.h"
 #include "bamiter.h"
 #include "readstats.h"
 #include "args.h"
@@ -163,6 +164,10 @@ int get_duplex_tag(bam1_t* b) {
  *  @param tag_value associated with tag_name.
  *  @param flag_counts flag_stats pointer.
  *  @param unmapped bool include unmapped reads in output.
+ *  @param length_stats read_stats* for accumulating read length information.
+ *  @param qual_stats read_stats* for accumulating read quality information.
+ *  @param acc_stats read_stats* for accumulating read alignment accuracy information.
+ *  @param cov_stats read_stats* for accumulating read alignment coverage information.
  *  @returns void. Prints output to stdout.
  *
  */
@@ -170,7 +175,8 @@ void process_bams(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr, const char *sample,
         const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
         const char *read_group, const char tag_name[2], const int tag_value,
-        flag_stats *flag_counts, bool unmapped) {
+        flag_stats *flag_counts, bool unmapped,
+        read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats) {
     if (chr != NULL) {
         if (strcmp(chr, "*") == 0) {
             fprintf(stderr, "Processing: Unplaced reads\n");
@@ -307,6 +313,12 @@ void process_bams(
         size_t ref_length = sam_hdr_tid2len(hdr, b->core.tid);
         float ref_cover = 100 * ((float)(aligned_ref_len)) / ref_length;
         char direction = "+-"[bam_is_rev(b)];
+
+        // accumulate stats into histogram
+        add_length_count(length_stats, read_length);
+        add_qual_count(qual_stats, mean_quality);
+        add_qual_count(acc_stats, acc);
+        add_qual_count(cov_stats, coverage);
 
         if (sample == NULL) {
             fprintf(stdout,
