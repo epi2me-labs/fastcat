@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 
 #include "stats.h"
 #include "common.h"
@@ -121,16 +122,33 @@ void print_stats(read_stats* stats, bool zeroes, bool tsv, FILE* fp) {
         }
     }
     else {
-        for (size_t i=0; i<stats->n; i++) {
-            if (stats->counts[i] == 0 && !zeroes) continue;
-            if (tsv) {
-                fprintf(fp, "%.2f\t%.2f\t%zu\n", (float) i * stats->width, (float) (i+1) * stats->width, stats->counts[i]);
+        if (tsv) {
+            size_t decimals = _leading_decimals(stats->width);
+            char fmt[64] = {0};  // my brain hurts and 64 seems big enough
+            snprintf(fmt, 63, "%%.%zuf\t%%.%zuf\t%%zu\n", decimals, decimals);
+            for (size_t i=0; i<stats->n; i++) {
+                if (stats->counts[i] == 0 && !zeroes) continue;
+                fprintf(fp, fmt, (float) i * stats->width, (float) (i+1) * stats->width, stats->counts[i]);
             }
-            else {
-                fprintf(fp, "[%.2f, %.2f)\t%zu\n", (float) i * stats->width, (float) (i+1) * stats->width, stats->counts[i]);
+        }
+        else {
+            size_t decimals = _leading_decimals(stats->width);
+            char fmt[64] = {0};
+            snprintf(fmt, 63, "[%%.%zuf, %%.%zuf)\t%%zu\n", decimals, decimals);
+            for (size_t i=0; i<stats->n; i++) {
+                if (stats->counts[i] == 0 && !zeroes) continue;
+                fprintf(fp, fmt, (float) i * stats->width, (float) (i+1) * stats->width, stats->counts[i]);
             }
         }
     }
+}
+
+// nasty function to e.g. 0.001 -> 3
+size_t _leading_decimals(float number) {
+    char str[64] = { 0 };
+    snprintf(str, sizeof(str), "%f", number);
+    char* point = strchr(str, '.');
+    return 1 + strspn(point + 1, "0");
 }
 
 //int main(int argc, char **argv) {

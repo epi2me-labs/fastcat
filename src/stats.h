@@ -2,6 +2,7 @@
 #define FASTCAT_STATS_H
 
 #include "stdbool.h"
+// use only 1 non-zero decimal place in these -- see _leading_decimals()
 #define QUAL_HIST_WIDTH 0.02   // QUAL is log10
 #define ACC_HIST_WIDTH 0.0001  // ACC is linear %age, Q60
 #define COV_HIST_WIDTH 0.01    // COV is linear %age
@@ -31,4 +32,6 @@ void destroy_qual_stats(read_stats* stats);
 void add_qual_count(read_stats* stats, float q);
 
 void print_stats(read_stats* stats, bool zeroes, bool tsv, FILE* fp);
+
+size_t _leading_decimals(float num);
 #endif
