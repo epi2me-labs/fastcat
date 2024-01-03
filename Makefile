@@ -101,7 +101,8 @@ mem_check_bamstats: bamstats
 		./bamstats test/bamstats/400ecoli.bam
 
 .PHONY: mem_check_bamstats_duplex
-mem_check_bamstats: bamstats
+mem_check_bamstats_duplex: bamstats
+	[ -d bamstats-histograms ] && rm -rf bamstats-histograms
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
 		./bamstats test/bamstats/310dx.bam
 
