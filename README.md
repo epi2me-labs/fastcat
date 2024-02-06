@@ -16,7 +16,7 @@ mamba create -n fastcat -c conda-forge -c bioconda -c nanoporetech fastcat
 Although not recommended, compilation from source is via make:
 
 ```
-make fastcat bamstats
+make fastcat bamstats bamindex
 ```
 
 Several libraries are assumed to be present on the system for linking.
@@ -109,7 +109,7 @@ the two files:
 When data is demultiplexed one such file will be written to the demultiplexed
 samples' directories. When demultiplexing is not enabled the files will be
 placed in a directory according to the `--histograms` option. The format of the
-histogram files is a tab-separated file of sparse, ordered intervals `[upper, lower)`:
+histogram files is a tab-separated file of sparse, ordered intervals `[lower, uppper)`:
 
 ```
 lower    upper    count
@@ -168,6 +168,47 @@ for any corresponding short options.
 The program creates a simple TSV file containing statistics for each primary
 alignment stored within the input BAM files.
 ```
+
+#### Output format
+
+The `bamstats` output is a tab-separated text file with columns as in the table
+below. The `q` prefix to columns names relates to the so-called "query"
+sequence, i.e. the sequencing read. The `r` prefix relates to the reference
+sequence. Not all column names where properties are quoted for both the query
+and reference follow this convention; this is an unfortunate historical wart.
+
+All coordinates are given as zero-based, end exclusive.
+In sequence alignment jargon the term "match" means any a pair of bases
+(one each from the query and reference) which are aligned to each other.
+The term does not convey its common English meaning that the two bases
+have the same identity. An 'A' base from the query can match (be aligned to)
+a 'C' base from the reference.
+
+| index | name | description
+| - | - | -
+| 1 | `name` | Read identifier (column 1 from a SAM file).
+| 2 | `runid` | Sequencing run identifier (from the `RD` tag of the SAM record).
+| 3 | `sample_name` | Sample name (optional, provided as input by the user).
+| 4 | `ref` | Reference sequence name (column 3 from a SAM file).
+| 5 | `coverage` | Proportion of read spanned by the alignment.
+| 6 | `ref_coverage` | Proportion of reference spanned by the alignment.
+| 7 | `qstart` | Alignment start coordinate on the query (tantamount to the total left-hand clipping in [SAM terminology](https://samtools.github.io/hts-specs/)).
+| 8 | `qend` | Alignment end coordinate on the query (see `qstart`).
+| 9 | `rstart` | Alignment start coordinate on the reference (column 4 of SAM).
+| 10 | `rend` | Alignment end coordinate on the reference.
+| 11 | `aligned_ref_len` | Length of alignment on reference (simply `rend - rstart`).
+| 12 | `direction` | Alignment direction. `+` for forward reference sequence, `-` for reverse complement.
+| 13 | `length` | Total length of the alignment including all insertions.
+| 14 | `read_length` | Length of query sequence (as stored in the input file).
+| 15 | `mean_quality` | Mean per-base quality of the query sequence expressed on Phred scale. See discussion in `fastcat` section above.
+| 16 | `start_time` | Sequencing start time for the read (from the `ST` tag of the SAM record).
+| 17 | `match` | Number of matches in the alignment (see description above).
+| 18 | `ins` | Number of inserted bases in alignment.
+| 19 | `del` | Number of deleted bases in alignment.
+| 20 | `sub` | Number of substitutions (mismatches) in alignment.
+| 21 | `iden` | Proportion of matches which are not mismatches: `(match - sub) / match`.
+| 22 | `acc` | Alignment accuracy: `(length - ins - del - sub) / length`. Sometimes also referred to as [BLAST-identity](https://lh3.github.io/2018/11/25/on-the-definition-of-sequence-identity).
+| 23 | `duplex` | Whether the read was simplex (`0`), duplex (`1`), or duplex-forming (`-1`). See [dorado documentation](https://github.com/nanoporetech/dorado?tab=readme-ov-file#duplex).
 
 
 ### bamindex
