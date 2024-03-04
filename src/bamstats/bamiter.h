@@ -1,6 +1,7 @@
 #ifndef _MODBAMBED_BAMITER_H
 #define _MODBAMBED_BAMITER_H
 
+#include <stdint.h>
 #include <stdbool.h>
 #include "htslib/sam.h"
 
@@ -61,5 +62,13 @@ int read_bam(void *data, bam1_t *b);
  *  The length of the returned array is b->core->l_qlen.
  */
 int *qpos2rpos(bam1_t *b);
+
+/** Fetch a BAM tag with case insensitivity
+ *
+ *  @param b BAM record
+ *  @param tag Tag to fetch via bam_aux_get
+ *
+ */
+uint8_t* bam_get_tag_caseinsensitive(const bam1_t* b, char* tag);
 
 #endif

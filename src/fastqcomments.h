@@ -5,6 +5,7 @@
 
 typedef struct {
     char* comment;
+    char* rg;
     char* runid;
     char* flow_cell_id;
     char* barcode;
