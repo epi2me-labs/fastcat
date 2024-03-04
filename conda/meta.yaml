@@ -14,9 +14,9 @@ requirements:
     host:
         - argp-standalone # [osx]
         # linked to all the same stuff as bioconda builds
-        - nanoporetech::htslib =1.16
+        - nanoporetech::htslib =1.19
     run:
-        - nanoporetech::htslib
+        - nanoporetech::htslib =1.19
 test:
     commands:
         fastcat --help

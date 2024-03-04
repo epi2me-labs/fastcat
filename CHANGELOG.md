@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `fastcat` will output a tab between the Read ID and the SAM tags rather than a space to match samtools convention.
 - `bamstats` uses `bam_get_tag_caseinsensitive` wrapper to get SAM tags with case insensitivity.
 - `fastcat` and `bamstats` will infer a Run ID from the `RG` tag if `RD` is not available.
+- Bumped version of htslib used to 1.19.
 ### Fixed
 - Incorrectly capitalised ONT SAM tags are now output in lowercase by fastcat: `ch`, `rn`, `st`.
 
