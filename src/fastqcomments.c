@@ -139,16 +139,12 @@ read_meta parse_read_meta(kstring_t comment) {
         ksprintf_with_opt_delim(meta->tags_str, "\t", "CO:Z:%s", meta->rest->s);
     }
 
-    // Populate RD (runid) from RG if present, and RD was not tagged.
-    if (strlen(meta->runid) == 0) {
-        if (strlen(meta->rg) > 0) {
-            char* runid = strtok(meta->rg, "_");
-            // We'll at least check the runid is the length that we will accept before
-            // taking it at face value for inclusion downstream
-            if (strlen(runid) == 40) {
-                meta->runid = runid;
-                ksprintf_with_opt_delim(meta->tags_str, "\t", "RD:Z:%s", runid);
-            }
+    // Populate RD (runid) from RG if RD is empty and RG is present
+    if (strlen(meta->runid) == 0 && strlen(meta->rg) > 0) {
+        char* runid = parse_runid_from_rg(meta->rg);
+        if (runid) {
+            meta->runid = runid;
+            ksprintf_with_opt_delim(meta->tags_str, "\t", "RD:Z:%s", runid);
         }
     }
 

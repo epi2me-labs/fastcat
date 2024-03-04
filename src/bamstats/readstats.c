@@ -195,15 +195,25 @@ void process_bams(
     int res;
     bam1_t *b = bam_init1();
     uint8_t *tag;
-    char *runid;
+    char *runid = NULL;
     char *start_time;
 
     while ((res = read_bam(bam, b) >= 0)) {
         // get run ID
-        runid = "";
         tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "RD");
         if (tag != NULL){
             runid = bam_aux2Z(tag);
+        }
+        else {
+            // try to parse out RG if RD is not found
+            tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "RG");
+            if (tag != NULL) {
+                runid = parse_runid_from_rg(bam_aux2Z(tag));
+            }
+        }
+        // set NULL runid to empty string
+        if (runid == NULL) {
+            runid = "";
         }
         // get start time
         start_time = "";
@@ -213,7 +223,7 @@ void process_bams(
         }
         // get duplex code
         int duplex_code = get_duplex_tag(b);
-        
+
         // write a record for unmapped/unplaced
         if (b->core.flag & BAM_FUNMAP){
             if (unmapped) {

@@ -67,4 +67,6 @@ void kahan_sum(double* sum, double term, double* c);
 float mean_qual(char* qual, size_t len);
 float mean_qual_from_bam(u_int8_t* qual, size_t len);
 
+char* parse_runid_from_rg(char* rg);
+
 #endif
