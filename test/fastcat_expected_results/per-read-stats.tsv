@@ -59,3 +59,23 @@ SRR12480552.48	../data/bcMangled.fastq.gz		sample	512	14.60	0	0
 SRR12480552.69	../data/bcMangled.fastq.gz		sample	493	14.11	0	0	
 SRR12480552.75	../data/bcMangled.fastq.gz		sample	515	10.33	0	0	
 SRR12480552.13	../data/bcMangled.fastq.gz		sample	512	15.32	0	0	
+02f8ea0a-48a3-43e3-b3b4-4832304a1d63	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	874	18.23	388	6040	2022-09-27T16:54:30.522+00:00
+049cbf74-5247-4924-9d40-8b13e06d2ce1	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	382	18.45	68	6052	2022-09-27T16:53:36.712+00:00
+0a43aaf1-eb93-4546-b7c2-26d6cad0495a	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	1086	17.68	1311	3548	2022-09-27T16:54:04.381+00:00
+0d6b275d-0988-415e-9e52-584605eac9c7	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	1212	18.00	359	3193	2022-09-27T16:54:31.133+00:00
+06d1b46a-f572-4322-bb4b-125cc04356da	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	567	15.03	329	3280	2022-09-27T16:55:12.575+00:00
+00daaf65-afcc-40cb-9b19-aa2f08431e58	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	1788	20.12	94	5128	2022-09-27T16:54:04.401+00:00
+07b41e60-d563-48e3-add7-c8df26e1b05f	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	528	16.09	76	3965	2022-09-27T16:53:47.919+00:00
+07edc020-dc45-41ca-b3e9-d604a583f2b3	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	625	21.26	98	4130	2022-09-27T16:54:10.177+00:00
+0f885800-dd67-436b-8388-f1eb11c08283	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	441	19.59	552	5436	2022-09-27T16:54:05.459+00:00
+005af53d-c9bc-4036-ba0e-75d0a65915e2	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	15165	17.84	374	4128	2022-09-27T16:53:06.188+00:00
+001a54f0-480c-4921-a9ac-bb56ac265b53	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	31127	14.62	431	1364	2022-09-27T16:53:46.787+00:00
+0006f7f5-10ec-46c5-826a-e29ccbabd157	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	43346	24.49	421	3305	2022-09-27T16:53:08.748+00:00
+00f5b0a4-9bcc-4d3b-b28c-82ee8a225d96	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	25675	20.28	2666	5266	2022-09-27T16:52:52.092+00:00
+0137de1f-d6ca-4ff2-a057-4a945931e65b	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	3766	22.28	1407	12552	2022-09-27T16:54:20.749+00:00
+01141689-0761-4a0c-9d4e-0e52321d30e3	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	21861	22.55	340	3399	2022-09-27T16:53:32.512+00:00
+007ecbd6-47dc-46b9-9a65-b73e0dbbc7fd	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	42473	22.32	9	1128	2022-09-27T16:53:22.726+00:00
+007f0041-5024-4d59-8ed6-c3871842f74f	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	39158	15.30	147	5862	2022-09-27T16:53:03.892+00:00
+01b3eaa4-c93b-4f48-948f-ef2974ade8d5	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	247	12.14	86	4014	2022-09-27T16:53:50.280+00:00
+0154f130-64f2-4cd4-8f81-8a9d9c3c9c33	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	12531	20.13	415	1830	2022-09-27T16:53:55.209+00:00
+014199a8-94ce-4d85-b5dd-b922e37d0fab	../data/samtoolsfastq.fastq.gz	ee1ba89e9e8bdff1ed2f4b2a81d21464ff7c4f1c	sample	18416	21.62	576	3293	2022-09-27T16:52:39.735+00:00

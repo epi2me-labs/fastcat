@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased]
+### Added
+- Support for reading SAM tags from FASTQ headers.
+### Changed
+- `fastcat` will output a tab between the Read ID and the SAM tags rather than a space to match samtools convention.
+- `bamstats` uses `bam_get_tag_caseinsensitive` wrapper to get SAM tags with case insensitivity.
+### Fixed
+- Incorrectly capitalised ONT SAM tags are now output in lowercase by fastcat: `ch`, `rn`, `st`.
+
 ## [v0.15.2]
 ### Fixed
 - Duplicated recipe name in Makefile.

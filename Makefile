@@ -5,10 +5,12 @@ ifeq ($(OS), Darwin)
     ARGP ?= $(shell brew --prefix argp-standalone)/lib/libargp.a
     ARGP_INC ?= -I$(shell brew --prefix argp-standalone)/include
     CFLAGS ?= -fpic -O3 ${ARGP_INC}
+    ZCAT = "gzcat"
 else
     ARGP ?=
     ARGP_INC ?=
     CFLAGS ?= -fpic -msse3 -O3 ${ARGP_INC}
+    ZCAT = "zcat"
 endif
 
 VALGRIND ?= valgrind
@@ -141,6 +143,25 @@ regression_test_fastcat: fastcat
 		<(sort ../fastcat_expected_results/per-read-stats.tsv)' && \
 	bash -c "diff \
 		<(cat concat.sorted.fastq | paste -d '|' - - - - | sort | tr '|' '\n') \
-		<(zcat ../fastcat_expected_results/concat.sorted.fastq.gz | \
+		<(${ZCAT} ../fastcat_expected_results/concat.sorted.fastq.gz | \
 			paste -d '|' - - - - | sort | tr '|' '\n')"
+	rm -r test/test-tmp
+
+# samtools fastq -T'*' sam2fastq/wf_basecalling_demo.sam > sam2fastq/wf_basecalling_demo.fastq
+.PHONY: regression_test_sam_to_fastcat
+regression_test_sam_to_fastcat: fastcat
+	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
+	mkdir test/test-tmp && \
+	cd test/test-tmp && \
+	../../fastcat ../sam2fastq/wf_basecalling_demo.fastq -s sample -H \
+		--histograms fastcat-histograms1 -r per-read-stats.fastcat_once.tsv -f per-file-stats.fastcat_once.tsv \
+		> wf_basecalling_demo.fastcat_once.fastq && \
+	../../fastcat wf_basecalling_demo.fastcat_once.fastq -s sample -H \
+		--histograms fastcat-histograms2 -r per-read-stats.fastcat_twice.tsv -f per-file-stats.fastcat_twice.tsv \
+		> wf_basecalling_demo.fastcat_twice.fastq && \
+	diff wf_basecalling_demo.fastcat_once.fastq wf_basecalling_demo.fastcat_twice.fastq && \
+	bash -c 'diff <(sort -d per-file-stats.fastcat_once.tsv | sed 's,../sam2fastq/wf_basecalling_demo.fastq,FILE,') \
+		<(sort -d per-file-stats.fastcat_twice.tsv | sed 's,wf_basecalling_demo.fastcat_once.fastq,FILE,')' && \
+	bash -c 'diff <(sort per-read-stats.fastcat_once.tsv | sed 's,../sam2fastq/wf_basecalling_demo.fastq,FILE,') \
+		<(sort per-read-stats.fastcat_twice.tsv | sed 's,wf_basecalling_demo.fastcat_once.fastq,FILE,')'
 	rm -r test/test-tmp

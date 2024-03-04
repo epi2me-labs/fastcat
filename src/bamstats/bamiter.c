@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <errno.h>
 #include <string.h>
 
@@ -91,7 +92,7 @@ int read_bam(void *data, bam1_t *b) {
         if ((int)b->core.qual < aux->min_mapQ) continue;
         // filter by tag
         if (check_tag) {
-            tag = bam_aux_get((const bam1_t*) b, aux->tag_name);
+            tag = bam_get_tag_caseinsensitive((const bam1_t*) b, aux->tag_name);
             if (tag == NULL){ // tag isn't present or is currupt
                 if (aux->keep_missing) {
                     break;
@@ -105,7 +106,7 @@ int read_bam(void *data, bam1_t *b) {
         }
         // filter by RG (read group):
         if (have_rg) {
-            rg = bam_aux_get((const bam1_t*) b, "RG");
+            rg = bam_get_tag_caseinsensitive((const bam1_t*) b, "RG");
             if (rg == NULL) continue;  // missing
             rg_val = bam_aux2Z(rg);
             if (errno == EINVAL) continue;  // bad parse
@@ -152,4 +153,30 @@ int *qpos2rpos(bam1_t *b) {
         }
     }
     return posmap;
+}
+
+/** Fetch a BAM tag with case insensitivity
+ *
+ *  @param b BAM record
+ *  @param tag Tag to fetch via bam_aux_get
+ *
+ */
+uint8_t* bam_get_tag_caseinsensitive(const bam1_t* b, char* tag) {
+
+    uint8_t* ret;
+    char upper_tag[3];
+    char lower_tag[3];
+    upper_tag[2] = '\0';
+    lower_tag[2] = '\0';
+    for (int i = 0; i < 2; i++) {
+        upper_tag[i] = toupper(tag[i]);
+        lower_tag[i] = tolower(tag[i]);
+    }
+    // Try uppercase variant
+    ret = bam_aux_get((const bam1_t*) b, upper_tag);
+    if (ret == NULL){
+        // Try lowercase variant
+        ret = bam_aux_get((const bam1_t*) b, lower_tag);
+    }
+    return ret;
 }

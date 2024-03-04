@@ -137,7 +137,7 @@ static inline void process_flagstat_counts(const bam1_t* b, size_t* counts, cons
 // Get duplex tag
 int get_duplex_tag(bam1_t* b) {
     int res = 0;  // default simple
-    uint8_t *duplex_tag = bam_aux_get(b, "dx");
+    uint8_t *duplex_tag = bam_get_tag_caseinsensitive(b, "dx");
     if (duplex_tag != NULL) {  // or tag isn't present or is corrupt
         res = bam_aux2i(duplex_tag);
         // a valid zero cannot be differentiated from an EINVAL zero
@@ -201,13 +201,13 @@ void process_bams(
     while ((res = read_bam(bam, b) >= 0)) {
         // get run ID
         runid = "";
-        tag = bam_aux_get((const bam1_t*) b, "RD");
+        tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "RD");
         if (tag != NULL){
             runid = bam_aux2Z(tag);
         }
         // get start time
         start_time = "";
-        tag = bam_aux_get((const bam1_t*) b, "ST");
+        tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "st");
         if (tag != NULL){
             start_time = bam_aux2Z(tag);
         }
@@ -273,7 +273,7 @@ void process_bams(
         char* qname = bam_get_qname(b);
 
         // get NM tag
-        tag = bam_aux_get((const bam1_t*) b, "NM");
+        tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "NM");
         if (tag == NULL){ // tag isn't present or is corrupt
             fprintf(stderr, "Read '%s' does not contain 'NM' tag.\n", qname);
             exit(EXIT_FAILURE);

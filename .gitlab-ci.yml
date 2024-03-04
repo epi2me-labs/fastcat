@@ -26,12 +26,17 @@ build:
     stage: test
     before_script:
         - *prep-image
+    artifacts:
+      when: always
+      paths:
+        - test/*
     script:
         - make fastcat
         - ./fastcat --help
         - make mem_check_fastcat
         - make mem_check_fastcat_demultiplex
         - make regression_test_fastcat
+        - make regression_test_sam_to_fastcat
         - make bamstats
         - ./bamstats --help
         - make mem_check_bamstats
