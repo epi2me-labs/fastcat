@@ -212,3 +212,16 @@ float mean_qual_from_bam(u_int8_t* qual, size_t len) {
     qsum /= len;
     return -10 * log10(qsum);
 }
+
+char* parse_runid_from_rg(char* rg) {
+    // Currently the RG tag glues together a few pieces of metadata.
+    // Although there are other useful pieces of information such as basecaller_cfg,
+    // these elements are not output reliably (and can themselves, contain underscores).
+    // We can only reliably fetch the Run ID.
+    char* runid = strtok(rg, "_");
+    // We'll at least check the runid is the length that we expect
+    if (strlen(runid) == 40) {
+        return runid;
+    }
+    return NULL;
+}
