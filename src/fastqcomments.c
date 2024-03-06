@@ -47,11 +47,15 @@ void destroy_read_meta(read_meta meta) {
 read_meta parse_read_meta(kstring_t comment) {
     read_meta meta = create_read_meta(&comment);
 
-    // if RG:Z appears in the seq->comment, assume there are SAM tags to parse
+    // if an RG or RD tag appears in the seq->comment, assume there are SAM tags to parse
     char* res = NULL;
     bool sam_tags = false;
     if (strlen(meta->comment) > 0) {
         res = strstr(meta->comment, "\tRG:Z:");
+        if (res != NULL) {
+            sam_tags = true;
+        }
+        res = strstr(meta->comment, "\tRD:Z:");
         if (res != NULL) {
             sam_tags = true;
         }
