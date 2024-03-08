@@ -312,7 +312,7 @@ void process_bams(
         // some things we've seen go wrong
         // explode now because there is almost certainly something wrong with the tags
         // and calling add_qual_count with a value less than zero will cause a segfault
-        if (iden < 0.0 || acc < 0.0 || (size_t)NM > match) {
+        if (iden < 0.0 || acc < 0.0 || (size_t)NM > length) {
             fprintf(stderr, "Read '%s' appears to contain implausible alignment information\n", qname);
             exit(EXIT_FAILURE);
         }
