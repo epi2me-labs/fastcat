@@ -309,6 +309,13 @@ void process_bams(
         size_t length = match + ins + delt;
         float iden = 100 * ((float)(match - sub)) / match;
         float acc = 100 - 100 * ((float)(NM)) / length;
+        // some things we've seen go wrong
+        // explode now because there is almost certainly something wrong with the tags
+        // and calling add_qual_count with a value less than zero will cause a segfault
+        if (iden < 0.0 || acc < 0.0 || (size_t)NM > match) {
+            fprintf(stderr, "Read '%s' appears to contain implausible alignment information\n", qname);
+            exit(EXIT_FAILURE);
+        }
         // we only deal in primary/soft-clipped alignments so length
         // of qseq member is the length of the intact query sequence.
         uint32_t read_length = b->core.l_qseq;
