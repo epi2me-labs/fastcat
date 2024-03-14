@@ -50,6 +50,8 @@ void destroy_flag_stats(flag_stats* stats);
  *  @param qual_stats read_stats* for accumulating read quality information.
  *  @param acc_stats read_stats* for accumulating read alignment accuracy information.
  *  @param cov_stats read_stats* for accumulating read alignment coverage information.
+ *  @param length_stats_unmapped read_stats* for accumulating read length information for unmapped reads.
+ *  @param qual_stats_unmapped read_stats* for accumulating read quality information for unmapped reads.
  *  @returns void. Prints output to stdout.
  *
  */
@@ -58,6 +60,7 @@ void process_bams(
     const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
     const char *read_group, const char tag_name[2], const int tag_value,
     flag_stats *flag_counts, bool unmapped,
-    read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats);
+    read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
+    read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped);
 
 #endif

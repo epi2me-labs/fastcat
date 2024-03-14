@@ -120,6 +120,10 @@ int main(int argc, char *argv[]) {
     read_stats* acc_stats = create_qual_stats(ACC_HIST_WIDTH);
     read_stats* cov_stats = create_qual_stats(COV_HIST_WIDTH);
 
+    // Prepare also for the unmapped reads
+    read_stats* length_stats_unmapped = create_length_stats();
+    read_stats* qual_stats_unmapped = create_qual_stats(QUAL_HIST_WIDTH);
+
     if (args.region == NULL) {
         // iterate over the entire file
         process_bams(
@@ -127,7 +131,8 @@ int main(int argc, char *argv[]) {
             NULL, 0, INT64_MAX, true,
             args.read_group, args.tag_name, args.tag_value,
             flag_counts, args.unmapped,
-            length_stats, qual_stats, acc_stats, cov_stats);
+            length_stats, qual_stats, acc_stats, cov_stats,
+            length_stats_unmapped, qual_stats_unmapped);
 
         // write flagstat counts if requested
         if (flag_counts != NULL) {
@@ -169,7 +174,8 @@ int main(int argc, char *argv[]) {
             chr, start, end, true,
             args.read_group, args.tag_name, args.tag_value,
             flag_counts, args.unmapped,
-            length_stats, qual_stats, acc_stats, cov_stats);
+            length_stats, qual_stats, acc_stats, cov_stats,
+            length_stats_unmapped, qual_stats_unmapped);
         if (flag_counts != NULL) {
             write_stats(flag_counts->counts[0], chr, args.sample, flagstats);
         }
@@ -201,10 +207,28 @@ int main(int argc, char *argv[]) {
     print_stats(cov_stats, false, true, stats_fp);
     fclose(stats_fp); free(path);
 
+    // Save also histograms for the unmapped reads if requested
+    // and if the user is not asking for a region
+    if (args.unmapped && args.region == NULL){
+        path = calloc(strlen(args.histograms) + 19, sizeof(char));
+        sprintf(path, "%s/length.unmap.hist", args.histograms);
+        stats_fp = fopen(path, "w");
+        print_stats(length_stats_unmapped, false, true, stats_fp);
+        fclose(stats_fp); free(path);
+
+        path = calloc(strlen(args.histograms) + 20, sizeof(char));
+        sprintf(path, "%s/quality.unmap.hist", args.histograms);
+        stats_fp = fopen(path, "w");
+        print_stats(qual_stats_unmapped, false, true, stats_fp);
+        fclose(stats_fp); free(path);
+    }
+
     destroy_length_stats(length_stats);
     destroy_qual_stats(qual_stats);
     destroy_qual_stats(acc_stats);
     destroy_qual_stats(cov_stats);
+    destroy_length_stats(length_stats_unmapped);
+    destroy_qual_stats(qual_stats_unmapped);
 
     if (flagstats != NULL) {
         fclose(flagstats);
