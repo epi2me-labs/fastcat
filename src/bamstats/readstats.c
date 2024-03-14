@@ -296,7 +296,7 @@ void process_bams(
             exit(EXIT_FAILURE);
         }
         int NM = bam_aux2i(tag);
-        if (errno == EINVAL) {
+        if (NM == 0 && errno == EINVAL) {
             // `get_int_aux_val` returns 0 if setting errno, preventing us from
             // distinguishing between a non-int tag type and an intentional zero. We'll
             // have to check the type ourselves.
