@@ -168,6 +168,8 @@ int get_duplex_tag(bam1_t* b) {
  *  @param qual_stats read_stats* for accumulating read quality information.
  *  @param acc_stats read_stats* for accumulating read alignment accuracy information.
  *  @param cov_stats read_stats* for accumulating read alignment coverage information.
+ *  @param length_stats_unmapped read_stats* for accumulating read length information for unmapped reads.
+ *  @param qual_stats_unmapped read_stats* for accumulating read quality information for unmapped reads.
  *  @returns void. Prints output to stdout.
  *
  */
@@ -176,7 +178,8 @@ void process_bams(
         const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
         const char *read_group, const char tag_name[2], const int tag_value,
         flag_stats *flag_counts, bool unmapped,
-        read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats) {
+        read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
+        read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped) {
     if (chr != NULL) {
         if (strcmp(chr, "*") == 0) {
             fprintf(stderr, "Processing: Unplaced reads\n");
@@ -265,6 +268,10 @@ void process_bams(
                 if (flag_counts != NULL) {
                     process_flagstat_counts(b, flag_counts->unmapped, duplex_code);
                 }
+
+                // accumulate stats into histogram
+                add_length_count(length_stats_unmapped, read_length);
+                add_qual_count(qual_stats_unmapped, mean_quality);
             }
             continue;
         }
