@@ -130,12 +130,13 @@ mem_check_bamindex-fetch: bamindex test/bamindex/400.bam.bci
 .PHONY: mem_check_bamindex
 mem_check_bamindex: mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamindex-fetch
 
-.PHONY: test_bamstats_badNM
-test_bamstats_badNM: bamstats
+.PHONY: test_bamstats_NM
+test_bamstats_NM: bamstats
 	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
 	mkdir test/test-tmp && \
 	cd test/test-tmp && \
-	../../bamstats ../bamstats_badNM/test.sam 2> err || grep "appears to contain implausible alignment information" err
+	../../bamstats ../bamstats_badNM/test.sam 2> err || grep "appears to contain implausible alignment information" err && rm -rf bamstats-histograms && \
+	../../bamstats ../bamstats_zeroNM/test.sam
 	rm -r test/test-tmp
 
 .PHONY: regression_test_fastcat

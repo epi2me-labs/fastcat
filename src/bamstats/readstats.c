@@ -139,12 +139,8 @@ int get_duplex_tag(bam1_t* b) {
     int res = 0;  // default simple
     uint8_t *duplex_tag = bam_get_tag_caseinsensitive(b, "dx");
     if (duplex_tag != NULL) {  // or tag isn't present or is corrupt
-        res = bam_aux2i(duplex_tag);
-        // a valid zero cannot be differentiated from an EINVAL zero
-        // but we assume simplex in the latter case so it works out
-        if (res == 0 && errno == EINVAL) {
-            res = 0;  // tag was not integer, assume simplex
-        }
+        // invalid tag is assumed to be simplex, no need to check EINVAL
+        res = bam_aux_tag_int(duplex_tag);
     }
     return res;
 }
@@ -295,16 +291,10 @@ void process_bams(
             fprintf(stderr, "Read '%s' does not contain 'NM' tag.\n", qname);
             exit(EXIT_FAILURE);
         }
-        int NM = bam_aux2i(tag);
+        int NM = bam_aux_tag_int(tag);
         if (NM == 0 && errno == EINVAL) {
-            // `get_int_aux_val` returns 0 if setting errno, preventing us from
-            // distinguishing between a non-int tag type and an intentional zero. We'll
-            // have to check the type ourselves.
-            char type = *tag++;
-            if (type != 'i' && type != 'I') {
-                fprintf(stderr, "Read '%s' contains non-integer 'NM' tag type '%c'\n", qname, type);
-                exit(EXIT_FAILURE);
-            }
+            fprintf(stderr, "Read '%s' contains non-integer 'NM' tag type.\n", qname);
+            exit(EXIT_FAILURE);
         }
         size_t* stats = create_cigar_stats(b);
         size_t match, ins, delt;
