@@ -197,6 +197,9 @@ void process_bams(
     char *runid = NULL;
     char *start_time;
 
+    // buffer to store copy of RG aux tag, in case strtok is called on it
+    char *rg_copy = NULL;
+
     while ((res = read_bam(bam, b) >= 0)) {
         // get run ID
         tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "RD");
@@ -207,7 +210,11 @@ void process_bams(
             // try to parse out RG if RD is not found
             tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "RG");
             if (tag != NULL) {
-                runid = parse_runid_from_rg(bam_aux2Z(tag));
+                runid = bam_aux2Z(tag);
+                // We must make a copy of the RG tag contents to prevent strtok modifying the BAM record
+                rg_copy = (char*)xalloc(strlen(runid) + 1, sizeof(char), "RG copy");
+                strcpy(rg_copy, runid);
+                runid = parse_runid_from_rg(rg_copy);
             }
         }
         // set NULL runid to empty string
@@ -360,6 +367,11 @@ void process_bams(
                 match, ins, delt, sub, iden, acc, duplex_code);
         }
 		free(stats);
+        // free rg_copy buffer if it looks used
+        if (rg_copy != NULL) {
+            free(rg_copy);
+            rg_copy = NULL;
+        }
     }
 
     destroy_bam_iter_data(bam);
