@@ -144,12 +144,19 @@ regression_test_fastcat: fastcat
 	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
 	mkdir test/test-tmp && \
 	cd test/test-tmp && \
-	../../fastcat ../data -s sample -H -f per-file-stats.tsv -r per-read-stats.tsv \
+	../../fastcat ../data -s sample --reheader -f per-file-stats.tsv -r per-read-stats.tsv \
 		> concat.sorted.fastq && \
 	bash -c 'diff <(sort per-file-stats.tsv) \
 		<(sort ../fastcat_expected_results/per-file-stats.tsv)' && \
 	bash -c 'diff <(sort per-read-stats.tsv) \
 		<(sort ../fastcat_expected_results/per-read-stats.tsv)' && \
+	bash -c "diff \
+		<(cat concat.sorted.fastq | paste -d '|' - - - - | sort | tr '|' '\n') \
+		<(${ZCAT} ../fastcat_expected_results/concat.reheader.sorted.fastq.gz | \
+			paste -d '|' - - - - | sort | tr '|' '\n')" && \
+	rm -rf fastcat-histograms/ && \
+	../../fastcat ../data -s sample -f per-file-stats.tsv -r per-read-stats.tsv \
+		> concat.sorted.fastq && \
 	bash -c "diff \
 		<(cat concat.sorted.fastq | paste -d '|' - - - - | sort | tr '|' '\n') \
 		<(${ZCAT} ../fastcat_expected_results/concat.sorted.fastq.gz | \

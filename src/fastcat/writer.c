@@ -135,15 +135,20 @@ void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
     int (*write)(void*, const char*, ...);
     if (handle == stdout) { write = &fprintf; } else { write = &_gzsnprintf; }
 
-    static const char* wcomment_fmt = "@%s\t%s\n%s\n+\n%s\n";
-    static const char* nocomment_fmt = "@%s\n%s\n+\n%s\n";
+    static const char* fq_comment_fmt = "@%s %s\n%s\n+\n%s\n";
+    static const char* sam_comment_fmt = "@%s\t%s\n%s\n+\n%s\n";
+    static const char* no_comment_fmt = "@%s\n%s\n+\n%s\n";
 
     if (seq->comment.l > 0) {
-        char* output_comment = writer->reheader ? meta->tags_str->s : seq->comment.s;
-        (*write)(handle, wcomment_fmt, seq->name.s, output_comment, seq->seq.s, seq->qual.s);
+        if (writer->reheader) {
+            (*write)(handle, sam_comment_fmt, seq->name.s, meta->tags_str->s, seq->seq.s, seq->qual.s);
+        }
+        else {
+            (*write)(handle, fq_comment_fmt, seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
+        }
     }
     else {
-        (*write)(handle, nocomment_fmt, seq->name.s, seq->seq.s, seq->qual.s);
+        (*write)(handle, no_comment_fmt, seq->name.s, seq->seq.s, seq->qual.s);
     }
 }
 
