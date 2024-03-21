@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.16.8]
+### Changed
+- `fastcat` reverts to using a space separator (introduced in v0.16.0) between the Read ID and comment when outputting FASTQ comments that are not SAM tags
+
 ## [v0.16.7]
 ### Fixed
 - Modification of BAM record with strtok when inferring Run ID from RG aux tag causing missing NM tag
