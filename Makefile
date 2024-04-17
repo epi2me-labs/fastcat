@@ -50,17 +50,22 @@ htslib/libhts.a:
 		&& CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" ./configure $(HTS_CONF_ARGS) \
 		&& make -j 4
 
+zlib-ng/libz.a:
+	@echo Compiling $(@F)
+	cd zlib-ng/ \
+		&& CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" ./configure --zlib-compat \
+		&& make -j 4 libz.a
 
 src/%.o: src/%.c
 	$(CC) -Isrc -Ihtslib -c -pthread $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $^ -o $@
 
 
-fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o src/stats.o $(STATIC_HTSLIB)
+fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o src/stats.o $(STATIC_HTSLIB) zlib-ng/libz.a
 	$(CC) -Isrc $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
-		-lz -lm $(EXTRA_LIBS) \
+		-lm $(EXTRA_LIBS) \
 		-o $@
 
 
