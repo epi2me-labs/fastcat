@@ -18,12 +18,14 @@ static struct argp_option options[] = {
         "Per-read summary output", 0},
     {"file", 'f', "FILE SUMMARY",  0,
         "Per-file summary output", 0},
-    {"runid", 'i', "ID SUMMARY",  0,
+    {"runids", 'i', "ID SUMMARY",  0,
         "Run ID summary output", 0},
     {"sample", 's', "SAMPLE NAME",   0,
         "Sample name (if given, adds a 'sample_name' column).", 0},
     {"demultiplex", 'd', "OUT DIR",  0,
         "Separate barcoded samples using fastq header information. Option value is top-level output directory.", 0},
+    {"reads_per_file", 'c', "NUM", 0,
+        "Split reads into files with a set number of reads (default: single file).", 0},
     {"histograms", 0x400, "DIRECTORY", 0,
         "Directory for outputting histogram information. When --demultiplex is enabled histograms are written to per-sample demultiplexed output directories. (default: fastcat-histograms)", 0},
     {"min_length", 'a', "MIN READ LENGTH", 0,
@@ -60,6 +62,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'b':
             arguments->max_length = atoi(arg);
+            break;
+        case 'c':
+            arguments->reads_per_file = atoi(arg);
             break;
         case 'd':
             arguments->demultiplex_dir = arg;
@@ -105,6 +110,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.demultiplex_dir = NULL;
     args.histograms = "fastcat-histograms";
     args.reheader = 0;
+    args.reads_per_file = 0;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     return args;
 }

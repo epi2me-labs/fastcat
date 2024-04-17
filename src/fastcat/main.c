@@ -188,7 +188,7 @@ int main(int argc, char **argv) {
     writer writer = initialize_writer(
         args.demultiplex_dir, args.histograms,
         args.perread, args.perfile, args.runids,
-        args.sample, args.reheader);
+        args.sample, args.reheader, args.reads_per_file);
     if (writer == NULL) exit(1);
 
     size_t nfile = 0;

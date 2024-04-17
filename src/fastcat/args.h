@@ -14,6 +14,7 @@ typedef struct arguments {
     char* demultiplex_dir;
     char* histograms;
     char **files;
+    size_t reads_per_file;
 } arguments_t;
 
 arguments_t parse_arguments(int argc, char** argv);
