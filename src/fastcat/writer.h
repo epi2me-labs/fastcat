@@ -28,13 +28,14 @@ typedef struct {
     size_t reheader;
     FILE* perread;
     FILE* perfile;
+    FILE* runids;
 } _writer;
 
 typedef _writer* writer;
 
 char* strip_path(char* input);
 
-writer initialize_writer(char* output_dir, char* histograms, char* perread, char* perfile, char* sample, size_t reheader);
+writer initialize_writer(char* output_dir, char* histograms, char* perread, char* perfile, char* runids, char* sample, size_t reheader);
 
 void destroy_writer(writer writer);
 

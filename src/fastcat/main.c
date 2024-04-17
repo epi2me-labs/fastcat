@@ -14,6 +14,7 @@ KSEQ_INIT(gzFile, gzread)
 
 #include "../common.h"
 #include "../fastqcomments.h"
+#include "../kh_counter.h"
 #include "args.h"
 #include "writer.h"
 
@@ -110,18 +111,22 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
     size_t minl = UINTMAX_MAX, maxl = 0;
     double meanq = 0.0, c = 0.0;
     status = 0;
+    kh_counter_t *run_ids = kh_counter_init();
     while ((status = kseq_read(seq)) >= 0) {
-        ++n ; slen += seq->seq.l;
-        minl = min(minl, seq->seq.l);
-        maxl = max(maxl, seq->seq.l);
+        // accumulate stats only for reads within length and quality thresholds
         if (seq->qual.l == 0) { status = -99; break; }
-        float mean_q = mean_qual(seq->qual.s, seq->qual.l);
-        kahan_sum(&meanq, mean_q, &c);
-        read_meta meta = parse_read_meta(seq->comment);
-        if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length) && (mean_q >= args->min_qscore)) {
+        if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length)) {
+            float mean_q = mean_qual(seq->qual.s, seq->qual.l);
+            if (mean_q < args->min_qscore) continue;
+            ++n ; slen += seq->seq.l;
+            minl = min(minl, seq->seq.l);
+            maxl = max(maxl, seq->seq.l);
+            kahan_sum(&meanq, mean_q, &c);
+            read_meta meta = parse_read_meta(seq->comment);
             write_read(writer, seq, meta, mean_q, fname);
+            kh_counter_increment(run_ids, meta->runid);
+            destroy_read_meta(meta);
         }
-        destroy_read_meta(meta);
     }
 
     // handle errors
@@ -159,8 +164,18 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
             );
         }
     }
+    if(writer->runids != NULL) {
+        for (khiter_t k = 0; k < kh_end(run_ids); ++k) {
+            if (kh_exist(run_ids, k)) {
+                fprintf(writer->runids, "%s\t", fname);
+                if (writer->sample != NULL) fprintf(writer->runids, "%s\t", args->sample);
+                fprintf(writer->runids, "%s\t%d\n", kh_key(run_ids, k), kh_val(run_ids, k));
+            }
+        }
+    }
 
     // cleanup
+    kh_counter_destroy(run_ids);
     kseq_destroy(seq);
     gzclose(fp);
     return status;
@@ -170,7 +185,10 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
 int main(int argc, char **argv) {
     arguments_t args = parse_arguments(argc, argv);
 
-    writer writer = initialize_writer(args.demultiplex_dir, args.histograms, args.perread, args.perfile, args.sample, args.reheader);
+    writer writer = initialize_writer(
+        args.demultiplex_dir, args.histograms,
+        args.perread, args.perfile, args.runids,
+        args.sample, args.reheader);
     if (writer == NULL) exit(1);
 
     size_t nfile = 0;
