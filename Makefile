@@ -61,7 +61,8 @@ src/%.o: src/%.c
 		$(CFLAGS) $(EXTRA_CFLAGS) $^ -o $@
 
 
-fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o src/stats.o $(STATIC_HTSLIB) zlib-ng/libz.a
+
+fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB) zlib-ng/libz.a
 	$(CC) -Isrc $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \

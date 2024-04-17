@@ -18,6 +18,8 @@ static struct argp_option options[] = {
         "Per-read summary output", 0},
     {"file", 'f', "FILE SUMMARY",  0,
         "Per-file summary output", 0},
+    {"runid", 'i', "ID SUMMARY",  0,
+        "Run ID summary output", 0},
     {"sample", 's', "SAMPLE NAME",   0,
         "Sample name (if given, adds a 'sample_name' column).", 0},
     {"demultiplex", 'd', "OUT DIR",  0,
@@ -46,6 +48,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'f':
             arguments->perfile = arg;
+            break;
+        case 'i':
+            arguments->runids = arg;
             break;
         case 's':
             arguments->sample = arg;
@@ -91,6 +96,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;
     args.perread = NULL;
     args.perfile = NULL;
+    args.runids = NULL;
     args.sample = "";
     args.min_length = 0;
     args.max_length = (size_t)-1;
