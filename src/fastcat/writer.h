@@ -29,13 +29,17 @@ typedef struct {
     FILE* perread;
     FILE* perfile;
     FILE* runids;
+    // output file chunking
+    size_t reads_per_file;
+    size_t* reads_written;
+    size_t* file_index;
 } _writer;
 
 typedef _writer* writer;
 
 char* strip_path(char* input);
 
-writer initialize_writer(char* output_dir, char* histograms, char* perread, char* perfile, char* runids, char* sample, size_t reheader);
+writer initialize_writer(char* output_dir, char* histograms, char* perread, char* perfile, char* runids, char* sample, size_t reheader, size_t reads_per_file);
 
 void destroy_writer(writer writer);
 

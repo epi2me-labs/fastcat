@@ -95,13 +95,15 @@ clean_htslib:
 
 .PHONY: mem_check_fastcat
 mem_check_fastcat: fastcat
+	rm -rf fastcat-histograms
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
 		./fastcat test/data/*.fastq.gz > /dev/null
 
 .PHONY: mem_check_fastcat_demultiplex
 mem_check_fastcat_demultiplex: fastcat
+	rm -rf demultiplex
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./fastcat test/data/*.fastq.gz --demultiplex demulitplex > /dev/null
+		./fastcat test/data/*.fastq.gz --demultiplex demultiplex > /dev/null
 
 .PHONY: mem_check_bamstats
 mem_check_bamstats: bamstats
