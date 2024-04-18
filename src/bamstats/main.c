@@ -87,7 +87,8 @@ int main(int argc, char *argv[]) {
     }
 
     if (nfile > 1) {
-        fprintf(stderr, "WARNING: Results from multiple files will not be coordinate sorted.\n");
+        fprintf(stderr, "ERROR: Multiple input files detected, this program currently supports only a single file.\n");
+        exit(EXIT_FAILURE);
     }
 
     write_header(args.sample);
@@ -115,6 +116,7 @@ int main(int argc, char *argv[]) {
         );
     }
 
+    kh_counter_t *run_ids = kh_counter_init();
     read_stats* length_stats = create_length_stats();
     read_stats* qual_stats = create_qual_stats(QUAL_HIST_WIDTH);
     read_stats* acc_stats = create_qual_stats(ACC_HIST_WIDTH);
@@ -132,7 +134,7 @@ int main(int argc, char *argv[]) {
             args.read_group, args.tag_name, args.tag_value,
             flag_counts, args.unmapped,
             length_stats, qual_stats, acc_stats, cov_stats,
-            length_stats_unmapped, qual_stats_unmapped);
+            length_stats_unmapped, qual_stats_unmapped, run_ids);
 
         // write flagstat counts if requested
         if (flag_counts != NULL) {
@@ -175,7 +177,7 @@ int main(int argc, char *argv[]) {
             args.read_group, args.tag_name, args.tag_value,
             flag_counts, args.unmapped,
             length_stats, qual_stats, acc_stats, cov_stats,
-            length_stats_unmapped, qual_stats_unmapped);
+            length_stats_unmapped, qual_stats_unmapped, run_ids);
         if (flag_counts != NULL) {
             write_stats(flag_counts->counts[0], chr, args.sample, flagstats);
         }
@@ -223,12 +225,29 @@ int main(int argc, char *argv[]) {
         fclose(stats_fp); free(path);
     }
 
+    // write runids summary
+    if (args.runids != NULL) {
+        stats_fp = fopen(args.runids, "w");
+        fprintf(stats_fp, "filename\t");
+        if (args.sample != NULL) fprintf(stats_fp, "sample_name\t");
+        fprintf(stats_fp, "run_id\tcount\n");
+        for (khiter_t k = 0; k < kh_end(run_ids); ++k) {
+            if (kh_exist(run_ids, k)) {
+                fprintf(stats_fp, "%s\t", args.bam[0]);
+                if (args.sample != NULL) fprintf(stats_fp, "%s\t", args.sample);
+                fprintf(stats_fp, "%s\t%d\n", kh_key(run_ids, k), kh_val(run_ids, k));
+            }
+        }
+        fclose(stats_fp);
+    } 
+
     destroy_length_stats(length_stats);
     destroy_qual_stats(qual_stats);
     destroy_qual_stats(acc_stats);
     destroy_qual_stats(cov_stats);
     destroy_length_stats(length_stats_unmapped);
     destroy_qual_stats(qual_stats_unmapped);
+    kh_counter_destroy(run_ids);
 
     if (flagstats != NULL) {
         fclose(flagstats);

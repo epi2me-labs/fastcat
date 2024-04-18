@@ -70,7 +70,7 @@ fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcom
 		-o $@
 
 
-bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/stats.o $(STATIC_HTSLIB)
+bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \

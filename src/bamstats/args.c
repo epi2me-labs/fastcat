@@ -26,6 +26,8 @@ static struct argp_option options[] = {
         "Sample name (if given, adds a 'sample_name' column).", 0},
     {"flagstats", 'f', "FLAGSTATS", 0,
         "File for outputting alignment flag counts.", 0},
+    {"runids", 'i', "ID SUMMARY",  0,
+        "Run ID summary output", 0},
     {"histograms", 0x400, "DIRECTORY", 0,
         "Directory for outputting histogram information. (default: bamstats-histograms)", 0},
     {0, 0, 0, 0,
@@ -62,6 +64,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'f':
             arguments->flagstats = arg;
+            break;
+        case 'i':
+            arguments->runids = arg;
             break;
         case 0x400:
             arguments->histograms = arg;
@@ -120,6 +125,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;
     args.bam = NULL;
     args.flagstats = NULL;
+    args.runids = NULL;
     args.histograms = "bamstats-histograms";
     args.sample = NULL;
     args.ref = NULL;
