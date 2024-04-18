@@ -6,6 +6,7 @@
 
 #include "args.h"
 #include "../stats.h"
+#include "../kh_counter.h"
 
 
 // struct for flagstat counts
@@ -52,6 +53,7 @@ void destroy_flag_stats(flag_stats* stats);
  *  @param cov_stats read_stats* for accumulating read alignment coverage information.
  *  @param length_stats_unmapped read_stats* for accumulating read length information for unmapped reads.
  *  @param qual_stats_unmapped read_stats* for accumulating read quality information for unmapped reads.
+ *  @param runids runid_t* for accumulating runid information.
  *  @returns void. Prints output to stdout.
  *
  */
@@ -61,6 +63,6 @@ void process_bams(
     const char *read_group, const char tag_name[2], const int tag_value,
     flag_stats *flag_counts, bool unmapped,
     read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
-    read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped);
+    read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped, kh_counter_t* runids);
 
 #endif

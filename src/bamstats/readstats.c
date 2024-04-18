@@ -16,6 +16,7 @@
 
 #include "../common.h"
 #include "../stats.h"
+#include "../kh_counter.h"
 #include "bamiter.h"
 #include "readstats.h"
 #include "args.h"
@@ -166,6 +167,7 @@ int get_duplex_tag(bam1_t* b) {
  *  @param cov_stats read_stats* for accumulating read alignment coverage information.
  *  @param length_stats_unmapped read_stats* for accumulating read length information for unmapped reads.
  *  @param qual_stats_unmapped read_stats* for accumulating read quality information for unmapped reads.
+ *  @param runids kh_counter_t* for accumulating runids.
  *  @returns void. Prints output to stdout.
  *
  */
@@ -175,7 +177,7 @@ void process_bams(
         const char *read_group, const char tag_name[2], const int tag_value,
         flag_stats *flag_counts, bool unmapped,
         read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
-        read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped) {
+        read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped, kh_counter_t* runids) {
     if (chr != NULL) {
         if (strcmp(chr, "*") == 0) {
             fprintf(stderr, "Processing: Unplaced reads\n");
@@ -218,9 +220,8 @@ void process_bams(
             }
         }
         // set NULL runid to empty string
-        if (runid == NULL) {
-            runid = "";
-        }
+        if (runid == NULL) runid = "";
+        kh_counter_increment(runids, runid);
         // get start time
         start_time = "";
         tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "st");
