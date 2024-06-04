@@ -53,6 +53,10 @@ void destroy_flag_stats(flag_stats* stats);
  *  @param cov_stats read_stats* for accumulating read alignment coverage information.
  *  @param length_stats_unmapped read_stats* for accumulating read length information for unmapped reads.
  *  @param qual_stats_unmapped read_stats* for accumulating read quality information for unmapped reads.
+ *  @param polya_stats read_stats* for accumulating polyA tail length information.
+ *  @param polya_cover minimum reference coverage for polyA tail length to be considered.
+ *  @param polya_qual minimum mean quality for polyA tail length to be considered.
+ *  @param polya_rev whether to allow reverse alignments for polyA tail length.
  *  @param runids kh_counter_t* for accumulating runid information.
  *  @param basecallers kh_counter_t* for accumulating basecaller information.
  *  @returns void. Prints output to stdout.
@@ -65,6 +69,7 @@ void process_bams(
     flag_stats *flag_counts, bool unmapped,
     read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
     read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped,
+    read_stats* polya_stats, float polya_cover, float polya_qual, bool polya_rev,
     kh_counter_t* runids, kh_counter_t* basecallers);
 
 #endif

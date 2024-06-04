@@ -146,32 +146,8 @@ int get_duplex_tag(bam1_t* b) {
     return res;
 }
 
-/** Generates alignment stats from a region of a bam.
- *
- *  @param fp htsFile pointer
- *  @param idx hts_idx_t pointer
- *  @param hdr sam_hdr_t pointer
- *  @param sample sample name.
- *  @param chr bam target name.
- *  @param start start position of chr to consider.
- *  @param end end position of chr to consider.
- *  @param overlap_start whether reads overhanging start should be included.
- *  @param read_group by which to filter alignments.
- *  @param tag_name by which to filter alignments.
- *  @param tag_value associated with tag_name.
- *  @param flag_counts flag_stats pointer.
- *  @param unmapped bool include unmapped reads in output.
- *  @param length_stats read_stats* for accumulating read length information.
- *  @param qual_stats read_stats* for accumulating read quality information.
- *  @param acc_stats read_stats* for accumulating read alignment accuracy information.
- *  @param cov_stats read_stats* for accumulating read alignment coverage information.
- *  @param length_stats_unmapped read_stats* for accumulating read length information for unmapped reads.
- *  @param qual_stats_unmapped read_stats* for accumulating read quality information for unmapped reads.
- *  @param runids kh_counter_t* for accumulating runids.
- *  @param basecallers kh_counter_t* for accumulating reads per basecaller.
- *  @returns void. Prints output to stdout.
- *
- */
+
+// Do all-the-things
 void process_bams(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr, const char *sample,
         const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
@@ -179,6 +155,7 @@ void process_bams(
         flag_stats *flag_counts, bool unmapped,
         read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
         read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped,
+        read_stats* polya_stats, float polya_cover, float polya_qual, bool polya_rev,
         kh_counter_t* runids, kh_counter_t* basecallers) {
     if (chr != NULL) {
         if (strcmp(chr, "*") == 0) {
@@ -344,6 +321,30 @@ void process_bams(
         add_qual_count(qual_stats, mean_quality);
         add_qual_count(acc_stats, acc);
         add_qual_count(cov_stats, coverage);
+
+        // get poly-A tail length. For now we require:
+        //    i) "good" coverage on reference, i.e. "full length"
+        //   ii) read is sense strand, i.e. fwd alignment
+        //  iii) "good" mean quality
+        //   iv) no split reads
+        if (polya_stats != NULL) {
+            int polya_len = -1;
+            if ((ref_cover >= polya_cover)
+                    && (!bam_is_rev(b) || polya_rev)
+                    && mean_quality >= polya_qual) {
+                uint8_t* tag = NULL;
+                tag = bam_get_tag_caseinsensitive(b, "pi");
+                if (tag == NULL) { // the tag is present for split reads
+                    tag = bam_get_tag_caseinsensitive(b, "pt");
+                    if (tag != NULL) {
+                        polya_len = bam_aux_tag_int(tag);
+                    }
+                }
+            }
+            if (polya_len >= 0) {
+                add_length_count(polya_stats, polya_len);
+            }
+        }
 
         if (sample == NULL) {
             fprintf(stdout,
