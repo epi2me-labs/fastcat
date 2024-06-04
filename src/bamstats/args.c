@@ -28,6 +28,8 @@ static struct argp_option options[] = {
         "File for outputting alignment flag counts.", 0},
     {"runids", 'i', "ID SUMMARY",  0,
         "Run ID summary output", 0},
+    {"basecallers", 'l', "BASECALLERS", 0,
+        "Basecaller summary output", 0},
     {"histograms", 0x400, "DIRECTORY", 0,
         "Directory for outputting histogram information. (default: bamstats-histograms)", 0},
     {0, 0, 0, 0,
@@ -67,6 +69,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'i':
             arguments->runids = arg;
+            break;
+        case 'l':
+            arguments->basecallers = arg;
             break;
         case 0x400:
             arguments->histograms = arg;
@@ -126,6 +131,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.bam = NULL;
     args.flagstats = NULL;
     args.runids = NULL;
+    args.basecallers = NULL;
     args.histograms = "bamstats-histograms";
     args.sample = NULL;
     args.ref = NULL;

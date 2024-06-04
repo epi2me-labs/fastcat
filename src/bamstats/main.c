@@ -51,6 +51,21 @@ static inline void write_stats(size_t *stats, const char* chr, const char* sampl
     }
 }
 
+static inline void write_counter(const char* fname, kh_counter_t *counter, const char* sample, const char* bam_fname) {
+    FILE* stats_fp = fopen(fname, "w");
+    fprintf(stats_fp, "filename\t");
+    if (sample != NULL) fprintf(stats_fp, "sample_name\t");
+    fprintf(stats_fp, "run_id\tcount\n");
+    for (khiter_t k = 0; k < kh_end(counter); ++k) {
+        if (kh_exist(counter, k)) {
+            fprintf(stats_fp, "%s\t", bam_fname);
+            if (sample != NULL) fprintf(stats_fp, "%s\t", sample);
+            fprintf(stats_fp, "%s\t%d\n", kh_key(counter, k), kh_val(counter, k));
+        }
+    }
+    fclose(stats_fp);
+}
+
 
 int main(int argc, char *argv[]) {
     clock_t begin = clock();
@@ -117,6 +132,7 @@ int main(int argc, char *argv[]) {
     }
 
     kh_counter_t *run_ids = kh_counter_init();
+    kh_counter_t *basecallers = kh_counter_init();
     read_stats* length_stats = create_length_stats();
     read_stats* qual_stats = create_qual_stats(QUAL_HIST_WIDTH);
     read_stats* acc_stats = create_qual_stats(ACC_HIST_WIDTH);
@@ -134,7 +150,8 @@ int main(int argc, char *argv[]) {
             args.read_group, args.tag_name, args.tag_value,
             flag_counts, args.unmapped,
             length_stats, qual_stats, acc_stats, cov_stats,
-            length_stats_unmapped, qual_stats_unmapped, run_ids);
+            length_stats_unmapped, qual_stats_unmapped,
+            run_ids, basecallers);
 
         // write flagstat counts if requested
         if (flag_counts != NULL) {
@@ -177,7 +194,8 @@ int main(int argc, char *argv[]) {
             args.read_group, args.tag_name, args.tag_value,
             flag_counts, args.unmapped,
             length_stats, qual_stats, acc_stats, cov_stats,
-            length_stats_unmapped, qual_stats_unmapped, run_ids);
+            length_stats_unmapped, qual_stats_unmapped,
+            run_ids, basecallers);
         if (flag_counts != NULL) {
             write_stats(flag_counts->counts[0], chr, args.sample, flagstats);
         }
@@ -227,18 +245,11 @@ int main(int argc, char *argv[]) {
 
     // write runids summary
     if (args.runids != NULL) {
-        stats_fp = fopen(args.runids, "w");
-        fprintf(stats_fp, "filename\t");
-        if (args.sample != NULL) fprintf(stats_fp, "sample_name\t");
-        fprintf(stats_fp, "run_id\tcount\n");
-        for (khiter_t k = 0; k < kh_end(run_ids); ++k) {
-            if (kh_exist(run_ids, k)) {
-                fprintf(stats_fp, "%s\t", args.bam[0]);
-                if (args.sample != NULL) fprintf(stats_fp, "%s\t", args.sample);
-                fprintf(stats_fp, "%s\t%d\n", kh_key(run_ids, k), kh_val(run_ids, k));
-            }
-        }
-        fclose(stats_fp);
+        write_counter(args.runids, run_ids, args.sample, args.bam[0]);
+    } 
+    // write basecallers summary
+    if (args.basecallers != NULL) {
+        write_counter(args.basecallers, basecallers, args.sample, args.bam[0]);
     } 
 
     destroy_length_stats(length_stats);
@@ -247,6 +258,7 @@ int main(int argc, char *argv[]) {
     destroy_qual_stats(cov_stats);
     destroy_length_stats(length_stats_unmapped);
     destroy_qual_stats(qual_stats_unmapped);
+    kh_counter_destroy(basecallers);
     kh_counter_destroy(run_ids);
 
     if (flagstats != NULL) {

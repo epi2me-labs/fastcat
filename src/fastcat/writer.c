@@ -44,7 +44,7 @@ int _gzsnprintf(gzFile file, const char *format, ...) {
 }
 
 
-writer initialize_writer(char* output_dir, char* histograms, char* perread, char* perfile, char* runids, char* sample, size_t reheader, size_t reads_per_file) {
+writer initialize_writer(char* output_dir, char* histograms, char* perread, char* perfile, char* runids, char* basecallers, char* sample, size_t reheader, size_t reads_per_file) {
     if (output_dir != NULL) {  // demultiplexing
         int rtn = mkdir_hier(output_dir);
         if (rtn == -1) {
@@ -103,6 +103,12 @@ writer initialize_writer(char* output_dir, char* histograms, char* perread, char
          if (writer->sample != NULL) fprintf(writer->runids, "sample_name\t");
          fprintf(writer->runids, "run_id\tcount\n");
      }
+     if (basecallers != NULL) {
+         writer->basecallers = fopen(basecallers, "w");
+         fprintf(writer->basecallers, "filename\t");
+         if (writer->sample != NULL) fprintf(writer->basecallers, "sample_name\t");
+         fprintf(writer->basecallers, "run_id\tcount\n");
+     }
      return writer;
 }
 
@@ -131,6 +137,7 @@ void destroy_writer(writer writer) {
     if (writer->perread != NULL) fclose(writer->perread);
     if (writer->perfile != NULL) fclose(writer->perfile);
     if (writer->runids != NULL) fclose(writer->runids);
+    if (writer->basecallers != NULL) fclose(writer->basecallers);
     if (writer->output != NULL) free(writer->output);
     if (writer->histograms != NULL) free(writer->histograms);
     free(writer->handles);

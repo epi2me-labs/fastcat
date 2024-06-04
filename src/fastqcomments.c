@@ -18,7 +18,9 @@ read_meta create_read_meta(const kstring_t* comment) {
     meta->comment = xalloc(comment->l + 1, sizeof(char), "meta->comment");
     strncpy(meta->comment, comment->s, comment->l);
     meta->rg = "";
+    meta->rg_info = NULL;
     meta->runid = "";
+    meta->basecaller = "";
     meta->flow_cell_id = "";
     meta->barcode = "";
     meta->ibarcode = 0;
@@ -36,6 +38,7 @@ read_meta create_read_meta(const kstring_t* comment) {
 
 void destroy_read_meta(read_meta meta) {
     free(meta->comment);
+    destroy_rg_info(meta->rg_info);
     free(meta->rest->s);
     free(meta->rest);
     free(meta->tags_str->s);
@@ -99,6 +102,11 @@ read_meta parse_read_meta(kstring_t comment) {
                 meta->rg = value;
                 ksprintf_with_opt_delim(meta->tags_str, "\t", "RG:Z:%s", value);
             }
+            else if (!strcmp(key, "basecall_model_version_id")) {
+                meta->basecaller = value;
+                // theres no discrete tag defined by guppy/minknow/doroado
+                // for this so not added to tags_str \:D/
+            }
             else if (!strcmp(key, "flow_cell_id") || !strcmp(key, "FC")) {
                 meta->flow_cell_id = value;
                 ksprintf_with_opt_delim(meta->tags_str, "\t", "FC:Z:%s", value);
@@ -143,13 +151,18 @@ read_meta parse_read_meta(kstring_t comment) {
         ksprintf_with_opt_delim(meta->tags_str, "\t", "CO:Z:%s", meta->rest->s);
     }
 
-    // Populate RD (runid) from RG if RD is empty and RG is present
-    if (strlen(meta->runid) == 0 && strlen(meta->rg) > 0) {
-        char* runid = parse_runid_from_rg(meta->rg);
-        if (runid) {
-            meta->runid = runid;
-            ksprintf_with_opt_delim(meta->tags_str, "\t", "RD:Z:%s", runid);
+    bool need_run_id = strlen(meta->runid) == 0;
+    bool need_basecaller = strlen(meta->basecaller) == 0;
+    if(strlen(meta->rg) > 0 && (need_run_id || need_basecaller)) {
+        readgroup* rg_info = create_rg_info(meta->rg);
+        if (need_run_id && rg_info->runid != NULL) {
+            meta->runid = rg_info->runid;
+            ksprintf_with_opt_delim(meta->tags_str, "\t", "RD:Z:%s", rg_info->runid);
         }
+        if (need_basecaller && meta->basecaller != NULL) {
+            meta->basecaller = rg_info->basecaller;
+        }
+        meta->rg_info = rg_info;
     }
 
     return meta;

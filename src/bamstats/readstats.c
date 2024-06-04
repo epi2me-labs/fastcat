@@ -168,6 +168,7 @@ int get_duplex_tag(bam1_t* b) {
  *  @param length_stats_unmapped read_stats* for accumulating read length information for unmapped reads.
  *  @param qual_stats_unmapped read_stats* for accumulating read quality information for unmapped reads.
  *  @param runids kh_counter_t* for accumulating runids.
+ *  @param basecallers kh_counter_t* for accumulating reads per basecaller.
  *  @returns void. Prints output to stdout.
  *
  */
@@ -177,7 +178,8 @@ void process_bams(
         const char *read_group, const char tag_name[2], const int tag_value,
         flag_stats *flag_counts, bool unmapped,
         read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
-        read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped, kh_counter_t* runids) {
+        read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped,
+        kh_counter_t* runids, kh_counter_t* basecallers) {
     if (chr != NULL) {
         if (strcmp(chr, "*") == 0) {
             fprintf(stderr, "Processing: Unplaced reads\n");
@@ -195,39 +197,39 @@ void process_bams(
 
     int res;
     bam1_t *b = bam_init1();
+    readgroup* rg_info = NULL;
     uint8_t *tag;
     char *runid = NULL;
+    char *basecaller = NULL;
     char *start_time;
 
-    // buffer to store copy of RG aux tag, in case strtok is called on it
-    char *rg_copy = NULL;
-
     while ((res = read_bam(bam, b) >= 0)) {
-        // get run ID
-        tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "RD");
-        if (tag != NULL){
-            runid = bam_aux2Z(tag);
+        // get info from readgroup, note we could use subitems from readgroup
+        // here more directly, but this is to be consistent with fastcat where
+        // we only have the readgroup ID string to play with
+        tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "RG");
+        if (tag != NULL) {
+            rg_info = create_rg_info(bam_aux2Z(tag));
+            runid = rg_info->runid;
+            basecaller = rg_info->basecaller;
         }
         else {
-            // try to parse out RG if RD is not found
-            tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "RG");
-            if (tag != NULL) {
+            // this is old style epi2bodge
+            tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "RD");
+            if (tag != NULL){
                 runid = bam_aux2Z(tag);
-                // We must make a copy of the RG tag contents to prevent strtok modifying the BAM record
-                rg_copy = (char*)xalloc(strlen(runid) + 1, sizeof(char), "RG copy");
-                strcpy(rg_copy, runid);
-                runid = parse_runid_from_rg(rg_copy);
             }
         }
-        // set NULL runid to empty string
-        if (runid == NULL) runid = "";
-        kh_counter_increment(runids, runid);
+        kh_counter_increment(runids, runid == NULL ? "" : runid);
+        kh_counter_increment(basecallers, basecaller == NULL ? "" : basecaller);
+
         // get start time
         start_time = "";
         tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "st");
         if (tag != NULL){
             start_time = bam_aux2Z(tag);
         }
+
         // get duplex code
         int duplex_code = get_duplex_tag(b);
 
@@ -277,7 +279,7 @@ void process_bams(
                 add_length_count(length_stats_unmapped, read_length);
                 add_qual_count(qual_stats_unmapped, mean_quality);
             }
-            continue;
+            goto FINISH_READ;
         }
 
         if (flag_counts != NULL) {
@@ -368,11 +370,14 @@ void process_bams(
                 match, ins, delt, sub, iden, acc, duplex_code);
         }
 		free(stats);
-        // free rg_copy buffer if it looks used
-        if (rg_copy != NULL) {
-            free(rg_copy);
-            rg_copy = NULL;
+
+FINISH_READ:
+        if (rg_info != NULL) {
+            destroy_rg_info(rg_info);
         }
+        rg_info = NULL;
+        runid = NULL;
+        basecaller = NULL;
     }
 
     destroy_bam_iter_data(bam);

@@ -189,3 +189,31 @@ regression_test_sam_to_fastcat: fastcat
 	bash -c 'diff <(sort per-read-stats.fastcat_once.tsv | sed 's,../sam2fastq/wf_basecalling_demo.fastq,FILE,') \
 		<(sort per-read-stats.fastcat_twice.tsv | sed 's,wf_basecalling_demo.fastcat_once.fastq,FILE,')'
 	rm -r test/test-tmp
+
+.PHONY: regression_test_parse_rg_fastq
+regression_test_parse_rg_fastq: fastcat
+	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
+	mkdir test/test-tmp && \
+	cd test/test-tmp && \
+	for i in ../parse_rg/*.fastq.gz; do \
+		echo $$i; \
+		../../fastcat $$i --histograms hist -l rg \
+			> /dev/null; \
+		diff rg $$i.callers; \
+		rm -rf hist rg; \
+	done;
+	rm -r test/test-tmp
+
+
+.PHONY: regression_test_parse_rg_bam
+regression_test_parse_rg_bam: bamstats
+	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
+	mkdir test/test-tmp && \
+	cd test/test-tmp && \
+	for i in ../parse_rg/*.bam; do \
+		../../bamstats $$i --histograms hist -l rg \
+			> /dev/null; \
+		diff rg $$i.callers; \
+		rm -rf hist rg; \
+	done;
+	rm -r test/test-tmp

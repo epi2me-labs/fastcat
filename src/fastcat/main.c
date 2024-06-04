@@ -112,6 +112,7 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
     double meanq = 0.0, c = 0.0;
     status = 0;
     kh_counter_t *run_ids = kh_counter_init();
+    kh_counter_t *basecallers = kh_counter_init();
     while ((status = kseq_read(seq)) >= 0) {
         // accumulate stats only for reads within length and quality thresholds
         if (seq->qual.l == 0) { status = -99; break; }
@@ -125,6 +126,7 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
             read_meta meta = parse_read_meta(seq->comment);
             write_read(writer, seq, meta, mean_q, fname);
             kh_counter_increment(run_ids, meta->runid);
+            kh_counter_increment(basecallers, meta->basecaller);
             destroy_read_meta(meta);
         }
     }
@@ -173,8 +175,18 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
             }
         }
     }
+    if(writer->basecallers != NULL) {
+        for (khiter_t k = 0; k < kh_end(basecallers); ++k) {
+            if (kh_exist(basecallers, k)) {
+                fprintf(writer->basecallers, "%s\t", fname);
+                if (writer->sample != NULL) fprintf(writer->basecallers, "%s\t", args->sample);
+                fprintf(writer->basecallers, "%s\t%d\n", kh_key(basecallers, k), kh_val(basecallers, k));
+            }
+        }
+    }
 
     // cleanup
+    kh_counter_destroy(basecallers);
     kh_counter_destroy(run_ids);
     kseq_destroy(seq);
     gzclose(fp);
@@ -187,7 +199,7 @@ int main(int argc, char **argv) {
 
     writer writer = initialize_writer(
         args.demultiplex_dir, args.histograms,
-        args.perread, args.perfile, args.runids,
+        args.perread, args.perfile, args.runids, args.basecallers,
         args.sample, args.reheader, args.reads_per_file);
     if (writer == NULL) exit(1);
 

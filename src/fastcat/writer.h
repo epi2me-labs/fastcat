@@ -29,6 +29,7 @@ typedef struct {
     FILE* perread;
     FILE* perfile;
     FILE* runids;
+    FILE* basecallers;
     // output file chunking
     size_t reads_per_file;
     size_t* reads_written;
@@ -39,7 +40,7 @@ typedef _writer* writer;
 
 char* strip_path(char* input);
 
-writer initialize_writer(char* output_dir, char* histograms, char* perread, char* perfile, char* runids, char* sample, size_t reheader, size_t reads_per_file);
+writer initialize_writer(char* output_dir, char* histograms, char* perread, char* perfile, char* runids, char* basecallers, char* sample, size_t reheader, size_t reads_per_file);
 
 void destroy_writer(writer writer);
 
