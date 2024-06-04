@@ -207,6 +207,7 @@ void process_bams(
         // get info from readgroup, note we could use subitems from readgroup
         // here more directly, but this is to be consistent with fastcat where
         // we only have the readgroup ID string to play with
+        runid = "";
         tag = bam_get_tag_caseinsensitive((const bam1_t*) b, "RG");
         if (tag != NULL) {
             rg_info = create_rg_info(bam_aux2Z(tag));
