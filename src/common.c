@@ -1,5 +1,7 @@
+#include <assert.h>
 #include <errno.h>
 #include <math.h>
+#include <regex.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -213,15 +215,85 @@ float mean_qual_from_bam(u_int8_t* qual, size_t len) {
     return -10 * log10(qsum);
 }
 
-char* parse_runid_from_rg(char* rg) {
-    // Currently the RG tag glues together a few pieces of metadata.
-    // Although there are other useful pieces of information such as basecaller_cfg,
-    // these elements are not output reliably (and can themselves, contain underscores).
-    // We can only reliably fetch the Run ID.
-    char* runid = strtok(rg, "_");
-    // We'll at least check the runid is the length that we expect
-    if (strlen(runid) == 40) {
-        return runid;
+
+// Strip hexadecimal suffixes that samtools merge can add to RG IDs
+void strip_hex_suffix(char *str) {
+    regex_t regex;
+    regmatch_t matches[1];
+   
+    // its supposed to be formatted as "%s-%0lX" which is a long formatted
+    // as hex with leading zeros. But I (cjw) observed cases with only 7 \:D/ 
+    if (regcomp(&regex, "-[0-9A-Fa-f]{7,8}$", REG_EXTENDED) != 0) {
+        fprintf(stderr, "Could not compile regex\n");
+        exit(1);
     }
-    return NULL;
+
+    // Check if the string matches the pattern, and strip the match from the src
+    if (regexec(&regex, str, 1, matches, 0) == 0) {
+        str[matches[0].rm_so] = '\0';
+    }
+
+    regfree(&regex);
+}
+
+
+void destroy_rg_info(readgroup* rg) {
+    if (rg != NULL) {
+        free(rg->readgroup);
+        free(rg);
+    }
+}
+
+// rg is of the form:
+// <runid>_<basecalling_model>_<barcode_arrangement>
+//
+// where:
+//   - runid is a 40 character string
+//   - basecalling_model is a string maybe containing `_`, and containing one or more `@`
+//   - barcode_arrangement is a optional(!) string with an unknown format, but hopefully no `@`
+//
+// The function always returns an object with a copy of the input. The subfields may be
+// NULL pointers if the parsing was incomplete. Client code should therefore always check that
+// members are not NULL before use.
+//
+readgroup* create_rg_info(char* rg) {
+    readgroup* rg_info = xalloc(1, sizeof(readgroup), "readgroup");
+    rg_info->readgroup = strdup(rg);
+    rg_info->runid = NULL;
+    rg_info->basecaller = NULL;
+    rg_info->barcode = NULL;
+
+    // first strip of `-ABCDEF` from the end
+    strip_hex_suffix(rg_info->readgroup);
+
+    // runid runs to first `_`
+    rg_info->runid = rg_info->readgroup;
+    char* delim = strchr(rg_info->runid, '_');
+    if (delim == NULL) {
+        return rg_info;
+    }
+    delim[0] = '\0';
+    if (strlen(rg_info->runid) != 40) {
+        // free the mutated copy, and reset
+        free(rg_info->readgroup);
+        rg_info->readgroup = strdup(rg);
+        rg_info->runid = NULL;
+        return rg_info;
+    }
+    // basecaller runs to first `_` after last `@`
+    // though barcode is optional, so there may not
+    // be a `_` after the last `@`
+    rg_info->basecaller = delim + 1;
+    delim = strrchr(rg_info->basecaller, '@');
+    if (delim == NULL) {
+        rg_info->basecaller = NULL;
+        return rg_info;
+    }
+    delim = strchr(delim, '_');
+    // barcode is optional
+    if (delim) {
+        delim[0] = '\0';
+        rg_info->barcode = delim + 1;
+    }
+    return rg_info;
 }

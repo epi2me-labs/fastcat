@@ -8,6 +8,7 @@ typedef struct arguments {
     const char** bam;
     char* flagstats;
     char* runids;
+    char* basecallers;
     char* histograms;
     char *sample;
     char* ref;

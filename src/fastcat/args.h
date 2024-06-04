@@ -5,6 +5,7 @@ typedef struct arguments {
     char *perread;
     char *perfile;
     char *runids;
+    char *basecallers;
     char *sample;
     size_t min_length;
     size_t max_length;

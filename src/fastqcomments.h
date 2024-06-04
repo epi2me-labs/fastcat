@@ -1,12 +1,15 @@
 #ifndef FASTCAT_FASTQCOMMENTS_H
 #define FASTCAT_FASTQCOMMENTS_H
 
+#include "common.h"
 #include "htslib/kstring.h"
 
 typedef struct {
     char* comment;
     char* rg;
+    readgroup* rg_info;
     char* runid;
+    char* basecaller;
     char* flow_cell_id;
     char* barcode;
     size_t ibarcode;
