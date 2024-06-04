@@ -59,11 +59,13 @@ read_stats* create_length_stats(void) {
 }
 
 void destroy_length_stats(read_stats* stats) {
-    free(stats->buckets->groups);
-    free(stats->buckets);
-    free(stats->edges);
-    free(stats->counts);
-    free(stats);
+    if (stats != NULL) {
+        free(stats->buckets->groups);
+        free(stats->buckets);
+        free(stats->edges);
+        free(stats->counts);
+        free(stats);
+    }
 }
 
 void add_length_count(read_stats* stats, size_t x) {
@@ -97,8 +99,10 @@ read_stats* create_qual_stats(float width) {
 }
 
 void destroy_qual_stats(read_stats* stats) {
-    free(stats->counts);
-    free(stats);
+    if (stats != NULL) {
+        free(stats->counts);
+        free(stats);
+    }
 }
 
 void add_qual_count(read_stats* stats, float q) {

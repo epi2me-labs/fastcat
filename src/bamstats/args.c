@@ -44,6 +44,16 @@ static struct argp_option options[] = {
         "Only process reads with a given tag value.", 3},
     {"haplotype", 0x300, "VAL", 0,
         "Only process reads from a given haplotype. Equivalent to --tag_name HP --tag_value VAL.", 3},
+    {0, 0, 0, 0,
+        "Poly-A Options:", 0},
+    {"poly_a", 0x500, 0, 0,
+        "Enable poly-A tail length histogram.", 5},
+    {"poly_a_cover", 0x600, "PCT_COVERAGE", 0,
+        "Reference alignment coverage for acceptance of read. (default: 95)", 5},
+    {"poly_a_qual", 0x700, "QUAL", 0,
+        "Read mean Q score for acceptance of read. (default: 10)", 5},
+    {"poly_a_rev", 0x800, 0, 0,
+        "Allow reverse alignments (useful for cDNA, default is appropriate for direct RNA seq).", 5},
     { 0 }
 };
 
@@ -75,6 +85,18 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 0x400:
             arguments->histograms = arg;
+            break;
+        case 0x500:
+            arguments->poly_a = true;
+            break;
+        case 0x600:
+            arguments->poly_a_cover = atof(arg);
+            break;
+        case 0x700:
+            arguments->poly_a_qual = atof(arg);
+            break;
+        case 0x800:
+            arguments->poly_a_rev = true;
             break;
         case 's':
             arguments->sample = arg;
@@ -133,6 +155,10 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.runids = NULL;
     args.basecallers = NULL;
     args.histograms = "bamstats-histograms";
+    args.poly_a = false;
+    args.poly_a_cover = 95;
+    args.poly_a_qual = 10;
+    args.poly_a_rev = false;
     args.sample = NULL;
     args.ref = NULL;
     args.region = NULL;

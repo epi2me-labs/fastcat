@@ -107,6 +107,7 @@ mem_check_fastcat_demultiplex: fastcat
 
 .PHONY: mem_check_bamstats
 mem_check_bamstats: bamstats
+	rm -rf bamstats-histograms
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
 		./bamstats test/bamstats/400ecoli.bam
 
@@ -145,6 +146,15 @@ test_bamstats_NM: bamstats
 	cd test/test-tmp && \
 	../../bamstats ../bamstats_badNM/test.sam 2> err || grep "appears to contain implausible alignment information" err && rm -rf bamstats-histograms && \
 	../../bamstats ../bamstats_zeroNM/test.sam
+	rm -r test/test-tmp
+
+.PHONY: test_bamstats_polya
+test_bamstats_polya: bamstats
+	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
+	mkdir test/test-tmp && \
+	cd test/test-tmp && \
+	../../bamstats ../bamstats/RCS-100A.bam --poly_a > /dev/null && \
+	diff bamstats-histograms/polya.hist ../bamstats/RCS-100A.bam.polya.hist
 	rm -r test/test-tmp
 
 .PHONY: regression_test_fastcat

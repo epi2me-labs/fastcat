@@ -67,6 +67,15 @@ static inline void write_counter(const char* fname, kh_counter_t *counter, const
 }
 
 
+void write_hist_stats(read_stats* stats, char* prefix, char* name) {
+    char* path = calloc(strlen(prefix) + strlen(name) + 2, sizeof(char));
+    sprintf(path, "%s/%s", prefix, name);
+    FILE* fp = fopen(path, "w");
+    print_stats(stats, false, true, fp);
+    fclose(fp); free(path);
+}
+
+
 int main(int argc, char *argv[]) {
     clock_t begin = clock();
     arguments_t args = parse_arguments(argc, argv);
@@ -137,6 +146,7 @@ int main(int argc, char *argv[]) {
     read_stats* qual_stats = create_qual_stats(QUAL_HIST_WIDTH);
     read_stats* acc_stats = create_qual_stats(ACC_HIST_WIDTH);
     read_stats* cov_stats = create_qual_stats(COV_HIST_WIDTH);
+    read_stats* polya_stats = args.poly_a ? create_length_stats() : NULL;
 
     // Prepare also for the unmapped reads
     read_stats* length_stats_unmapped = create_length_stats();
@@ -151,6 +161,7 @@ int main(int argc, char *argv[]) {
             flag_counts, args.unmapped,
             length_stats, qual_stats, acc_stats, cov_stats,
             length_stats_unmapped, qual_stats_unmapped,
+            polya_stats, args.poly_a_cover, args.poly_a_qual, args.poly_a_rev,
             run_ids, basecallers);
 
         // write flagstat counts if requested
@@ -195,6 +206,7 @@ int main(int argc, char *argv[]) {
             flag_counts, args.unmapped,
             length_stats, qual_stats, acc_stats, cov_stats,
             length_stats_unmapped, qual_stats_unmapped,
+            polya_stats, args.poly_a_cover, args.poly_a_qual, args.poly_a_rev,
             run_ids, basecallers);
         if (flag_counts != NULL) {
             write_stats(flag_counts->counts[0], chr, args.sample, flagstats);
@@ -203,44 +215,19 @@ int main(int argc, char *argv[]) {
         hts_idx_destroy(idx);
     }
 
-    char* path = calloc(strlen(args.histograms) + 13, sizeof(char));
-    sprintf(path, "%s/length.hist", args.histograms);
-    FILE* stats_fp = fopen(path, "w");
-    print_stats(length_stats, false, true, stats_fp);
-    fclose(stats_fp); free(path);
-
-    path = calloc(strlen(args.histograms) + 14, sizeof(char));
-    sprintf(path, "%s/quality.hist", args.histograms);
-    stats_fp = fopen(path, "w");
-    print_stats(qual_stats, false, true, stats_fp);
-    fclose(stats_fp); free(path);
-
-    path = calloc(strlen(args.histograms) + 15, sizeof(char));
-    sprintf(path, "%s/accuracy.hist", args.histograms);
-    stats_fp = fopen(path, "w");
-    print_stats(acc_stats, false, true, stats_fp);
-    fclose(stats_fp); free(path);
-
-    path = calloc(strlen(args.histograms) + 15, sizeof(char));
-    sprintf(path, "%s/coverage.hist", args.histograms);
-    stats_fp = fopen(path, "w");
-    print_stats(cov_stats, false, true, stats_fp);
-    fclose(stats_fp); free(path);
+    write_hist_stats(length_stats, args.histograms, "length.hist");
+    write_hist_stats(qual_stats, args.histograms, "quality.hist");
+    write_hist_stats(acc_stats, args.histograms, "accuracy.hist");
+    write_hist_stats(cov_stats, args.histograms, "coverage.hist");
+    if (polya_stats != NULL) {
+        write_hist_stats(polya_stats, args.histograms, "polya.hist");
+    } 
 
     // Save also histograms for the unmapped reads if requested
     // and if the user is not asking for a region
     if (args.unmapped && args.region == NULL){
-        path = calloc(strlen(args.histograms) + 19, sizeof(char));
-        sprintf(path, "%s/length.unmap.hist", args.histograms);
-        stats_fp = fopen(path, "w");
-        print_stats(length_stats_unmapped, false, true, stats_fp);
-        fclose(stats_fp); free(path);
-
-        path = calloc(strlen(args.histograms) + 20, sizeof(char));
-        sprintf(path, "%s/quality.unmap.hist", args.histograms);
-        stats_fp = fopen(path, "w");
-        print_stats(qual_stats_unmapped, false, true, stats_fp);
-        fclose(stats_fp); free(path);
+        write_hist_stats(length_stats_unmapped, args.histograms, "length.unmap.hist");
+        write_hist_stats(qual_stats_unmapped, args.histograms, "quality.unmap.hist");
     }
 
     // write runids summary
@@ -258,6 +245,7 @@ int main(int argc, char *argv[]) {
     destroy_qual_stats(cov_stats);
     destroy_length_stats(length_stats_unmapped);
     destroy_qual_stats(qual_stats_unmapped);
+    destroy_length_stats(polya_stats);
     kh_counter_destroy(basecallers);
     kh_counter_destroy(run_ids);
 

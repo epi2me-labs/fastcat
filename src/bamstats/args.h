@@ -10,6 +10,10 @@ typedef struct arguments {
     char* runids;
     char* basecallers;
     char* histograms;
+    bool poly_a;
+    float poly_a_cover;
+    float poly_a_qual;
+    bool poly_a_rev;
     char *sample;
     char* ref;
     char* region;
