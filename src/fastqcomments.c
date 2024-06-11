@@ -104,8 +104,9 @@ read_meta parse_read_meta(kstring_t comment) {
             }
             else if (!strcmp(key, "basecall_model_version_id")) {
                 meta->basecaller = value;
-                // theres no discrete tag defined by guppy/minknow/doroado
-                // for this so not added to tags_str \:D/
+                // there's no discrete tag defined by guppy/minknow/doroado
+                // for this; so not added to `tags_str` (but to `rest` instead)
+                ksprintf_with_opt_delim(meta->rest, " ", "%s=%s", key, value);
             }
             else if (!strcmp(key, "flow_cell_id") || !strcmp(key, "FC")) {
                 meta->flow_cell_id = value;
