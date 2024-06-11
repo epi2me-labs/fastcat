@@ -107,7 +107,7 @@ writer initialize_writer(char* output_dir, char* histograms, char* perread, char
          writer->basecallers = fopen(basecallers, "w");
          fprintf(writer->basecallers, "filename\t");
          if (writer->sample != NULL) fprintf(writer->basecallers, "sample_name\t");
-         fprintf(writer->basecallers, "run_id\tcount\n");
+         fprintf(writer->basecallers, "basecaller\tcount\n");
      }
      return writer;
 }
