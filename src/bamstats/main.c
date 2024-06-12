@@ -51,11 +51,11 @@ static inline void write_stats(size_t *stats, const char* chr, const char* sampl
     }
 }
 
-static inline void write_counter(const char* fname, kh_counter_t *counter, const char* sample, const char* bam_fname) {
+static inline void write_counter(const char* fname, kh_counter_t *counter, const char* sample, const char* bam_fname, const char* column_name) {
     FILE* stats_fp = fopen(fname, "w");
     fprintf(stats_fp, "filename\t");
     if (sample != NULL) fprintf(stats_fp, "sample_name\t");
-    fprintf(stats_fp, "run_id\tcount\n");
+    fprintf(stats_fp, "%s\tcount\n", column_name);
     for (khiter_t k = 0; k < kh_end(counter); ++k) {
         if (kh_exist(counter, k)) {
             fprintf(stats_fp, "%s\t", bam_fname);
@@ -232,11 +232,11 @@ int main(int argc, char *argv[]) {
 
     // write runids summary
     if (args.runids != NULL) {
-        write_counter(args.runids, run_ids, args.sample, args.bam[0]);
+        write_counter(args.runids, run_ids, args.sample, args.bam[0], "run_id");
     } 
     // write basecallers summary
     if (args.basecallers != NULL) {
-        write_counter(args.basecallers, basecallers, args.sample, args.bam[0]);
+        write_counter(args.basecallers, basecallers, args.sample, args.bam[0], "basecaller");
     } 
 
     destroy_length_stats(length_stats);
