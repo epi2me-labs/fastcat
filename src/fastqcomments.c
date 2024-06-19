@@ -160,7 +160,7 @@ read_meta parse_read_meta(kstring_t comment) {
             meta->runid = rg_info->runid;
             ksprintf_with_opt_delim(meta->tags_str, "\t", "RD:Z:%s", rg_info->runid);
         }
-        if (need_basecaller && meta->basecaller != NULL) {
+        if (need_basecaller && rg_info->basecaller != NULL) {
             meta->basecaller = rg_info->basecaller;
         }
         meta->rg_info = rg_info;
