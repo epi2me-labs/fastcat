@@ -227,3 +227,12 @@ regression_test_parse_rg_bam: bamstats
 		rm -rf hist rg; \
 	done;
 	rm -r test/test-tmp
+
+.PHONY: regression_test_parse_rd_fastq
+regression_test_parse_rd_fastq: fastcat
+	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
+	mkdir test/test-tmp && \
+	cd test/test-tmp && \
+	../../fastcat ../parse_rd/RD-first-tag-and-no-RG.fastq -i rd > /dev/null && \
+	grep -q dummy_run_id rd
+	rm -r test/test-tmp

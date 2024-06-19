@@ -4,9 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [unreleased]
+## [v0.18.3]
 ### Fixed
-- Bug causing segfault on unlikely `RG` tags.
+- Bug causing segfault on unlikely RG SAM tags in FASTQ header comments.
+- SAM parsing of FASTQ header not enabled if only either of RG or RD tag is present and at the beginning of the header comment.
 
 ## [v0.18.2]
 ### Fixed

@@ -54,6 +54,12 @@ read_meta parse_read_meta(kstring_t comment) {
     char* res = NULL;
     bool sam_tags = false;
     if (strlen(meta->comment) > 0) {
+        // check if comment starts with "RG:Z:" or "RD:Z:"
+        if (!strncmp(meta->comment, "RG:Z:", 5) || !strncmp(meta->comment, "RD:Z:", 5)) {
+            sam_tags = true;
+        }
+        // RG or RD could also appear later in the comment (we include '\t' in the check
+        // to be extra stringent)
         res = strstr(meta->comment, "\tRG:Z:");
         if (res != NULL) {
             sam_tags = true;
