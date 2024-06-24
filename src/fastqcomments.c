@@ -87,6 +87,9 @@ read_meta parse_read_meta(kstring_t comment) {
             key = strtok_r(pch, ":", &p2);
             keytype = strtok_r(NULL, ":", &p2);
             value = strtok_r(NULL, "", &p2);
+            // we allow empty tags (e.g. 'RG:Z:'); in this case, `keytype` will be
+            // non-null, but `value` will be null; we set it to ""
+            if (keytype != NULL && value == NULL) value = "";
         }
         else {
             // split words on `=`
@@ -96,7 +99,7 @@ read_meta parse_read_meta(kstring_t comment) {
         }
 
         // if there was no delimiter in the word, value will be NULL --> add word to `rest`
-        if (value == NULL && !sam_tags) {
+        if (value == NULL) {
             ksprintf_with_opt_delim(meta->rest, " ", "%s", key);
         } else {
             if (!strcmp(key, "runid") || !strcmp(key, "RD")) {
