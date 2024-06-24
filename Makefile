@@ -214,7 +214,6 @@ regression_test_parse_rg_fastq: fastcat
 	done;
 	rm -r test/test-tmp
 
-
 .PHONY: regression_test_parse_rg_bam
 regression_test_parse_rg_bam: bamstats
 	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
@@ -233,6 +232,10 @@ regression_test_parse_rd_fastq: fastcat
 	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
 	mkdir test/test-tmp && \
 	cd test/test-tmp && \
-	../../fastcat ../parse_rd/RD-first-tag-and-no-RG.fastq -i rd > /dev/null && \
-	grep -q dummy_run_id rd
+	for i in ../parse_rd/*.fastq; do \
+		echo $$i; \
+		../../fastcat $$i --histograms hist -i rd > /dev/null; \
+		diff rd $$i.runids; \
+		rm -rf hist rg; \
+	done;
 	rm -r test/test-tmp
