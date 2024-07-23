@@ -250,6 +250,7 @@ void destroy_rg_info(readgroup* rg) {
 // where:
 //   - runid is a 40 character string
 //   - basecalling_model is a string maybe containing `_`, and containing one or more `@`
+//   -    mod_caller is optional part of this starting with `_` after the first `@`
 //   - barcode_arrangement is a optional(!) string with an unknown format, but hopefully no `@`
 //
 // The function always returns an object with a copy of the input. The subfields may be
@@ -261,10 +262,15 @@ readgroup* create_rg_info(char* rg) {
     rg_info->readgroup = strdup(rg);
     rg_info->runid = NULL;
     rg_info->basecaller = NULL;
+    rg_info->modcaller = NULL;
     rg_info->barcode = NULL;
 
     // first strip of `-ABCDEF` from the end
     strip_hex_suffix(rg_info->readgroup);
+
+    // I tried to do this with regex, but even chatGPT couldn't give me a
+    // POSIX regex that would work. So we'll do it manually (and somewhat
+    // more understandably/controllably)
 
     // runid runs to first `_`
     rg_info->runid = rg_info->readgroup;
@@ -280,7 +286,7 @@ readgroup* create_rg_info(char* rg) {
         rg_info->runid = NULL;
         return rg_info;
     }
-    // basecaller runs to first `_` after last `@`
+    // basecaller + modcaller runs to first `_` after last `@`
     // though barcode is optional, so there may not
     // be a `_` after the last `@`
     rg_info->basecaller = delim + 1;
@@ -288,6 +294,15 @@ readgroup* create_rg_info(char* rg) {
     if (delim == NULL) {
         rg_info->basecaller = NULL;
         return rg_info;
+    }
+    // modcaller is optional, we can detect its presence by more than one `@` in basecaller
+    char* delim1 = strchr(rg_info->basecaller, '@');
+    if (delim1 == delim) {  // only one `@`
+        rg_info->modcaller = NULL;
+    } else {
+        delim1 = strchr(delim1, '_'); // modcaller starts at `_` after first `@`
+        delim1[0] = '\0';
+        rg_info->modcaller = delim1 + 1;
     }
     delim = strchr(delim, '_');
     // barcode is optional

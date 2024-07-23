@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.18.5]
+### Changed
+- Parsing of RG ID field containing a modified base model, now returns only the core basecaller model.
+
 ## [v0.18.4]
 ### Fixed
 - Segfault on SAM-style tags without values in the FASTQ header.

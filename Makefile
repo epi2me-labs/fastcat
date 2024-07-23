@@ -84,6 +84,13 @@ bamindex: src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
+test/rg_parse: test/rg_parse.o src/common.o 
+	$(CC) -Isrc $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
+		$^ $(ARGP) \
+		-lm $(EXTRA_LIBS) \
+		-o $@
+
 .PHONY: clean
 clean:
 	rm -rf fastcat bamstats bamindex src/fastcat/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
@@ -239,3 +246,7 @@ regression_test_parse_rd_fastq: fastcat
 		rm -rf hist rg; \
 	done;
 	rm -r test/test-tmp
+
+.PHONY: regression_test_rg_parsing
+regression_test_rg_parsing: test/rg_parse
+	./test/rg_parse
