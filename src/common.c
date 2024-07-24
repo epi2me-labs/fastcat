@@ -221,9 +221,14 @@ void strip_hex_suffix(char *str) {
     regex_t regex;
     regmatch_t matches[1];
    
-    // its supposed to be formatted as "%s-%0lX" which is a long formatted
-    // as hex with leading zeros. But I (cjw) observed cases with only 7 \:D/ 
-    if (regcomp(&regex, "-[0-9A-Fa-f]{7,8}$", REG_EXTENDED) != 0) {
+    // samtools formats this as "%s-%0lX" which is a long formatted
+    // as hex with leading zeros. BUT there's no field width specified!
+    // https://github.com/samtools/samtools/issues/2086
+    // This will strip even a solitary `-` from the end of the string,
+    // we could be probabilistic and require say 2 hex digits leaving
+    // the 16 edge cases of 0 ("") to F. No one should have and RG ID
+    // ending in "-", right?
+    if (regcomp(&regex, "-[0-9A-Fa-f]{0,8}$", REG_EXTENDED) != 0) {
         fprintf(stderr, "Could not compile regex\n");
         exit(1);
     }
