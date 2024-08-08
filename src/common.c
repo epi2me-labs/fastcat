@@ -253,7 +253,9 @@ void destroy_rg_info(readgroup* rg) {
 // <runid>_<basecalling_model>_<barcode_arrangement>
 //
 // where:
-//   - runid is a 40 character string
+//   - runid is either (see CW-4704):
+//        - a 40 character string representing an acquisition_id sha
+//        - a 36 character string representing a protocol_run_id uuid
 //   - basecalling_model is a string maybe containing `_`, and containing one or more `@`
 //   -    mod_caller is optional part of this starting with `_` after the first `@`
 //   - barcode_arrangement is a optional(!) string with an unknown format, but hopefully no `@`
@@ -284,7 +286,9 @@ readgroup* create_rg_info(char* rg) {
         return rg_info;
     }
     delim[0] = '\0';
-    if (strlen(rg_info->runid) != 40) {
+    // ensure runid is long enough to be an acquisition sha or protocol uuid
+    int runid_l = strlen(rg_info->runid);
+    if (runid_l != 36 && runid_l != 40) {
         // free the mutated copy, and reset
         free(rg_info->readgroup);
         rg_info->readgroup = strdup(rg);
