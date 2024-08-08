@@ -4,7 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
+## [v0.18.6]
+### Changed
+- Ill advised parsing of RG ID field has been extended to additionally allow for protocol_run_id style (uuid) Run IDs, as well as standalone acquisition_id (sha1) Run IDs
 
 ## [v0.18.5]
 ### Changed

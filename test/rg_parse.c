@@ -26,25 +26,34 @@ int compare(char* str1, char* str2) {
 
 
 int main() {
-    char *runid = "ef1af1ab8967cb20ca30dbeca93fd66592bf4619";
+    char *runid_acquisition = "ef1af1ab8967cb20ca30dbeca93fd66592bf4619";
+    char *runid_protocol = "c886531d-28f5-41f6-b948-948e8cb78e5e";
     char *basecall_model = "basecall_model_name@v1.2.3";
     char *mod_model_name = "basecall_model_name@v1.2.3_5mCG_5hmCG@v1";
     char *barcode = "barcode01";
     char *suffix = "-1A2B3C4D";
 
     TestCase cases[] = {
-        {runid, basecall_model, mod_model_name, barcode, suffix},
-        {runid, basecall_model, mod_model_name, barcode, NULL},
-        {runid, basecall_model, mod_model_name, NULL, suffix},
-        {runid, basecall_model, mod_model_name, NULL, NULL},
-        {runid, basecall_model, NULL, barcode, suffix},
-        {runid, basecall_model, NULL, barcode, NULL},
-        {runid, basecall_model, NULL, NULL, suffix},
-        {runid, basecall_model, NULL, NULL, NULL},
+        {runid_acquisition, basecall_model, mod_model_name, barcode, suffix},
+        {runid_acquisition, basecall_model, mod_model_name, barcode, NULL},
+        {runid_acquisition, basecall_model, mod_model_name, NULL, suffix},
+        {runid_acquisition, basecall_model, mod_model_name, NULL, NULL},
+        {runid_acquisition, basecall_model, NULL, barcode, suffix},
+        {runid_acquisition, basecall_model, NULL, barcode, NULL},
+        {runid_acquisition, basecall_model, NULL, NULL, suffix},
+        {runid_acquisition, basecall_model, NULL, NULL, NULL},
+        {runid_protocol, basecall_model, mod_model_name, barcode, suffix},
+        {runid_protocol, basecall_model, mod_model_name, barcode, NULL},
+        {runid_protocol, basecall_model, mod_model_name, NULL, suffix},
+        {runid_protocol, basecall_model, mod_model_name, NULL, NULL},
+        {runid_protocol, basecall_model, NULL, barcode, suffix},
+        {runid_protocol, basecall_model, NULL, barcode, NULL},
+        {runid_protocol, basecall_model, NULL, NULL, suffix},
+        {runid_protocol, basecall_model, NULL, NULL, NULL},
     };
 
     int fails = 0;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < sizeof(cases)/sizeof(TestCase); i++) {
 
         char* read_group = calloc(400, sizeof(char));
         read_group = strcpy(read_group, cases[i].runid);
