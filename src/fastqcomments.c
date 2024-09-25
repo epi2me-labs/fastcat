@@ -111,7 +111,8 @@ read_meta parse_read_meta(kstring_t comment) {
                 meta->rg = value;
                 ksprintf_with_opt_delim(meta->tags_str, "\t", "RG:Z:%s", value);
             }
-            else if (!strcmp(key, "basecall_model_version_id")) {
+            // CW-4766 - inconsistent naming of basecall model version id by guppy/minknow/dorado
+            else if (!strcmp(key, "basecall_model_version_id") || !strcmp(key, "model_version_id")) {
                 meta->basecaller = value;
                 // there's no discrete tag defined by guppy/minknow/doroado
                 // for this; so not added to `tags_str` (but to `rest` instead)
