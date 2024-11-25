@@ -36,7 +36,6 @@ else
 endif
 
 
-
 .PHONY: default
 default: fastcat bamstats bamindex
 
@@ -50,25 +49,28 @@ htslib/libhts.a:
 		&& CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" ./configure $(HTS_CONF_ARGS) \
 		&& make -j 4
 
-zlib-ng/libz.a:
-	@echo Compiling $(@F)
+#TODO: for conda we could use zlib-ng from conda-forge
+
+zlib-ng/zlib.h:
+	@echo Configuring zlib-ng
 	cd zlib-ng/ \
 		&& CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" ./configure --zlib-compat \
+
+zlib-ng/libz.a: zlib-ng/zlib.h
+	@echo Compiling $(@F)
+	cd zlib-ng/ \
 		&& make -j 4 libz.a
 
-src/%.o: src/%.c
-	$(CC) -Isrc -Ihtslib -c -pthread $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
-		$(CFLAGS) $(EXTRA_CFLAGS) $^ -o $@
-
-
+src/%.o: src/%.c zlib-ng/zlib.h
+	$(CC) -Isrc -Ihtslib -Izlib-ng -c -pthread $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+		$(CFLAGS) $(EXTRA_CFLAGS) $< -o $@
 
 fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB) zlib-ng/libz.a
-	$(CC) -Isrc $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
 		-lm $(EXTRA_LIBS) \
 		-o $@
-
 
 bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
@@ -95,7 +97,6 @@ test/rg_parse: test/rg_parse.o src/common.o
 clean:
 	rm -rf fastcat bamstats bamindex src/fastcat/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
 
-
 .PHONY: clean_htslib
 clean_htslib:
 	cd htslib && make clean
@@ -105,6 +106,12 @@ mem_check_fastcat: fastcat
 	rm -rf fastcat-histograms
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
 		./fastcat test/data/*.fastq.gz > /dev/null
+
+.PHONY: mem_check_fastcat_demultiplex
+mem_check_fastcat_demultiplex: fastcat
+	rm -rf demultiplex
+	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
+		./fastcat test/data/*.fastq.gz --demultiplex demultiplex > /dev/null
 
 .PHONY: mem_check_fastcat_demultiplex
 mem_check_fastcat_demultiplex: fastcat
@@ -131,7 +138,6 @@ mem_check_bamindex-build: bamindex
 
 test/bamindex/400.bam.bci: bamindex
 	./bamindex dump test/bamindex/400.bam.bci
-
 
 .PHONY: mem_check_bamindex-dump
 mem_check_bamindex-dump: bamindex test/bamindex/400.bam.bci

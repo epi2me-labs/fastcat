@@ -72,9 +72,6 @@ writer initialize_writer(char* output_dir, char* histograms, char* perread, char
      writer->nreads = calloc(MAX_BARCODES, sizeof(size_t));
      writer->l_stats = calloc(MAX_BARCODES, sizeof(read_stats*));
      writer->q_stats = calloc(MAX_BARCODES, sizeof(read_stats*));
-     // we want at least 1 stats accumulator (when not demultiplexing)
-     writer->l_stats[0] = create_length_stats();
-     writer->q_stats[0] = create_qual_stats(QUAL_HIST_WIDTH);
      writer->reheader = reheader;
      writer->reads_per_file = reads_per_file;
      writer->reads_written = calloc(MAX_BARCODES, sizeof(size_t));
@@ -200,6 +197,10 @@ void _write_stats(char* hist_dir, char* plex_dir, size_t barcode, read_stats* st
         free(path);
     }
     FILE* fp = fopen(filepath, "w");
+    if (fp == NULL) {
+        fprintf(stderr, "Error: Could not open file %s for writing\n", filepath);
+        exit(1);
+    }
     print_stats(stats, false, true, fp);
     fclose(fp);
     free(filepath);
@@ -252,6 +253,10 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
     if (writer->output == NULL) {
         // all reads to stdout
         _write_read(writer, seq, meta, stdout);
+        if (writer->l_stats[0] == NULL) {
+            writer->l_stats[0] = create_length_stats();
+            writer->q_stats[0] = create_qual_stats(QUAL_HIST_WIDTH);
+        }
         add_length_count(writer->l_stats[0], seq->seq.l);
         add_qual_count(writer->q_stats[0], mean_q);
     }
