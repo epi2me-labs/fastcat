@@ -11,13 +11,16 @@ build:
 requirements:
     build:
         - {{ compiler('c') }}
-        - nanoporetech::htslib =1.19.1
     host:
         - argp-standalone # [osx]
-        # linked to all the same stuff as bioconda builds
-        - nanoporetech::htslib =1.19.1
+        # not sure why zlib needs to be explicitly listed here,
+        # bioconda::samtools does it too, and conda build can't find it otherwise
+        # despite it getting installed into the build env
+        - htslib >=1.20
+        - zlib
     run:
-        - nanoporetech::htslib =1.19.1
+        - htslib >=1.20
+        - zlib
 test:
     commands:
         fastcat --help
