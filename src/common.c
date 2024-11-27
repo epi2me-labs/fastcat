@@ -183,7 +183,7 @@ const double qprobs[100] = {
     2.51188643e-10, 1.99526231e-10, 1.58489319e-10, 1.25892541e-10};
 
 
-void kahan_sum(double* sum, double term, double* c) {
+inline void kahan_sum(double* sum, double term, double* c) {
     double y = term + *c;
     double t = *sum + y;
     *c = (t - *sum) - y;
@@ -191,7 +191,7 @@ void kahan_sum(double* sum, double term, double* c) {
 }
 
 
-float mean_qual(char* qual, size_t len) {
+inline float mean_qual(char* qual, size_t len) {
     if (len == 0 ) return nanf("");
     double qsum = 0;
     double c = 0;
@@ -203,7 +203,8 @@ float mean_qual(char* qual, size_t len) {
     return -10 * log10(qsum);
 }
 
-float mean_qual_from_bam(u_int8_t* qual, size_t len) {
+
+inline float mean_qual_from_bam(u_int8_t* qual, size_t len) {
     if (len == 0 || qual[0] == 0xff ) return nanf("");
     double qsum = 0;
     double c = 0;
@@ -246,6 +247,7 @@ void destroy_rg_info(readgroup* rg) {
     if (rg != NULL) {
         free(rg->readgroup);
         free(rg);
+        rg = NULL;
     }
 }
 

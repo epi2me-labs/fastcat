@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A segmentation fault whilst writing statistics files when demultiplexing is enabled.
 ### Changed
 - Get basecall model version id from `model_version_id` in FASTQ header (in addition to `basecaller_model_version_id`)
+- Parse required bam tags in one pass rather than piecemeal as required.
 
 ## [v0.18.6]
 ### Changed
@@ -37,7 +38,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - 'run_id' instead of 'basecaller' as column name in basecaller summary output header line.
 - `(null)` in FASTQ header comments when run with `-H` on files that had `basecall_model_version_id=...` as only header comment.
->>>>>>> dev
 
 ## [v0.18.0]
 ### Added
