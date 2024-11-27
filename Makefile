@@ -123,7 +123,10 @@ mem_check_fastcat_demultiplex: fastcat
 mem_check_bamstats: bamstats
 	rm -rf bamstats-histograms
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./bamstats test/bamstats/400ecoli.bam
+		./bamstats test/bamstats/400ecoli-with-qcfail.bam
+	rm -rf bamstats-histograms
+	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
+		./bamstats test/parse_rg/dna_r10.4.1_e8.2_400bps_hac@v4.3.0.bam
 
 .PHONY: mem_check_bamstats_duplex
 mem_check_bamstats_duplex: bamstats

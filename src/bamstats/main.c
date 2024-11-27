@@ -126,6 +126,7 @@ int main(int argc, char *argv[]) {
 
     htsThreadPool p = {NULL, 0};
     if (args.threads > 1 ) {
+        fprintf(stderr, "Using %d threads\n", args.threads);
         p.pool = hts_tpool_init(args.threads);
         hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
     }
