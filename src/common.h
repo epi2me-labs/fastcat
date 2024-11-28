@@ -65,7 +65,9 @@ int replace_char(char *str, char orig, char rep);
 void kahan_sum(double* sum, double term, double* c);
 
 float mean_qual(char* qual, size_t len);
+float mean_qual_naive(char* qual, size_t len);
 float mean_qual_from_bam(uint8_t* qual, size_t len);
+float mean_qual_from_bam_naive(uint8_t* qual, size_t len);
 
 typedef struct readgroup {
     char* readgroup;

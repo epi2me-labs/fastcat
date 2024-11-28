@@ -71,11 +71,5 @@ int *qpos2rpos(bam1_t *b);
  */
 uint8_t* bam_get_tag_caseinsensitive(const bam1_t* b, char* tag);
 
-/** Translate an integer typed aux tag to integer form after zeroing errno.
- *
- *  @param tag Aux tag data to translate to int
- *
- */
-int bam_aux_tag_int(uint8_t* tag);
 
 #endif

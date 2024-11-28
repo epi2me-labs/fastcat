@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
             length_stats, qual_stats, acc_stats, cov_stats,
             length_stats_unmapped, qual_stats_unmapped,
             polya_stats, args.poly_a_cover, args.poly_a_qual, args.poly_a_rev,
-            run_ids, basecallers);
+            run_ids, basecallers, args.force_recalc_qual);
 
         // write flagstat counts if requested
         if (flag_counts != NULL) {
@@ -208,7 +208,7 @@ int main(int argc, char *argv[]) {
             length_stats, qual_stats, acc_stats, cov_stats,
             length_stats_unmapped, qual_stats_unmapped,
             polya_stats, args.poly_a_cover, args.poly_a_qual, args.poly_a_rev,
-            run_ids, basecallers);
+            run_ids, basecallers, args.force_recalc_qual);
         if (flag_counts != NULL) {
             write_stats(flag_counts->counts[0], chr, args.sample, flagstats);
         }
