@@ -32,6 +32,8 @@ static struct argp_option options[] = {
         "Basecaller summary output", 0},
     {"histograms", 0x400, "DIRECTORY", 0,
         "Directory for outputting histogram information. (default: bamstats-histograms)", 0},
+    {"recalc_qual", 0x900, 0, 0,
+        "Force recomputing mean quality, else use 'qs' tag in BAM if present.", 0},
     {0, 0, 0, 0,
         "Read filtering options:", 0},
     {"unmapped", 'u', 0, 0,
@@ -126,6 +128,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
         case 't':
             arguments->threads = atoi(arg);
             break;
+        case 0x900:
+            arguments->force_recalc_qual = true;
+            break;
         case ARGP_KEY_NO_ARGS:
             argp_usage (state);
             break;
@@ -167,6 +172,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.tag_name[0] = '\0';
     args.tag_value = -1;
     args.threads = 1;
+    args.force_recalc_qual = false;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     if (tag_items % 2 > 0) {
         fprintf(stderr, "ERROR: Both or neither of --tag_name and --tag_value must be given.\n");

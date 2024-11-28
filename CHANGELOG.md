@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [unreleased]
 ### Fixed
 - A segmentation fault whilst writing statistics files when demultiplexing is enabled.
+- A memory leak occurring in `bamstats` when qcfail reads are encountered in the input.
 ### Changed
+- Retrieve mean quality score 'qs' tag from BAM record, rather than recomputing. Previous behaviour can be restored with the `--recalc_qual` option.
 - Get basecall model version id from `model_version_id` in FASTQ header (in addition to `basecaller_model_version_id`)
 - Parse required bam tags in one pass rather than piecemeal as required.
 

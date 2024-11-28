@@ -117,7 +117,7 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
         // accumulate stats only for reads within length and quality thresholds
         if (seq->qual.l == 0) { status = -99; break; }
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length)) {
-            float mean_q = mean_qual(seq->qual.s, seq->qual.l);
+            float mean_q = mean_qual_naive(seq->qual.s, seq->qual.l);
             if (mean_q < args->min_qscore) continue;
             ++n ; slen += seq->seq.l;
             minl = min(minl, seq->seq.l);

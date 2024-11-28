@@ -100,7 +100,8 @@ int read_bam(void *data, bam1_t *b) {
                     continue;
                 }
             }
-            int tag_value = bam_aux_tag_int(tag);
+            errno = 0;
+            int tag_value = bam_aux2i(tag);
             if (tag_value == 0 && errno == EINVAL) continue; // tag was not integer
             if (tag_value != aux->tag_value) continue;
         }
@@ -179,22 +180,4 @@ uint8_t* bam_get_tag_caseinsensitive(const bam1_t* b, char* tag) {
         ret = bam_aux_get((const bam1_t*) b, lower_tag);
     }
     return ret;
-}
-
-/** Translate an integer typed aux tag to integer form after zeroing errno.
- *
- *  @param tag Aux tag data to translate to int
- *
- */
-int bam_aux_tag_int(uint8_t* tag) {
-    // get_int_aux_val (inside bam_aux2i) unhelpfully returns zero if the
-    // provided tag data is invalid. this is unfortunate, as zero is a valid
-    // value for an integer type field.
-    // it is not usually proper to manually reset errno, however it is simply
-    // not possible to discern between a true zero value and an invalid zero
-    // that requires handling of EINVAL. we must reset errno to prevent any
-    // previously encountered EINVAL errors triggering behaviour on a true zero.
-    errno = 0;
-    // it is now safe to check ret == 0 && errno == EINVAL
-    return bam_aux2i(tag);
 }

@@ -139,7 +139,7 @@ static inline void process_flagstat_counts(const bam1_t* b, size_t* counts, cons
 // see section 4.2.4 of the SAM spec for more details
 #define IS_INTEGER_TAG(t) ((t) == 'i' || (t) == 'I' || (t) == 'c' || (t) == 'C' || (t) == 's' || (t) == 'S')
 
-#define N_TAGS 7
+#define N_TAGS 8
 typedef struct {
     char *RG;  // read group
     char *RD;  // read group (old skool)
@@ -147,6 +147,7 @@ typedef struct {
     int NM;    // edit distance
     int pi;    // parent read
     int pt;    // poly-t/a tail length
+    float qs;  // quality score
     int dx;    // duplex
 } bam_tags_t;
 
@@ -154,7 +155,7 @@ typedef struct {
 // Function to fetch tags from a bam1_t record
 bam_tags_t fetch_bam_tags(const bam1_t *b, const bam_hdr_t *header) {
     // default duplex tag to simple read, everything else as invalid
-    bam_tags_t tags = {NULL, NULL, NULL, -1, -1, -1, 0};  
+    bam_tags_t tags = {NULL, NULL, NULL, -1, -1, -1, 0, -1};  
 
     uint8_t *aux = bam_aux_first(b);
     int n_tags = 0;
@@ -172,7 +173,8 @@ bam_tags_t fetch_bam_tags(const bam1_t *b, const bam_hdr_t *header) {
         int ival = -1;
         bool ierr = false;
         if (IS_INTEGER_TAG(type)) {
-            ival = bam_aux_tag_int(aux);
+            errno = 0;
+            ival = bam_aux2i(aux);
             ierr = (ival == 0 && errno == EINVAL);
         }
         
@@ -190,6 +192,12 @@ bam_tags_t fetch_bam_tags(const bam1_t *b, const bam_hdr_t *header) {
             tags.pt = ival;
         } else if (strcmp(tag, "DX") == 0 && !ierr) {
             tags.dx = ival;
+        } else if (strcmp(tag, "QS") == 0 && (type == 'f')) {
+            errno = 0;
+            tags.qs = bam_aux2f(aux);
+            if (tags.qs == 0 && errno == EINVAL) {
+                tags.qs = -1;
+            }
         }
         else {
             // we added above when we shouldn't have
@@ -235,7 +243,8 @@ void process_bams(
         read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
         read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped,
         read_stats* polya_stats, float polya_cover, float polya_qual, bool polya_rev,
-        kh_counter_t* runids, kh_counter_t* basecallers) {
+        kh_counter_t* runids, kh_counter_t* basecallers,
+        bool force_recalc_qual) {
     if (chr != NULL) {
         if (strcmp(chr, "*") == 0) {
             fprintf(stderr, "Processing: Unplaced reads\n");
@@ -368,7 +377,11 @@ void process_bams(
         uint32_t read_length = b->core.l_qseq;
         size_t qstart = get_query_start(b);
         size_t qend = get_query_end(b);
-        float mean_quality = mean_qual_from_bam(bam_get_qual(b), read_length);
+        // get mean quality score, from tag or recompute
+        float mean_quality = tags.qs;
+        if (mean_quality < 0 || force_recalc_qual) {
+            mean_quality = mean_qual_from_bam_naive(bam_get_qual(b), read_length);
+        }
 
         float coverage = 100 * ((float)(qend - qstart)) / read_length;
         size_t rstart = b->core.pos;

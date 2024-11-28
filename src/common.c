@@ -204,13 +204,37 @@ inline float mean_qual(char* qual, size_t len) {
 }
 
 
-inline float mean_qual_from_bam(u_int8_t* qual, size_t len) {
+inline float mean_qual_from_bam(uint8_t* qual, size_t len) {
     if (len == 0 || qual[0] == 0xff ) return nanf("");
     double qsum = 0;
     double c = 0;
     for (size_t i=0; i<len; ++i) {
         int q = (int)(qual[i]);
         kahan_sum(&qsum, qprobs[q], &c);
+    }
+    qsum /= len;
+    return -10 * log10(qsum);
+}
+
+
+inline float mean_qual_naive(char* qual, size_t len) {
+    if (len == 0 ) return nanf("");
+    double qsum = 0;
+    for (size_t i=0; i<len; ++i) {
+        int q = (int)(qual[i]) - 33;
+        qsum += qprobs[q];
+    }
+    qsum /= len;
+    return -10 * log10(qsum);
+}
+
+
+inline float mean_qual_from_bam_naive(uint8_t* qual, size_t len) {
+    if (len == 0 || qual[0] == 0xff ) return nanf("");
+    double qsum = 0;
+    for (size_t i=0; i<len; ++i) {
+        int q = (int)(qual[i]);
+        qsum += qprobs[q];
     }
     qsum /= len;
     return -10 * log10(qsum);

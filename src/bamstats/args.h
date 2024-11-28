@@ -22,6 +22,7 @@ typedef struct arguments {
     int tag_value;
     int threads;
     bool unmapped;
+    bool force_recalc_qual;
 } arguments_t;
 
 arguments_t parse_arguments(int argc, char** argv);
