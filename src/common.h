@@ -1,5 +1,5 @@
-#ifndef _MODBAMBED_COMMON_H
-#define _MODBAMBED_COMMON_H
+#ifndef _FASTCAT_COMMON_H
+#define _FASTCAT_COMMON_H
 
 #include <stdint.h>
 
@@ -38,6 +38,17 @@ int mkdir_hier(char* path);
  *
  */
 void *xalloc(size_t num, size_t size, char* msg);
+
+
+/** Reallocates memory with a message on failure.
+ *
+ *  @param ptr pointer to realloc.
+ *  @param size size of each element.
+ *  @param msg message to describe allocation on failure.
+ *  @returns pointer to allocated memory
+ *
+ */
+void *xrealloc(void *ptr, size_t size, char* msg);
 
 
 /** Retrieves a substring.

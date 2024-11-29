@@ -10,9 +10,10 @@
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
 
-#include "readstats.h"
 #include "args.h"
 #include "common.h"
+#include "readstats.h"
+#include "regiter.h"
 
 
 void write_header(const char* sample) {
@@ -153,7 +154,7 @@ int main(int argc, char *argv[]) {
     read_stats* length_stats_unmapped = create_length_stats();
     read_stats* qual_stats_unmapped = create_qual_stats(QUAL_HIST_WIDTH);
 
-    if (args.region == NULL) {
+    if (args.region == NULL && args.bed == NULL) {
         // iterate over the entire file
         process_bams(
             fp, NULL, hdr, args.sample,
@@ -176,43 +177,40 @@ int main(int argc, char *argv[]) {
             }
         }
     } else {
-        // process given region
+        // process given region / BED
         hts_idx_t *idx = sam_index_load(fp, args.bam[0]);
         if (idx == 0){
             fprintf(stderr, "Cannot find index file for '%s', which is required for processing by region.\n", args.bam[0]);
             exit(EXIT_FAILURE);
         }
-        int start, end;
-        char *chr = xalloc(strlen(args.region) + 1, sizeof(char), "chr");
-        strcpy(chr, args.region);
-        char *reg_chr = (char *) hts_parse_reg(chr, &start, &end);
-        // start and end now zero-based end exclusive
-        if (reg_chr) {
-            *reg_chr = '\0';  // sets chr to be terminated at correct point
-        } else {
-            fprintf(stderr, "ERROR: Failed to parse region: '%s'.\n", args.region);
-            exit(EXIT_FAILURE);
+
+        regiter rit = init_region_iterator(args.bed, args.region, hdr);
+        int check = 0;
+        while ((check = next_region(&rit)) != -1) {
+            if (check == -2 && args.bed == NULL) {
+                // we were given only a region, not a bed, and that region was garbage
+                // => user error, should stop immediately
+                exit(EXIT_FAILURE);
+            }
+            if (check != 0) continue;  // skip other errors
+
+            process_bams(
+                fp, idx, hdr, args.sample,
+                rit.chr, rit.start, rit.end, true,
+                args.read_group, args.tag_name, args.tag_value,
+                flag_counts, args.unmapped,
+                length_stats, qual_stats, acc_stats, cov_stats,
+                length_stats_unmapped, qual_stats_unmapped,
+                polya_stats, args.poly_a_cover, args.poly_a_qual, args.poly_a_rev,
+                run_ids, basecallers, args.force_recalc_qual);
+            if (flag_counts != NULL) {
+                // TODO: regions might not be whole chromosomes...
+                write_stats(flag_counts->counts[0], rit.chr, args.sample, flagstats);
+            }
         }
-        int tid = sam_hdr_name2tid(hdr, chr);
-        if (tid < 0) {
-            fprintf(stderr, "ERROR: Failed to find reference '%s' in BAM header.\n", chr);
-            exit(EXIT_FAILURE);
-        }
-        size_t ref_length = (size_t)sam_hdr_tid2len(hdr, tid);
-        end = min(end, (int)ref_length);
-        process_bams(
-            fp, idx, hdr, args.sample,
-            chr, start, end, true,
-            args.read_group, args.tag_name, args.tag_value,
-            flag_counts, args.unmapped,
-            length_stats, qual_stats, acc_stats, cov_stats,
-            length_stats_unmapped, qual_stats_unmapped,
-            polya_stats, args.poly_a_cover, args.poly_a_qual, args.poly_a_rev,
-            run_ids, basecallers, args.force_recalc_qual);
-        if (flag_counts != NULL) {
-            write_stats(flag_counts->counts[0], chr, args.sample, flagstats);
-        }
-        free(chr);
+        fprintf(stderr, "Processed %d regions\n", rit.n_regions);
+        
+        destroy_region_iterator(&rit);
         hts_idx_destroy(idx);
     }
 

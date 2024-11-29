@@ -4,7 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [unreleased]
+## [v0.19.0]
+### Added
+- Regions can now be provided in a three (or more) column BED file to `bamstats` to calculate per-region statistics.
 ### Fixed
 - A segmentation fault whilst writing statistics files when demultiplexing is enabled.
 - A memory leak occurring in `bamstats` when qcfail reads are encountered in the input.

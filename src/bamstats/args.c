@@ -20,6 +20,8 @@ static struct argp_option options[] = {
         "General options:", 0},
     {"region", 'r', "chr:start-end", 0,
         "Genomic region to process.", 0},
+    {"bed", 'b', "BEDFILE", 0,
+        "BED file for regions to process.", 0},
     {"threads", 't', "THREADS", 0,
         "Number of threads for BAM processing.", 0},
     {"sample", 's',"SAMPLE NAME",   0,
@@ -72,6 +74,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     switch (key) {
         case 'r':
             arguments->region = arg;
+            break;
+        case 'b':
+            arguments->bed = arg;
             break;
         case 'g':
             arguments->read_group = arg;
@@ -167,6 +172,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.sample = NULL;
     args.ref = NULL;
     args.region = NULL;
+    args.bed = NULL;
     args.unmapped = false;
     args.read_group = NULL;
     args.tag_name[0] = '\0';
