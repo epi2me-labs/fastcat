@@ -3,7 +3,7 @@
 
 int region_from_string(char* input, char** chr, int* start, int* end) {
     *chr = xalloc(strlen(input) + 1, sizeof(char), "chr");
-    strcpy(chr, input);
+    strcpy(*chr, input);
     char *reg_chr = (char *) hts_parse_reg(input, start, end);
     int rtn = 0;
     if (reg_chr) {
