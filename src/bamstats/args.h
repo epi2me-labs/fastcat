@@ -17,6 +17,7 @@ typedef struct arguments {
     char *sample;
     char* ref;
     char* region;
+    char* bed;
     char* read_group;
     char tag_name[2];
     int tag_value;
