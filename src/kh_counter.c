@@ -30,6 +30,7 @@ int kh_counter_val(kh_counter_t *hash, char *key) {
 }
 
 size_t kh_counter_add(kh_counter_t *hash, char *key, int val) {
+    if (key == NULL) {return -1;}
     // note: key is copied so no need for caller to hold on to it
     int ret;
     khiter_t k = kh_put(KH_COUNTER, hash, key, &ret);
@@ -47,6 +48,7 @@ size_t kh_counter_add(kh_counter_t *hash, char *key, int val) {
 }
 
 size_t kh_counter_sub(kh_counter_t *hash, char *key, int val) {
+    if (key == NULL) {return -1;}
     // note: key is copied so no need for caller to hold on to it
     int ret;
     khiter_t k = kh_put(KH_COUNTER, hash, key, &ret);

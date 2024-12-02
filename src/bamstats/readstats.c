@@ -279,8 +279,12 @@ void process_bams(
         start_time = "";
         if (tags.RG != NULL) {
             rg_info = create_rg_info(tags.RG);
-            runid = rg_info->runid;
-            basecaller = rg_info->basecaller;
+            if (rg_info->runid != NULL) {
+                runid = rg_info->runid;
+            }
+            if (rg_info->basecaller != NULL) {
+                basecaller = rg_info->basecaller;
+            }
         } else if (tags.RD != NULL) {
             runid = tags.RD;
         }

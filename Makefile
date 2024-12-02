@@ -113,20 +113,22 @@ mem_check_fastcat_demultiplex: fastcat
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
 		./fastcat test/data/*.fastq.gz --demultiplex demultiplex > /dev/null
 
-.PHONY: mem_check_fastcat_demultiplex
-mem_check_fastcat_demultiplex: fastcat
-	rm -rf demultiplex
-	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./fastcat test/data/*.fastq.gz --demultiplex demultiplex > /dev/null
-
 .PHONY: mem_check_bamstats
 mem_check_bamstats: bamstats
+	@echo "Memcheck bamstats with good data"
 	rm -rf bamstats-histograms
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./bamstats test/bamstats/400ecoli-with-qcfail.bam
+		./bamstats test/parse_rg/dna_r10.4.1_e8.2_400bps_hac@v4.3.0.bam > /dev/null
+	@echo "Memcheck bamstats with bad data"
+	@echo ""
 	rm -rf bamstats-histograms
 	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./bamstats test/parse_rg/dna_r10.4.1_e8.2_400bps_hac@v4.3.0.bam
+		./bamstats test/parse_rg/bad-ones.bam > /dev/null
+	@echo ""
+	@echo "Memcheck bamstats with qcfails"
+	rm -rf bamstats-histograms
+	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
+		./bamstats test/bamstats/400ecoli-with-qcfail.bam > /dev/null
 
 .PHONY: mem_check_bamstats_duplex
 mem_check_bamstats_duplex: bamstats
