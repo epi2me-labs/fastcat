@@ -72,7 +72,7 @@ int region_from_bed(FILE* bed_fp, char** chr, int* start, int* end) {
         }
 
         // Validate start and end
-        if (*start < 0 || *end < 0 || *end < *start) {
+        if (*start < 0 || *end < 0 || *start >= *end) {
             fprintf(stderr, "WARNING: Invalid region in BED file line: '%s'.\n", line_copy);
             rtn = -2;
             goto cleanup;
@@ -145,7 +145,16 @@ int next_region(regiter *it) {
         }
         else {
             size_t ref_length = (size_t)sam_hdr_tid2len(it->hdr, tid);
-            it->end = min(it->end, (int)ref_length);
+            int ns = min(it->start, (int)ref_length);
+            int ne = min(it->end, (int)ref_length);
+            if (ns >= ne) {
+                fprintf(stderr, "WARNING: Zero-length region created after truncating to reference length (%ld) '%s:%d-%d'.\n", ref_length, it->chr, it->start, it->end);
+                rtn = -2;
+            }
+            else {
+                it->start = ns;
+                it->end = ne;
+            }
             it->n_regions++;
         }
     }
