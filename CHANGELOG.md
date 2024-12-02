@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.19.1]
 ### Fixed
 - Compilation on macOS with clang.
+- Segmentation fault with bad read group information.
 
 ## [v0.19.0]
 ### Added
