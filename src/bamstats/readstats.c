@@ -155,7 +155,7 @@ typedef struct {
 // Function to fetch tags from a bam1_t record
 bam_tags_t fetch_bam_tags(const bam1_t *b, const bam_hdr_t *header) {
     // default duplex tag to simple read, everything else as invalid
-    bam_tags_t tags = {NULL, NULL, NULL, -1, -1, -1, 0, -1};  
+    bam_tags_t tags = {NULL, NULL, NULL, -1, -1, -1, -1, 0};  
 
     uint8_t *aux = bam_aux_first(b);
     int n_tags = 0;
@@ -383,7 +383,7 @@ void process_bams(
         size_t qend = get_query_end(b);
         // get mean quality score, from tag or recompute
         float mean_quality = tags.qs;
-        if (mean_quality < 0 || force_recalc_qual) {
+        if (mean_quality == -1 || force_recalc_qual) {
             mean_quality = mean_qual_from_bam_naive(bam_get_qual(b), read_length);
         }
 
