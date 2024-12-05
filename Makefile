@@ -23,6 +23,7 @@ EXTRA_LIBS ?=
 EXTRA_LIBS ?=
 HTS_CONF_ARGS ?=
 NOTHREADS ?=
+PEPPER ?= 0
 ifeq ($(NOTHREADS), 1)
     CFLAGS += -DNOTHREADS
 endif
@@ -35,10 +36,35 @@ else
     WARNINGS = -Werror -Wall -Wextra -Wpedantic -Wno-language-extension-token -Wno-gnu-statement-expression -Wno-incompatible-function-pointer-types
 endif
 
+GRIND = $(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s
+# optionally run all tests under valgrind
+ifeq ($(OS), 1)
+	PEPPER  = $(RUN_VALGRIND)
+else
+	PEPPER = 
+endif
 
-.PHONY: default
+
+.PHONY:
 default: fastcat bamstats bamindex
 
+.PHONY:
+test: test_fastcat test_bamstats test_meta test_bamindex
+
+.PHONY:
+test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex
+
+.PHONY:
+clean:
+	rm -rf fastcat bamstats bamindex src/fastcat/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
+
+.PHONY: clean_htslib
+clean_htslib:
+	cd htslib && make clean
+
+
+###
+# build stages
 
 htslib/libhts.a:
 	@echo Compiling $(@F)
@@ -93,171 +119,122 @@ test/rg_parse: test/rg_parse.o src/common.o
 		-lm $(EXTRA_LIBS) \
 		-o $@
 
-.PHONY: clean
-clean:
-	rm -rf fastcat bamstats bamindex src/fastcat/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
 
-.PHONY: clean_htslib
-clean_htslib:
-	cd htslib && make clean
+###
+# fastcat tests
+
+.PHONY:
+test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex
 
 .PHONY: mem_check_fastcat
 mem_check_fastcat: fastcat
 	rm -rf fastcat-histograms
-	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./fastcat test/data/*.fastq.gz > /dev/null
+	$(GRIND) ./fastcat test/data/*.fastq.gz > /dev/null
 
 .PHONY: mem_check_fastcat_demultiplex
 mem_check_fastcat_demultiplex: fastcat
 	rm -rf demultiplex
-	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./fastcat test/data/*.fastq.gz --demultiplex demultiplex > /dev/null
+	$(GRIND) ./fastcat test/data/*.fastq.gz --demultiplex demultiplex > /dev/null
 
-.PHONY: mem_check_bamstats
-mem_check_bamstats: bamstats
-	@echo "Memcheck bamstats with good data"
-	rm -rf bamstats-histograms
-	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./bamstats test/parse_rg/dna_r10.4.1_e8.2_400bps_hac@v4.3.0.bam > /dev/null
-	@echo "Memcheck bamstats with bad data"
-	@echo ""
-	rm -rf bamstats-histograms
-	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./bamstats test/parse_rg/bad-ones.bam > /dev/null
-	@echo ""
-	@echo "Memcheck bamstats with qcfails"
-	rm -rf bamstats-histograms
-	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./bamstats test/bamstats/400ecoli-with-qcfail.bam > /dev/null
 
-.PHONY: mem_check_bamstats_duplex
-mem_check_bamstats_duplex: bamstats
-	[ -d bamstats-histograms ] && rm -rf bamstats-histograms
-	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./bamstats test/bamstats/310dx.bam
+###
+# bamstats tests
 
-.PHONY: mem_check_bamindex-build
-mem_check_bamindex-build: bamindex
-	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./bamindex build test/bamindex/400.bam
-
-test/bamindex/400.bam.bci: bamindex
-	./bamindex dump test/bamindex/400.bam.bci
-
-.PHONY: mem_check_bamindex-dump
-mem_check_bamindex-dump: bamindex test/bamindex/400.bam.bci
-	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s \
-		./bamindex dump test/bamindex/400.bam.bci
-
-.PHONY: mem_check_bamindex-fetch
-mem_check_bamindex-fetch: bamindex test/bamindex/400.bam.bci
-	$(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all --track-origins=yes -s \
-		./bamindex fetch test/bamindex/400.bam --chunk 5 > /dev/null
-
-.PHONY: mem_check_bamindex
-mem_check_bamindex: mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamindex-fetch
+.PHONY: 
+test_bamstats: test_bamstats_NM test_bamstats_polya mem_check_bamstats
 
 .PHONY: test_bamstats_NM
 test_bamstats_NM: bamstats
-	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
-	mkdir test/test-tmp && \
-	cd test/test-tmp && \
-	../../bamstats ../bamstats_badNM/test.sam 2> err || grep "appears to contain implausible alignment information" err && rm -rf bamstats-histograms && \
-	../../bamstats ../bamstats_zeroNM/test.sam
-	rm -r test/test-tmp
+	rm -rf test/test-tmp-bs-nm
+	mkdir test/test-tmp-bs-nm && \
+	cd test/test-tmp-bs-nm && \
+	$(PEPPER) ../../bamstats ../bamstats_badNM/test.sam 2> err || grep "appears to contain implausible alignment information" err && rm -rf bamstats-histograms-bs-nm && \
+	rm -rf bamstats-histograms && \
+	$(PEPPER) ../../bamstats ../bamstats_zeroNM/test.sam
+	rm -r test/test-tmp-bs-nm
 
 .PHONY: test_bamstats_polya
 test_bamstats_polya: bamstats
-	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
-	mkdir test/test-tmp && \
-	cd test/test-tmp && \
-	../../bamstats ../bamstats/RCS-100A.bam --poly_a > /dev/null && \
+	rm -rf test/test-tmp-bs-pa
+	mkdir test/test-tmp-bs-pa && \
+	cd test/test-tmp-bs-pa && \
+	$(PEPPER) ../../bamstats ../bamstats/RCS-100A.bam --poly_a > /dev/null && \
 	diff bamstats-histograms/polya.hist ../bamstats/RCS-100A.bam.polya.hist
-	rm -r test/test-tmp
+	rm -r test/test-tmp-bs-pa
 
-.PHONY: regression_test_fastcat
-regression_test_fastcat: fastcat
-	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
-	mkdir test/test-tmp && \
-	cd test/test-tmp && \
-	../../fastcat ../data -s sample --reheader -f per-file-stats.tsv -r per-read-stats.tsv \
-		> concat.sorted.fastq && \
-	bash -c 'diff <(sort per-file-stats.tsv) \
-		<(sort ../fastcat_expected_results/per-file-stats.tsv)' && \
-	bash -c 'diff <(sort per-read-stats.tsv) \
-		<(sort ../fastcat_expected_results/per-read-stats.tsv)' && \
-	bash -c "diff \
-		<(cat concat.sorted.fastq | paste -d '|' - - - - | sort | tr '|' '\n') \
-		<(${ZCAT} ../fastcat_expected_results/concat.reheader.sorted.fastq.gz | \
-			paste -d '|' - - - - | sort | tr '|' '\n')" && \
-	rm -rf fastcat-histograms/ && \
-	../../fastcat ../data -s sample -f per-file-stats.tsv -r per-read-stats.tsv \
-		> concat.sorted.fastq && \
-	bash -c "diff \
-		<(cat concat.sorted.fastq | paste -d '|' - - - - | sort | tr '|' '\n') \
-		<(${ZCAT} ../fastcat_expected_results/concat.sorted.fastq.gz | \
-			paste -d '|' - - - - | sort | tr '|' '\n')"
-	rm -r test/test-tmp
+.PHONY:
+mem_check_bamstats: bamstats
+	@echo "Memcheck bamstats with good data"
+	rm -rf bamstats-histograms
+	$(GRIND) ./bamstats test/parse_rg/dna_r10.4.1_e8.2_400bps_hac@v4.3.0.bam > /dev/null
+	@echo "Memcheck bamstats with bad data"
+	@echo ""
+	rm -rf bamstats-histograms
+	$(GRIND) ./bamstats test/parse_rg/bad-ones.bam > /dev/null
+	@echo ""
+	@echo "Memcheck bamstats with qcfails"
+	rm -rf bamstats-histograms
+	$(GRIND) ./bamstats test/bamstats/400ecoli-with-qcfail.bam > /dev/null
+	@echo ""
+	@echo "Memcheck bamstats duplex"
+	rm -rf bamstats-histograms
+	$(GRIND) ./bamstats test/bamstats/310dx.bam
 
-# samtools fastq -T'*' sam2fastq/wf_basecalling_demo.sam > sam2fastq/wf_basecalling_demo.fastq
-.PHONY: regression_test_sam_to_fastcat
-regression_test_sam_to_fastcat: fastcat
-	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
-	mkdir test/test-tmp && \
-	cd test/test-tmp && \
-	../../fastcat ../sam2fastq/wf_basecalling_demo.fastq -s sample -H \
-		--histograms fastcat-histograms1 -r per-read-stats.fastcat_once.tsv -f per-file-stats.fastcat_once.tsv \
-		> wf_basecalling_demo.fastcat_once.fastq && \
-	../../fastcat wf_basecalling_demo.fastcat_once.fastq -s sample -H \
-		--histograms fastcat-histograms2 -r per-read-stats.fastcat_twice.tsv -f per-file-stats.fastcat_twice.tsv \
-		> wf_basecalling_demo.fastcat_twice.fastq && \
-	diff wf_basecalling_demo.fastcat_once.fastq wf_basecalling_demo.fastcat_twice.fastq && \
-	bash -c 'diff <(sort -d per-file-stats.fastcat_once.tsv | sed 's,../sam2fastq/wf_basecalling_demo.fastq,FILE,') \
-		<(sort -d per-file-stats.fastcat_twice.tsv | sed 's,wf_basecalling_demo.fastcat_once.fastq,FILE,')' && \
-	bash -c 'diff <(sort per-read-stats.fastcat_once.tsv | sed 's,../sam2fastq/wf_basecalling_demo.fastq,FILE,') \
-		<(sort per-read-stats.fastcat_twice.tsv | sed 's,wf_basecalling_demo.fastcat_once.fastq,FILE,')'
-	rm -r test/test-tmp
 
-.PHONY: regression_test_parse_rg_fastq
-regression_test_parse_rg_fastq: fastcat
-	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
-	mkdir test/test-tmp && \
-	cd test/test-tmp && \
-	for i in ../parse_rg/*.fastq.gz; do \
-		echo $$i; \
-		../../fastcat $$i --histograms hist -l rg \
-			> /dev/null; \
-		diff rg $$i.callers; \
-		rm -rf hist rg; \
-	done;
-	rm -r test/test-tmp
+###
+# meta data tests (both fastcat and bamstats)
 
-.PHONY: regression_test_parse_rg_bam
-regression_test_parse_rg_bam: bamstats
-	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
-	mkdir test/test-tmp && \
-	cd test/test-tmp && \
-	for i in ../parse_rg/*.bam; do \
-		../../bamstats $$i --histograms hist -l rg \
-			> /dev/null; \
-		diff rg $$i.callers; \
-		rm -rf hist rg; \
-	done;
-	rm -r test/test-tmp
+.PHONY:
+test_meta: test_meta_fastcat test_meta_bamstats
 
 .PHONY: regression_test_parse_rd_fastq
-regression_test_parse_rd_fastq: fastcat
-	if [ -d test/test-tmp ]; then rm -r test/test-tmp; fi
-	mkdir test/test-tmp && \
-	cd test/test-tmp && \
+test_meta_fastcat: fastcat
+	rm -rf test/test-tmp-meta-fastq
+	mkdir test/test-tmp-meta-fastq && \
+	cd test/test-tmp-meta-fastq && \
+	set -e; \
 	for i in ../parse_rd/*.fastq; do \
 		echo $$i; \
-		../../fastcat $$i --histograms hist -i rd > /dev/null; \
-		diff rd $$i.runids; \
+		$(PEPPER) ../../fastcat $$i --histograms hist -i rd > /dev/null; \
+		diff rd $$i.runids || exit 1; \
 		rm -rf hist rg; \
 	done;
-	rm -r test/test-tmp
+	rm -r test/test-tmp-meta-fastq
+
+.PHONY: regression_test_parse_rg_bam
+test_meta_bamstats: bamstats
+	rm -rf test/test-tmp-meta-bam
+	mkdir test/test-tmp-meta-bam && \
+	cd test/test-tmp-meta-bam && \
+	set -e; \
+	for i in ../parse_rg/*.bam; do \
+		$(PEPPER) ../../bamstats $$i --histograms hist -l rg \
+			> /dev/null; \
+		diff rg $$i.callers || exit 1; \
+		rm -rf hist rg; \
+	done;
+	rm -r test/test-tmp-meta-bam
 
 .PHONY: regression_test_rg_parsing
 regression_test_rg_parsing: test/rg_parse
-	./test/rg_parse
+	$(PEPPER) ./test/rg_parse
+
+
+###
+# bamindex tests
+
+.PHONY:
+test_bamindex: mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamindex-fetch 
+
+.PHONY: mem_check_bamindex-build
+mem_check_bamindex-build: bamindex
+	$(GRIND) ./bamindex build test/bamindex/400.bam
+
+.PHONY: mem_check_bamindex-dump
+mem_check_bamindex-dump: bamindex mem_check_bamindex-build
+	$(GRIND) ./bamindex dump test/bamindex/400.bam.bci > /dev/null
+
+.PHONY: mem_check_bamindex-fetch
+mem_check_bamindex-fetch: bamindex mem_check_bamindex-build
+	$(GRIND) ./bamindex fetch test/bamindex/400.bam --chunk 5 > /dev/null
+

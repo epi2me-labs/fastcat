@@ -31,21 +31,11 @@ build:
       paths:
         - test/*
     script:
-        - make fastcat
+        - make
         - ./fastcat --help
-        - make mem_check_fastcat
-        - make mem_check_fastcat_demultiplex
-        - make regression_test_fastcat
-        - make regression_test_sam_to_fastcat
-        - make regression_test_rg_parsing
-        - make bamstats
         - ./bamstats --help
-        - make mem_check_bamstats
-        - make mem_check_bamstats_duplex
-        - make test_bamstats_NM
-        - make bamindex
         - ./bamindex build --help
-        - make mem_check_bamindex
+        - PEPPER=1 make test
 
 deploy-checks:
     stage: prerelease

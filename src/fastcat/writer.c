@@ -72,6 +72,13 @@ writer initialize_writer(char* output_dir, char* histograms, char* perread, char
      writer->nreads = calloc(MAX_BARCODES, sizeof(size_t));
      writer->l_stats = calloc(MAX_BARCODES, sizeof(read_stats*));
      writer->q_stats = calloc(MAX_BARCODES, sizeof(read_stats*));
+     // we want a stats accumulator (when not demultiplexing)
+     // This also ensures we write out an empty histogram file when
+     // no reads are processed. (To go with our other empty summary files)
+     if (writer->output == NULL) {
+         writer->l_stats[0] = create_length_stats();
+         writer->q_stats[0] = create_qual_stats(QUAL_HIST_WIDTH);
+     }
      writer->reheader = reheader;
      writer->reads_per_file = reads_per_file;
      writer->reads_written = calloc(MAX_BARCODES, sizeof(size_t));
@@ -112,6 +119,7 @@ writer initialize_writer(char* output_dir, char* histograms, char* perread, char
 
 void _write_stats(char* hist_dir, char* plex_dir, size_t barcode, read_stats* stats, char* type);
 
+
 void destroy_writer(writer writer) {
     for(size_t i=0; i < MAX_BARCODES; ++i) {
         if(writer->handles[i] != NULL) {
@@ -128,8 +136,8 @@ void destroy_writer(writer writer) {
             _write_stats(writer->histograms, writer->output, i, writer->q_stats[i], "quality\0");
             destroy_qual_stats(writer->q_stats[i]);
         }
-
     }
+
     if (writer->sample != NULL) free(writer->sample);
     if (writer->perread != NULL) fclose(writer->perread);
     if (writer->perfile != NULL) fclose(writer->perfile);
@@ -145,6 +153,7 @@ void destroy_writer(writer writer) {
     free(writer->file_index);
     free(writer);
 }
+
 
 void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
     
@@ -252,11 +261,8 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
 
     if (writer->output == NULL) {
         // all reads to stdout
+        // Stats were initialize in init, no need to check if they exist
         _write_read(writer, seq, meta, stdout);
-        if (writer->l_stats[0] == NULL) {
-            writer->l_stats[0] = create_length_stats();
-            writer->q_stats[0] = create_qual_stats(QUAL_HIST_WIDTH);
-        }
         add_length_count(writer->l_stats[0], seq->seq.l);
         add_qual_count(writer->q_stats[0], mean_q);
     }
