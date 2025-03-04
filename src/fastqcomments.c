@@ -156,8 +156,14 @@ read_meta parse_read_meta(kstring_t comment) {
         pch = strtok_r(NULL, token, &p1);
     }
 
-    // if there is a `rest`, add it to the tags (also check that the first char of rest
-    // is not ' ', in which case something must have gone wrong)
+    // if there is a `rest`
+    // (also check that the first char of rest is not ' ', in which case something must have gone wrong)
+    // first replace all tabs with space to avoid all manner of confusion with Martin
+    for (size_t i=0; i<meta->rest->l; i++) {
+        if (meta->rest->s[i] == '\t') {
+            meta->rest->s[i] = ' ';
+        }
+    }
     if (meta->rest->l != 0 && meta->rest->s[0] != ' ') {
         ksprintf_with_opt_delim(meta->tags_str, "\t", "CO:Z:%s", meta->rest->s);
     }

@@ -1,2 +1,6 @@
+#ifndef FASTCAT_VERSION_H
+#define FASTCAT_VERSION_H
 
-const char *argp_program_version = "0.20.0";
+extern const char *argp_program_version;
+
+#endif
