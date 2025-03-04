@@ -1,7 +1,7 @@
 OS := $(shell uname)
 ifeq ($(OS), Darwin)
     # mainly for dev builds using homebrew things
-    EXTRA_LDFLAGS ?= -L$(shell brew --prefix openssl@1.1)/lib
+    EXTRA_LDFLAGS ?= -L$(shell brew --prefix openssl@1.1)/lib -L$(shell brew --prefix curl)/lib
     ARGP ?= $(shell brew --prefix argp-standalone)/lib/libargp.a
     ARGP_INC ?= -I$(shell brew --prefix argp-standalone)/include
     CFLAGS ?= -fpic -O3 ${ARGP_INC}
@@ -23,7 +23,6 @@ EXTRA_LIBS ?=
 EXTRA_LIBS ?=
 HTS_CONF_ARGS ?=
 NOTHREADS ?=
-PEPPER ?= 0
 ifeq ($(NOTHREADS), 1)
     CFLAGS += -DNOTHREADS
 endif
@@ -37,9 +36,12 @@ else
 endif
 
 GRIND = $(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s
+ifeq ($(OS), Darwin)
+	GRIND =
+endif
 # optionally run all tests under valgrind
-ifeq ($(OS), 1)
-	PEPPER  = $(RUN_VALGRIND)
+ifeq ($(PEPPER), 1)
+	PEPPER = $(GRIND)
 else
 	PEPPER = 
 endif
@@ -75,6 +77,15 @@ htslib/libhts.a:
 		&& CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" ./configure $(HTS_CONF_ARGS) \
 		&& make -j 4
 
+# just for testing
+SAMVER=1.21
+samtools:
+	curl -L -o samtools-${SAMVER}.tar.bz2 https://github.com/samtools/samtools/releases/download/${SAMVER}/samtools-${SAMVER}.tar.bz2;
+	tar -xjf samtools-${SAMVER}.tar.bz2;
+	rm samtools-${SAMVER}.tar.bz2
+	cd samtools-${SAMVER} && make -j 4
+	cp samtools-${SAMVER}/samtools $@
+
 #TODO: for conda we could use zlib-ng from conda-forge
 
 zlib-ng/zlib.h:
@@ -91,28 +102,28 @@ src/%.o: src/%.c zlib-ng/zlib.h
 	$(CC) -Isrc -Ihtslib -Izlib-ng -c -pthread $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $< -o $@
 
-fastcat: src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB) zlib-ng/libz.a
+fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB) zlib-ng/libz.a
 	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
-		-lm $(EXTRA_LIBS) \
+		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-bamstats: src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/regiter.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB)
+bamstats: src/version.o src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/regiter.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-bamindex: src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o $(STATIC_HTSLIB)
+bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-test/rg_parse: test/rg_parse.o src/common.o 
+test/rg_parse: src/version.o test/rg_parse.o src/common.o 
 	$(CC) -Isrc $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -124,17 +135,37 @@ test/rg_parse: test/rg_parse.o src/common.o
 # fastcat tests
 
 .PHONY:
-test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex
+test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent
 
 .PHONY: mem_check_fastcat
 mem_check_fastcat: fastcat
 	rm -rf fastcat-histograms
 	$(GRIND) ./fastcat test/data/*.fastq.gz > /dev/null
 
+.PHONY: mem_check_fastcat_bam
+mem_check_fastcat_bam: fastcat
+	rm -rf fastcat-histograms
+	$(GRIND) ./fastcat test/data/*.fastq.gz -B > /dev/null
+
 .PHONY: mem_check_fastcat_demultiplex
 mem_check_fastcat_demultiplex: fastcat
 	rm -rf demultiplex
 	$(GRIND) ./fastcat test/data/*.fastq.gz --demultiplex demultiplex > /dev/null
+
+.PHONY: mem_check_fastcat_demultiplex_bam
+mem_check_fastcat_demultiplex_bam: fastcat
+	rm -rf demultiplex
+	$(GRIND) ./fastcat test/data/*.fastq.gz --demultiplex demultiplex -B > /dev/null
+
+.PHONY: test_fastcat_bam_equivalent
+fastcat_bam_equivalent: fastcat bamstats samtools
+	@echo ""
+	@echo "Testing fastcat bam equivalence"
+	rm -rf test/test-tmp-fcb-equiv-van*
+	rm -rf test/test-tmp-fcb-equiv-bam*
+	$(PEPPER) ./fastcat test/data/*.fastq.gz --histograms test/test-tmp-fcb-equiv-van --reheader | ./samtools import -T '*' - | ./test/sort-sam.py > test/test-tmp-fcb-equiv-van.sam && \
+	$(PEPPER) ./fastcat test/data/*.fastq.gz --histograms test/test-tmp-fcb-equiv-bam -B | ./samtools view | ./test/sort-sam.py > test/test-tmp-fcb-equiv-bam.sam && \
+	diff test/test-tmp-fcb-equiv-van.sam test/test-tmp-fcb-equiv-bam.sam
 
 
 ###
@@ -187,7 +218,7 @@ mem_check_bamstats: bamstats
 .PHONY:
 test_meta: test_meta_fastcat test_meta_bamstats
 
-.PHONY: regression_test_parse_rd_fastq
+.PHONY: test_meta_fastcat
 test_meta_fastcat: fastcat
 	rm -rf test/test-tmp-meta-fastq
 	mkdir test/test-tmp-meta-fastq && \
@@ -201,7 +232,7 @@ test_meta_fastcat: fastcat
 	done;
 	rm -r test/test-tmp-meta-fastq
 
-.PHONY: regression_test_parse_rg_bam
+.PHONY: test_meta_bamstats
 test_meta_bamstats: bamstats
 	rm -rf test/test-tmp-meta-bam
 	mkdir test/test-tmp-meta-bam && \

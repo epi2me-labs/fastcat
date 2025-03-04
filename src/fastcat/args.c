@@ -14,6 +14,24 @@ the top-level directory. Recurses into sub-directories when the \
 will exit non-zero if any file encountered cannot be read.";
 static char args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz) dir-with-fastq ...";
 static struct argp_option options[] = {
+    {0, 0, 0, 0,
+        "General options:", 0},
+    {"recurse", 'x', 0, 0,
+        "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files.", 0},
+    {"threads", 't', "THREADS", 0,
+        "Number of threads for output compression (only with --bam_out.", 0},
+    {0, 0, 0, 0,
+        "Output options:", 0},
+    {"sample", 's', "SAMPLE NAME",   0,
+        "Sample name (if given, adds a 'sample_name' column).", 0},
+    {"reads_per_file", 'c', "NUM", 0,
+        "Split reads into files with a set number of reads (default: single file).", 0},
+    {"reheader", 'H', 0, 0,
+        "Rewrite fastq header comments as SAM tags (useful for passing through minimap2).", 0},
+    {"bam_out", 'B', 0, 0,
+        "Output data as unaligned BAM.", 0},
+    {0, 0, 0, 0,
+        "Output file selection:", 0},
     {"read", 'r', "READ SUMMARY",  0,
         "Per-read summary output", 0},
     {"file", 'f', "FILE SUMMARY",  0,
@@ -22,24 +40,18 @@ static struct argp_option options[] = {
         "Run ID summary output", 0},
     {"basecallers", 'l', "CALLER SUMMARY",  0,
         "Basecaller mode summary output", 0},
-    {"sample", 's', "SAMPLE NAME",   0,
-        "Sample name (if given, adds a 'sample_name' column).", 0},
     {"demultiplex", 'd', "OUT DIR",  0,
         "Separate barcoded samples using fastq header information. Option value is top-level output directory.", 0},
-    {"reads_per_file", 'c', "NUM", 0,
-        "Split reads into files with a set number of reads (default: single file).", 0},
     {"histograms", 0x400, "DIRECTORY", 0,
         "Directory for outputting histogram information. When --demultiplex is enabled histograms are written to per-sample demultiplexed output directories. (default: fastcat-histograms)", 0},
+    {0, 0, 0, 0,
+        "Read filtering options:", 0},
     {"min_length", 'a', "MIN READ LENGTH", 0,
         "minimum read length to output (excluded reads remain listed in summaries).", 0},
     {"max_length", 'b', "MAX READ LENGTH", 0,
         "maximum read length to output (excluded reads remain listed in summaries).", 0},
     {"min_qscore", 'q', "MIN READ QSCOROE", 0,
         "minimum read Qscore to output (excluded reads remain listed in summaries).", 0},
-    {"recurse", 'x', 0, 0,
-        "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files.", 0},
-    {"reheader", 'H', 0, 0,
-        "Rewrite fastq header comments as SAM tags (useful for passing through minimap2).", 0},
     { 0 }
 };
 
@@ -86,6 +98,12 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
         case 'H':
             arguments->reheader = 1;
             break;
+        case 'B':
+            arguments->write_bam = 1;
+            break;
+        case 't':
+            arguments->threads = atoi(arg);
+            break;
         case ARGP_KEY_NO_ARGS:
             argp_usage (state);
             break;
@@ -116,6 +134,8 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.demultiplex_dir = NULL;
     args.histograms = "fastcat-histograms";
     args.reheader = 0;
+    args.write_bam = 0;
+    args.threads = 1;
     args.reads_per_file = 0;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     return args;

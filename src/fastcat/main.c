@@ -198,9 +198,10 @@ int main(int argc, char **argv) {
     arguments_t args = parse_arguments(argc, argv);
 
     writer writer = initialize_writer(
-        args.demultiplex_dir, args.histograms,
-        args.perread, args.perfile, args.runids, args.basecallers,
-        args.sample, args.reheader, args.reads_per_file);
+        args.demultiplex_dir, args.histograms, args.perread, args.perfile,
+        args.runids, args.basecallers, args.sample,
+        args.reheader, args.write_bam, args.reads_per_file,
+        args.threads);
     if (writer == NULL) exit(1);
 
     size_t nfile = 0;

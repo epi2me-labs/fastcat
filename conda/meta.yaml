@@ -18,9 +18,11 @@ requirements:
         # despite it getting installed into the build env
         - htslib >=1.20
         - zlib
+        - xz
     run:
         - htslib >=1.20
         - zlib
+        - xz
 test:
     commands:
         fastcat --help

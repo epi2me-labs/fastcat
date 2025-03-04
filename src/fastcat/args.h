@@ -12,10 +12,12 @@ typedef struct arguments {
     float min_qscore;
     int recurse;
     size_t reheader;
+    size_t write_bam;
     char* demultiplex_dir;
     char* histograms;
     char **files;
     size_t reads_per_file;
+    int threads;
 } arguments_t;
 
 arguments_t parse_arguments(int argc, char** argv);
