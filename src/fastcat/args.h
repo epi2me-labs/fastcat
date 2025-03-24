@@ -1,5 +1,7 @@
 #ifndef FASTCAT_ARGS_H
 #define FASTCAT_ARGS_H
+#include <stdbool.h>
+
 
 typedef struct arguments {
     char *perread;
@@ -18,6 +20,7 @@ typedef struct arguments {
     char **files;
     size_t reads_per_file;
     int threads;
+    bool verbose;
 } arguments_t;
 
 arguments_t parse_arguments(int argc, char** argv);
