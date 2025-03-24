@@ -45,7 +45,9 @@ int process_dir(const char *name, writer writer, arguments_t *args, int recurse)
             for (size_t i=0; i<nfiletypes; ++i) {
                 search = strstr(entry->d_name, filetypes[i]);
                 if (search != NULL) {
-                    fprintf(stderr, "Processing %s\n", path);
+                    if (args->verbose) {
+                        fprintf(stderr, "Processing %s\n", path);
+                    }
                     int rtn = process_file(path, writer, args, recurse - 1);
                     status = max(status, rtn);
                     break;

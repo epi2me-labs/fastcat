@@ -30,6 +30,8 @@ static struct argp_option options[] = {
         "Rewrite fastq header comments as SAM tags (useful for passing through minimap2).", 0},
     {"bam_out", 'B', 0, 0,
         "Output data as unaligned BAM.", 0},
+    {"verbose", 'v', 0, 0,
+        "Verbose output.", 0},
     {0, 0, 0, 0,
         "Output file selection:", 0},
     {"read", 'r', "READ SUMMARY",  0,
@@ -100,6 +102,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'B':
             arguments->write_bam = 1;
+            break;
+        case 'v':
+            arguments->verbose = 1;
             break;
         case 't':
             arguments->threads = atoi(arg);
