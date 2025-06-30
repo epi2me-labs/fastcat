@@ -12,6 +12,10 @@ typedef struct arguments {
     size_t min_length;
     size_t max_length;
     float min_qscore;
+    bool dust;
+    double max_dust;
+    size_t dust_w;
+    size_t dust_t;
     int recurse;
     size_t reheader;
     size_t write_bam;

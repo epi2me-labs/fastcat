@@ -15,11 +15,12 @@ KSEQ_INIT(gzFile, gzread)
 #include "../common.h"
 #include "../fastqcomments.h"
 #include "../kh_counter.h"
+#include "../sdust/sdust.h"
 #include "args.h"
 #include "writer.h"
 
 
-const char filetypes[4][9] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
+const char filetypes[4][10] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
 size_t nfiletypes = 4;
 
 // defined below -- recursion
@@ -84,6 +85,21 @@ int process_dir(const char *name, writer writer, arguments_t *args, int recurse)
 }
 
 
+double dust_fraction(uint8_t *seq, size_t len, int t, int w) {
+    if (len == 0) return 0.0;
+    uint64_t *r;
+    int n;
+    r = sdust(0, (uint8_t*) seq, -1, t, w, &n);
+    int masked_bases = 0;
+    for (int i = 0; i < n; ++i) {
+        int start = (int)(r[i] >> 32);
+        int end = (int)r[i];
+        masked_bases += (end - start);
+    }
+    return (double) masked_bases / len;
+}
+
+
 int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
     int status = 0;
     struct stat finfo;
@@ -121,6 +137,19 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
         if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length)) {
             float mean_q = mean_qual_naive(seq->qual.s, seq->qual.l);
             if (mean_q < args->min_qscore) continue;
+
+            // do some housework
+            if (args->dust) {
+                double masked_fraction = dust_fraction((uint8_t*)seq->seq.s, seq->seq.l, args->dust_t, args->dust_w);
+                if (masked_fraction > args->max_dust) {
+                    if (args->verbose) {
+                        fprintf(stderr, "Skipping read %s due to excessive dust masking (%.2f > %.2f)\n",
+                            seq->name.s, masked_fraction, args->max_dust);
+                    }
+                    continue;
+                }
+            }
+
             ++n ; slen += seq->seq.l;
             minl = min(minl, seq->seq.l);
             maxl = max(maxl, seq->seq.l);
