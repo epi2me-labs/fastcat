@@ -32,12 +32,23 @@ Usage: fastcat [OPTION...]
             reads1.fastq(.gz) reads2.fastq(.gz) dir-with-fastq ...
 fastcat -- concatenate and summarise .fastq(.gz) files.
 
-  -a, --min_length=MIN READ LENGTH
-                             minimum read length to output (excluded reads
-                             remain listed in summaries).
-  -b, --max_length=MAX READ LENGTH
-                             maximum read length to output (excluded reads
-                             remain listed in summaries).
+ General options:
+  -t, --threads=THREADS      Number of threads for output compression (only
+                             with --bam_out.
+  -x, --recurse              Search directories recursively for '.fastq',
+                             '.fq', '.fastq.gz', and '.fq.gz' files.
+
+ Output options:
+  -B, --bam_out              Output data as unaligned BAM.
+  -c, --reads_per_file=NUM   Split reads into files with a set number of reads
+                             (default: single file).
+  -H, --reheader             Rewrite fastq header comments as SAM tags (useful
+                             for passing through minimap2).
+  -s, --sample=SAMPLE NAME   Sample name (if given, adds a 'sample_name'
+                             column).
+  -v, --verbose              Verbose output.
+
+ Output file selection:
   -d, --demultiplex=OUT DIR  Separate barcoded samples using fastq header
                              information. Option value is top-level output
                              directory.
@@ -46,22 +57,33 @@ fastcat -- concatenate and summarise .fastq(.gz) files.
                              When --demultiplex is enabled histograms are
                              written to per-sample demultiplexed output
                              directories. (default: fastcat-histograms)
-  -H, --reheader             Rewrite fastq header comments as SAM tags (useful
-                             for passing through minimap2).
-  -q, --min_qscore=MIN READ QSCOROE
+  -i, --runids=ID SUMMARY    Run ID summary output
+  -l, --basecallers=CALLER SUMMARY
+                             Basecaller mode summary output
+  -r, --read=READ SUMMARY    Per-read summary output
+
+ Read filtering options:
+  -a, --min_length=MIN READ LENGTH
+                             minimum read length to output (excluded reads
+                             remain listed in summaries).
+  -b, --max_length=MAX READ LENGTH
+                             maximum read length to output (excluded reads
+                             remain listed in summaries).
+      --dust                 Enable DUST filtering of reads (default:
+                             disabled).
+  -q, --min_qscore=MIN READ QSCORE
                              minimum read Qscore to output (excluded reads
                              remain listed in summaries).
-  -r, --read=READ SUMMARY    Per-read summary output
-  -s, --sample=SAMPLE NAME   Sample name (if given, adds a 'sample_name'
-                             column).
-  -x, --recurse              Search directories recursively for '.fastq',
-                             '.fq', '.fastq.gz', and '.fq.gz' files.
+
+ Advanced cleaning options:
+      --dust_t=DUST T        Threshold for DUST filtering (default: 20).
+      --dust_w=DUST W        Window size for DUST filtering (default: 64).
+      --max_dust=MAX DUST    Maximum proportion of low-complexity regions to
+                             allow in reads (default: 0.95).
+
   -?, --help                 Give this help list
       --usage                Give a short usage message
   -V, --version              Print program version
-
-Mandatory or optional arguments to long options are also mandatory or optional
-for any corresponding short options.
 
 Input files may be given on stdin by specifing the input as '-'. Also accepts
 directories as input and looks for .fastq(.gz) files in the top-level
@@ -87,7 +109,10 @@ The mean quality is defined as:
 -10 * log10(mean(10^(Q/-10)))
 ```
 
-where `Q` are the set of all per-base quality scores for the read.
+where `Q` are the set of all per-base quality scores for the read. In many
+cases (where relevant metadata is found in the read header) the mean quality
+will not be recomputed but taken from the basecaller's value, which may be
+subtly different.
 
 The `per-file.txt` is also a tab-separated file with columns:
 
@@ -118,6 +143,31 @@ lower    upper    count
 The final bin may be unbounded, which is signified by a `0` entry for the upper
 bin edge.
 
+### fastlint
+
+The `fastlint` program is a simply utility to remove artefactual low-complexity
+reads from FASTQ data. The intended use case is as a prefilter to downstream
+programs that are not robust to such reads, such as the `flye` assembler. Such
+reads can be output by basecallers from pathological input signals.
+
+> This functionality is also available directly in `fastcat` via the `--dust`
+> option. This program is provided for convenience and testing.
+
+```
+Usage: fastlint [OPTION...] <reads.fastq>
+fastlint -- apply sdust algorithm to input files.
+
+ General options:
+  -p, --max_proportion=PROPORTION
+                             Maximum allowable proportion of masked bases in a
+                             read to keep the read (default: 0.95).
+  -t, --threshold=THRESHOLD  Threshold for repetition (default: 20).
+  -w, --window=WINDOW        Window size (default: 64).
+
+  -?, --help                 Give this help list
+      --usage                Give a short usage message
+  -V, --version              Print program version
+```
 
 ### bamstats
 
@@ -140,10 +190,15 @@ Usage: bamstats [OPTION...] <reads.bam>
 bamstats -- summarise rears/alignments in one or more BAM files.
 
  General options:
+  -b, --bed=BEDFILE          BED file for regions to process.
   -f, --flagstats=FLAGSTATS  File for outputting alignment flag counts.
       --histograms=DIRECTORY Directory for outputting histogram information.
                              (default: bamstats-histograms)
+  -i, --runids=ID SUMMARY    Run ID summary output
+  -l, --basecallers=BASECALLERS   Basecaller summary output
   -r, --region=chr:start-end Genomic region to process.
+      --recalc_qual          Force recomputing mean quality, else use 'qs' tag
+                             in BAM if present.
   -s, --sample=SAMPLE NAME   Sample name (if given, adds a 'sample_name'
                              column).
   -t, --threads=THREADS      Number of threads for BAM processing.
@@ -158,15 +213,20 @@ bamstats -- summarise rears/alignments in one or more BAM files.
       --tag_value=VAL        Only process reads with a given tag value.
   -u, --unmapped             Include unmapped/unplaced reads in output.
 
+ Poly-A Options:
+
+      --poly_a               Enable poly-A tail length histogram.
+      --poly_a_cover=PCT_COVERAGE
+                             Reference alignment coverage for acceptance of
+                             read. (default: 95)
+      --poly_a_qual=QUAL     Read mean Q score for acceptance of read.
+                             (default: 10)
+      --poly_a_rev           Allow reverse alignments (useful for cDNA, default
+                             is appropriate for direct RNA seq).
+
   -?, --help                 Give this help list
       --usage                Give a short usage message
   -V, --version              Print program version
-
-Mandatory or optional arguments to long options are also mandatory or optional
-for any corresponding short options.
-
-The program creates a simple TSV file containing statistics for each primary
-alignment stored within the input BAM files.
 ```
 
 #### Output format
@@ -237,14 +297,6 @@ bamindex build -- create a BAM index corresponding to batches of records.
   -?, --help                 Give this help list
       --usage                Give a short usage message
   -V, --version              Print program version
-
-Mandatory or optional arguments to long options are also mandatory or optional
-for any corresponding short options.
-
-The program creates a simple index of file offsets for each of every (n * M)th
-alignment record. No care is taken to keep records corresponding to the same
-query together, or any other such niceities. Its intended to be used simply
-with unaligned, unsorted BAMs.
 ```
 
 **bamindex fetch**
@@ -261,12 +313,6 @@ bamindex fetch -- fetch records from a BAM according to an index.
   -?, --help                 Give this help list
       --usage                Give a short usage message
   -V, --version              Print program version
-
-Mandatory or optional arguments to long options are also mandatory or optional
-for any corresponding short options.
-
-The program simply will fetch a batch of records from a BAM fileusing and index
-and a chunk ID.
 ```
 
 **bamindex dump**
@@ -279,7 +325,4 @@ bamindex dump -- dump a BAM chunk index to stdout as text.
   -?, --help                 Give this help list
       --usage                Give a short usage message
   -V, --version              Print program version
-
-The program simply writes the contents of an index to stdout for human
-inspection. It has no other purpose.
 ```

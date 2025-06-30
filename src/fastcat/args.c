@@ -20,6 +20,7 @@ static struct argp_option options[] = {
         "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files.", 0},
     {"threads", 't', "THREADS", 0,
         "Number of threads for output compression (only with --bam_out.", 0},
+
     {0, 0, 0, 0,
         "Output options:", 0},
     {"sample", 's', "SAMPLE NAME",   0,
@@ -32,6 +33,7 @@ static struct argp_option options[] = {
         "Output data as unaligned BAM.", 0},
     {"verbose", 'v', 0, 0,
         "Verbose output.", 0},
+
     {0, 0, 0, 0,
         "Output file selection:", 0},
     {"read", 'r', "READ SUMMARY",  0,
@@ -46,14 +48,26 @@ static struct argp_option options[] = {
         "Separate barcoded samples using fastq header information. Option value is top-level output directory.", 0},
     {"histograms", 0x400, "DIRECTORY", 0,
         "Directory for outputting histogram information. When --demultiplex is enabled histograms are written to per-sample demultiplexed output directories. (default: fastcat-histograms)", 0},
+
     {0, 0, 0, 0,
         "Read filtering options:", 0},
     {"min_length", 'a', "MIN READ LENGTH", 0,
         "minimum read length to output (excluded reads remain listed in summaries).", 0},
     {"max_length", 'b', "MAX READ LENGTH", 0,
         "maximum read length to output (excluded reads remain listed in summaries).", 0},
-    {"min_qscore", 'q', "MIN READ QSCOROE", 0,
+    {"min_qscore", 'q', "MIN READ QSCORE", 0,
         "minimum read Qscore to output (excluded reads remain listed in summaries).", 0},
+    {"dust", 0x500, 0, 0,
+        "Enable DUST filtering of reads (default: disabled).", 0},
+
+    { 0, 0, 0, 0,
+        "Advanced cleaning options:", 0},
+    {"max_dust", 0x600, "MAX DUST", 0,
+        "Maximum proportion of low-complexity regions to allow in reads (default: 0.95).", 0},
+    {"dust_w", 0x700, "DUST W", 0,
+        "Window size for DUST filtering (default: 64).", 0},
+    {"dust_t", 0x800, "DUST T", 0,
+        "Threshold for DUST filtering (default: 20).", 0},
     { 0 }
 };
 
@@ -90,6 +104,27 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 0x400:
             arguments->histograms = arg;
+            break;
+        case 0x500:
+            arguments->dust = 1;
+            break;
+        case 0x600:
+            arguments->max_dust = atof(arg);
+            if (arguments->max_dust < 0 || arguments->max_dust > 1) {
+                argp_error(state, "max_dust must be between 0 and 1.");
+            }
+            break;
+        case 0x700:
+            arguments->dust_w = atoi(arg);
+            if (arguments->dust_w <= 0) {
+                argp_error(state, "dust_w must be a positive integer.");
+            }
+            break;
+        case 0x800:
+            arguments->dust_t = atoi(arg);
+            if (arguments->dust_t <= 0) {
+                argp_error(state, "dust_t must be a positive integer.");
+            }
             break;
         case 'q':
             arguments->min_qscore = (float)atof(arg);
@@ -138,6 +173,10 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.recurse = 1; // always allow descent into TLD
     args.demultiplex_dir = NULL;
     args.histograms = "fastcat-histograms";
+    args.dust = 0;
+    args.max_dust = 0.95;
+    args.dust_w = 64;
+    args.dust_t = 20;
     args.reheader = 0;
     args.write_bam = 0;
     args.threads = 1;

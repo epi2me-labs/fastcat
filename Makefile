@@ -48,17 +48,17 @@ endif
 
 
 .PHONY:
-default: fastcat bamstats bamindex
+default: fastcat bamstats bamindex fastlint
 
 .PHONY:
 test: test_fastcat test_bamstats test_meta test_bamindex
 
 .PHONY:
-test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex
+test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_fastlint
 
 .PHONY:
 clean:
-	rm -rf fastcat bamstats bamindex src/fastcat/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
+	rm -rf fastcat bamstats bamindex src/fastcat/*.o src/fastlint/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
 
 .PHONY: clean_htslib
 clean_htslib:
@@ -102,7 +102,14 @@ src/%.o: src/%.c zlib-ng/zlib.h
 	$(CC) -Isrc -Ihtslib -Izlib-ng -c -pthread $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $< -o $@
 
-fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB) zlib-ng/libz.a
+fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/sdust/sdust.o src/sdust/kalloc.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB) zlib-ng/libz.a
+	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
+		$^ $(ARGP) \
+		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
+		-o $@
+
+fastlint: src/version.o src/fastlint/main.o src/fastlint/args.o src/sdust/sdust.o src/sdust/kalloc.o $(STATIC_HTSLIB) zlib-ng/libz.a
 	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -269,3 +276,10 @@ mem_check_bamindex-dump: bamindex mem_check_bamindex-build
 mem_check_bamindex-fetch: bamindex mem_check_bamindex-build
 	$(GRIND) ./bamindex fetch test/bamindex/400.bam --chunk 5 > /dev/null
 
+
+###
+# fastlint tests
+
+.PHONY:
+mem_check_fastlint: fastlint
+	$(GRIND) ./fastlint test/data/*.fastq.gz > /dev/null
