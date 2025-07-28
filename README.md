@@ -172,10 +172,10 @@ fastlint -- apply sdust algorithm to input files.
 ### bamstats
 
 The `bamstats` utility is a re-implementation of the `stats_from_bam` program
-from [pomoxis](github.com/nanoporetech/pomoxis). It creates read-level summary
+from [pomoxis](https://github.com/nanoporetech/pomoxis). It creates read-level summary
 statistics of alignments found in a BAM file and reports these in a TSV file.
 
-Additionally as its a common thing to want to do, the program will write
+Additionally as it's a common thing to want to do, the program will write
 the four files:
 
 * `length.hist` - read length histogram,
