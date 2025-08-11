@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h>
 
 #include "htslib/kseq.h"
 KSEQ_INIT(gzFile, gzread)
@@ -17,6 +18,7 @@ KSEQ_INIT(gzFile, gzread)
 #include "../kh_counter.h"
 #include "../sdust/sdust.h"
 #include "args.h"
+#include "parsing.h"
 #include "writer.h"
 
 
@@ -34,7 +36,7 @@ int process_dir(const char *name, writer writer, arguments_t *args, int recurse)
 
     // read all files in directory
     if (!(dir = opendir(name))) {
-        fprintf(stderr, "Error: could not process directory %s: %s\n", name, strerror(errno));
+        fprintf(stderr, "ERROR  : could not process directory %s: %s\n", name, strerror(errno));
         return errno;
     }
     while ((entry = readdir(dir)) != NULL) {
@@ -61,7 +63,7 @@ int process_dir(const char *name, writer writer, arguments_t *args, int recurse)
 
     // start again and look at child directories
     if (!(dir = opendir(name))) {
-        fprintf(stderr, "Error: could not process directory %s: %s\n", name, strerror(errno));
+        fprintf(stderr, "ERROR  : could not process directory %s: %s\n", name, strerror(errno));
         return errno;
     }
     while ((entry = readdir(dir)) != NULL) {
@@ -105,7 +107,7 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
     struct stat finfo;
     int res = stat(fname, &finfo);
     if (res == -1) {
-        fprintf(stderr, "Error: could not process file %s: %s\n", fname, strerror(errno));
+        fprintf(stderr, "ERROR  : could not process file %s: %s\n", fname, strerror(errno));
         return errno;
     }
 
@@ -131,57 +133,87 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
     status = 0;
     kh_counter_t *run_ids = kh_counter_init();
     kh_counter_t *basecallers = kh_counter_init();
-    while ((status = kseq_read(seq)) >= 0) {
-        // accumulate stats only for reads within length and quality thresholds
-        if (seq->qual.l == 0) { status = -99; break; }
-        if ((seq->seq.l >= args->min_length) && (seq->seq.l <= args->max_length)) {
-            float mean_q = mean_qual_naive(seq->qual.s, seq->qual.l);
-            if (mean_q < args->min_qscore) continue;
-
-            // do some housework
-            if (args->dust) {
-                double masked_fraction = dust_fraction((uint8_t*)seq->seq.s, seq->seq.l, args->dust_t, args->dust_w);
-                if (masked_fraction > args->max_dust) {
-                    if (args->verbose) {
-                        fprintf(stderr, "Skipping read %s due to excessive dust masking (%.2f > %.2f)\n",
-                            seq->name.s, masked_fraction, args->max_dust);
-                    }
-                    continue;
-                }
-            }
-
-            ++n ; slen += seq->seq.l;
-            minl = min(minl, seq->seq.l);
-            maxl = max(maxl, seq->seq.l);
-            kahan_sum(&meanq, mean_q, &c);
-            read_meta meta = parse_read_meta(seq->comment);
-            write_read(writer, seq, meta, mean_q, fname);
-            kh_counter_increment(run_ids, meta->runid);
-            kh_counter_increment(basecallers, meta->basecaller);
-            destroy_read_meta(meta);
+    uint64_t failures[NUM_FAILURE_CODES] = {0};
+    bool truncated = false;  // track if last read record was truncated
+    while ((status = kseq_read(seq)) != -1) {  // EOF - normal exit
+        if (status == -2) {  // truncated quality string
+            failures[F_QUAL_TRUNCATED]++;
+            truncated = true;
+            continue;
+        } else if (status == -3) {  // error reading stream
+            failures[F_STREAM_ERROR]++;
+            break;
+        } else if (status < 0) {  // other errors
+            failures[F_UNKNOWN_ERROR]++;
+            break;
         }
+        if (seq->qual.l == 0) {
+            failures[F_QUAL_MISSING]++;
+            truncated = true; // not present is truncated \:D/
+            status = -2;
+            continue;
+        } else {
+            truncated = false;
+            failures[R_RECORD_OK]++;
+        }
+
+        // accumulate stats only for reads within length and quality thresholds
+        if (seq->seq.l > args->max_length) {
+            failures[R_TOO_LONG]++;
+            continue;
+        }
+        if (seq->seq.l < args->min_length) {
+            failures[R_TOO_SHORT]++;
+            continue;
+        }
+        float mean_q = mean_qual_naive(seq->qual.s, seq->qual.l);
+        if (mean_q < args->min_qscore) {
+            failures[R_LOW_QUALITY]++;
+            continue;
+        }
+        if (args->dust) {
+            double masked_fraction = dust_fraction((uint8_t*)seq->seq.s, seq->seq.l, args->dust_t, args->dust_w);
+            if (masked_fraction > args->max_dust) {
+                failures[R_DUST_MASKED]++;
+                continue;
+            }
+        }
+
+        ++n ; slen += seq->seq.l;
+        minl = min(minl, seq->seq.l);
+        maxl = max(maxl, seq->seq.l);
+        kahan_sum(&meanq, mean_q, &c);
+        read_meta meta = parse_read_meta(seq->comment);
+        write_read(writer, seq, meta, mean_q, fname);
+        kh_counter_increment(run_ids, meta->runid);
+        kh_counter_increment(basecallers, meta->basecaller);
+        destroy_read_meta(meta);
+    }
+    if (truncated) {
+        // if the last read was truncated, we count that as file error
+        failures[F_STREAM_ERROR]++;
+        status = -3;
+    }
+    else if (status == -1) {
+        failures[F_FILE_OK]++;
     }
 
-    // handle errors
-    switch (status) {
-        case -1:
-            status = EXIT_SUCCESS;
-            break;
-        case -2:
-            status = EXIT_FAILURE;
-            fprintf(stderr, "Truncated quality string found for record in file '%s'.\n", fname);
-            break;
-        case -3:
-            status = EXIT_FAILURE;
-            fprintf(stderr, "Error reading file '%s', possibly truncated\n", fname);
-            break;
-        case -99:
-            status = EXIT_FAILURE;
-            fprintf(stderr, "No quality string found for record in file '%s' (FASTA is unsupported).\n", fname);
-            break;
-        default:
-            status = EXIT_FAILURE;
-            fprintf(stderr, "Unknown error reading file '%s'.\n", fname);
+    status = status == -1 ? EXIT_SUCCESS : EXIT_FAILURE;
+
+    if (failures[F_STREAM_ERROR] > 0) {
+        fprintf(stderr,
+            "WARNING: file '%s' is possibly truncated.\n",
+            fname);
+    } else if (failures[F_QUAL_MISSING] > 0) {
+        fprintf(stderr,
+           "WARNING: no quality string found for %" PRIu64 " records in file '%s'.\n",
+           failures[F_QUAL_MISSING], fname);
+    } else if (failures[F_QUAL_TRUNCATED] > 0) {
+        fprintf(stderr,
+            "WARNING: truncated quality string found for %" PRIu64 " records in file '%s'.\n",
+            failures[F_QUAL_TRUNCATED], fname);
+    } else if (failures[F_UNKNOWN_ERROR] > 0) {
+        fprintf(stderr, "WARNING: unknown error reading file '%s'.\n", fname);
     }
 
     // summary entries
@@ -190,12 +222,16 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
         if (writer->sample != NULL) fprintf(writer->perfile, "%s\t", args->sample);
         if (n == 0) {
             // there were no reads in the input file
-            fprintf(writer->perfile, "0\t0\t0\t0\t0.00\n");
+            fprintf(writer->perfile, "0\t0\t0\t0\t0.00");
         } else {
-            fprintf(writer->perfile, "%zu\t%zu\t%zu\t%zu\t%.2f\n",
+            fprintf(writer->perfile, "%zu\t%zu\t%zu\t%zu\t%.2f",
                 n, slen, minl, maxl, meanq/n
             );
         }
+        for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
+            fprintf(writer->perfile, "\t%" PRIu64, failures[i]);
+        }
+        fprintf(writer->perfile, "\n");
     }
     if(writer->runids != NULL) {
         for (khiter_t k = 0; k < kh_end(run_ids); ++k) {
@@ -214,6 +250,9 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
                 fprintf(writer->basecallers, "%s\t%d\n", kh_key(basecallers, k), kh_val(basecallers, k));
             }
         }
+    }
+    for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
+        writer->failures[i] += failures[i];
     }
 
     // cleanup
@@ -256,11 +295,25 @@ int main(int argc, char **argv) {
             status = max(status, rtn);
         }
     }
-    destroy_writer(writer);
 
-    if (status != 0) {
-        fprintf(stderr, "Completed processing with errors. Outputs may be incomplete.\n");
-        return EXIT_FAILURE;
+    uint64_t total_records =
+        writer->failures[R_RECORD_OK] 
+        + writer->failures[R_TOO_LONG]
+        + writer->failures[R_TOO_SHORT]
+        + writer->failures[R_LOW_QUALITY]
+        + writer->failures[R_DUST_MASKED];
+    fprintf(stderr, "INFO   : Processed %" PRIu64 " records in %zu files.\n", total_records, nfile);
+    if (status != EXIT_SUCCESS) {
+        fprintf(stderr, "WARNING: Error processing files.\n");
     }
-    return EXIT_SUCCESS;
+    if (!args.force_error) {
+        status = EXIT_SUCCESS;
+    }
+
+    fprintf(stderr, "\nParsing/filtering summary:\n");
+    for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
+        fprintf(stderr, "%s\t%" PRIu64 "\n", failure_type[i], writer->failures[i]);
+    }
+    destroy_writer(writer);
+    return status;
 }

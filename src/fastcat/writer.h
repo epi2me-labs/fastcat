@@ -14,6 +14,7 @@ KSEQ_DECLARE(gzFile)
 
 #include "../stats.h"
 #include "../fastqcomments.h"
+#include "parsing.h"
 
 // barcode 0 is reserved for "unclassified"
 #define MAX_BARCODES 1025
@@ -25,6 +26,7 @@ typedef struct {
     size_t* nreads;
     size_t* reads_written;
     size_t* file_index;
+    uint64_t* failures;
     read_stats** l_stats;
     read_stats** q_stats;
     FILE* perread;

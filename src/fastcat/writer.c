@@ -1,5 +1,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <inttypes.h>
 
 #include "htslib/thread_pool.h"
 
@@ -13,7 +14,6 @@
 // the write buffer to be resized. See _gzsnprintf() below.
 // The size is also used with gzbuffer() when opening gzFile handles.
 #define GZBUFSIZE 131072  // 128 kB
-
 
 
 char* strip_path(char* input) {
@@ -91,6 +91,7 @@ writer initialize_writer(
      writer->reads_per_file = reads_per_file;
      writer->reads_written = calloc(MAX_BARCODES, sizeof(size_t));
      writer->file_index = calloc(MAX_BARCODES, sizeof(size_t));
+     writer->failures = calloc(NUM_FAILURE_CODES, sizeof(uint64_t));
      if (strcmp(sample, "")) {
          // sample is used just for printing to summary, pre-add a tab
          writer->sample = calloc(strlen(sample) + 2, sizeof(char)); 
@@ -107,7 +108,19 @@ writer initialize_writer(
          writer->perfile = fopen(perfile, "w");
          fprintf(writer->perfile, "filename\t");
          if (writer->sample != NULL) fprintf(writer->perfile, "sample_name\t");
-         fprintf(writer->perfile, "n_seqs\tn_bases\tmin_length\tmax_length\tmean_quality\n");
+         fprintf(writer->perfile, "n_seqs\tn_bases\tmin_length\tmax_length\tmean_quality");
+         for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
+             // conver to lowercase for consistency
+             const char* src = failure_type[i];
+             size_t len = strlen(src);
+             char* buffer = calloc(len + 1, sizeof(char));
+             for (size_t j = 0; j < len; ++j) {
+                 buffer[j] = tolower(src[j]);
+             }
+             fprintf(writer->perfile, "\t%s", buffer);
+             free(buffer);
+         }
+         fprintf(writer->perfile, "\n");
      }
      if (runids != NULL) {
          writer->runids = fopen(runids, "w");
@@ -173,12 +186,12 @@ void destroy_writer(writer writer) {
         }
 
         if(writer->l_stats[i] != NULL) {
-            _write_stats(writer->histograms, writer->output, i, writer->l_stats[i], "length\0");
+            _write_stats(writer->histograms, writer->output, i, writer->l_stats[i], "length");
             destroy_length_stats(writer->l_stats[i]);
         }
 
         if(writer->q_stats[i] != NULL) {
-            _write_stats(writer->histograms, writer->output, i, writer->q_stats[i], "quality\0");
+            _write_stats(writer->histograms, writer->output, i, writer->q_stats[i], "quality");
             destroy_qual_stats(writer->q_stats[i]);
         }
     }
@@ -205,6 +218,7 @@ void destroy_writer(writer writer) {
     free(writer->q_stats);
     free(writer->reads_written);
     free(writer->file_index);
+    free(writer->failures);
     free(writer);
 }
 
@@ -339,10 +353,11 @@ void _write_stats(char* hist_dir, char* plex_dir, size_t barcode, read_stats* st
     // write out length stats
     // we assume here the directories have been created already
     char* filepath;
+    char* suff = "hist";
     if (plex_dir == NULL) {
         // main output is to stdout, i.e. all read together
-        filepath = calloc(strlen(hist_dir) + strlen(type) + 7, sizeof(char));
-        sprintf(filepath, "%s/%s.hist", hist_dir, type);
+        filepath = calloc(strlen(hist_dir) + strlen(type) + strlen(suff) + 3, sizeof(char));
+        sprintf(filepath, "%s/%s.%s", hist_dir, type, suff);
     }
     else {
         // demultiplexing
@@ -351,14 +366,14 @@ void _write_stats(char* hist_dir, char* plex_dir, size_t barcode, read_stats* st
             // unclassified/missing
             path = calloc(strlen(plex_dir) + 15, sizeof(char));
             sprintf(path, "%s/unclassified/", plex_dir);
-            filepath = calloc(strlen(path) + strlen(type) + 19, sizeof(char));
-            sprintf(filepath, "%sunclassified.%s.hist", path, type);
+            filepath = calloc(strlen(path) + strlen(type) + strlen(suff) + 15, sizeof(char));
+            sprintf(filepath, "%sunclassified.%s.%s", path, type, suff);
         }
         else {
             path = calloc(strlen(plex_dir) + 14, sizeof(char));
             sprintf(path, "%s/barcode%04lu/", plex_dir, barcode);
-            filepath = calloc(strlen(path) + strlen(type) + 18, sizeof(char));
-            sprintf(filepath, "%sbarcode%04lu.%s.hist", path, barcode, type);
+            filepath = calloc(strlen(path) + strlen(type) + strlen(suff) + 14, sizeof(char));
+            sprintf(filepath, "%sbarcode%04lu.%s.%s", path, barcode, type, suff);
         }
         free(path);
     }
