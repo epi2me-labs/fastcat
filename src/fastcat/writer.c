@@ -100,12 +100,20 @@ writer initialize_writer(
      }
      if (perread != NULL) {
         writer->perread = fopen(perread, "w");
+        if (writer->perread == NULL) {
+            fprintf(stderr, "Error opening per-read file '%s' for writing.\n", perread);
+            exit(EXIT_FAILURE);
+        }
         fprintf(writer->perread, "read_id\tfilename\trunid\t");
         if (writer->sample != NULL) fprintf(writer->perread, "sample_name\t");
         fprintf(writer->perread, "read_length\tmean_quality\tchannel\tread_number\tstart_time\n");
      }
      if (perfile != NULL) {
          writer->perfile = fopen(perfile, "w");
+         if (writer->perfile == NULL) {
+             fprintf(stderr, "Error opening per-file file '%s' for writing.\n", perfile);
+             exit(EXIT_FAILURE);
+         }
          fprintf(writer->perfile, "filename\t");
          if (writer->sample != NULL) fprintf(writer->perfile, "sample_name\t");
          fprintf(writer->perfile, "n_seqs\tn_bases\tmin_length\tmax_length\tmean_quality");
@@ -124,12 +132,20 @@ writer initialize_writer(
      }
      if (runids != NULL) {
          writer->runids = fopen(runids, "w");
+         if (writer->runids == NULL) {
+             fprintf(stderr, "Error opening runids file '%s' for writing.\n", runids);
+             exit(EXIT_FAILURE);
+         }
          fprintf(writer->runids, "filename\t");
          if (writer->sample != NULL) fprintf(writer->runids, "sample_name\t");
          fprintf(writer->runids, "run_id\tcount\n");
      }
      if (basecallers != NULL) {
          writer->basecallers = fopen(basecallers, "w");
+         if (writer->basecallers == NULL) {
+             fprintf(stderr, "Error opening basecallers file '%s' for writing.\n", basecallers);
+             exit(EXIT_FAILURE);
+         }
          fprintf(writer->basecallers, "filename\t");
          if (writer->sample != NULL) fprintf(writer->basecallers, "sample_name\t");
          fprintf(writer->basecallers, "basecaller\tcount\n");

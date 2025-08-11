@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <errno.h>
+#include <libgen.h>
 #include <math.h>
 #include <regex.h>
 #include <string.h>
@@ -14,7 +15,20 @@
 #include "common.h"
 
 
-/* The following two functions were adpated from:
+/** check if a file exists.
+ *
+ * @param path path to file
+ * @returns true if file exists, false otherwise
+ *
+ */
+bool file_exists(const char *path) {
+    assert (path != NULL);
+    struct stat st;
+    return stat(path, &st) == 0;
+}
+
+
+/* The following three functions were adpated from:
  * https://gist.github.com/JonathonReinhart/8c0d90191c38af2dcadb102c4e202950
  */
 static int maybe_mkdir(const char* path, mode_t mode) {
@@ -43,9 +57,47 @@ static int maybe_mkdir(const char* path, mode_t mode) {
     return 0;
 }
 
-/** mkdir a directory structure recursively, but fail if pre-exists.
+
+/** mkdir a directory structure recursively.
  *
  * @param path directory path to ensure exists
+ *
+ */
+int mkdir_p(const char *path) {
+    /* Adapted from http://stackoverflow.com/a/2336245/119527 */
+    char *_path = NULL;
+    char *p; 
+    int result = -1;
+    mode_t mode = 0755;
+    errno = 0;
+
+    _path = strdup(path);
+    if (_path == NULL)
+        goto out;
+
+    for (p = _path + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            if (maybe_mkdir(_path, mode) != 0)
+                goto out;
+            *p = '/';
+        }
+    }   
+
+    if (maybe_mkdir(_path, mode) != 0)
+        goto out;
+
+    result = 0;
+
+out:
+    free(_path);
+    return result;
+}
+
+
+/** mkdir a directory structure recursively, but fail if pre-exists.
+ *
+ * @param path directory path
  *
  */
 int mkdir_hier(char *path) {
@@ -53,7 +105,7 @@ int mkdir_hier(char *path) {
     char *_path = NULL;
     char *p; 
     int result = -1;
-    mode_t mode = 0700;
+    mode_t mode = 0755;
     errno = 0;
 
     // if we can just make the directory, fine. If it exists
@@ -83,6 +135,25 @@ out:
     return result;
 }
 
+
+/** Ensure parent directory exists for a given path.
+ *
+ *  @param path path to ensure parent directory exists.
+ *  @returns 0 on success, -1 on failure.
+ *
+ *  This function checks if the parent directory of the given path exists,
+ *  and creates it if it does not.
+ */
+int ensure_parent_dir_exists(const char* filepath) {
+    char* path_copy = strdup(filepath);
+    if (path_copy == NULL) return -1;
+
+    char* dir = dirname(path_copy);
+    int rtn = mkdir_p(dir);
+
+    free(path_copy);
+    return rtn;
+}
 
 
 

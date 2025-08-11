@@ -218,6 +218,21 @@ mem_check_bamstats: bamstats
 	rm -rf bamstats-histograms
 	$(GRIND) ./bamstats test/bamstats/310dx.bam
 
+.PHONY:
+bamstats_overwrite: bamstats
+	@echo ""
+	@echo "Memcheck bamstats with existing basecaller file"
+	rm -rf bamstats-histograms
+	@$(PEPPER) cat test/bamstats/400ecoli.bam \
+		| ./bamstats -u -l bamstats_results/bamstats.basecallers.tsv - \
+		> /dev/null; \
+		status=$$?; \
+		if [ $$status -eq 1 ]; then \
+			echo "Expected failure: bamstats basecaller file already exists"; \
+		else \
+			echo "Unexpected success: bamstats basecaller file already exists"; \
+			exit 1; \
+		fi
 
 ###
 # meta data tests (both fastcat and bamstats)
