@@ -1,6 +1,7 @@
 #ifndef _FASTCAT_COMMON_H
 #define _FASTCAT_COMMON_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 
@@ -22,12 +23,40 @@
     _a > _b ? _a : _b; \
 })
 
+/** check if a file exists.
+ *
+ * @param path path to file
+ * @returns true if file exists, false otherwise
+ *
+ */
+bool file_exists(const char *path);
+
+/** mkdir a directory structure recursively.
+ *
+ * @param directory path to ensure exists
+ *
+ */
+int mkdir_p(const char* path);
+
+
 /** mkdir a directory structure recursively, but fail if pre-exists.
  *
- * @param path directory path to ensure exists
+ * @param path directory path
  *
  */
 int mkdir_hier(char* path);
+
+
+/** Ensure parent directory exists for a given path.
+ *
+ *  @param path path to ensure parent directory exists.
+ *  @returns 0 on success, -1 on failure.
+ *
+ *  This function checks if the parent directory of the given path exists,
+ *  and creates it if it does not.
+ */
+int ensure_parent_dir_exists(const char* path);
+
 
 /** Allocates zero-initialised memory with a message on failure.
  *

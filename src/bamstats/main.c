@@ -53,7 +53,12 @@ static inline void write_stats(size_t *stats, const char* chr, const char* sampl
 }
 
 static inline void write_counter(const char* fname, kh_counter_t *counter, const char* sample, const char* bam_fname, const char* column_name) {
+    ensure_parent_dir_exists(fname);
     FILE* stats_fp = fopen(fname, "w");
+    if (stats_fp == NULL) {
+        fprintf(stderr, "ERROR: Cannot open file '%s' for writing.\n", fname);
+        exit(EXIT_FAILURE);
+    }
     fprintf(stats_fp, "filename\t");
     if (sample != NULL) fprintf(stats_fp, "sample_name\t");
     fprintf(stats_fp, "%s\tcount\n", column_name);
@@ -71,7 +76,12 @@ static inline void write_counter(const char* fname, kh_counter_t *counter, const
 void write_hist_stats(read_stats* stats, char* prefix, char* name) {
     char* path = calloc(strlen(prefix) + strlen(name) + 2, sizeof(char));
     sprintf(path, "%s/%s", prefix, name);
+    ensure_parent_dir_exists(path);
     FILE* fp = fopen(path, "w");
+    if (fp == NULL) {
+        fprintf(stderr, "ERROR: Cannot open file '%s' for writing.\n", path);
+        exit(EXIT_FAILURE);
+    }
     print_stats(stats, false, true, fp);
     fclose(fp); free(path);
 }
@@ -102,15 +112,30 @@ int main(int argc, char *argv[]) {
         }
     }
 #endif
-    
+
+    // Check all outputs do not pre-exist to avoid overwriting 
     int rtn = mkdir_hier(args.histograms);
     if (rtn == -1) {
         fprintf(stderr,
-           "Error: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
+           "ERROR: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
            args.histograms);
         exit(EXIT_FAILURE);
     }
 
+    if (args.flagstats != NULL && file_exists(args.flagstats)) {
+        fprintf(stderr, "ERROR: Output file '%s' already exists, please remove it or use a different name.\n", args.flagstats);
+        exit(EXIT_FAILURE);
+    }
+    if (args.runids != NULL && file_exists(args.runids)) {
+        fprintf(stderr, "ERROR: Output file '%s' already exists, please remove it or use a different name.\n", args.runids);
+        exit(EXIT_FAILURE);
+    }
+    if (args.basecallers != NULL && file_exists(args.basecallers)) {
+        fprintf(stderr, "ERROR: Output file '%s' already exists, please remove it or use a different name.\n", args.basecallers);
+        exit(EXIT_FAILURE);
+    }
+
+    // TODO: don't be lazy
     if (nfile > 1) {
         fprintf(stderr, "ERROR: Multiple input files detected, this program currently supports only a single file.\n");
         exit(EXIT_FAILURE);
@@ -121,7 +146,7 @@ int main(int argc, char *argv[]) {
     htsFile *fp = hts_open(args.bam[0], "rb");
     sam_hdr_t *hdr = sam_hdr_read(fp);
     if (hdr == 0 || fp == 0) {
-        fprintf(stderr, "Failed to read .bam file '%s'.\n", args.bam[0]);
+        fprintf(stderr, "ERROR: Failed to read .bam file '%s'.\n", args.bam[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -135,7 +160,12 @@ int main(int argc, char *argv[]) {
     FILE* flagstats = NULL;
     flag_stats* flag_counts = NULL;
     if (args.flagstats != NULL) {
+        ensure_parent_dir_exists(args.flagstats);
         flagstats = fopen(args.flagstats, "w");
+        if (flagstats == NULL) {
+            fprintf(stderr, "ERROR: Cannot open file '%s' for writing.\n", args.flagstats);
+            exit(EXIT_FAILURE);
+        }
         write_stats_header(flagstats, args.sample);
         flag_counts = create_flag_stats(
             args.region == NULL ? hdr->n_targets : 1, args.unmapped
@@ -180,7 +210,7 @@ int main(int argc, char *argv[]) {
         // process given region / BED
         hts_idx_t *idx = sam_index_load(fp, args.bam[0]);
         if (idx == 0){
-            fprintf(stderr, "Cannot find index file for '%s', which is required for processing by region.\n", args.bam[0]);
+            fprintf(stderr, "ERROR: Cannot find index file for '%s', which is required for processing by region.\n", args.bam[0]);
             exit(EXIT_FAILURE);
         }
 

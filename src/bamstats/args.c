@@ -61,10 +61,6 @@ static struct argp_option options[] = {
     { 0 }
 };
 
-bool file_exists(char* filename) {
-    struct stat st;
-    return (stat(filename, &st) == 0);
-}
 
 static int tag_items = 0;
 static bool tag_given = false;

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The program will now exit with a zero exit code when errors are encountered in parsing input files or records.
   The previous behaviour was to exit with a non-zero exit code, and can be restored with the `--force_error` option.
 - The per-file output has been amended to include a set of columns detailing failures during file parsing, and the results of read length, quality, and dust filtering.
+### Added
+- Optional output files (alignment flag statistics, run identifier summary, and basecaller summary) can now be provided as nested within a non-existing directory structure, the parent directories will be created.
+### Fixed
+- Segmentation fault when file paths to optional outputs were provided as nested within an non-existent directory.
 
 
 ## [v0.22.1]
