@@ -25,6 +25,7 @@ typedef struct arguments {
     size_t reads_per_file;
     int threads;
     bool verbose;
+    bool force_error;
 } arguments_t;
 
 arguments_t parse_arguments(int argc, char** argv);

@@ -20,6 +20,8 @@ static struct argp_option options[] = {
         "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files.", 0},
     {"threads", 't', "THREADS", 0,
         "Number of threads for output compression (only with --bam_out.", 0},
+    {"force_error", 'e', 0, 0,
+        "Exit with non-zero status if any files, or records, contained errors.", 0},
 
     {0, 0, 0, 0,
         "Output options:", 0},
@@ -144,6 +146,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
         case 't':
             arguments->threads = atoi(arg);
             break;
+        case 'e':
+            arguments->force_error = 1;
+            break; 
         case ARGP_KEY_NO_ARGS:
             argp_usage (state);
             break;
@@ -181,6 +186,7 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.write_bam = 0;
     args.threads = 1;
     args.reads_per_file = 0;
+    args.force_error = 0;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     return args;
 }
