@@ -94,8 +94,12 @@ read_meta parse_read_meta(kstring_t comment) {
         else {
             // split words on `=`
             key = strtok_r(pch, "=", &p2);
+            bool has_delim = p2 != NULL;  // p2 will be NULL if no = was found
             keytype = NULL;
             value = strtok_r(NULL, "", &p2);
+            // similarly, allow empty tags (e.g. barcode=) to ensure that k=v
+            // records are appropriately formatted in CO:Z even if blank
+            if (value == NULL && has_delim) value = "";
         }
 
         // if there was no delimiter in the word, value will be NULL --> add word to `rest`
