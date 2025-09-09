@@ -1,0 +1,19 @@
+{
+  "license": "Oxford Nanopore Technologies PLC. Public License Version 1.0",
+  "keywords": [
+    "Oxford Nanopore Technologies",
+    "EPI2ME",
+    "nanopore sequencing",
+    "sequencing",
+    "nanopore",
+    "genomics",
+    "dna",
+    "rna"
+  ],
+  "communities": [
+    { "identifier": "Bioinformatics" }
+  ],
+  "references": [
+    "https://epi2me.nanoporetech.com/"
+  ]
+}
