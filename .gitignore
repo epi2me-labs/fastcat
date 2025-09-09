@@ -1,3 +1,6 @@
 *.swp
 *.swo
 src/**/*.o
+src/**/*.d
+libdeflate-*/
+libdeflate-v*.tar.gz

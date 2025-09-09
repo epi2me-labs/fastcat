@@ -15,6 +15,16 @@
 #include "common.h"
 
 
+// used with qsort to sort an array of uint32_t
+int cmp_u32(const void *a, const void *b) {
+    uint32_t va = *(const uint32_t *)a;
+    uint32_t vb = *(const uint32_t *)b;
+    if (va < vb) return -1;
+    if (va > vb) return 1;
+    return 0;
+}
+
+
 /** check if a file exists.
  *
  * @param path path to file
@@ -26,6 +36,40 @@ bool file_exists(const char *path) {
     struct stat st;
     return stat(path, &st) == 0;
 }
+
+
+/** check if we can make a directory.
+ *
+ * @param path path to directory
+ * @returns  1 if we can make the directory,
+ *           0 if it already exists,
+ *          -1 if we cannot make it.
+ *
+ */
+int can_make_dir(const char *path) {
+    struct stat st;
+    // If something already exists at path
+    if (stat(path, &st) == 0) {
+        if (S_ISDIR(st.st_mode)) {
+            return 0; // already a directory
+        } else {
+            return -1; // already something
+        }
+    }
+
+    // check we can write in parent directory
+    char *copy = strdup(path);
+    if (!copy) return -1;
+    char *parent = dirname(copy);
+    if (access(parent, W_OK | X_OK) == 0) {
+        free(copy);
+        return 1;
+    } else {
+        free(copy);
+        return -1;
+    }
+}
+
 
 
 /* The following three functions were adpated from:
@@ -156,6 +200,48 @@ int ensure_parent_dir_exists(const char* filepath) {
 }
 
 
+static void push_str(char ***arr, size_t *n, char *s) {
+    const char **tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
+    if (!tmp) argp_failure(NULL, 1, 0, "out of memory");
+    *arr = tmp;
+    (*arr)[(*n)++] = s;
+}
+
+
+void slurp_args(char ***arr, size_t *n, char *first, struct argp_state *state) {
+    // slurp up all arguments until the next option
+    push_str(arr, n, first);
+    while (state->next < state->argc) {
+        char *next = state->argv[state->next];
+        if (next[0] == '-') break;
+        push_str(arr, n, next);
+        state->next++;
+    }
+}
+
+void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state) {
+    char *endp;
+    long val = strtol(first, &endp, 10);
+    if (*endp != '\0' || val < 0) {
+        argp_error(state, "Invalid integer threshold: '%s'", first);
+    }
+    *arr = realloc(*arr, (*n + 1) * sizeof(**arr));
+    if (!*arr) argp_failure(state, 1, 0, "out of memory");
+    (*arr)[(*n)++] = (uint32_t)val;
+
+    while (state->next < state->argc) {
+        char *next = state->argv[state->next];
+        if (next[0] == '-') break;
+        val = strtol(next, &endp, 10);
+        if (*endp != '\0' || val < 0) {
+            argp_error(state, "Invalid integer threshold: '%s'", next);
+        }
+        *arr = realloc(*arr, (*n + 1) * sizeof(**arr));
+        if (!*arr) argp_failure(state, 1, 0, "out of memory");
+        (*arr)[(*n)++] = (uint32_t)val;
+        state->next++;
+    }
+}
 
 /** Allocates zero-initialised memory with a message on failure.
  *
@@ -189,6 +275,28 @@ void *xrealloc(void *ptr, size_t size, char* msg){
         fprintf(stderr, "Failed to reallocate mem for %s\n", msg);
         exit(1);
     }
+    return res;
+}
+
+
+/** Reallocates memory with a message on failure, zero-initialising the new memory.
+ *
+ *  @param ptr pointer to realloc.
+ *  @param orig original number of elements.
+ *  @param num new (total) number of elements.
+ *  @param size size of each element.
+ *  @param msg message to describe allocation on failure.
+ *  @returns pointer to allocated memory
+ *
+ */
+void *xrecalloc(void* ptr, size_t orig, size_t num, size_t size, char* msg) {
+    void *res = realloc(ptr, num * size);
+    if (res == NULL) {
+        fprintf(stderr, "Failed to reallocate mem for %s\n", msg);
+        exit(1);
+    }
+    // zero out the new memory
+    memset((char*)res + orig * size, 0, (num - orig) * size);
     return res;
 }
 

@@ -185,9 +185,28 @@ the four files:
 
 These files are as described for the `fastcat` program.
 
+The program can optionally output coverage information (provided the input BAM
+is coordinate sorted). The outputs are inspired by those from [mosdepth](https://github.com/brentp/mosdepth)
+but have been adapted to be more readily interpretable in line with user expectations.
+A set of files is produced for each provided BED file, as well as for the whole
+genome. The files are:
+
+* `{name}.bed.gz` - a bgzip-compressed BED file with position-level accuracy.
+* `{name}.fwd.bed.gz` - as above but only for forward strand alignments.
+* `{name}.rev.bed.gz` - as above but only for reverse strand alignments.
+* `{name}.summary.txt` - a tab-separated summary of coverage for each region in
+  the BED file. And a final total line for all regions in the BED.
+* `{name}.dist.txt` - a tab-separated file listing the cumulative distribution function
+  of coverage across all regions in the BED file (i.e. "what proportion of positions
+  are covered at at least X depth?").
+
+The summary file contains user-configurable entries enumerating a sparse coverage CDF:
+the default is to output the proportion of positions covered at 1x, 5x, 10x, 20x, 30x, 40x, and 50x.
+This is done independently for all regions in the BED, as well as the final total line.
+
 ```
 Usage: bamstats [OPTION...] <reads.bam>
-bamstats -- summarise rears/alignments in one or more BAM files.
+bamstats -- summarise reads/alignments in and input BAM file.
 
  General options:
   -b, --bed=BEDFILE          BED file for regions to process.
@@ -204,7 +223,6 @@ bamstats -- summarise rears/alignments in one or more BAM files.
   -t, --threads=THREADS      Number of threads for BAM processing.
 
  Read filtering options:
-
   -g, --read_group=RG        Only process reads from given read group.
       --haplotype=VAL        Only process reads from a given haplotype.
                              Equivalent to --tag_name HP --tag_value VAL.
@@ -213,8 +231,33 @@ bamstats -- summarise rears/alignments in one or more BAM files.
       --tag_value=VAL        Only process reads with a given tag value.
   -u, --unmapped             Include unmapped/unplaced reads in output.
 
- Poly-A Options:
+ Coverage calculation options:
 
+ Outputs produced are similar to that by mosdepth. Outputs for all sequences in
+ the BAM index are produced in the top-level directory (stratified by reference
+ sequence). An identical set of files is produced (in sub-directories) for each
+ BED file provided. Each BED file must have a corresponding name provided via
+ --coverage_names, which is used to name the sub-directory. The --segments
+ option is used to produce outputs across the full reference broken into
+ fixed-length segments, and output to segments-LENGTH. The use of the segments
+ option with small lengths can significantly affect the performance of the
+ program: it should be preferred to use the per-base output and segment after
+ the fact.
+
+      --coverage=DIRECTORY   Enable coverage calculations and output to
+                             provided directory. (default: bamstats-coverages)
+      --coverage_beds=BEDFILE ...
+                             BED file(s) for calculating coverage
+                             (space-separated list).
+      --coverage_names=NAME ...   Name(s) for coverage BED file(s)
+                             (space-separated list).
+      --segments=LENGTH ...  Segment length(s) for which to produce outputs.
+                             (space-separated integers).
+      --thresholds=VALUES ...   Coverage thresholds to produce sparse
+                             cumulative distribution (space-separated
+                             integers).
+
+ Poly-A Options:
       --poly_a               Enable poly-A tail length histogram.
       --poly_a_cover=PCT_COVERAGE
                              Reference alignment coverage for acceptance of

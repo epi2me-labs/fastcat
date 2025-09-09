@@ -12,8 +12,10 @@ else
     CFLAGS ?= -fpic -msse3 -O3 ${ARGP_INC}
     ZCAT = "zcat"
 endif
+CFLAGS += -MMD -MP
 
 VALGRIND ?= valgrind
+DEFLATEVER=1.24
 
 CC ?= gcc
 STATIC_HTSLIB ?= htslib/libhts.a
@@ -25,6 +27,17 @@ HTS_CONF_ARGS ?=
 NOTHREADS ?=
 ifeq ($(NOTHREADS), 1)
     CFLAGS += -DNOTHREADS
+endif
+
+LIBDEF=$(abspath libdeflate-$(DEFLATEVER))
+LIBDEF_LIB=$(abspath libdeflate-$(DEFLATEVER)/build)
+HTS_BUILD_FLAGS =
+STATIC_LIBDEFLATE =
+
+ifeq ($(USE_DEFLATE), 1)
+    STATIC_HTSLIB += libdeflate-$(DEFLATEVER)/build/libdeflate.a
+    STATIC_LIBDEFLATE = libdeflate-$(DEFLATEVER)/build/libdeflate.a
+    HTS_BUILD_FLAGS = CPPFLAGS="-I$(LIBDEF)" LDFLAGS="-L$(LIBDEF_LIB)" LIBS="-ldeflate"
 endif
 
 # we can't do pedantic because min/max macros lead to:
@@ -51,10 +64,10 @@ endif
 default: fastcat bamstats bamindex fastlint
 
 .PHONY:
-test: test_fastcat test_bamstats test_meta test_bamindex
+test: test_fastcat test_bamstats test_meta test_bamindex test_fastlint test_bamcoverage
 
 .PHONY:
-test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_fastlint
+test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_fastlint mem_check_bamcoverage
 
 .PHONY:
 clean:
@@ -68,14 +81,27 @@ clean_htslib:
 ###
 # build stages
 
-htslib/libhts.a:
-	@echo Compiling $(@F)
+
+
+htslib/libhts.a: $(STATIC_LIBDEFLATE)
+	@echo "\x1b[1;33mMaking $(@F)\x1b[0m"
 	cd htslib/ \
 		&& autoheader \
 		&& autoconf \
 		&& autoreconf --install \
-		&& CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" ./configure $(HTS_CONF_ARGS) \
+		&& $(HTS_BUILD_FLAGS)  CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" ./configure $(HTS_CONF_ARGS) \
 		&& make -j 4
+
+
+libdeflate-$(DEFLATEVER)/build/libdeflate.a:
+	@echo "\x1b[1;33mMaking $(@F)\x1b[0m"
+	curl -L -o libdeflate-v${DEFLATEVER}.tar.gz https://github.com/ebiggers/libdeflate/archive/refs/tags/v${DEFLATEVER}.tar.gz \
+		&& tar -xzf libdeflate-v${DEFLATEVER}.tar.gz \
+		&& cd libdeflate-${DEFLATEVER} \
+		&& cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+			-DCMAKE_INSTALL_PREFIX="$(pwd)/install" \
+		&& cmake --build build -j \
+
 
 # just for testing
 SAMVER=1.21
@@ -102,6 +128,8 @@ src/%.o: src/%.c zlib-ng/zlib.h
 	$(CC) -Isrc -Ihtslib -Izlib-ng -c -pthread $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $< -o $@
 
+-include $(wildcard src/*.d)
+
 fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/sdust/sdust.o src/sdust/kalloc.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB) zlib-ng/libz.a
 	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
@@ -116,12 +144,20 @@ fastlint: src/version.o src/fastlint/main.o src/fastlint/args.o src/sdust/sdust.
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-bamstats: src/version.o src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/regiter.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB)
+bamstats: src/version.o src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/regiter.o src/stats.o src/kh_counter.o src/bamcoverage/coverage.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
+
+bamcoverage: src/version.o src/bamcoverage/main.o src/bamcoverage/args.o src/bamcoverage/coverage.o src/common.o src/regiter.o $(STATIC_HTSLIB)
+	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
+		$^ $(ARGP) \
+		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
+		-o $@
+
 
 bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
@@ -203,11 +239,11 @@ test_bamstats_polya: bamstats
 .PHONY:
 mem_check_bamstats: bamstats
 	@echo "Memcheck bamstats with good data"
-	rm -rf bamstats-histograms
+	rm -rf bamstats-histograms bamstats-coverage
 	$(GRIND) ./bamstats test/parse_rg/dna_r10.4.1_e8.2_400bps_hac@v4.3.0.bam > /dev/null
 	@echo "Memcheck bamstats with bad data"
 	@echo ""
-	rm -rf bamstats-histograms
+	rm -rf bamstats-histograms bamstats-coverage
 	$(GRIND) ./bamstats test/parse_rg/bad-ones.bam > /dev/null
 	@echo ""
 	@echo "Memcheck bamstats with qcfails"
@@ -216,7 +252,12 @@ mem_check_bamstats: bamstats
 	@echo ""
 	@echo "Memcheck bamstats duplex"
 	rm -rf bamstats-histograms
-	$(GRIND) ./bamstats test/bamstats/310dx.bam
+	$(GRIND) ./bamstats test/bamstats/310dx.bam > /dev/null
+	@echo ""
+	@echo "Memcheck bamstats coverage"
+	rm -rf bamstats-histograms bamstats-coverage
+	$(GRIND) ./bamstats --coverage bamstats-coverage test/bamstats/400ecoli.bam > /dev/null
+	rm -rf bamstats-histograms bamstats-coverage
 
 .PHONY:
 bamstats_overwrite: bamstats
@@ -295,6 +336,20 @@ mem_check_bamindex-fetch: bamindex mem_check_bamindex-build
 ###
 # fastlint tests
 
+test_fastlint: mem_check_fastlint
+
 .PHONY:
 mem_check_fastlint: fastlint
 	$(GRIND) ./fastlint test/data/*.fastq.gz > /dev/null
+
+
+###
+# bamcoverage tests
+
+test_bamcoverage: mem_check_bamcoverage
+
+.PHONY:
+mem_check_bamcoverage: bamcoverage
+	rm -rf bamstats-coverage
+	$(GRIND) ./bamcoverage test/bamstats/400ecoli.bam
+	rm -rf covtmp

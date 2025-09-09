@@ -12,6 +12,7 @@
 
 #include "args.h"
 #include "common.h"
+#include "../bamcoverage/coverage.h"
 #include "readstats.h"
 #include "regiter.h"
 
@@ -98,20 +99,6 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-    // large basecaller runs can produce more files than a single
-    // process can open, check this ahead of time.
-#ifndef WASM
-    struct rlimit reslimit;
-    size_t nfile = 0; for (; args.bam[nfile]; nfile++);
-    if (getrlimit(RLIMIT_NOFILE, &reslimit) == 0) {
-        if (nfile * args.threads > reslimit.rlim_cur - 100) {
-            fprintf(stderr,
-                "ERROR: Too many BAM files provided (%zu). Try running "
-                "samtools merge on subsets of files to produce fewer files", nfile);
-            exit(EXIT_FAILURE);
-        }
-    }
-#endif
 
     // Check all outputs do not pre-exist to avoid overwriting 
     int rtn = mkdir_hier(args.histograms);
@@ -135,23 +122,17 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // TODO: don't be lazy
-    if (nfile > 1) {
-        fprintf(stderr, "ERROR: Multiple input files detected, this program currently supports only a single file.\n");
-        exit(EXIT_FAILURE);
-    }
-
     write_header(args.sample);
 
-    htsFile *fp = hts_open(args.bam[0], "rb");
+    htsFile *fp = hts_open(args.bam, "rb");
     sam_hdr_t *hdr = sam_hdr_read(fp);
     if (hdr == 0 || fp == 0) {
-        fprintf(stderr, "ERROR: Failed to read .bam file '%s'.\n", args.bam[0]);
+        fprintf(stderr, "ERROR: Failed to read .bam file '%s'.\n", args.bam);
         exit(EXIT_FAILURE);
     }
 
     htsThreadPool p = {NULL, 0};
-    if (args.threads > 1 ) {
+    if (args.threads > 1) {
         fprintf(stderr, "Using %d threads\n", args.threads);
         p.pool = hts_tpool_init(args.threads);
         hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
@@ -170,6 +151,18 @@ int main(int argc, char *argv[]) {
         flag_counts = create_flag_stats(
             args.region == NULL ? hdr->n_targets : 1, args.unmapped
         );
+    }
+
+    // prepare coverage writer
+    cov_writer coverage = NULL;
+    if (args.coverage) {
+        coverage = init_coverage_writer(
+            args.coverages, true, false,
+            -1, -1, true,
+            hdr, &p,
+            args.coverage_beds, args.coverage_names, args.n_coverage_beds,
+            args.coverage_thresholds, args.n_coverage_thresholds,
+            args.segments, args.n_segments);
     }
 
     kh_counter_t *run_ids = kh_counter_init();
@@ -194,7 +187,7 @@ int main(int argc, char *argv[]) {
             length_stats, qual_stats, acc_stats, cov_stats,
             length_stats_unmapped, qual_stats_unmapped,
             polya_stats, args.poly_a_cover, args.poly_a_qual, args.poly_a_rev,
-            run_ids, basecallers, args.force_recalc_qual);
+            run_ids, basecallers, args.force_recalc_qual, coverage);
 
         // write flagstat counts if requested
         if (flag_counts != NULL) {
@@ -208,9 +201,9 @@ int main(int argc, char *argv[]) {
         }
     } else {
         // process given region / BED
-        hts_idx_t *idx = sam_index_load(fp, args.bam[0]);
+        hts_idx_t *idx = sam_index_load(fp, args.bam);
         if (idx == 0){
-            fprintf(stderr, "ERROR: Cannot find index file for '%s', which is required for processing by region.\n", args.bam[0]);
+            fprintf(stderr, "ERROR: Cannot find index file for '%s', which is required for processing by region.\n", args.bam);
             exit(EXIT_FAILURE);
         }
 
@@ -232,7 +225,7 @@ int main(int argc, char *argv[]) {
                 length_stats, qual_stats, acc_stats, cov_stats,
                 length_stats_unmapped, qual_stats_unmapped,
                 polya_stats, args.poly_a_cover, args.poly_a_qual, args.poly_a_rev,
-                run_ids, basecallers, args.force_recalc_qual);
+                run_ids, basecallers, args.force_recalc_qual, coverage);
             if (flag_counts != NULL) {
                 // TODO: regions might not be whole chromosomes...
                 write_stats(flag_counts->counts[0], rit.chr, args.sample, flagstats);
@@ -261,11 +254,11 @@ int main(int argc, char *argv[]) {
 
     // write runids summary
     if (args.runids != NULL) {
-        write_counter(args.runids, run_ids, args.sample, args.bam[0], "run_id");
+        write_counter(args.runids, run_ids, args.sample, args.bam, "run_id");
     } 
     // write basecallers summary
     if (args.basecallers != NULL) {
-        write_counter(args.basecallers, basecallers, args.sample, args.bam[0], "basecaller");
+        write_counter(args.basecallers, basecallers, args.sample, args.bam, "basecaller");
     } 
 
     destroy_length_stats(length_stats);
@@ -282,12 +275,16 @@ int main(int argc, char *argv[]) {
         fclose(flagstats);
     }
 
+    destroy_coverage_writer(coverage);
+
     if (flag_counts != NULL) destroy_flag_stats(flag_counts);
     sam_hdr_destroy(hdr);
     hts_close(fp);
     if (p.pool) { // must be after fp
         hts_tpool_destroy(p.pool);
     }
+
+    destroy_args(&args);
 
     clock_t end = clock();
     fprintf(stderr, "Total CPU time: %fs\n", (double)(end - begin) / CLOCKS_PER_SEC);
