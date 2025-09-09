@@ -4,11 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [unreleased]
+## [v0.24.0]
 ### Added
+- Coverage calculations to `bamstats`, enabled with `--coverage` option.
+  The output files are inspired by [mosdepth](https://github.com/brentp/mosdepth), but have been adapted to be cleaner and more readily interpreted.
 - Zenodo JSON meta data file in order that Zenodo submissions contain correct license information.
 ### Changed
 - Empty FASTQ comment fields that end with the = delimiter will have the value of an empty string rather than NULL, to ensure they are appropriately represented in the output CO:Z.
+### Fixed
+- `fastlint` program was absent from conda package.
 
 ## [v0.23.0]
 ### Fixed

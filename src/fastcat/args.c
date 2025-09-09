@@ -4,7 +4,7 @@
 #include "args.h"
 #include "../version.h"
 
-const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
+const char *argp_program_bug_address = "support@nanoporetech.com";
 static char doc[] = 
 "fastcat -- concatenate and summarise .fastq(.gz) files.\
 \vInput files may be given on stdin by specifing the input as '-'. \

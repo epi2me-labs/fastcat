@@ -5,6 +5,7 @@
 #include "htslib/sam.h"
 
 #include "args.h"
+#include "../bamcoverage/coverage.h"
 #include "../stats.h"
 #include "../kh_counter.h"
 
@@ -60,6 +61,7 @@ void destroy_flag_stats(flag_stats* stats);
  *  @param runids kh_counter_t* for accumulating runid information.
  *  @param basecallers kh_counter_t* for accumulating basecaller information.
  *  @param force_recalc_quality whether to recalculate mean quality from phred scores.
+ *  @param coverage a coverage writer object to use for calculating coverage.
  *  @returns void. Prints output to stdout.
  *
  */
@@ -71,7 +73,6 @@ void process_bams(
     read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
     read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped,
     read_stats* polya_stats, float polya_cover, float polya_qual, bool polya_rev,
-    kh_counter_t* runids, kh_counter_t* basecallers,
-    bool force_recalc_quality);
+    kh_counter_t* runids, kh_counter_t* basecallers, bool force_recalc_quality, cov_writer coverage);
 
 #endif

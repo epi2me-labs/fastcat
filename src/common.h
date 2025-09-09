@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <argp.h>
 
 
 /** Simple min/max
@@ -23,6 +24,11 @@
     _a > _b ? _a : _b; \
 })
 
+
+// comparison function for qsort of uint32_t
+int cmp_u32(const void *a, const void *b);
+
+
 /** check if a file exists.
  *
  * @param path path to file
@@ -30,6 +36,18 @@
  *
  */
 bool file_exists(const char *path);
+
+
+/** check if we can make a directory.
+ *
+ * @param path path to directory
+ * @returns  1 if we can make the directory,
+ *           0 if it already exists,
+ *          -1 if we cannot make it.
+ *
+ */
+int can_make_dir(const char *path);
+
 
 /** mkdir a directory structure recursively.
  *
@@ -57,6 +75,11 @@ int mkdir_hier(char* path);
  */
 int ensure_parent_dir_exists(const char* path);
 
+/** Next two functions used in argument parses to handle space-separated lists of arguments.
+ *
+ */
+void slurp_args(char ***arr, size_t *n, char *first, struct argp_state *state);
+void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state);
 
 /** Allocates zero-initialised memory with a message on failure.
  *
@@ -79,6 +102,18 @@ void *xalloc(size_t num, size_t size, char* msg);
  */
 void *xrealloc(void *ptr, size_t size, char* msg);
 
+
+/** Reallocates memory with a message on failure, zero-initialising the new memory.
+ *
+ *  @param ptr pointer to realloc.
+ *  @param orig original number of elements.
+ *  @param num new (total) number of elements.
+ *  @param size size of each element.
+ *  @param msg message to describe allocation on failure.
+ *  @returns pointer to allocated memory
+ *
+ */
+void *xrecalloc(void* ptr, size_t orig, size_t num, size_t size, char* msg);
 
 /** Retrieves a substring.
  *

@@ -5,7 +5,7 @@
 #include "args.h"
 #include "../version.h"
 
-const char *argp_program_bug_address = "chris.wright@nanoporetech.com";
+const char *argp_program_bug_address = "support@nanoporetech.com";
 static char doc[] = 
 "fastlint -- apply sdust algorithm to input files.\
 \vThe program removes low-complexity reads from the input stream.\n";

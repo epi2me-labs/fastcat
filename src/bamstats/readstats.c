@@ -15,6 +15,7 @@
 #include "thread_pool_internal.h"
 
 #include "../common.h"
+#include "../bamcoverage/coverage.h"
 #include "../stats.h"
 #include "../kh_counter.h"
 #include "bamiter.h"
@@ -243,8 +244,7 @@ void process_bams(
         read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
         read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped,
         read_stats* polya_stats, float polya_cover, float polya_qual, bool polya_rev,
-        kh_counter_t* runids, kh_counter_t* basecallers,
-        bool force_recalc_qual) {
+        kh_counter_t* runids, kh_counter_t* basecallers, bool force_recalc_qual, cov_writer coverage) {
     if (chr != NULL) {
         if (strcmp(chr, "*") == 0) {
             fprintf(stderr, "Processing: Unplaced reads\n");
@@ -268,6 +268,12 @@ void process_bams(
     char *start_time = NULL;
 
     while ((res = read_bam(bam, b) >= 0)) {
+        // despatch read to coverage calculations
+        // NOTE: the writer has its own filters on reads to accept (default 1796: excludes unmapped, secondary, dup, qcfail)
+        if (coverage != NULL) {
+            coverage_process(coverage, b);
+        }
+
         // get all our tags
         bam_tags_t tags = fetch_bam_tags(b, hdr);
 
