@@ -201,7 +201,7 @@ int ensure_parent_dir_exists(const char* filepath) {
 
 
 static void push_str(char ***arr, size_t *n, char *s) {
-    const char **tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
+    char **tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
     if (!tmp) argp_failure(NULL, 1, 0, "out of memory");
     *arr = tmp;
     (*arr)[(*n)++] = s;

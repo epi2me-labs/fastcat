@@ -27,16 +27,6 @@ static inline int consumes_ref_only(const uint32_t op) {
 }
 
 
-static inline void _write_mosdepth_summary(FILE * fh, char* region_name, int64_t* stats) {
-    if (fh == NULL) return;
-    double mean = stats[3] == 0 ? 0 : (double)stats[2] / stats[3];
-    int64_t min = stats[0] == INT64_MAX ? 0 : stats[0];
-    fprintf(
-        fh, "%s\t%" PRId64 "\t%" PRId64 "\t%.2f\t%" PRId64 " \t%" PRId64 "\n",
-        region_name, stats[3], stats[2], mean, min, stats[1]);
-}
-
-
 static inline void _write_bedgraph_line(
         BGZF* fp, const char* chrom, int64_t s, int64_t e, uint32_t cov) {
     if (NULL == fp) return;
@@ -110,7 +100,6 @@ static void _fill_skipped_regions(cov_writer w) {
             }
             int64_t stats[4] = {0, 0, 0, reg->end - reg->start};
             int64_t* dist = (int64_t*)calloc(wr->max_cover, sizeof(int64_t));
-            //_write_mosdepth_summary(wr->fh_summary, region_name, stats);
             _write_summary(wr->fh_dist, wr->fh_summary, reg, stats,
                 dist, wr->max_cover, wr->thresholds, wr->n_thresholds);
             _write_bedgraph_line(wr->fh_fwd, reg->chr, reg->start, reg->end, 0); 
@@ -178,7 +167,6 @@ static void _flush_contig(cov_writer w) {
                 }
                 dist[cov] += 1;
             }
-            //_write_mosdepth_summary(wr->fh_summary, region_name, stats);
             
             // summary stats including sparse (user-defined) coverage distribution
             _write_summary(NULL, wr->fh_summary, reg, stats,

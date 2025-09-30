@@ -11,9 +11,48 @@
 #include "../version.h"
 
 // default buffer size for writing to gzip, this is large enough that most reads will not require
-// the write buffer to be resized. See _gzsnprintf() below.
+// the write buffer to be resized. See gz_fprintf_bridge() below.
 // The size is also used with gzbuffer() when opening gzFile handles.
 #define GZBUFSIZE 131072  // 128 kB
+
+typedef int (*sink_write_fn)(void *handle, const char *fmt, ...);
+
+
+static int fprintf_bridge(void *h, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int r = vfprintf((FILE *)h, fmt, ap);
+    va_end(ap);
+    return r; // <0 on error, otherwise chars printed
+}
+
+
+static int gz_fprintf_bridge(void *h, const char *fmt, ...) {
+    size_t bufsize = GZBUFSIZE;
+    char *buf = (char*) xalloc(bufsize, sizeof(char), "gzbuffer");
+
+    va_list ap;
+    va_start(ap, fmt);
+    int need = vsnprintf(buf, bufsize, fmt, ap);
+    va_end(ap);
+
+    // only when returned value is non-negative and less than n, the string has been completely written.
+    if (need < 0) {
+        free(buf);
+        return -1;
+    }
+
+    if ((size_t)need >= bufsize) {
+        bufsize = (size_t) need + 1;
+        buf = (char*) xrealloc(buf, bufsize, "gzbuffer");
+        va_start(ap, fmt);
+        need = vsnprintf(buf, bufsize, fmt, ap);
+        va_end(ap);
+    }
+    int w = gzwrite((gzFile)h, buf, (unsigned)need);
+    free(buf);
+    return (w == 0) ? -1 : need;  // gzwrite returns <= 0 on error
+}
 
 
 char* strip_path(char* input) {
@@ -23,27 +62,6 @@ char* strip_path(char* input) {
     char* output = calloc(len + 1, sizeof(char));
     memcpy(output, input, len);
     return output;
-}
-
-
-// Safely write a formatted string to a gzFile pointer
-int _gzsnprintf(gzFile file, const char *format, ...) {
-    va_list myargs;
-    va_start(myargs, format);
-    int bufsize = GZBUFSIZE;
-    char* buf = (char*) xalloc(bufsize, sizeof(char), "gzbuffer");
-    int written = vsnprintf(buf, bufsize, format, myargs);
-    va_end(myargs);
-    if (written > bufsize) {
-        bufsize = written;
-        buf = (char *) realloc(buf, bufsize);
-        va_start(myargs, format);
-        written = vsnprintf(buf, bufsize, format, myargs);
-        va_end(myargs);
-    }
-    gzputs(file, buf);
-    free(buf);
-    return written;
 }
 
 
@@ -240,9 +258,8 @@ void destroy_writer(writer writer) {
 
 
 void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
-    
-    int (*write)(void*, const char*, ...);
-    if (handle == stdout) { write = &fprintf; } else { write = &_gzsnprintf; }
+    // choose writing function
+    sink_write_fn sink_write = handle == stdout ? fprintf_bridge : gz_fprintf_bridge;
 
     static const char* fq_comment_fmt = "@%s %s\n%s\n+\n%s\n";
     static const char* sam_comment_fmt = "@%s\t%s\n%s\n+\n%s\n";
@@ -250,14 +267,14 @@ void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
 
     if (seq->comment.l > 0) {
         if (writer->reheader) {
-            (*write)(handle, sam_comment_fmt, seq->name.s, meta->tags_str->s, seq->seq.s, seq->qual.s);
+            sink_write(handle, sam_comment_fmt, seq->name.s, meta->tags_str->s, seq->seq.s, seq->qual.s);
         }
         else {
-            (*write)(handle, fq_comment_fmt, seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
+            sink_write(handle, fq_comment_fmt, seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
         }
     }
     else {
-        (*write)(handle, no_comment_fmt, seq->name.s, seq->seq.s, seq->qual.s);
+        sink_write(handle, no_comment_fmt, seq->name.s, seq->seq.s, seq->qual.s);
     }
 }
 
