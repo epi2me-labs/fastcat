@@ -209,7 +209,7 @@ bed_regions init_bed(const char* bed_path, const sam_hdr_t* hdr) {
 
     _bed_regions* out = (_bed_regions*) xalloc(1, sizeof(_bed_regions), "bed_regions");
     out->_capacity = 1024;
-    out->regions = (bed_region*) xalloc(out->_capacity, sizeof(*out->regions), "bed_region[]");
+    out->regions = xalloc(out->_capacity, sizeof(*out->regions), "bed_region[]");
     out->n_regions = 0;
 
     for (;;) {
@@ -217,7 +217,7 @@ bed_regions init_bed(const char* bed_path, const sam_hdr_t* hdr) {
         if (rc == 0) {
             if (out->n_regions == out->_capacity) {
                 size_t new_cap = out->_capacity * 2;
-                out->regions = (bed_region*) xrealloc(
+                out->regions = xrealloc(
                     out->regions, new_cap * sizeof(*out->regions), "bed_region[]");
                 out->_capacity = new_cap;
             }
@@ -244,7 +244,7 @@ bed_regions init_bed(const char* bed_path, const sam_hdr_t* hdr) {
 
     // shrink-to-fit
     if (out->n_regions < out->_capacity) {
-        out->regions = (bed_region*) xrealloc(
+        out->regions = xrealloc(
             out->regions, out->n_regions * sizeof(*out->regions), "bed_region[]");
         out->_capacity = out->n_regions;
     }
