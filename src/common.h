@@ -78,7 +78,7 @@ int ensure_parent_dir_exists(const char* path);
 /** Next two functions used in argument parses to handle space-separated lists of arguments.
  *
  */
-void slurp_args(char ***arr, size_t *n, char *first, struct argp_state *state);
+void slurp_args(const char ***arr, size_t *n, const char *first, struct argp_state *state);
 void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state);
 
 /** Allocates zero-initialised memory with a message on failure.

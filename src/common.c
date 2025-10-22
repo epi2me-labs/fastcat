@@ -200,19 +200,19 @@ int ensure_parent_dir_exists(const char* filepath) {
 }
 
 
-static void push_str(char ***arr, size_t *n, char *s) {
-    char **tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
+static void push_str(const char ***arr, size_t *n, const char *s) {
+    const char **tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
     if (!tmp) argp_failure(NULL, 1, 0, "out of memory");
     *arr = tmp;
     (*arr)[(*n)++] = s;
 }
 
 
-void slurp_args(char ***arr, size_t *n, char *first, struct argp_state *state) {
+void slurp_args(const char ***arr, size_t *n, const char *first, struct argp_state *state) {
     // slurp up all arguments until the next option
     push_str(arr, n, first);
     while (state->next < state->argc) {
-        char *next = state->argv[state->next];
+        const char *next = state->argv[state->next];
         if (next[0] == '-') break;
         push_str(arr, n, next);
         state->next++;
