@@ -151,10 +151,10 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             arguments->force_recalc_qual = true;
             break;
         case 0x1000:
-            slurp_args(&arguments->coverage_beds, &arguments->n_coverage_beds, arg, state);
+            slurp_args((const char***)&arguments->coverage_beds, &arguments->n_coverage_beds, arg, state);
             break;
         case 0x1001:
-            slurp_args(&arguments->coverage_names, &arguments->n_coverage_names, arg, state);
+            slurp_args((const char***)&arguments->coverage_names, &arguments->n_coverage_names, arg, state);
             break;
         case 0x1002:
             slurp_ints(&arguments->coverage_thresholds, &arguments->n_coverage_thresholds, arg, state);
