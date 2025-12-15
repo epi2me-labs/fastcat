@@ -7,15 +7,20 @@
 
 
 int region_from_string(char* input, char** chr, int* start, int* end) {
-    *chr = xalloc(strlen(input) + 1, sizeof(char), "chr");
-    strcpy(*chr, input);
-    char *reg_chr = (char *) hts_parse_reg(input, start, end);
     int rtn = 0;
+    char* tmp = strdup(input);
+    if (tmp == NULL) {
+        return -1;
+    }
+    char *reg_chr = (char *) hts_parse_reg(tmp, start, end);
     if (reg_chr) {
-        *reg_chr = '\0';  // sets chr to be terminated at correct point
+        *reg_chr = '\0';  // terminate at region separator
+        *chr = xalloc(strlen(tmp) + 1, sizeof(char), "chr");
+        strcpy(*chr, tmp);
     } else {
         rtn = -1;
     }
+    free(tmp);
     return rtn;
 }
 
