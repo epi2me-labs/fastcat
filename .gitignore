@@ -2,5 +2,7 @@
 *.swo
 src/**/*.o
 src/**/*.d
+test/**/*.o
+test/**/*.d
 libdeflate-*/
 libdeflate-v*.tar.gz

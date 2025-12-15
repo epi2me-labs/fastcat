@@ -64,7 +64,7 @@ endif
 default: fastcat bamstats bamindex fastlint
 
 .PHONY:
-test: test_fastcat test_bamstats test_meta test_bamindex test_fastlint test_bamcoverage
+test: test_unit test_fastcat test_bamstats test_meta test_bamindex test_fastlint test_bamcoverage
 
 .PHONY:
 test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_fastlint mem_check_bamcoverage
@@ -76,6 +76,30 @@ clean:
 .PHONY: clean_htslib
 clean_htslib:
 	cd htslib && make clean
+
+# unit tests
+UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_fastqcomments.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unity/unity.c
+UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
+UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
+
+test/unit/%.o: test/unit/%.c
+	$(CC) -Isrc -Ihtslib -Izlib-ng -Itest/unity $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
+
+test/unity/%.o: test/unity/%.c
+	$(CC) -Itest/unity $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
+
+test/unit/unit_tests: $(UNIT_TEST_OBJS) src/common.o src/stats.o src/fastqcomments.o src/regiter.o $(STATIC_HTSLIB)
+	$(CC) -Isrc -Ihtslib -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
+		$^ $(ARGP) \
+		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
+		-o $@
+
+.PHONY: test_unit
+test_unit: test/unit/unit_tests
+	$(PEPPER) ./test/unit/unit_tests
 
 
 ###
@@ -165,14 +189,6 @@ bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamind
 		$^ $(ARGP) \
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
-
-test/rg_parse: src/version.o test/rg_parse.o src/common.o 
-	$(CC) -Isrc $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
-		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
-		$^ $(ARGP) \
-		-lm $(EXTRA_LIBS) \
-		-o $@
-
 
 ###
 # fastcat tests
