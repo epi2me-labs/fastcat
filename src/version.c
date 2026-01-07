@@ -1,3 +1,3 @@
 #include "version.h"
 
-const char *argp_program_version = "0.24.2";
+const char *argp_program_version = "0.25.0";

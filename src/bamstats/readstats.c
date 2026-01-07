@@ -140,19 +140,6 @@ static inline void process_flagstat_counts(const bam1_t* b, size_t* counts, cons
 // see section 4.2.4 of the SAM spec for more details
 #define IS_INTEGER_TAG(t) ((t) == 'i' || (t) == 'I' || (t) == 'c' || (t) == 'C' || (t) == 's' || (t) == 'S')
 
-#define N_TAGS 8
-typedef struct {
-    char *RG;  // read group
-    char *RD;  // read group (old skool)
-    char *st;  // start time
-    int NM;    // edit distance
-    int pi;    // parent read
-    int pt;    // poly-t/a tail length
-    float qs;  // quality score
-    int dx;    // duplex
-} bam_tags_t;
-
-
 // Function to fetch tags from a bam1_t record
 bam_tags_t fetch_bam_tags(const bam1_t *b, const bam_hdr_t *header) {
     // default duplex tag to simple read, everything else as invalid
@@ -308,7 +295,7 @@ void process_bams(
                 // ignore that here, because its not a thing we care about
                 char* qname = bam_get_qname(b);
                 uint32_t read_length = b->core.l_qseq;
-                float mean_quality = mean_qual_from_bam(bam_get_qual(b), read_length);
+                float mean_quality = resolve_mean_quality(b, &tags, force_recalc_qual);
                 if (sample == NULL) {
                     fprintf(stdout,
                         "%s\t%s\t*\tnan\tnan\t" \
@@ -387,11 +374,7 @@ void process_bams(
         uint32_t read_length = b->core.l_qseq;
         size_t qstart = get_query_start(b);
         size_t qend = get_query_end(b);
-        // get mean quality score, from tag or recompute
-        float mean_quality = tags.qs;
-        if (mean_quality == -1 || force_recalc_qual) {
-            mean_quality = mean_qual_from_bam_naive(bam_get_qual(b), read_length);
-        }
+        float mean_quality = resolve_mean_quality(b, &tags, force_recalc_qual);
 
         float coverage = 100 * ((float)(qend - qstart)) / read_length;
         size_t rstart = b->core.pos;

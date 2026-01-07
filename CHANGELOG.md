@@ -4,7 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [unreleased]
+## [v0.25.0]
+### Fixed
+- The `qs` tag was not used to fetch read quality for unmapped reads.
 ### Added
 - Unity testing framework and some unit tests for internal functions.
 
@@ -399,4 +401,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.0.1]
 ### Added
 - Per-read and per-file summarising of fastq data.
-
