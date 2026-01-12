@@ -74,7 +74,7 @@ cov_writer init_coverage_writer(
         const char* out_dir, bool per_base, bool use_cigar,
         int exclude_flags, int include_flags, bool by_strand,
         const bam_hdr_t* hdr, const htsThreadPool* pool,
-        char** bed_files, char** bed_names, size_t n_beds,
+        const char** bed_files, const char** bed_names, size_t n_beds,
         uint32_t* thresholds, size_t n_thresholds,
         uint32_t* segments, size_t n_segments);
 void destroy_coverage_writer(cov_writer writer);

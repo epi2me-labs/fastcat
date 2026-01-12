@@ -4,12 +4,6 @@
 #include <zlib.h>
 
 
-// this gives us kseq_t for below
-#ifndef KSEQ_DECLARED
-#include "htslib/kseq.h"
-KSEQ_DECLARE(gzFile)
-#endif
-
 #include <htslib/sam.h> // HTSlib for BAM output
 
 #include "../stats.h"
@@ -55,6 +49,7 @@ writer initialize_writer(
 
 void destroy_writer(writer writer);
 
-void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* fname);
+// Caller retains ownership of bam and must free it.
+void write_read(writer writer, bam1_t* bam, read_meta meta, float mean_q, char* fname);
 
 #endif

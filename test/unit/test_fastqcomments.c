@@ -21,6 +21,16 @@ static void test_parse_simple_comment(void) {
     free(ks.s);
 }
 
+static void test_original_comment_preserved(void) {
+    kstring_t ks = {0, 0, NULL};
+    ksprintf(&ks, "raw_comment\twith\tspecials");
+    read_meta meta = parse_read_meta(ks);
+    TEST_ASSERT_NOT_NULL(meta->orig_comment);
+    TEST_ASSERT_EQUAL_STRING("raw_comment\twith\tspecials", meta->orig_comment);
+    destroy_read_meta(meta);
+    free(ks.s);
+}
+
 static void test_unknown_key_goes_to_co(void) {
     kstring_t ks = {0, 0, NULL};
     ksprintf(&ks, "runid=abc123 unknown=foo");
@@ -91,6 +101,7 @@ static void test_rg_fallback(void) {
 
 void fastqcomments_suite(void) {
     RUN_TEST(test_parse_simple_comment);
+    RUN_TEST(test_original_comment_preserved);
     RUN_TEST(test_unknown_key_goes_to_co);
     RUN_TEST(test_sam_style_tabs);
     RUN_TEST(test_barcode_unclassified);

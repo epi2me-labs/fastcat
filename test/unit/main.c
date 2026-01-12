@@ -7,6 +7,7 @@ void rg_parse_suite(void);
 void regiter_suite(void);
 void quality_suite(void);
 void readstats_suite(void);
+void bam_utils_suite(void);
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -20,5 +21,6 @@ int main(void) {
     regiter_suite();
     quality_suite();
     readstats_suite();
+    bam_utils_suite();
     return UNITY_END();
 }
