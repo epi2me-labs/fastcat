@@ -17,6 +17,8 @@ read_meta create_read_meta(const kstring_t* comment) {
     read_meta meta = xalloc(1, sizeof(_read_meta), "meta");
     meta->comment = xalloc(comment->l + 1, sizeof(char), "meta->comment");
     strncpy(meta->comment, comment->s, comment->l);
+    meta->orig_comment = xalloc(comment->l + 1, sizeof(char), "meta->orig_comment");
+    strncpy(meta->orig_comment, comment->s, comment->l);
     meta->rg = "";
     meta->rg_info = NULL;
     meta->runid = "";
@@ -38,6 +40,7 @@ read_meta create_read_meta(const kstring_t* comment) {
 
 void destroy_read_meta(read_meta meta) {
     free(meta->comment);
+    free(meta->orig_comment);
     destroy_rg_info(meta->rg_info);
     free(meta->rest->s);
     free(meta->rest);

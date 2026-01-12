@@ -20,6 +20,7 @@ KSEQ_INIT(gzFile, gzread)
 #include "args.h"
 #include "parsing.h"
 #include "writer.h"
+#include "bam_utils.h"
 
 
 const char filetypes[4][10] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
@@ -184,9 +185,11 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
         maxl = max(maxl, seq->seq.l);
         kahan_sum(&meanq, mean_q, &c);
         read_meta meta = parse_read_meta(seq->comment);
-        write_read(writer, seq, meta, mean_q, fname);
+        bam1_t* bam = kseq_to_bam(seq, meta);
+        write_read(writer, bam, meta, mean_q, fname);
         kh_counter_increment(run_ids, meta->runid);
         kh_counter_increment(basecallers, meta->basecaller);
+        bam_destroy1(bam);
         destroy_read_meta(meta);
     }
     if (truncated) {

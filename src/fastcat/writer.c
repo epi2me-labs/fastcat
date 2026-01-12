@@ -1,6 +1,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <inttypes.h>
+#include <string.h>
 
 #include "htslib/thread_pool.h"
 
@@ -8,6 +9,7 @@
 #include "common.h"
 #include "stats.h"
 #include "../fastqcomments.h"
+#include "bam_utils.h"
 #include "../version.h"
 
 // default buffer size for writing to gzip, this is large enough that most reads will not require
@@ -257,7 +259,7 @@ void destroy_writer(writer writer) {
 }
 
 
-void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
+void _write_read(writer writer, bam1_t* bam, read_meta meta, void* handle) {
     // choose writing function
     sink_write_fn sink_write = handle == stdout ? fprintf_bridge : gz_fprintf_bridge;
 
@@ -265,120 +267,50 @@ void _write_read(writer writer, kseq_t* seq, read_meta meta, void* handle) {
     static const char* sam_comment_fmt = "@%s\t%s\n%s\n+\n%s\n";
     static const char* no_comment_fmt = "@%s\n%s\n+\n%s\n";
 
-    if (seq->comment.l > 0) {
-        if (writer->reheader) {
-            sink_write(handle, sam_comment_fmt, seq->name.s, meta->tags_str->s, seq->seq.s, seq->qual.s);
+    char* qname = bam_get_qname(bam);
+    size_t len = bam->core.l_qseq;
+    uint8_t* seq_data = bam_get_seq(bam);
+    uint8_t* qual_data = bam_get_qual(bam);
+
+    char* seq_str = xalloc(len + 1, sizeof(char), "bam seq");
+    char* qual_str = xalloc(len + 1, sizeof(char), "bam qual");
+    for (size_t i = 0; i < len; ++i) {
+        seq_str[i] = seq_nt16_str[bam_seqi(seq_data, i)];
+        qual_str[i] = (qual_data[0] == 0xff) ? '!' : (char)(qual_data[i] + 33);
+    }
+    seq_str[len] = '\0';
+    qual_str[len] = '\0';
+
+    if (writer->reheader) {
+        if (meta->tags_str && meta->tags_str->l > 0) {
+            sink_write(handle, sam_comment_fmt, qname, meta->tags_str->s, seq_str, qual_str);
+        } else {
+            sink_write(handle, no_comment_fmt, qname, seq_str, qual_str);
         }
-        else {
-            sink_write(handle, fq_comment_fmt, seq->name.s, seq->comment.s, seq->seq.s, seq->qual.s);
+    } else {
+        const char* comment = (meta->orig_comment && strlen(meta->orig_comment)) ? meta->orig_comment : meta->comment;
+        if (comment && strlen(comment) > 0) {
+            sink_write(handle, fq_comment_fmt, qname, comment, seq_str, qual_str);
+        } else {
+            sink_write(handle, no_comment_fmt, qname, seq_str, qual_str);
         }
     }
-    else {
-        sink_write(handle, no_comment_fmt, seq->name.s, seq->seq.s, seq->qual.s);
-    }
+
+    free(seq_str);
+    free(qual_str);
 }
 
 
-// htslib has aux_parse but its static :(
-int parse_and_set_aux_tags(bam1_t *b, const char *aux_str) {
-    if (!b || !aux_str) {
-        fprintf(stderr, "Invalid input to parse_and_set_aux_tags\n");
-        return -1;
-    }
-
-    const char *ptr = aux_str;
-    while (*ptr) {
-        char tag[3] = {0};
-        char type;
-        int consumed = 0;
-
-        // Read the tag and type
-        if (sscanf(ptr, "%2s:%c%n", tag, &type, &consumed) != 2) {
-            fprintf(stderr, "Invalid aux format: %s\n", ptr);
-            return -1;
-        }
-        ptr += consumed+1;
-
-        size_t len = 0;
-        int int_value;
-        float float_value;
-        if (type == 'i' || type == 'I' || type == 'c' || type == 'C' || type == 's' || type == 'S') {
-            char *endptr;
-            int_value = strtol(ptr, &endptr, 10);
-            if (endptr == ptr) {
-                fprintf(stderr, "Failed to parse integer for tag %s\n", tag);
-                return -1;
-            }
-            bam_aux_update_int(b, tag, int_value);
-            ptr = endptr;
-        }
-        else if (type == 'f') {
-            char *endptr;
-            float_value = strtof(ptr, &endptr);
-            if (endptr == ptr) {
-                fprintf(stderr, "Failed to parse float for tag %s\n", tag);
-                return -1;
-            }
-            bam_aux_update_float(b, tag, float_value);
-            ptr = endptr;
-        }
-        else if (type == 'Z' || type == 'H') {
-            len = strcspn(ptr, "\t\n");
-            bam_aux_update_str(b, tag, len, ptr);
-            ptr += len;
-        }
-        else {
-            fprintf(stderr, "Unsupported tag type: %c\n", type);
-            return -1;
+void _write_read_bam(writer writer, bam1_t* bam, void* handle) {
+        if (bam == NULL) {
+            fprintf(stderr, "Internal error: BAM record missing for output.\n");
+            exit(1);
         }
 
-        while (*ptr == '\t' || *ptr == ' ') {
-            ptr++;
-        }
-    }
-    
-    return 0;
-}
-
-
-void _write_read_bam(writer writer, kseq_t* seq, read_meta meta, void* handle) {
-        bam1_t* b = bam_init1();
-        bam_set1(
-            b,
-            seq->name.l, seq->name.s,
-            4, -1, -1, 0,
-            0, NULL,
-            -1, -1, 0,
-            seq->seq.l, seq->seq.s, seq->qual.s,
-            0
-        );
-        // the implementation of bam_set1() seems not to take into account the 33 offset
-        // you'd typically have in a string encoding
-        uint8_t* qual = b->data + b->core.l_qname + (b->core.l_qseq + 1) / 2;
-        for (int i = 0; i < b->core.l_qseq; ++i) {
-            qual[i] -= 33;
-        }
-
-        // see fastqcomments.c for the definition of read_meta
-        // there we parcelled everything up nicely into a sam formatted string
-        // with garbage being dumped into CO:Z tag
-        // setting the known tags directly is futile as they would be overwritten
-        // by this function in any case
-        if (meta->tags_str->l > 0) {
-            if (parse_and_set_aux_tags(b, meta->tags_str->s) < 0) {
-                fprintf(stderr, "Error parsing auxiliary tags\n");
-                fprintf(stderr, "read: %s\n", seq->name.s);
-                fprintf(stderr, "tags: %s\n", meta->tags_str->s);
-                fprintf(stderr, "rest: %s\n", meta->rest->s);
-                exit(1);
-            }
-        }
-
-        if (sam_write1(handle, writer->bam_hdr, b) < 0) {
+        if (sam_write1(handle, writer->bam_hdr, bam) < 0) {
             fprintf(stderr, "Error writing read to BAM file.\n");
             exit(1);
         }
-        bam_destroy1(b);
 }
 
 
@@ -459,7 +391,7 @@ void ensure_directory(writer writer, size_t barcode, char* path) {
 }
 
 
-void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* fname) {
+void write_read(writer writer, bam1_t* bam, read_meta meta, float mean_q, char* fname) {
     size_t barcode = meta->ibarcode;
     if (barcode > MAX_BARCODES - 1) {
         fprintf(stderr,
@@ -473,7 +405,7 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
         // sample has tab pre-added in init
         char* s = writer->sample == NULL ? "" : writer->sample;
         fprintf(writer->perread, "%s\t%s\t%s\t%s%zu\t%.2f\t%lu\t%lu\t%s\n",
-            seq->name.s, fname, meta->runid, s, seq->seq.l, \
+            bam_get_qname(bam), fname, meta->runid, s, (size_t)bam->core.l_qseq,
                 mean_q, meta->channel, meta->read_number, meta->start_time);
     }
 
@@ -481,12 +413,12 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
         // all reads to stdout
         // Stats were initialize in init, no need to check if they exist
         if (writer->write_bam) {
-            _write_read_bam(writer, seq, meta, writer->bam_files[0]);
+            _write_read_bam(writer, bam, writer->bam_files[0]);
         }
         else {
-            _write_read(writer, seq, meta, stdout);
+            _write_read(writer, bam, meta, stdout);
         }
-        add_length_count(writer->l_stats[0], seq->seq.l);
+        add_length_count(writer->l_stats[0], bam->core.l_qseq);
         add_qual_count(writer->q_stats[0], mean_q);
     }
     else {
@@ -526,7 +458,7 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
                         exit(1);
                     }
                 }
-                _write_read_bam(writer, seq, meta, writer->bam_files[barcode]);
+                _write_read_bam(writer, bam, writer->bam_files[barcode]);
             }
             else {
                 // same again for fastq
@@ -536,7 +468,7 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
                     writer->handles[barcode] = gzopen(filepath, "wb");
                     gzbuffer(writer->handles[barcode], GZBUFSIZE);
                 }
-                _write_read(writer, seq, meta, writer->handles[barcode]);
+                _write_read(writer, bam, meta, writer->handles[barcode]);
             }
             free(filepath);
             free(path);
@@ -547,7 +479,7 @@ void write_read(writer writer, kseq_t* seq, read_meta meta, float mean_q, char* 
             writer->l_stats[barcode] = create_length_stats();
             writer->q_stats[barcode] = create_qual_stats(QUAL_HIST_WIDTH);
         }
-        add_length_count(writer->l_stats[barcode], seq->seq.l);
+        add_length_count(writer->l_stats[barcode], bam->core.l_qseq);
         add_qual_count(writer->q_stats[barcode], mean_q);
         writer->reads_written[barcode]++;
     }

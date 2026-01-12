@@ -78,7 +78,7 @@ clean_htslib:
 	cd htslib && make clean
 
 # unit tests
-UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_fastqcomments.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_readstats.c test/unity/unity.c
+UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_fastqcomments.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_readstats.c test/unit/test_bam_utils.c test/unity/unity.c
 UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
 
@@ -90,7 +90,7 @@ test/unity/%.o: test/unity/%.c
 	$(CC) -Itest/unity $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
 
-test/unit/unit_tests: $(UNIT_TEST_OBJS) src/common.o src/stats.o src/fastqcomments.o src/regiter.o $(STATIC_HTSLIB)
+test/unit/unit_tests: $(UNIT_TEST_OBJS) src/common.o src/stats.o src/fastqcomments.o src/regiter.o src/fastcat/bam_utils.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -154,7 +154,7 @@ src/%.o: src/%.c zlib-ng/zlib.h
 
 -include $(wildcard src/*.d)
 
-fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/sdust/sdust.o src/sdust/kalloc.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB) zlib-ng/libz.a
+fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastcat/bam_utils.o src/sdust/sdust.o src/sdust/kalloc.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB) zlib-ng/libz.a
 	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \

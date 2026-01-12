@@ -27,9 +27,9 @@ typedef struct arguments {
     // coverage calculations
     bool coverage;
     char* coverages;
-    char** coverage_beds;
+    const char** coverage_beds;
     size_t n_coverage_beds;
-    char** coverage_names;
+    const char** coverage_names;
     size_t n_coverage_names;
     uint32_t* coverage_thresholds;
     size_t n_coverage_thresholds;

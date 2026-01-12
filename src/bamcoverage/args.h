@@ -6,9 +6,9 @@
 
 typedef struct arguments {
     char* bam;
-    char** beds;
+    const char** beds;
     size_t n_beds;
-    char** bed_names;
+    const char** bed_names;
     size_t n_bed_names;
     int threads;
 } arguments_t;

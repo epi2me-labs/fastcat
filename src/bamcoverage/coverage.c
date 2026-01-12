@@ -443,7 +443,7 @@ cov_writer init_coverage_writer(
         const char* out_dir, bool per_base, bool use_cigar,
         int exclude_flags, int include_flags, bool by_strand,
         const bam_hdr_t* hdr, const htsThreadPool* pool,
-        char** bed_files, char** bed_names, size_t n_beds,
+        const char** bed_files, const char** bed_names, size_t n_beds,
         uint32_t* thresholds, size_t n_thresholds,
         uint32_t* segments, size_t n_segments) {
 
@@ -501,7 +501,7 @@ cov_writer init_coverage_writer(
     // followed by the BED files
     for (size_t i = 0; i < n_beds; ++i) {
         if (NULL != bed_files[i]) {
-            char* bed_name = bed_names[i];
+            const char* bed_name = bed_names[i];
             char* bed_out_dir = (char*)calloc(strlen(out_dir) + 1 + strlen(bed_name), 1);
             sprintf(bed_out_dir, "%s/%s", out_dir, bed_name);
             w->writers[1 + n_segments + i] = init_coverage_writer_region(

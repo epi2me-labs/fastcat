@@ -6,8 +6,8 @@
 
 #include "index.h"
 
-const size_t MAGIC_LEN = 5;
-const char* FILE_MAGIC = "FANZ\0";
+#define MAGIC_LEN 5
+static const char FILE_MAGIC[MAGIC_LEN] = "FANZ";
 
 
 char* generate_index_filename(const char* input_bam, const char* input_index) {

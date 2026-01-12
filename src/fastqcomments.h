@@ -6,6 +6,7 @@
 
 typedef struct {
     char* comment;
+    char* orig_comment;
     char* rg;
     readgroup* rg_info;
     char* runid;
