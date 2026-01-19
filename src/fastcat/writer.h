@@ -8,6 +8,7 @@
 
 #include "../stats.h"
 #include "../fastqcomments.h"
+#include "../fc_read.h"
 #include "parsing.h"
 
 // barcode 0 is reserved for "unclassified"
@@ -49,7 +50,6 @@ writer initialize_writer(
 
 void destroy_writer(writer writer);
 
-// Caller retains ownership of bam and must free it.
-void write_read(writer writer, bam1_t* bam, read_meta meta, float mean_q, char* fname);
+void write_read(writer writer, fc_read* read, char* fname);
 
 #endif

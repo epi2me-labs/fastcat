@@ -1,193 +1,190 @@
-#include <string.h>
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "common.h"
 #include "fastqcomments.h"
+#include "htslib/sam.h"
 
 
 // like `ksprintf()`, but will put the optional delimiter `d` before the added string if
 // `s` is not empty (and skip the delimiter otherwise)
 #define ksprintf_with_opt_delim(s, d, fmt, ...) \
-    ksprintf(s, "%s" fmt, s->l == 0 ? "" : d, __VA_ARGS__)
+    ksprintf((s), "%s" fmt, (s)->l == 0 ? "" : d, __VA_ARGS__)
 
-
-read_meta create_read_meta(const kstring_t* comment) {
-    read_meta meta = xalloc(1, sizeof(_read_meta), "meta");
-    meta->comment = xalloc(comment->l + 1, sizeof(char), "meta->comment");
-    strncpy(meta->comment, comment->s, comment->l);
-    meta->orig_comment = xalloc(comment->l + 1, sizeof(char), "meta->orig_comment");
-    strncpy(meta->orig_comment, comment->s, comment->l);
-    meta->rg = "";
-    meta->rg_info = NULL;
-    meta->runid = "";
-    meta->basecaller = "";
-    meta->flow_cell_id = "";
-    meta->barcode = "";
-    meta->ibarcode = 0;
-    meta->barcode_alias = "";
-    meta->start_time = "";
-    meta->read_number = 0;
-    meta->channel = 0;
-    meta->rest = xalloc(1, sizeof(kstring_t), "meta->rest");
-    ks_initialize(meta->rest);
-    meta->tags_str = xalloc(1, sizeof(kstring_t), "meta->tags_str");
-    ks_initialize(meta->tags_str);
-
-    return meta;
+static bool comment_has_sam_tags(const char* comment) {
+    if (!comment || *comment == '\0') return false;
+    const char* p = comment;
+    while (*p) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p) break;
+        if (isalnum((unsigned char)p[0]) && isalnum((unsigned char)p[1])
+                && p[2] && p[3] && p[4]
+                && p[2] == ':' && p[4] == ':') {
+            return true;
+        }
+        while (*p && *p != ' ' && *p != '\t') p++;
+    }
+    return false;
 }
 
-void destroy_read_meta(read_meta meta) {
-    free(meta->comment);
-    free(meta->orig_comment);
-    destroy_rg_info(meta->rg_info);
-    free(meta->rest->s);
-    free(meta->rest);
-    free(meta->tags_str->s);
-    free(meta->tags_str);
-    free(meta);
+static bool parse_int64(const char* value, int64_t* out) {
+    if (!value || value[0] == '\0') return false;
+    errno = 0;
+    char* end = NULL;
+    long long v = strtoll(value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0') return false;
+    *out = v;
+    return true;
 }
 
-// The caller is responsible for calling destroy_read_meta on the returned object.
-read_meta parse_read_meta(kstring_t comment) {
-    read_meta meta = create_read_meta(&comment);
+static bool has_gpu_prefix(const char* value) {
+    if (!value) return false;
+    if (strlen(value) < 4) return false;
+    return (tolower((unsigned char)value[0]) == 'g'
+        && tolower((unsigned char)value[1]) == 'p'
+        && tolower((unsigned char)value[2]) == 'u'
+        && value[3] == ':');
+}
 
-    // if an RG or RD tag appears in the seq->comment, assume there are SAM tags to parse
-    char* res = NULL;
-    bool sam_tags = false;
-    if (strlen(meta->comment) > 0) {
-        // check if comment starts with "RG:Z:" or "RD:Z:"
-        if (!strncmp(meta->comment, "RG:Z:", 5) || !strncmp(meta->comment, "RD:Z:", 5)) {
-            sam_tags = true;
-        }
-        // RG or RD could also appear later in the comment (we include '\t' in the check
-        // to be extra stringent)
-        res = strstr(meta->comment, "\tRG:Z:");
-        if (res != NULL) {
-            sam_tags = true;
-        }
-        res = strstr(meta->comment, "\tRD:Z:");
-        if (res != NULL) {
-            sam_tags = true;
-        }
-    }
+static int parse_key_value_comment_to_bam(const kstring_t* comment, bam1_t* b) {
+    if (!comment || !comment->s || comment->l == 0 || !b) return 0;
 
-    char *pch=NULL, *p1=NULL, *p2=NULL;
-    char *key=NULL, *keytype=NULL, *value=NULL;
+    char* buf = xalloc(comment->l + 1, sizeof(char), "comment buf");
+    memcpy(buf, comment->s, comment->l);
+    buf[comment->l] = '\0';
 
-    char sam_token[2] = "\t";
-    char fq_token[2] = " ";
-    char* token = fq_token;
-    if (sam_tags) {
-        token = sam_token;
-    }
-    pch = strtok_r(meta->comment, token, &p1);
+    kstring_t rest = {0, 0, NULL};
+    ks_initialize(&rest);
+    char* runid = NULL;
+    char* basecall_model = NULL;
+    char* barcode = NULL;
+    bool rg_seen = bam_aux_get(b, "RG") != NULL;
+
+    char *pch = NULL, *p1 = NULL, *p2 = NULL;
+    pch = strtok_r(buf, " ", &p1);
     while (pch != NULL) {
+        char* key = strtok_r(pch, "=", &p2);
+        bool has_delim = p2 != NULL;  // p2 will be NULL if no = was found
+        char* value = strtok_r(NULL, "", &p2);
+        if (value == NULL && has_delim) value = "";
 
-        if (sam_tags) {
-            // split to tag:type:value
-            key = strtok_r(pch, ":", &p2);
-            keytype = strtok_r(NULL, ":", &p2);
-            value = strtok_r(NULL, "", &p2);
-            // we allow empty tags (e.g. 'RG:Z:'); in this case, `keytype` will be
-            // non-null, but `value` will be null; we set it to ""
-            if (keytype != NULL && value == NULL) value = "";
-        }
-        else {
-            // split words on `=`
-            key = strtok_r(pch, "=", &p2);
-            bool has_delim = p2 != NULL;  // p2 will be NULL if no = was found
-            keytype = NULL;
-            value = strtok_r(NULL, "", &p2);
-            // similarly, allow empty tags (e.g. barcode=) to ensure that k=v
-            // records are appropriately formatted in CO:Z even if blank
-            if (value == NULL && has_delim) value = "";
-        }
-
-        // if there was no delimiter in the word, value will be NULL --> add word to `rest`
         if (value == NULL) {
-            ksprintf_with_opt_delim(meta->rest, " ", "%s", key);
-        } else {
-            if (!strcmp(key, "runid") || !strcmp(key, "RD")) {
-                // we'll output RD depending on the value of RG, later
-                meta->runid = value;
-                ksprintf_with_opt_delim(meta->tags_str, "\t", "RD:Z:%s", meta->runid);
+            ksprintf_with_opt_delim(&rest, " ", "%s", key);
+        } else if (!strcmp(key, "runid")) {
+            runid = value;
+        } else if (!strcmp(key, "basecall_model_version_id") || !strcmp(key, "model_version_id")) {
+            basecall_model = value;
+        } else if (!strcmp(key, "flow_cell_id")) {
+            if (bam_aux_update_str(b, "PU", (int)strlen(value), value) < 0) goto err;
+        } else if (!strcmp(key, "sample_id")) {
+            if (bam_aux_update_str(b, "LB", (int)strlen(value), value) < 0) goto err;
+        } else if (!strcmp(key, "barcode")) {
+            barcode = value;
+            if (bam_aux_update_str(b, "SM", (int)strlen(value), value) < 0) goto err;
+        } else if (!strcmp(key, "barcode_alias")) {
+            if (bam_aux_update_str(b, "al", (int)strlen(value), value) < 0) goto err;
+        } else if (!strcmp(key, "read")) {
+            int64_t ival = 0;
+            if (!parse_int64(value, &ival) || ival < 0 || ival > UINT32_MAX) {
+                ksprintf_with_opt_delim(&rest, " ", "%s=%s", key, value);
+            } else if (bam_aux_update_int(b, "rn", ival) < 0) {
+                goto err;
             }
-            else if (!strcmp(key, "RG")) {
-                meta->rg = value;
-                ksprintf_with_opt_delim(meta->tags_str, "\t", "RG:Z:%s", value);
+        } else if (!strcmp(key, "ch")) {
+            int64_t ival = 0;
+            if (!parse_int64(value, &ival) || ival < 0 || ival > UINT32_MAX) {
+                ksprintf_with_opt_delim(&rest, " ", "%s=%s", key, value);
+            } else if (bam_aux_update_int(b, "ch", ival) < 0) {
+                goto err;
             }
-            // CW-4766 - inconsistent naming of basecall model version id by guppy/minknow/dorado
-            else if (!strcmp(key, "basecall_model_version_id") || !strcmp(key, "model_version_id")) {
-                meta->basecaller = value;
-                // there's no discrete tag defined by guppy/minknow/doroado
-                // for this; so not added to `tags_str` (but to `rest` instead)
-                ksprintf_with_opt_delim(meta->rest, " ", "%s=%s", key, value);
-            }
-            else if (!strcmp(key, "flow_cell_id") || !strcmp(key, "FC")) {
-                meta->flow_cell_id = value;
-                ksprintf_with_opt_delim(meta->tags_str, "\t", "FC:Z:%s", value);
-            }
-            else if (!strcmp(key, "barcode") || !strcmp(key, "BC")) {
-                meta->barcode = value;
-                meta->ibarcode = atoi(value+7);  // "unclassified" -> 0
-                ksprintf_with_opt_delim(meta->tags_str, "\t", "BC:Z:%s", value);
-            }
-            else if (!strcmp(key, "barcode_alias") || !strcmp(key, "BA")) {
-                meta->barcode_alias = value;
-                ksprintf_with_opt_delim(meta->tags_str, "\t", "BA:Z:%s", value);
-            }
-            else if (!strcmp(key, "read") || !strcmp(key, "RN") || !strcmp(key, "rn")) {
-                meta->read_number = atoi(value);
-                ksprintf_with_opt_delim(meta->tags_str, "\t", "rn:i:%s", value);
-            }
-            else if (!strcmp(key, "CH") || !strcmp(key, "ch")) {
-                meta->channel = atoi(value);
-                ksprintf_with_opt_delim(meta->tags_str, "\t", "ch:i:%s", value);
-            }
-            else if (!strcmp(key, "start_time") || !strcmp(key, "ST") || !strcmp(key, "st")) {
-                meta->start_time = value;
-                ksprintf_with_opt_delim(meta->tags_str, "\t", "st:Z:%s", value);
+        } else if (!strcmp(key, "start_time")) {
+            if (bam_aux_update_str(b, "st", (int)strlen(value), value) < 0) goto err;
+        } else if (!strcmp(key, "parent_read_id")) {
+            if (bam_aux_update_str(b, "pi", (int)strlen(value), value) < 0) goto err;
+        } else if (!strcmp(key, "basecall_gpu")) {
+            kstring_t ds = {0, 0, NULL};
+            ks_initialize(&ds);
+            if (value[0] != '\0' && !has_gpu_prefix(value)) {
+                ksprintf(&ds, "gpu:%s", value);
             } else {
-                if (sam_tags) {
-                    // pass through all other tags
-                    ksprintf_with_opt_delim(meta->tags_str, "\t", "%s:%s:%s", key, keytype, value);
-                }
-                else {
-                    // long form key=value was not mapped to a SAM tag, send it to CO via meta->rest
-                    ksprintf_with_opt_delim(meta->rest, " ", "%s=%s", key, value);
-                }
+                ksprintf(&ds, "%s", value);
             }
+            if (bam_aux_update_str(b, "DS", (int)ds.l, ds.s) < 0) {
+                free(ds.s);
+                goto err;
+            }
+            free(ds.s);
+        } else {
+            ksprintf_with_opt_delim(&rest, " ", "%s=%s", key, value);
         }
-        pch = strtok_r(NULL, token, &p1);
+
+        pch = strtok_r(NULL, " ", &p1);
     }
 
-    // if there is a `rest`
-    // (also check that the first char of rest is not ' ', in which case something must have gone wrong)
-    // first replace all tabs with space to avoid all manner of confusion with Martin
-    for (size_t i=0; i<meta->rest->l; i++) {
-        if (meta->rest->s[i] == '\t') {
-            meta->rest->s[i] = ' ';
+    for (size_t i = 0; i < rest.l; i++) {
+        if (rest.s[i] == '\t') {
+            rest.s[i] = ' ';
         }
     }
-    if (meta->rest->l != 0 && meta->rest->s[0] != ' ') {
-        ksprintf_with_opt_delim(meta->tags_str, "\t", "CO:Z:%s", meta->rest->s);
+    if (rest.l != 0 && rest.s[0] != ' ') {
+        if (bam_aux_update_str(b, "CO", (int)rest.l, rest.s) < 0) goto err;
     }
 
-    bool need_run_id = strlen(meta->runid) == 0;
-    bool need_basecaller = strlen(meta->basecaller) == 0;
-    if(strlen(meta->rg) > 0 && (need_run_id || need_basecaller)) {
-        readgroup* rg_info = create_rg_info(meta->rg);
-        if (need_run_id && rg_info->runid != NULL) {
-            meta->runid = rg_info->runid;
-            ksprintf_with_opt_delim(meta->tags_str, "\t", "RD:Z:%s", rg_info->runid);
+    // Build an RG tag from runid/model/barcode when no RG is present.
+    if (!rg_seen && runid && runid[0] != '\0') {
+        kstring_t rg = {0, 0, NULL};
+        ks_initialize(&rg);
+        if (basecall_model && basecall_model[0] != '\0') {
+            ksprintf(&rg, "%s_%s", runid, basecall_model);
+        } else {
+            ksprintf(&rg, "%s_unknown", runid);
         }
-        if (need_basecaller && rg_info->basecaller != NULL) {
-            meta->basecaller = rg_info->basecaller;
+        if (barcode && barcode[0] != '\0' && strcmp(barcode, "unclassified") != 0) {
+            kputc_('_', &rg);
+            kputs(barcode, &rg);
         }
-        meta->rg_info = rg_info;
+        if (rg.l > 0 && bam_aux_update_str(b, "RG", (int)rg.l, rg.s) < 0) {
+            free(rg.s);
+            goto err;
+        }
+        free(rg.s);
     }
 
-    return meta;
+    free(rest.s);
+    free(buf);
+    return 0;
+
+err:
+    free(rest.s);
+    free(buf);
+    return -1;
+}
+
+
+int fastq_comment_to_bam(const kstring_t* comment, bam1_t* b) {
+    if (!comment || !comment->s || comment->l == 0 || !b) return 0;
+
+    bool sam_like = comment_has_sam_tags(comment->s);
+    if (sam_like) {
+        int orig_len = b->l_data;
+        if (sam_aux_parse(comment->s, comment->s + comment->l, b, 1) < 0) {
+            fprintf(stderr, "Error parsing SAM-style tags from FASTQ comment.\n");
+            return -1;
+        }
+        if (b->l_data > orig_len) {
+            return 0;
+        }
+    }
+
+    if (parse_key_value_comment_to_bam(comment, b) < 0) {
+        fprintf(stderr, "Error parsing key=value tags from FASTQ comment.\n");
+        return -1;
+    }
+    return 0;
 }

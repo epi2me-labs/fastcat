@@ -20,7 +20,7 @@ KSEQ_INIT(gzFile, gzread)
 #include "args.h"
 #include "parsing.h"
 #include "writer.h"
-#include "bam_utils.h"
+#include "../fc_read.h"
 
 
 const char filetypes[4][10] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
@@ -123,19 +123,20 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
         return status;
     }
 
-    gzFile fp;
-    kseq_t *seq;
-
-    fp = gzopen(fname, "r");
-    seq = kseq_init(fp);
-    size_t n = 0, slen = 0;
-    size_t minl = UINTMAX_MAX, maxl = 0;
-    double meanq = 0.0, c = 0.0;
-    status = 0;
+    // these are all per-file stats, separate from writer stats
+    size_t n_valid = 0, total_bases = 0;
+    size_t min_len = UINTMAX_MAX, max_len = 0;
+    double average_q = 0.0, q_sum = 0.0;
     kh_counter_t *run_ids = kh_counter_init();
     kh_counter_t *basecallers = kh_counter_init();
     uint64_t failures[NUM_FAILURE_CODES] = {0};
+
+    gzFile fp;
+    kseq_t *seq;
+    fp = gzopen(fname, "r");
+    seq = kseq_init(fp);
     bool truncated = false;  // track if last read record was truncated
+    status = 0;
     while ((status = kseq_read(seq)) != -1) {  // EOF - normal exit
         if (status == -2) {  // truncated quality string
             failures[F_QUAL_TRUNCATED]++;
@@ -167,11 +168,16 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
             failures[R_TOO_SHORT]++;
             continue;
         }
-        float mean_q = mean_qual_naive(seq->qual.s, seq->qual.l);
+
+        // build fc_read now as it handles mean_q from meta or recomputing
+        fc_read* fr = fc_read_from_kseq(seq);
+        float mean_q = fr->meta->mean_q;
         if (mean_q < args->min_qscore) {
+            fc_read_destroy(fr);
             failures[R_LOW_QUALITY]++;
             continue;
         }
+
         if (args->dust) {
             double masked_fraction = dust_fraction((uint8_t*)seq->seq.s, seq->seq.l, args->dust_t, args->dust_w);
             if (masked_fraction > args->max_dust) {
@@ -180,20 +186,22 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
             }
         }
 
-        ++n ; slen += seq->seq.l;
-        minl = min(minl, seq->seq.l);
-        maxl = max(maxl, seq->seq.l);
-        kahan_sum(&meanq, mean_q, &c);
-        read_meta meta = parse_read_meta(seq->comment);
-        bam1_t* bam = kseq_to_bam(seq, meta);
-        write_read(writer, bam, meta, mean_q, fname);
-        kh_counter_increment(run_ids, meta->runid);
-        kh_counter_increment(basecallers, meta->basecaller);
-        bam_destroy1(bam);
-        destroy_read_meta(meta);
+        // update per-file stats
+        ++n_valid ; total_bases += seq->seq.l;
+        min_len = min(min_len, seq->seq.l);
+        max_len = max(max_len, seq->seq.l);
+        kahan_sum(&average_q, mean_q, &q_sum);
+        kh_counter_increment(run_ids, fr->meta->runid);
+        kh_counter_increment(basecallers, fr->meta->basecaller);
+
+        // write read to output
+        write_read(writer, fr, fname);
+        fc_read_destroy(fr);
     }
+
+    // handle final reader status
     if (truncated) {
-        // if the last read was truncated, we count that as file error
+        // truncated treated as stream error
         failures[F_STREAM_ERROR]++;
         status = -3;
     }
@@ -220,15 +228,16 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
     }
 
     // summary entries
+    // TODO: move this to writer, we can wrap per file stats in a struct and pass that
     if(writer->perfile != NULL) {
         fprintf(writer->perfile, "%s\t", fname);
         if (writer->sample != NULL) fprintf(writer->perfile, "%s\t", args->sample);
-        if (n == 0) {
+        if (n_valid == 0) {
             // there were no reads in the input file
             fprintf(writer->perfile, "0\t0\t0\t0\t0.00");
         } else {
             fprintf(writer->perfile, "%zu\t%zu\t%zu\t%zu\t%.2f",
-                n, slen, minl, maxl, meanq/n
+                n_valid, total_bases, min_len, max_len, average_q / n_valid
             );
         }
         for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {

@@ -6,3 +6,4 @@ test/**/*.o
 test/**/*.d
 libdeflate-*/
 libdeflate-v*.tar.gz
+.fastcat_patch_applied

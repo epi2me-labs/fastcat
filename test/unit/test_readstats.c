@@ -5,6 +5,7 @@
 #include "htslib/sam.h"
 
 #include "bamstats/readstats.h"
+#include "fc_read.h"
 
 // helper to build a simple BAM record with given qualities and optional QS tag
 static bam1_t* build_read(const char* qname, const char* seq, const char* qual, uint16_t flag, float qs_tag, bool add_qs) {
@@ -35,24 +36,30 @@ static bam1_t* build_read(const char* qname, const char* seq, const char* qual, 
 
 static void test_resolve_mean_quality_prefers_qs(void) {
     bam1_t* b = build_read("r1", "ACGT", "!!!!", BAM_FUNMAP, 42.0f, true);
-    bam_tags_t tags = {.qs = 42.0f};
-    float mq = resolve_mean_quality(b, &tags, false);
+    read_meta meta = create_read_meta(b, NULL, false, NULL);
+    meta->mean_q = 42.0f;
+    float mq = resolve_mean_quality(b, meta, false);
+    destroy_read_meta(meta);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 42.0f, mq);
     bam_destroy1(b);
 }
 
 static void test_resolve_mean_quality_force_recalc(void) {
     bam1_t* b = build_read("r1", "ACGT", "!!!!", BAM_FUNMAP, 42.0f, true);
-    bam_tags_t tags = {.qs = 42.0f};
-    float mq = resolve_mean_quality(b, &tags, true);
+    read_meta meta = create_read_meta(b, NULL, false, NULL);
+    meta->mean_q = 42.0f;
+    float mq = resolve_mean_quality(b, meta, true);
+    destroy_read_meta(meta);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 0.0f, mq);
     bam_destroy1(b);
 }
 
 static void test_resolve_mean_quality_without_qs(void) {
     bam1_t* b = build_read("r1", "ACGT", "5555", BAM_FUNMAP, -1.0f, false);
-    bam_tags_t tags = {.qs = -1.0f};
-    float mq = resolve_mean_quality(b, &tags, false);
+    read_meta meta = create_read_meta(b, NULL, false, NULL);
+    meta->mean_q = -1.0f;
+    float mq = resolve_mean_quality(b, meta, false);
+    destroy_read_meta(meta);
     TEST_ASSERT_FLOAT_WITHIN(1e-2, 20.0f, mq);
     bam_destroy1(b);
 }

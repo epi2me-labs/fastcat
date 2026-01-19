@@ -21,6 +21,7 @@
 #include "bamiter.h"
 #include "readstats.h"
 #include "args.h"
+#include "../fc_read.h"
 
 #define bam1_seq(b) ((b)->data + (b)->core.n_cigar*4 + (b)->core.l_qname)
 #define bam1_seqi(s, i) (bam_seqi((s), (i)))
@@ -135,93 +136,6 @@ static inline void process_flagstat_counts(const bam1_t* b, size_t* counts, cons
     counts[7] += (duplex_code == 1);
     counts[8] += (duplex_code == -1);
 }
-
-
-// see section 4.2.4 of the SAM spec for more details
-#define IS_INTEGER_TAG(t) ((t) == 'i' || (t) == 'I' || (t) == 'c' || (t) == 'C' || (t) == 's' || (t) == 'S')
-
-// Function to fetch tags from a bam1_t record
-bam_tags_t fetch_bam_tags(const bam1_t *b, const bam_hdr_t *header) {
-    // default duplex tag to simple read, everything else as invalid
-    bam_tags_t tags = {NULL, NULL, NULL, -1, -1, -1, -1, 0};  
-
-    uint8_t *aux = bam_aux_first(b);
-    int n_tags = 0;
-    while (n_tags < 100 && aux != NULL) {
-        n_tags++;
-        const char *t = bam_aux_tag(aux);
-        char tag[3];
-        tag[2] = '\0';
-        for (int i = 0; i < 2; i++) {
-            tag[i] = toupper(t[i]);
-        }
-        uint8_t type = bam_aux_type(aux);
-
-        // do this here to avoid repeating below
-        int ival = -1;
-        bool ierr = false;
-        if (IS_INTEGER_TAG(type)) {
-            errno = 0;
-            ival = bam_aux2i(aux);
-            ierr = (ival == 0 && errno == EINVAL);
-        }
-        
-        if ((strcmp(tag, "RG") == 0) && (tags.RG == NULL) && type == 'Z') {
-            tags.RG = strdup(bam_aux2Z(aux));
-        } else if ((strcmp(tag, "RD") == 0) && (tags.RD == NULL) && type == 'Z') {
-            tags.RD = strdup(bam_aux2Z(aux));
-        } else if ((strcmp(tag, "ST") == 0) && (tags.st == NULL) && type == 'Z') {
-            tags.st = strdup(bam_aux2Z(aux));
-        } else if (strcmp(tag, "NM") == 0 && !ierr) {
-            tags.NM = ival;
-        } else if (strcmp(tag, "PI") == 0 && !ierr) {
-            tags.pi = ival;
-        } else if (strcmp(tag, "PT") == 0 && !ierr) {
-            tags.pt = ival;
-        } else if (strcmp(tag, "DX") == 0 && !ierr) {
-            tags.dx = ival;
-        } else if (strcmp(tag, "QS") == 0 && (type == 'f')) {
-            errno = 0;
-            tags.qs = bam_aux2f(aux);
-            if (tags.qs == 0 && errno == EINVAL) {
-                tags.qs = -1;
-            }
-        }
-        else {
-            // we added above when we shouldn't have
-            n_tags--;
-        }
-
-        aux = bam_aux_next(b, aux);
-    }
-
-    // Check we have all the tags we need
-    // note theres weird corner case of duplicate tags, but when does that happen?
-    bool good_align = ((b->core.flag & (NOTPRIMARY | BAM_FQCFAIL | BAM_FDUP)) == 0);
-    if (good_align && (tags.NM == -1)) {
-        fprintf(stderr, "Read '%s' does not contain an integer 'NM' tag.\n", bam_get_qname(b));
-        kstring_t rec = {0, 0, NULL};
-        if (sam_format1(header, b, &rec) < 0) {
-            fprintf(stderr, "Failed to format record for error message.\n");
-        } else {
-            fprintf(stderr, "%s\n", rec.s);
-        }
-        ks_free(&rec);
-        exit(EXIT_FAILURE);
-    }
-    return tags;
-}
-
-
-void free_bam_tags(bam_tags_t *tags) {
-    if (!tags) return;
-    if (tags->RG) free(tags->RG);
-    if (tags->RD) free(tags->RD);
-    if (tags->st) free(tags->st);
-    //free(tags);  // we stack allocate all these now
-}
-
-
 // Do all-the-things
 void process_bams(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr, const char *sample,
@@ -249,7 +163,6 @@ void process_bams(
 
     int res;
     bam1_t *b = bam_init1();
-    readgroup* rg_info = NULL;
     char *runid = NULL;
     char *basecaller = NULL;
     char *start_time = NULL;
@@ -261,30 +174,10 @@ void process_bams(
             coverage_process(coverage, b);
         }
 
-        // get all our tags
-        bam_tags_t tags = fetch_bam_tags(b, hdr);
-
-        // get info from readgroup, note we could use subitems from readgroup
-        // here more directly, but this is to be consistent with fastcat where
-        // we only have the readgroup ID string to play with
-        runid = "";
-        basecaller = "";
-        start_time = "";
-        if (tags.RG != NULL) {
-            rg_info = create_rg_info(tags.RG);
-            if (rg_info->runid != NULL) {
-                runid = rg_info->runid;
-            }
-            if (rg_info->basecaller != NULL) {
-                basecaller = rg_info->basecaller;
-            }
-        } else if (tags.RD != NULL) {
-            runid = tags.RD;
-        }
-
-        if (tags.st != NULL) {
-            start_time = tags.st;
-        }
+        fc_read* fr = fc_read_from_bam(b, hdr, force_recalc_qual);
+        runid = fr->meta->runid ? fr->meta->runid : "";
+        basecaller = fr->meta->basecaller ? fr->meta->basecaller : "";
+        start_time = fr->meta->start_time ? fr->meta->start_time : "";
         kh_counter_increment(runids, runid);
         kh_counter_increment(basecallers, basecaller);
 
@@ -295,7 +188,7 @@ void process_bams(
                 // ignore that here, because its not a thing we care about
                 char* qname = bam_get_qname(b);
                 uint32_t read_length = b->core.l_qseq;
-                float mean_quality = resolve_mean_quality(b, &tags, force_recalc_qual);
+                float mean_quality = fr->meta->mean_q;
                 if (sample == NULL) {
                     fprintf(stdout,
                         "%s\t%s\t*\tnan\tnan\t" \
@@ -308,7 +201,7 @@ void process_bams(
                         //aligned_ref_len, direction, length,
                         read_length, mean_quality, start_time,
                         //match, ins, delt, sub, iden, acc
-                        tags.dx
+                        fr->meta->duplex_code
                     );
                 } else {
                     fprintf(stdout,
@@ -322,12 +215,12 @@ void process_bams(
                         //aligned_ref_len, direction, length,
                         read_length, mean_quality, start_time,
                         //match, ins, delt, sub, iden, acc
-                        tags.dx
+                        fr->meta->duplex_code
                     );
                 }
                 // add to flagstat counts if required
                 if (flag_counts != NULL) {
-                    process_flagstat_counts(b, flag_counts->unmapped, tags.dx);
+                    process_flagstat_counts(b, flag_counts->unmapped, fr->meta->duplex_code);
                 }
 
                 // accumulate stats into histogram
@@ -343,7 +236,7 @@ void process_bams(
             // there will be as many dynamic arrays as references in the BAM header
             size_t* counts = (chr != NULL) ? flag_counts->counts[0]
                                            : flag_counts->counts[b->core.tid];
-            process_flagstat_counts(b, counts, tags.dx);
+            process_flagstat_counts(b, counts, fr->meta->duplex_code);
         }
 
         // only take "good" primary alignments for further processing
@@ -358,14 +251,14 @@ void process_bams(
         match = stats[BAM_CMATCH] + stats[BAM_CEQUAL] + stats[BAM_CDIFF];
         ins = stats[BAM_CINS];
         delt = stats[BAM_CDEL];
-        size_t sub = tags.NM - ins - delt;
+        size_t sub = fr->meta->edit_distance - ins - delt;
         size_t length = match + ins + delt;
         float iden = 100 * ((float)(match - sub)) / match;
-        float acc = 100 - 100 * ((float)(tags.NM)) / length;
+        float acc = 100 - 100 * ((float)(fr->meta->edit_distance)) / length;
         // some things we've seen go wrong
         // explode now because there is almost certainly something wrong with the tags
         // and calling add_qual_count with a value less than zero will cause a segfault
-        if (iden < 0.0 || acc < 0.0 || (size_t)tags.NM > length) {
+        if (iden < 0.0 || acc < 0.0 || (size_t)fr->meta->edit_distance > length) {
             fprintf(stderr, "Read '%s' appears to contain implausible alignment information\n", qname);
             exit(EXIT_FAILURE);
         }
@@ -374,7 +267,7 @@ void process_bams(
         uint32_t read_length = b->core.l_qseq;
         size_t qstart = get_query_start(b);
         size_t qend = get_query_end(b);
-        float mean_quality = resolve_mean_quality(b, &tags, force_recalc_qual);
+        float mean_quality = fr->meta->mean_q;
 
         float coverage = 100 * ((float)(qend - qstart)) / read_length;
         size_t rstart = b->core.pos;
@@ -400,8 +293,10 @@ void process_bams(
             if ((ref_cover >= polya_cover)
                     && (!bam_is_rev(b) || polya_rev)
                     && mean_quality >= polya_qual) {
-                if (tags.pi == -1 && tags.pt >= 0) {
-                    polya_len = tags.pt;
+                bool has_parent_read = (fr->meta->parent_read != NULL
+                    && strlen(fr->meta->parent_read) > 0);
+                if (!has_parent_read && fr->meta->poly_tail_length >= 0) {
+                    polya_len = fr->meta->poly_tail_length;
                 }
             }
             if (polya_len >= 0) {
@@ -420,7 +315,7 @@ void process_bams(
                 coverage, ref_cover,
                 qstart, qend, rstart, rend,
                 aligned_ref_len, direction, length, read_length, mean_quality, start_time,
-                match, ins, delt, sub, iden, acc, tags.dx);
+                match, ins, delt, sub, iden, acc, fr->meta->duplex_code);
         } else {
             fprintf(stdout,
                 "%s\t%s\t%s\t%s\t" \
@@ -432,17 +327,15 @@ void process_bams(
                 coverage, ref_cover,
                 qstart, qend, rstart, rend,
                 aligned_ref_len, direction, length, read_length, mean_quality, start_time,
-                match, ins, delt, sub, iden, acc, tags.dx);
+                match, ins, delt, sub, iden, acc, fr->meta->duplex_code);
         }
 		free(stats);
 
 FINISH_READ:
-        destroy_rg_info(rg_info);
-        rg_info = NULL;
         runid = NULL;
         basecaller = NULL;
         start_time = NULL;
-        free_bam_tags(&tags);
+        fc_read_destroy(fr);
     }
 
     destroy_bam_iter_data(bam);
