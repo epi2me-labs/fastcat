@@ -2,14 +2,13 @@
 
 NAME=fastcat
 
-
-# don't enable libdeflate -- seems to cause hangs when used with threaded decompression
-#export HTS_CONF_ARGS="--prefix=${PREFIX} --enable-libcurl --enable-plugins --enable-gcs --enable-s3"
-# ignore that, just link to htslib from bioconda
+# use bundled htslib build for patched APIs
 export EXTRA_CFLAGS="-I$PREFIX/include"
-export STATIC_HTSLIB=""
+export STATIC_HTSLIB="htslib/libhts.a"
 export EXTRA_LDFLAGS="-L$PREFIX/lib"
-export EXTRA_LIBS="-ldl -lhts"
+export EXTRA_LIBS="-ldl -ldeflate"
+export HTS_CONF_ARGS="${HTS_CONF_ARGS} --with-libdeflate --enable-libcurl --enable-plugins --enable-gcs --enable-s3"
+export HTS_BUILD_FLAGS="CPPFLAGS=\"${EXTRA_CFLAGS}\" LDFLAGS=\"${EXTRA_LDFLAGS}\""
 
 OS=$(uname)
 if [[ "$OS" == "Darwin" ]]; then

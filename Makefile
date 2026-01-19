@@ -19,6 +19,8 @@ DEFLATEVER=1.24
 
 CC ?= gcc
 STATIC_HTSLIB ?= htslib/libhts.a
+HTSLIB_PATCH ?= patches/htslib-aux-parse.patch
+HTSLIB_PATCH_STAMP ?= .fastcat_patch_applied
 EXTRA_CFLAGS ?=
 EXTRA_LDFLAGS ?=
 EXTRA_LIBS ?=
@@ -90,7 +92,7 @@ test/unity/%.o: test/unity/%.c
 	$(CC) -Itest/unity $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
 
-test/unit/unit_tests: $(UNIT_TEST_OBJS) src/common.o src/stats.o src/fastqcomments.o src/regiter.o src/fastcat/bam_utils.o $(STATIC_HTSLIB)
+test/unit/unit_tests: $(UNIT_TEST_OBJS) src/common.o src/stats.o src/fastqcomments.o src/regiter.o src/fc_read.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -107,7 +109,14 @@ test_unit: test/unit/unit_tests
 
 
 
-htslib/libhts.a: $(STATIC_LIBDEFLATE)
+$(HTSLIB_PATCH_STAMP): $(HTSLIB_PATCH)
+	@if [ -f "$(HTSLIB_PATCH)" ] && { ! grep -q "sam_aux_parse(" htslib/htslib/sam.h || ! grep -q "sam_format_aux(" htslib/htslib/sam.h; }; then \
+		echo "Applying htslib patch $(HTSLIB_PATCH)"; \
+		cd htslib && patch -p1 -N < ../$(HTSLIB_PATCH); \
+	fi
+	@touch $(HTSLIB_PATCH_STAMP)
+
+htslib/libhts.a: $(STATIC_LIBDEFLATE) | $(HTSLIB_PATCH_STAMP)
 	@echo "\x1b[1;33mMaking $(@F)\x1b[0m"
 	cd htslib/ \
 		&& autoheader \
@@ -152,9 +161,14 @@ src/%.o: src/%.c zlib-ng/zlib.h
 	$(CC) -Isrc -Ihtslib -Izlib-ng -c -pthread $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $< -o $@
 
--include $(wildcard src/*.d)
+src/fastqcomments.o: | $(HTSLIB_PATCH_STAMP)
+src/fc_read.o: | $(HTSLIB_PATCH_STAMP)
 
-fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/fastcat/bam_utils.o src/sdust/sdust.o src/sdust/kalloc.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o $(STATIC_HTSLIB) zlib-ng/libz.a
+-include $(wildcard src/*.d)
+-include $(wildcard test/unit/*.d)
+-include $(wildcard test/unity/*.d)
+
+fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/sdust/sdust.o src/sdust/kalloc.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o src/fc_read.o $(STATIC_HTSLIB) zlib-ng/libz.a
 	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -168,7 +182,7 @@ fastlint: src/version.o src/fastlint/main.o src/fastlint/args.o src/sdust/sdust.
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-bamstats: src/version.o src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/regiter.o src/stats.o src/kh_counter.o src/bamcoverage/coverage.o $(STATIC_HTSLIB)
+bamstats: src/version.o src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/regiter.o src/stats.o src/kh_counter.o src/bamcoverage/coverage.o src/fc_read.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -194,7 +208,7 @@ bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamind
 # fastcat tests
 
 .PHONY:
-test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent
+test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip
 
 .PHONY: mem_check_fastcat
 mem_check_fastcat: fastcat
@@ -217,7 +231,7 @@ mem_check_fastcat_demultiplex_bam: fastcat
 	$(GRIND) ./fastcat test/data/*.fastq.gz --demultiplex demultiplex -B > /dev/null
 
 .PHONY: test_fastcat_bam_equivalent
-fastcat_bam_equivalent: fastcat bamstats samtools
+test_fastcat_bam_equivalent: fastcat bamstats samtools
 	@echo ""
 	@echo "Testing fastcat bam equivalence"
 	rm -rf test/test-tmp-fcb-equiv-van*
@@ -225,6 +239,16 @@ fastcat_bam_equivalent: fastcat bamstats samtools
 	$(PEPPER) ./fastcat test/data/*.fastq.gz --histograms test/test-tmp-fcb-equiv-van --reheader | ./samtools import -T '*' - | ./test/sort-sam.py > test/test-tmp-fcb-equiv-van.sam && \
 	$(PEPPER) ./fastcat test/data/*.fastq.gz --histograms test/test-tmp-fcb-equiv-bam -B | ./samtools view | ./test/sort-sam.py > test/test-tmp-fcb-equiv-bam.sam && \
 	diff test/test-tmp-fcb-equiv-van.sam test/test-tmp-fcb-equiv-bam.sam
+
+.PHONY: test_fastcat_reheader_roundtrip
+test_fastcat_reheader_roundtrip: fastcat samtools
+	@echo ""
+	@echo "Testing fastcat reheader roundtrip"
+	rm -rf test/test-tmp-fc-reheader*
+	$(PEPPER) ./fastcat test/reheader/kv.fastq --histograms test/test-tmp-fc-reheader-hist --reheader > test/test-tmp-fc-reheader.fastq
+	$(PEPPER) ./fastcat test/reheader/kv.fastq --histograms test/test-tmp-fc-reheader-orig -B | ./samtools view > test/test-tmp-fc-reheader-orig.sam && \
+	$(PEPPER) ./fastcat test/test-tmp-fc-reheader.fastq --histograms test/test-tmp-fc-reheader-reheader -B | ./samtools view > test/test-tmp-fc-reheader-reheader.sam && \
+	diff test/test-tmp-fc-reheader-orig.sam test/test-tmp-fc-reheader-reheader.sam
 
 
 ###

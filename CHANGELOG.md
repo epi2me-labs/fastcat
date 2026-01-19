@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased]
+### Fixed
+- The `pi` tag was being incorrectly parsed as an integer tag, leading to failure to read the data.
+  This gave rise to a failure to exclude reads based on having a parent (notably in poly-A tail analysis).
+### Changed
+- SAM-style FASTQ header comments are generated through a more robust method. The ordering of keys may
+  not respect the ordering in the original FASTQ header, but all keys and values will be preserved.
+- The parsing of FASTQ header information is more strictly enforced. Mixtures of key=value style and
+  SAM-style meta data (in a single read) is no longer supported, with SAM-style tags being preferred.
+  The behaviour aligns with the expectations of the 
+  [older](https://software-docs.nanoporetech.com/output-specifications/25.09/read_formats/fastq/) (25.09) and
+  [contemporary](https://software-docs.nanoporetech.com/output-specifications/26.01/read_formats/fastq/) (26.01)
+  MinKNOW specifications.
+- The read group (RG) tag for a read is inferred from the protocol ("run") ID, the basecaller model, and
+  optionally the barcode ID, when not explicitly provided in the FASTQ header.
+
 ## [v0.25.0]
 ### Fixed
 - The `qs` tag was not used to fetch read quality for unmapped reads.

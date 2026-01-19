@@ -1,0 +1,83 @@
+diff --git a/htslib/sam.h b/htslib/sam.h
+index 0da5f047..ec378dd0 100644
+--- a/htslib/sam.h
++++ b/htslib/sam.h
+@@ -1634,6 +1634,24 @@ static inline const uint8_t *sam_format_aux1(const uint8_t *key,
+     return NULL;
+ }
+ 
++/// Parse SAM-format auxiliary fields and append to a BAM record
++/** @param start   Pointer to start of aux data
++ *  @param end     Pointer to end of aux data (one past last char)
++ *  @param b       BAM record to append aux data to
++ *  @param lenient Non-zero to skip malformed fields instead of failing
++ *  @return        0 on success, negative on failure.
++ */
++HTSLIB_EXPORT
++int sam_aux_parse(char *start, char *end, bam1_t *b, int lenient);
++
++/// Format all auxiliary fields for a BAM record into SAM tag strings
++/** @param b     BAM record to format
++ *  @param str   kstring to write the formatted tags into (tab-delimited)
++ *  @return      Length on success, negative on failure.
++ */
++HTSLIB_EXPORT
++int sam_format_aux(const bam1_t *b, kstring_t *str);
++
+ /// Return a pointer to a BAM record's first aux field
+ /** @param b   Pointer to the BAM record
+     @return    Aux field pointer, or NULL if the record has none
+diff --git a/sam.c b/sam.c
+index 7e58da6e..28067f28 100644
+--- a/sam.c
++++ b/sam.c
+@@ -2865,6 +2865,12 @@ err_ret:
+     return -2;
+ }
+ 
++HTSLIB_EXPORT
++int sam_aux_parse(char *start, char *end, bam1_t *b, int lenient)
++{
++    return aux_parse(start, end, b, lenient, NULL);
++}
++
+ int sam_parse1(kstring_t *s, sam_hdr_t *h, bam1_t *b)
+ {
+ #define _read_token(_p) (_p); do { char *tab = strchr((_p), '\t'); if (!tab) goto err_ret; *tab = '\0'; (_p) = tab + 1; } while (0)
+@@ -4499,6 +4505,36 @@ int sam_format1(const bam_hdr_t *h, const bam1_t *b, kstring_t *str)
+     return sam_format1_append(h, b, str);
+ }
+ 
++HTSLIB_EXPORT
++int sam_format_aux(const bam1_t *b, kstring_t *str)
++{
++    int r = 0;
++    uint8_t *s = bam_get_aux(b);
++    uint8_t *end = b->data + b->l_data;
++
++    str->l = 0;
++    while (end - s >= 4) {
++        if (str->l > 0) r |= kputc_('\t', str) < 0;
++        if ((s = (uint8_t *)sam_format_aux1(s, s[2], s+3, end, str)) == NULL)
++            goto bad_aux;
++    }
++    r |= kputsn("", 0, str); // nul terminate
++    if (r < 0) goto mem_err;
++
++    return str->l;
++
++ bad_aux:
++    hts_log_error("Corrupted aux data for read %.*s flag %d",
++                  b->core.l_qname, bam_get_qname(b), b->core.flag);
++    errno = EINVAL;
++    return -1;
++
++ mem_err:
++    hts_log_error("Out of memory");
++    errno = ENOMEM;
++    return -1;
++}
++
+ static inline uint8_t *skip_aux(uint8_t *s, uint8_t *end);
+ int fastq_format1(fastq_state *x, const bam1_t *b, kstring_t *str)
+ {

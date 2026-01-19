@@ -10,27 +10,6 @@
 #include "../kh_counter.h"
 #include "../common.h"
 
-
-typedef struct {
-    char *RG;  // read group
-    char *RD;  // read group (old skool)
-    char *st;  // start time
-    int NM;    // edit distance
-    int pi;    // parent read
-    int pt;    // poly-t/a tail length
-    float qs;  // quality score
-    int dx;    // duplex
-} bam_tags_t;
-
-static inline float resolve_mean_quality(const bam1_t *b, const bam_tags_t *tags, bool force_recalc_qual) {
-    float mean_quality = tags ? tags->qs : -1.0f;
-    if (mean_quality == -1.0f || force_recalc_qual) {
-        mean_quality = mean_qual_from_bam_naive(bam_get_qual(b), b->core.l_qseq);
-    }
-    return mean_quality;
-}
-
-
 // struct for flagstat counts
 typedef struct {
     size_t n_refs;

@@ -9,7 +9,6 @@
 #include "common.h"
 #include "stats.h"
 #include "../fastqcomments.h"
-#include "bam_utils.h"
 #include "../version.h"
 
 // default buffer size for writing to gzip, this is large enough that most reads will not require
@@ -288,7 +287,7 @@ void _write_read(writer writer, bam1_t* bam, read_meta meta, void* handle) {
             sink_write(handle, no_comment_fmt, qname, seq_str, qual_str);
         }
     } else {
-        const char* comment = (meta->orig_comment && strlen(meta->orig_comment)) ? meta->orig_comment : meta->comment;
+        const char* comment = (meta->orig_comment && strlen(meta->orig_comment)) ? meta->orig_comment : NULL;
         if (comment && strlen(comment) > 0) {
             sink_write(handle, fq_comment_fmt, qname, comment, seq_str, qual_str);
         } else {
@@ -391,8 +390,8 @@ void ensure_directory(writer writer, size_t barcode, char* path) {
 }
 
 
-void write_read(writer writer, bam1_t* bam, read_meta meta, float mean_q, char* fname) {
-    size_t barcode = meta->ibarcode;
+void write_read(writer writer, fc_read* read, char* fname) {
+    size_t barcode = read->meta->ibarcode;
     if (barcode > MAX_BARCODES - 1) {
         fprintf(stderr,
             "ERROR: Read's barcode number (%lu) is greater than MAX_BARCODES (%i)\n",
@@ -405,21 +404,21 @@ void write_read(writer writer, bam1_t* bam, read_meta meta, float mean_q, char* 
         // sample has tab pre-added in init
         char* s = writer->sample == NULL ? "" : writer->sample;
         fprintf(writer->perread, "%s\t%s\t%s\t%s%zu\t%.2f\t%lu\t%lu\t%s\n",
-            bam_get_qname(bam), fname, meta->runid, s, (size_t)bam->core.l_qseq,
-                mean_q, meta->channel, meta->read_number, meta->start_time);
+            bam_get_qname(read->bam), fname, read->meta->runid, s, (size_t)read->bam->core.l_qseq,
+                read->meta->mean_q, read->meta->channel, read->meta->read_number, read->meta->start_time);
     }
 
     if (writer->output == NULL) {
         // all reads to stdout
         // Stats were initialize in init, no need to check if they exist
         if (writer->write_bam) {
-            _write_read_bam(writer, bam, writer->bam_files[0]);
+            _write_read_bam(writer, read->bam, writer->bam_files[0]);
         }
         else {
-            _write_read(writer, bam, meta, stdout);
+            _write_read(writer, read->bam, read->meta, stdout);
         }
-        add_length_count(writer->l_stats[0], bam->core.l_qseq);
-        add_qual_count(writer->q_stats[0], mean_q);
+        add_length_count(writer->l_stats[0], read->bam->core.l_qseq);
+        add_qual_count(writer->q_stats[0], read->meta->mean_q);
     }
     else {
         // demultiplexing reads
@@ -458,7 +457,7 @@ void write_read(writer writer, bam1_t* bam, read_meta meta, float mean_q, char* 
                         exit(1);
                     }
                 }
-                _write_read_bam(writer, bam, writer->bam_files[barcode]);
+                _write_read_bam(writer, read->bam, writer->bam_files[barcode]);
             }
             else {
                 // same again for fastq
@@ -468,7 +467,7 @@ void write_read(writer writer, bam1_t* bam, read_meta meta, float mean_q, char* 
                     writer->handles[barcode] = gzopen(filepath, "wb");
                     gzbuffer(writer->handles[barcode], GZBUFSIZE);
                 }
-                _write_read(writer, bam, meta, writer->handles[barcode]);
+                _write_read(writer, read->bam, read->meta, writer->handles[barcode]);
             }
             free(filepath);
             free(path);
@@ -479,8 +478,8 @@ void write_read(writer writer, bam1_t* bam, read_meta meta, float mean_q, char* 
             writer->l_stats[barcode] = create_length_stats();
             writer->q_stats[barcode] = create_qual_stats(QUAL_HIST_WIDTH);
         }
-        add_length_count(writer->l_stats[barcode], bam->core.l_qseq);
-        add_qual_count(writer->q_stats[barcode], mean_q);
+        add_length_count(writer->l_stats[barcode], read->bam->core.l_qseq);
+        add_qual_count(writer->q_stats[barcode], read->meta->mean_q);
         writer->reads_written[barcode]++;
     }
 }

@@ -1,0 +1,4 @@
+@read1 runid=run-123 basecall_model_version_id=model@v1 barcode=barcode07 start_time=2023-01-01T00:00:00Z parent_read_id=pr-001 read=7 ch=42 flow_cell_id=FLO-MIN114 basecall_gpu=gpu0 barcode_alias=alias1 unknown=foo
+ACGTACGT
++
+########
