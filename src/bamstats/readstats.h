@@ -6,7 +6,7 @@
 
 #include "args.h"
 #include "../bamcoverage/coverage.h"
-#include "../stats.h"
+#include "../fc_stats_engine.h"
 #include "../kh_counter.h"
 #include "../common.h"
 
@@ -47,16 +47,7 @@ void destroy_flag_stats(flag_stats* stats);
  *  @param tag_value associated with tag_name.
  *  @param flag_counts flag_stats pointer.
  *  @param unmapped bool include unmapped reads in output.
- *  @param length_stats read_stats* for accumulating read length information.
- *  @param qual_stats read_stats* for accumulating read quality information.
- *  @param acc_stats read_stats* for accumulating read alignment accuracy information.
- *  @param cov_stats read_stats* for accumulating read alignment coverage information.
- *  @param length_stats_unmapped read_stats* for accumulating read length information for unmapped reads.
- *  @param qual_stats_unmapped read_stats* for accumulating read quality information for unmapped reads.
- *  @param polya_stats read_stats* for accumulating polyA tail length information.
- *  @param polya_cover minimum reference coverage for polyA tail length to be considered.
- *  @param polya_qual minimum mean quality for polyA tail length to be considered.
- *  @param polya_rev whether to allow reverse alignments for polyA tail length.
+ *  @param stats_engine fc_stats_engine pointer for accumulating read metrics.
  *  @param runids kh_counter_t* for accumulating runid information.
  *  @param basecallers kh_counter_t* for accumulating basecaller information.
  *  @param force_recalc_quality whether to recalculate mean quality from phred scores.
@@ -69,9 +60,7 @@ void process_bams(
     const char *chr, hts_pos_t start, hts_pos_t end,
     const char *read_group, const char tag_name[2], const int tag_value,
     flag_stats *flag_counts, bool unmapped,
-    read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
-    read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped,
-    read_stats* polya_stats, float polya_cover, float polya_qual, bool polya_rev,
+    fc_stats_engine* stats_engine,
     kh_counter_t* runids, kh_counter_t* basecallers, bool force_recalc_quality, cov_writer coverage);
 
 #endif

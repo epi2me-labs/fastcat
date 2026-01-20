@@ -14,6 +14,7 @@
 #include "common.h"
 #include "../bamcoverage/coverage.h"
 #include "readstats.h"
+#include "../fc_stats_engine.h"
 #include "regiter.h"
 
 
@@ -167,15 +168,13 @@ int main(int argc, char *argv[]) {
 
     kh_counter_t *run_ids = kh_counter_init();
     kh_counter_t *basecallers = kh_counter_init();
-    read_stats* length_stats = create_length_stats();
-    read_stats* qual_stats = create_qual_stats(QUAL_HIST_WIDTH);
-    read_stats* acc_stats = create_qual_stats(ACC_HIST_WIDTH);
-    read_stats* cov_stats = create_qual_stats(COV_HIST_WIDTH);
-    read_stats* polya_stats = args.poly_a ? create_length_stats() : NULL;
-
-    // Prepare also for the unmapped reads
-    read_stats* length_stats_unmapped = create_length_stats();
-    read_stats* qual_stats_unmapped = create_qual_stats(QUAL_HIST_WIDTH);
+    fc_stats_engine* stats_engine = fc_stats_engine_create(
+        args.unmapped,
+        true,
+        args.poly_a,
+        args.poly_a_cover,
+        args.poly_a_qual,
+        args.poly_a_rev);
 
     if (args.region == NULL && args.bed == NULL) {
         // iterate over the entire file
@@ -184,9 +183,7 @@ int main(int argc, char *argv[]) {
             NULL, 0, INT64_MAX,
             args.read_group, args.tag_name, args.tag_value,
             flag_counts, args.unmapped,
-            length_stats, qual_stats, acc_stats, cov_stats,
-            length_stats_unmapped, qual_stats_unmapped,
-            polya_stats, args.poly_a_cover, args.poly_a_qual, args.poly_a_rev,
+            stats_engine,
             run_ids, basecallers, args.force_recalc_qual, coverage);
 
         // write flagstat counts if requested
@@ -222,9 +219,7 @@ int main(int argc, char *argv[]) {
                 rit.chr, rit.start, rit.end,
                 args.read_group, args.tag_name, args.tag_value,
                 flag_counts, args.unmapped,
-                length_stats, qual_stats, acc_stats, cov_stats,
-                length_stats_unmapped, qual_stats_unmapped,
-                polya_stats, args.poly_a_cover, args.poly_a_qual, args.poly_a_rev,
+                stats_engine,
                 run_ids, basecallers, args.force_recalc_qual, coverage);
             if (flag_counts != NULL) {
                 // TODO: regions might not be whole chromosomes...
@@ -237,19 +232,23 @@ int main(int argc, char *argv[]) {
         hts_idx_destroy(idx);
     }
 
-    write_hist_stats(length_stats, args.histograms, "length.hist");
-    write_hist_stats(qual_stats, args.histograms, "quality.hist");
-    write_hist_stats(acc_stats, args.histograms, "accuracy.hist");
-    write_hist_stats(cov_stats, args.histograms, "coverage.hist");
-    if (polya_stats != NULL) {
-        write_hist_stats(polya_stats, args.histograms, "polya.hist");
+    write_hist_stats(stats_engine->length_stats, args.histograms, "length.hist");
+    write_hist_stats(stats_engine->qual_stats, args.histograms, "quality.hist");
+    if (stats_engine->acc_stats) {
+        write_hist_stats(stats_engine->acc_stats, args.histograms, "accuracy.hist");
+    }
+    if (stats_engine->cov_stats) {
+        write_hist_stats(stats_engine->cov_stats, args.histograms, "coverage.hist");
+    }
+    if (stats_engine->polya_stats != NULL) {
+        write_hist_stats(stats_engine->polya_stats, args.histograms, "polya.hist");
     } 
 
     // Save also histograms for the unmapped reads if requested
     // and if the user is not asking for a region
-    if (args.unmapped && args.region == NULL){
-        write_hist_stats(length_stats_unmapped, args.histograms, "length.unmap.hist");
-        write_hist_stats(qual_stats_unmapped, args.histograms, "quality.unmap.hist");
+    if (args.unmapped && args.region == NULL && stats_engine->length_stats_unmapped) {
+        write_hist_stats(stats_engine->length_stats_unmapped, args.histograms, "length.unmap.hist");
+        write_hist_stats(stats_engine->qual_stats_unmapped, args.histograms, "quality.unmap.hist");
     }
 
     // write runids summary
@@ -261,13 +260,7 @@ int main(int argc, char *argv[]) {
         write_counter(args.basecallers, basecallers, args.sample, args.bam, "basecaller");
     } 
 
-    destroy_length_stats(length_stats);
-    destroy_qual_stats(qual_stats);
-    destroy_qual_stats(acc_stats);
-    destroy_qual_stats(cov_stats);
-    destroy_length_stats(length_stats_unmapped);
-    destroy_qual_stats(qual_stats_unmapped);
-    destroy_length_stats(polya_stats);
+    fc_stats_engine_destroy(stats_engine);
     kh_counter_destroy(basecallers);
     kh_counter_destroy(run_ids);
 
