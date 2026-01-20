@@ -6,7 +6,7 @@
 
 #include <htslib/sam.h> // HTSlib for BAM output
 
-#include "../stats.h"
+#include "../fc_stats_engine.h"
 #include "../fastqcomments.h"
 #include "../fc_read.h"
 #include "parsing.h"
@@ -22,8 +22,7 @@ typedef struct {
     size_t* reads_written;
     size_t* file_index;
     uint64_t* failures;
-    read_stats** l_stats;
-    read_stats** q_stats;
+    fc_stats_engine** stats_engines;
     FILE* perread;
     FILE* perfile;
     FILE* runids;

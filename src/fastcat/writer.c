@@ -7,7 +7,6 @@
 
 #include "writer.h"
 #include "common.h"
-#include "stats.h"
 #include "../fastqcomments.h"
 #include "../version.h"
 
@@ -17,7 +16,6 @@
 #define GZBUFSIZE 131072  // 128 kB
 
 typedef int (*sink_write_fn)(void *handle, const char *fmt, ...);
-
 
 static int fprintf_bridge(void *h, const char *fmt, ...) {
     va_list ap;
@@ -96,14 +94,12 @@ writer initialize_writer(
      writer->histograms = strip_path(histograms);
 
      writer->nreads = calloc(MAX_BARCODES, sizeof(size_t));
-     writer->l_stats = calloc(MAX_BARCODES, sizeof(read_stats*));
-     writer->q_stats = calloc(MAX_BARCODES, sizeof(read_stats*));
+     writer->stats_engines = calloc(MAX_BARCODES, sizeof(fc_stats_engine*));
      // we want a stats accumulator (when not demultiplexing)
      // This also ensures we write out an empty histogram file when
      // no reads are processed. (To go with our other empty summary files)
      if (writer->output == NULL) {
-         writer->l_stats[0] = create_length_stats();
-         writer->q_stats[0] = create_qual_stats(QUAL_HIST_WIDTH);
+         writer->stats_engines[0] = fc_stats_engine_create(true, false, false, 0.0f, 0.0f, false);
      }
      writer->reheader = reheader;
      writer->write_bam = write_bam;
@@ -220,14 +216,12 @@ void destroy_writer(writer writer) {
             }
         }
 
-        if(writer->l_stats[i] != NULL) {
-            _write_stats(writer->histograms, writer->output, i, writer->l_stats[i], "length");
-            destroy_length_stats(writer->l_stats[i]);
-        }
-
-        if(writer->q_stats[i] != NULL) {
-            _write_stats(writer->histograms, writer->output, i, writer->q_stats[i], "quality");
-            destroy_qual_stats(writer->q_stats[i]);
+        if (writer->stats_engines[i] != NULL) {
+            _write_stats(writer->histograms, writer->output, i,
+                writer->stats_engines[i]->length_stats_unmapped, "length");
+            _write_stats(writer->histograms, writer->output, i,
+                writer->stats_engines[i]->qual_stats_unmapped, "quality");
+            fc_stats_engine_destroy(writer->stats_engines[i]);
         }
     }
     if (writer->write_bam) { // must be after file closing
@@ -249,8 +243,7 @@ void destroy_writer(writer writer) {
         free(writer->handles);
     }
     free(writer->nreads);
-    free(writer->l_stats);
-    free(writer->q_stats);
+    free(writer->stats_engines);
     free(writer->reads_written);
     free(writer->file_index);
     free(writer->failures);
@@ -417,8 +410,7 @@ void write_read(writer writer, fc_read* read, char* fname) {
         else {
             _write_read(writer, read->bam, read->meta, stdout);
         }
-        add_length_count(writer->l_stats[0], read->bam->core.l_qseq);
-        add_qual_count(writer->q_stats[0], read->meta->mean_q);
+        fc_stats_engine_add_read(writer->stats_engines[0], read, NULL, NULL);
     }
     else {
         // demultiplexing reads
@@ -474,12 +466,10 @@ void write_read(writer writer, fc_read* read, char* fname) {
         }
 
         // handle stats
-        if (writer->l_stats[barcode] == NULL) {
-            writer->l_stats[barcode] = create_length_stats();
-            writer->q_stats[barcode] = create_qual_stats(QUAL_HIST_WIDTH);
+        if (writer->stats_engines[barcode] == NULL) {
+            writer->stats_engines[barcode] = fc_stats_engine_create(true, false, false, 0.0f, 0.0f, false);
         }
-        add_length_count(writer->l_stats[barcode], read->bam->core.l_qseq);
-        add_qual_count(writer->q_stats[barcode], read->meta->mean_q);
+        fc_stats_engine_add_read(writer->stats_engines[barcode], read, NULL, NULL);
         writer->reads_written[barcode]++;
     }
 }

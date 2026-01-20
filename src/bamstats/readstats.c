@@ -16,7 +16,6 @@
 
 #include "../common.h"
 #include "../bamcoverage/coverage.h"
-#include "../stats.h"
 #include "../kh_counter.h"
 #include "readstats.h"
 #include "args.h"
@@ -69,62 +68,6 @@ void destroy_flag_stats(flag_stats* stats) {
     free(stats);
 }
 
-// Count number of each cigar operation in an alignment
-inline size_t* create_cigar_stats (bam1_t* b) {
-	static const size_t NCODES = 10;
-    size_t* stats = xalloc(NCODES, sizeof(size_t*), "read stats");
-    uint32_t *cigar = bam_get_cigar(b);
-    for (size_t i = 0; i < b->core.n_cigar; ++i){
-        uint32_t op = bam_cigar_op(cigar[i]);
-        uint32_t len = bam_cigar_oplen(cigar[i]);
-		stats[op] += len;
-	}
-	return stats;
-}
-
-// Find the first aligned position of the query sequence
-inline size_t get_query_start (bam1_t* b) {
-    uint32_t start_offset = 0;
-    uint32_t qlen = b->core.l_qseq;
-    uint32_t *cigar = bam_get_cigar(b);
-    for (size_t i = 0; i < b->core.n_cigar; ++i){
-        uint32_t op = bam_cigar_op(cigar[i]);
-        if (op == BAM_CHARD_CLIP) {
-            if ((start_offset != 0) && (start_offset != qlen)) {
-                fprintf(stderr, "Invalid clipping in cigar string.\n");
-			    exit(EXIT_FAILURE);
-            }
-		} else if (op == BAM_CSOFT_CLIP) {
-            start_offset += bam_cigar_oplen(cigar[i]);
-        } else {
-            break;
-		}
-	}
-    return start_offset;
-}
-
-// Find the last aligned position of the query sequence
-inline size_t get_query_end(bam1_t* b) {
-    // TODO: assume l_qseq correct
-    uint32_t end_offset = b->core.l_qseq;
-    uint32_t qlen = end_offset;
-    uint32_t *cigar = bam_get_cigar(b);
-    for (int i=b->core.n_cigar - 1; i >= 0; --i){
-        uint32_t op = bam_cigar_op(cigar[i]);
-        if (op == BAM_CHARD_CLIP) {
-            if (end_offset != qlen) {
-                fprintf(stderr, "Invalid clipping in cigar string.\n");
-			    exit(EXIT_FAILURE);
-            }
-		} else if (op == BAM_CSOFT_CLIP) {
-            end_offset -= bam_cigar_oplen(cigar[i]);
-        } else {
-            break;
-		}
-	}
-    return end_offset;
-}
-
 
 static inline void process_flagstat_counts(const bam1_t* b, size_t* counts, const int duplex_code ) {
     counts[0] += 1;
@@ -141,9 +84,7 @@ void process_bams(
         const char *chr, hts_pos_t start, hts_pos_t end,
         const char *read_group, const char tag_name[2], const int tag_value,
         flag_stats *flag_counts, bool unmapped,
-        read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
-        read_stats* length_stats_unmapped, read_stats* qual_stats_unmapped,
-        read_stats* polya_stats, float polya_cover, float polya_qual, bool polya_rev,
+        fc_stats_engine* stats_engine,
         kh_counter_t* runids, kh_counter_t* basecallers, bool force_recalc_qual, cov_writer coverage) {
     if (chr != NULL) {
         if (strcmp(chr, "*") == 0) {
@@ -185,51 +126,34 @@ void process_bams(
         kh_counter_increment(runids, runid);
         kh_counter_increment(basecallers, basecaller);
 
-        // write a record for unmapped/unplaced
-        if (fc_is_unmapped(b)) {
+        char* qname = bam_get_qname(b);
+        fc_stats_aligned metrics = {0};
+        fc_stats_read_kind kind = fc_stats_engine_add_read(stats_engine, fr, hdr, &metrics);
+        if (kind == FC_STATS_UNMAPPED) {
             if (unmapped) {
                 // an unmapped read can still have a RNAME and POS, but we
                 // ignore that here, because its not a thing we care about
-                char* qname = bam_get_qname(b);
                 uint32_t read_length = b->core.l_qseq;
                 float mean_quality = fr->meta->mean_q;
-                if (sample == NULL) {
-                    fprintf(stdout,
-                        "%s\t%s\t*\tnan\tnan\t" \
-                        "nan\tnan\tnan\tnan\t" \
-                        "0\t*\t0\t" \
-                        "%u\t%.2f\t%s\t" \
-                        "0\t0\t0\t0\tnan\tnan\t%d\n",
-                        qname, runid, //chr, coverage, ref_cover,
-                        //qstart, qend, rstart, rend,
-                        //aligned_ref_len, direction, length,
-                        read_length, mean_quality, start_time,
-                        //match, ins, delt, sub, iden, acc
-                        fr->meta->duplex_code
-                    );
-                } else {
-                    fprintf(stdout,
-                        "%s\t%s\t%s\t*\tnan\tnan\t" \
-                        "nan\tnan\tnan\tnan\t" \
-                        "0\t*\t0\t" \
-                        "%u\t%.2f\t%s\t" \
-                        "0\t0\t0\t0\tnan\tnan\t%d\n",
-                        qname, runid, sample, //chr, coverage, ref_cover,
-                        //qstart, qend, rstart, rend,
-                        //aligned_ref_len, direction, length,
-                        read_length, mean_quality, start_time,
-                        //match, ins, delt, sub, iden, acc
-                        fr->meta->duplex_code
-                    );
-                }
+                const char *sample_field = sample ? sample : "";
+                const char *sample_tab = sample ? "\t" : "";
+                fprintf(stdout,
+                    "%s\t%s\t%s%s*\tnan\tnan\t" \
+                    "nan\tnan\tnan\tnan\t" \
+                    "0\t*\t0\t" \
+                    "%u\t%.2f\t%s\t" \
+                    "0\t0\t0\t0\tnan\tnan\t%d\n",
+                    qname, runid, sample_field, sample_tab, //chr, coverage, ref_cover,
+                    //qstart, qend, rstart, rend,
+                    //aligned_ref_len, direction, length,
+                    read_length, mean_quality, start_time,
+                    //match, ins, delt, sub, iden, acc
+                    fr->meta->duplex_code
+                );
                 // add to flagstat counts if required
                 if (flag_counts != NULL) {
                     process_flagstat_counts(b, flag_counts->unmapped, fr->meta->duplex_code);
                 }
-
-                // accumulate stats into histogram
-                add_length_count(length_stats_unmapped, read_length);
-                add_qual_count(qual_stats_unmapped, mean_quality);
             }
             goto FINISH_READ;
         }
@@ -243,97 +167,28 @@ void process_bams(
             process_flagstat_counts(b, counts, fr->meta->duplex_code);
         }
 
-        // only take "good" primary alignments for further processing
-        if (!fc_is_primary_qc_pass(b)) {
+        if (kind == FC_STATS_SKIP) {
             goto FINISH_READ;
         }
-        char* qname = bam_get_qname(b);
 
-        size_t* stats = create_cigar_stats(b);
-        size_t match, ins, delt;
-        // some aligners like to get fancy
-        match = stats[BAM_CMATCH] + stats[BAM_CEQUAL] + stats[BAM_CDIFF];
-        ins = stats[BAM_CINS];
-        delt = stats[BAM_CDEL];
-        size_t sub = fr->meta->edit_distance - ins - delt;
-        size_t length = match + ins + delt;
-        float iden = 100 * ((float)(match - sub)) / match;
-        float acc = 100 - 100 * ((float)(fr->meta->edit_distance)) / length;
-        // some things we've seen go wrong
-        // explode now because there is almost certainly something wrong with the tags
-        // and calling add_qual_count with a value less than zero will cause a segfault
-        if (iden < 0.0 || acc < 0.0 || (size_t)fr->meta->edit_distance > length) {
-            fprintf(stderr, "Read '%s' appears to contain implausible alignment information\n", qname);
-            exit(EXIT_FAILURE);
-        }
-        // we only deal in primary/soft-clipped alignments so length
-        // of qseq member is the length of the intact query sequence.
-        uint32_t read_length = b->core.l_qseq;
-        size_t qstart = get_query_start(b);
-        size_t qend = get_query_end(b);
-        float mean_quality = fr->meta->mean_q;
-
-        float coverage = 100 * ((float)(qend - qstart)) / read_length;
-        size_t rstart = b->core.pos;
-        size_t rend = bam_endpos(b);
-        size_t aligned_ref_len = rend - rstart;
-        size_t ref_length = sam_hdr_tid2len(hdr, b->core.tid);
-        float ref_cover = 100 * ((float)(aligned_ref_len)) / ref_length;
-        char direction = "+-"[bam_is_rev(b)];
-
-        // accumulate stats into histogram
-        add_length_count(length_stats, read_length);
-        add_qual_count(qual_stats, mean_quality);
-        add_qual_count(acc_stats, acc);
-        add_qual_count(cov_stats, coverage);
-
-        // get poly-A tail length. For now we require:
-        //    i) "good" coverage on reference, i.e. "full length"
-        //   ii) read is sense strand, i.e. fwd alignment
-        //  iii) "good" mean quality
-        //   iv) no split reads
-        if (polya_stats != NULL) {
-            int polya_len = -1;
-            if ((ref_cover >= polya_cover)
-                    && (!bam_is_rev(b) || polya_rev)
-                    && mean_quality >= polya_qual) {
-                bool has_parent_read = (fr->meta->parent_read != NULL
-                    && strlen(fr->meta->parent_read) > 0);
-                if (!has_parent_read && fr->meta->poly_tail_length >= 0) {
-                    polya_len = fr->meta->poly_tail_length;
-                }
-            }
-            if (polya_len >= 0) {
-                add_length_count(polya_stats, polya_len);
-            }
-        }
-
-        if (sample == NULL) {
+        {
+            const char *ref = (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid);
+            const char *sample_field = sample ? sample : "";
+            const char *sample_tab = sample ? "\t" : "";
             fprintf(stdout,
-                "%s\t%s\t%s\t" \
+                "%s\t%s\t%s%s%s\t" \
                 "%.4f\t%.4f\t" \
                 "%lu\t%lu\t%lu\t%lu\t" \
                 "%lu\t%c\t%lu\t%u\t%.2f\t%s\t" \
                 "%lu\t%lu\t%lu\t%lu\t%.2f\t%.2f\t%d\n",
-                qname, runid, (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid),
-                coverage, ref_cover,
-                qstart, qend, rstart, rend,
-                aligned_ref_len, direction, length, read_length, mean_quality, start_time,
-                match, ins, delt, sub, iden, acc, fr->meta->duplex_code);
-        } else {
-            fprintf(stdout,
-                "%s\t%s\t%s\t%s\t" \
-                "%.4f\t%.4f\t" \
-                "%lu\t%lu\t%lu\t%lu\t" \
-                "%lu\t%c\t%lu\t%u\t%.2f\t%s\t" \
-                "%lu\t%lu\t%lu\t%lu\t%.2f\t%.2f\t%d\n",
-                qname, runid, sample, (chr != NULL) ? chr : sam_hdr_tid2name(hdr, b->core.tid),
-                coverage, ref_cover,
-                qstart, qend, rstart, rend,
-                aligned_ref_len, direction, length, read_length, mean_quality, start_time,
-                match, ins, delt, sub, iden, acc, fr->meta->duplex_code);
+                qname, runid, sample_field, sample_tab, ref,
+                metrics.coverage, metrics.ref_cover,
+                metrics.qstart, metrics.qend, metrics.rstart, metrics.rend,
+                metrics.aligned_ref_len, metrics.direction, metrics.length,
+                metrics.read_length, metrics.mean_quality, start_time,
+                metrics.match, metrics.ins, metrics.delt, metrics.sub,
+                metrics.iden, metrics.acc, fr->meta->duplex_code);
         }
-		free(stats);
 
 FINISH_READ:
         runid = NULL;
