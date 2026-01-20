@@ -66,7 +66,7 @@ void fc_read_destroy(fc_read* r);
 
 // Construct read_meta from BAM aux tags, optionally preserving the original FASTQ comment.
 // Caller owns the returned read_meta and must destroy it.
-read_meta create_read_meta(const bam1_t *b, const bam_hdr_t *hdr, bool require_nm,
+read_meta create_read_meta(const bam1_t *b, const bam_hdr_t *hdr,
                            const kstring_t *orig_comment);
 
 #endif

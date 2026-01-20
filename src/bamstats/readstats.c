@@ -18,10 +18,11 @@
 #include "../bamcoverage/coverage.h"
 #include "../stats.h"
 #include "../kh_counter.h"
-#include "bamiter.h"
 #include "readstats.h"
 #include "args.h"
 #include "../fc_read.h"
+#include "../fc_bam_utils.h"
+#include "../fc_filter.h"
 
 #define bam1_seq(b) ((b)->data + (b)->core.n_cigar*4 + (b)->core.l_qname)
 #define bam1_seqi(s, i) (bam_seqi((s), (i)))
@@ -29,7 +30,6 @@
 #define bam_nt16_table seq_nt16_table
 
 
-static const int NOTPRIMARY = BAM_FSUPPLEMENTARY | BAM_FSECONDARY | BAM_FUNMAP;
 // counting alignment flags
 // total, primary, ..., unused
 static const size_t FLAG_MASK[8] = {
@@ -68,7 +68,6 @@ void destroy_flag_stats(flag_stats* stats) {
     free(stats->unmapped);
     free(stats);
 }
-
 
 // Count number of each cigar operation in an alignment
 inline size_t* create_cigar_stats (bam1_t* b) {
@@ -129,7 +128,7 @@ inline size_t get_query_end(bam1_t* b) {
 
 static inline void process_flagstat_counts(const bam1_t* b, size_t* counts, const int duplex_code ) {
     counts[0] += 1;
-    counts[1] += ((b->core.flag & (NOTPRIMARY)) == 0);
+    counts[1] += fc_is_primary(b);
     for (size_t i=2; i<6; ++i){
         counts[i] += ((b->core.flag & FLAG_MASK[i]) != 0);
     }
@@ -139,7 +138,7 @@ static inline void process_flagstat_counts(const bam1_t* b, size_t* counts, cons
 // Do all-the-things
 void process_bams(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr, const char *sample,
-        const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
+        const char *chr, hts_pos_t start, hts_pos_t end,
         const char *read_group, const char tag_name[2], const int tag_value,
         flag_stats *flag_counts, bool unmapped,
         read_stats* length_stats, read_stats* qual_stats, read_stats* acc_stats, read_stats* cov_stats,
@@ -157,8 +156,7 @@ void process_bams(
     // setup bam reading - reuse our pileup structure, but actually just need iterator
     mplp_data* bam = create_bam_iter_data(
         fp, idx, hdr,
-        chr, start, end, overlap_start,
-        read_group, tag_name, tag_value);
+        chr, start, end);
     if (bam == NULL) return;
 
     int res;
@@ -167,7 +165,13 @@ void process_bams(
     char *basecaller = NULL;
     char *start_time = NULL;
 
-    while ((res = read_bam(bam, b) >= 0)) {
+    while ((res = read_bam(bam, b)) >= 0) {
+        if (!fc_filter_int_tag(b, tag_name, tag_value, false)) {
+            continue;
+        }
+        if (!fc_filter_rg(b, read_group, false)) {
+            continue;
+        }
         // despatch read to coverage calculations
         // NOTE: the writer has its own filters on reads to accept (default 1796: excludes unmapped, secondary, dup, qcfail)
         if (coverage != NULL) {
@@ -182,7 +186,7 @@ void process_bams(
         kh_counter_increment(basecallers, basecaller);
 
         // write a record for unmapped/unplaced
-        if (b->core.flag & BAM_FUNMAP) {
+        if (fc_is_unmapped(b)) {
             if (unmapped) {
                 // an unmapped read can still have a RNAME and POS, but we
                 // ignore that here, because its not a thing we care about
@@ -240,7 +244,7 @@ void process_bams(
         }
 
         // only take "good" primary alignments for further processing
-        if (b->core.flag & (NOTPRIMARY | BAM_FQCFAIL | BAM_FDUP)) {
+        if (!fc_is_primary_qc_pass(b)) {
             goto FINISH_READ;
         }
         char* qname = bam_get_qname(b);

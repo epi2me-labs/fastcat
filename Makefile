@@ -18,6 +18,7 @@ VALGRIND ?= valgrind
 DEFLATEVER=1.24
 
 CC ?= gcc
+AR ?= ar
 STATIC_HTSLIB ?= htslib/libhts.a
 HTSLIB_PATCH ?= patches/htslib-aux-parse.patch
 HTSLIB_PATCH_STAMP ?= .fastcat_patch_applied
@@ -73,14 +74,18 @@ test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_f
 
 .PHONY:
 clean:
-	rm -rf fastcat bamstats bamindex src/fastcat/*.o src/fastlint/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
+	rm -rf fastcat bamstats bamindex libfastcatcore.a src/fastcat/*.o src/fastlint/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
 
 .PHONY: clean_htslib
 clean_htslib:
 	cd htslib && make clean
 
+# core library
+CORE_OBJS = src/common.o src/stats.o src/fastqcomments.o src/fc_read.o src/fc_filter.o src/fc_bam_utils.o src/fc_dust.o src/sdust/sdust.o src/sdust/kalloc.o src/kh_counter.o src/regiter.o
+CORE_LIB = libfastcatcore.a
+
 # unit tests
-UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_fastqcomments.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_readstats.c test/unit/test_bam_utils.c test/unity/unity.c
+UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_readstats.c test/unit/test_bam_utils.c test/unity/unity.c
 UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
 
@@ -92,7 +97,7 @@ test/unity/%.o: test/unity/%.c
 	$(CC) -Itest/unity $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
 
-test/unit/unit_tests: $(UNIT_TEST_OBJS) src/common.o src/stats.o src/fastqcomments.o src/regiter.o src/fc_read.o $(STATIC_HTSLIB)
+test/unit/unit_tests: $(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -164,11 +169,15 @@ src/%.o: src/%.c zlib-ng/zlib.h
 src/fastqcomments.o: | $(HTSLIB_PATCH_STAMP)
 src/fc_read.o: | $(HTSLIB_PATCH_STAMP)
 
+$(CORE_LIB): $(CORE_OBJS) Makefile
+	rm -f $@
+	$(AR) rcs $@ $(CORE_OBJS)
+
 -include $(wildcard src/*.d)
 -include $(wildcard test/unit/*.d)
 -include $(wildcard test/unity/*.d)
 
-fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o src/sdust/sdust.o src/sdust/kalloc.o src/fastqcomments.o src/common.o src/stats.o src/kh_counter.o src/fc_read.o $(STATIC_HTSLIB) zlib-ng/libz.a
+fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o $(CORE_LIB) $(STATIC_HTSLIB) zlib-ng/libz.a
 	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -182,7 +191,7 @@ fastlint: src/version.o src/fastlint/main.o src/fastlint/args.o src/sdust/sdust.
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-bamstats: src/version.o src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamstats/bamiter.o src/fastqcomments.o src/common.o src/regiter.o src/stats.o src/kh_counter.o src/bamcoverage/coverage.o src/fc_read.o $(STATIC_HTSLIB)
+bamstats: src/version.o src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamcoverage/coverage.o $(CORE_LIB) $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \

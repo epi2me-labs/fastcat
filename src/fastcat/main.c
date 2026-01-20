@@ -16,10 +16,10 @@ KSEQ_INIT(gzFile, gzread)
 #include "../common.h"
 #include "../fastqcomments.h"
 #include "../kh_counter.h"
-#include "../sdust/sdust.h"
 #include "args.h"
 #include "parsing.h"
 #include "writer.h"
+#include "../fc_filter.h"
 #include "../fc_read.h"
 
 
@@ -88,21 +88,6 @@ int process_dir(const char *name, writer writer, arguments_t *args, int recurse)
 }
 
 
-double dust_fraction(uint8_t *seq, size_t len, int t, int w) {
-    if (len == 0) return 0.0;
-    uint64_t *r;
-    int n;
-    r = sdust(0, (uint8_t*) seq, -1, t, w, &n);
-    int masked_bases = 0;
-    for (int i = 0; i < n; ++i) {
-        int start = (int)(r[i] >> 32);
-        int end = (int)r[i];
-        masked_bases += (end - start);
-    }
-    return (double) masked_bases / len;
-}
-
-
 int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
     int status = 0;
     struct stat finfo;
@@ -136,6 +121,11 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
     fp = gzopen(fname, "r");
     seq = kseq_init(fp);
     bool truncated = false;  // track if last read record was truncated
+    fc_filter_opts filter_opts = {
+        .min_length = args->min_length,
+        .max_length = args->max_length,
+        .min_qscore = args->min_qscore
+    };
     status = 0;
     while ((status = kseq_read(seq)) != -1) {  // EOF - normal exit
         if (status == -2) {  // truncated quality string
@@ -160,11 +150,12 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
         }
 
         // accumulate stats only for reads within length and quality thresholds
-        if (seq->seq.l > args->max_length) {
+        fc_filter_result filter = fc_filter_length(seq->seq.l, &filter_opts);
+        if (filter == FC_FILTER_TOO_LONG) {
             failures[R_TOO_LONG]++;
             continue;
         }
-        if (seq->seq.l < args->min_length) {
+        if (filter == FC_FILTER_TOO_SHORT) {
             failures[R_TOO_SHORT]++;
             continue;
         }
@@ -172,15 +163,16 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
         // build fc_read now as it handles mean_q from meta or recomputing
         fc_read* fr = fc_read_from_kseq(seq);
         float mean_q = fr->meta->mean_q;
-        if (mean_q < args->min_qscore) {
+        filter = fc_filter_quality(mean_q, &filter_opts);
+        if (filter == FC_FILTER_LOW_QUALITY) {
             fc_read_destroy(fr);
             failures[R_LOW_QUALITY]++;
             continue;
         }
 
         if (args->dust) {
-            double masked_fraction = dust_fraction((uint8_t*)seq->seq.s, seq->seq.l, args->dust_t, args->dust_w);
-            if (masked_fraction > args->max_dust) {
+            if (!fc_filter_dust((uint8_t*)seq->seq.s, seq->seq.l,
+                    args->dust_t, args->dust_w, args->max_dust)) {
                 failures[R_DUST_MASKED]++;
                 continue;
             }
