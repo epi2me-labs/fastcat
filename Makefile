@@ -208,7 +208,7 @@ bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamind
 # fastcat tests
 
 .PHONY:
-test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip
+test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters
 
 .PHONY: mem_check_fastcat
 mem_check_fastcat: fastcat
@@ -250,12 +250,23 @@ test_fastcat_reheader_roundtrip: fastcat samtools
 	$(PEPPER) ./fastcat test/test-tmp-fc-reheader.fastq --histograms test/test-tmp-fc-reheader-reheader -B | ./samtools view > test/test-tmp-fc-reheader-reheader.sam && \
 	diff test/test-tmp-fc-reheader-orig.sam test/test-tmp-fc-reheader-reheader.sam
 
+.PHONY: test_fastcat_filters
+test_fastcat_filters: fastcat
+	rm -rf test/test-tmp-fc-filters
+	mkdir test/test-tmp-fc-filters && \
+	$(PEPPER) ./fastcat test/filtering/fastcat_filters.fastq -a 5 -b 8 -q 20 --histograms test/test-tmp-fc-filters/hist > test/test-tmp-fc-filters/out.fastq && \
+	grep -q "^@read_ok" test/test-tmp-fc-filters/out.fastq && \
+	! grep -q "^@read_short" test/test-tmp-fc-filters/out.fastq && \
+	! grep -q "^@read_long" test/test-tmp-fc-filters/out.fastq && \
+	! grep -q "^@read_lowq" test/test-tmp-fc-filters/out.fastq
+	rm -r test/test-tmp-fc-filters
+
 
 ###
 # bamstats tests
 
 .PHONY: 
-test_bamstats: test_bamstats_NM test_bamstats_polya mem_check_bamstats
+test_bamstats: test_bamstats_NM test_bamstats_polya test_bamstats_filters mem_check_bamstats
 
 .PHONY: test_bamstats_NM
 test_bamstats_NM: bamstats
@@ -275,6 +286,22 @@ test_bamstats_polya: bamstats
 	$(PEPPER) ../../bamstats ../bamstats/RCS-100A.bam --poly_a > /dev/null && \
 	diff bamstats-histograms/polya.hist ../bamstats/RCS-100A.bam.polya.hist
 	rm -r test/test-tmp-bs-pa
+
+.PHONY: test_bamstats_filters
+test_bamstats_filters: bamstats
+	rm -rf test/test-tmp-bs-tag-rg
+	mkdir test/test-tmp-bs-tag-rg && \
+	cd test/test-tmp-bs-tag-rg && \
+	$(PEPPER) ../../bamstats ../filtering/bamstats_filters.sam --tag_name HP --tag_value 1 --histograms hist_tag > out_tag.tsv && \
+	grep -q "^read1" out_tag.tsv && \
+	! grep -q "^read2" out_tag.tsv && \
+	$(PEPPER) ../../bamstats ../filtering/bamstats_filters.sam --read_group rg2 --histograms hist_rg > out_rg.tsv && \
+	grep -q "^read2" out_rg.tsv && \
+	! grep -q "^read1" out_rg.tsv && \
+	$(PEPPER) ../../bamstats ../filtering/bamstats_filters.sam --tag_name HP --tag_value 1 --read_group rg1 --histograms hist_both > out_both.tsv && \
+	grep -q "^read1" out_both.tsv && \
+	! grep -q "^read2" out_both.tsv
+	rm -r test/test-tmp-bs-tag-rg
 
 .PHONY:
 mem_check_bamstats: bamstats

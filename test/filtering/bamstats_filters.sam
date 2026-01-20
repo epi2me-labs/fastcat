@@ -1,0 +1,6 @@
+@HD	VN:1.6	SO:unknown
+@SQ	SN:chr1	LN:100
+@RG	ID:rg1
+@RG	ID:rg2
+read1	0	chr1	1	60	10M	*	0	0	ACGTACGTAC	FFFFFFFFFF	RG:Z:rg1	HP:i:1	NM:i:0
+read2	0	chr1	5	60	10M	*	0	0	TTTTTTTTTT	FFFFFFFFFF	RG:Z:rg2	HP:i:2	NM:i:1

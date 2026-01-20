@@ -1,0 +1,16 @@
+@read_short
+ACGT
++
+IIII
+@read_long
+ACGTACGTA
++
+IIIIIIIII
+@read_lowq
+ACGTAC
++
+!!!!!!
+@read_ok
+ACGTAC
++
+555555
