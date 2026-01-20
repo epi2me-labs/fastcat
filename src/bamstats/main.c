@@ -181,7 +181,7 @@ int main(int argc, char *argv[]) {
         // iterate over the entire file
         process_bams(
             fp, NULL, hdr, args.sample,
-            NULL, 0, INT64_MAX, true,
+            NULL, 0, INT64_MAX,
             args.read_group, args.tag_name, args.tag_value,
             flag_counts, args.unmapped,
             length_stats, qual_stats, acc_stats, cov_stats,
@@ -219,7 +219,7 @@ int main(int argc, char *argv[]) {
 
             process_bams(
                 fp, idx, hdr, args.sample,
-                rit.chr, rit.start, rit.end, true,
+                rit.chr, rit.start, rit.end,
                 args.read_group, args.tag_name, args.tag_value,
                 flag_counts, args.unmapped,
                 length_stats, qual_stats, acc_stats, cov_stats,

@@ -1,11 +1,11 @@
+#include "fc_bam_utils.h"
+
 #include <ctype.h>
-#include <errno.h>
 #include <string.h>
 
-#include "bamiter.h"
 #include "common.h"
 
-/** Set up a bam file for reading (filtered) records.
+/** Set up a bam file for reading records.
  *  
  *  @param fp htsFile pointer
  *  @param idx hts_idx_t pointer
@@ -13,18 +13,12 @@
  *  @param chr bam target name.
  *  @param start start position of chr to consider.
  *  @param end end position of chr to consider.
- *  @param overlap_start whether reads overhanging start should be included.
- *  @param read_group by which to filter alignments.
- *  @param tag_name by which to filter alignments.
- *  @param tag_value associated with tag_name.
- *
  *  The return value can be freed with destroy_bam_iter_data.
  *
  */
 mplp_data *create_bam_iter_data(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
-        const char *chr, hts_pos_t start, hts_pos_t end, bool overlap_start,
-        const char *read_group, const char tag_name[2], const int tag_value) {
+        const char *chr, hts_pos_t start, hts_pos_t end) {
 
     mplp_data *data = xalloc(1, sizeof(mplp_data), "pileup init data");
 
@@ -47,11 +41,8 @@ mplp_data *create_bam_iter_data(
         data->iter = bam_itr_queryi(idx, mytid, start, end);
     }
 
-    // setup bam interator
+    // setup bam iterator
     data->fp = fp; data->idx = idx; data->hdr = hdr;
-    data->min_start = overlap_start ? -1 : start; // unmapped reads have pos -1
-    memcpy(data->tag_name, tag_name, 2); data->tag_value = tag_value;
-    data->min_mapQ = 0; data->read_group = read_group;
 
     return data;
 }
@@ -67,7 +58,7 @@ void destroy_bam_iter_data(mplp_data *data) {
 }
 
 
-/** Read a bam record.
+/** Read a bam record (unfiltered).
  *
  *  @param data an mplp_data encoding the bam file to read with filter options.
  *  @param b output pointer.
@@ -75,47 +66,8 @@ void destroy_bam_iter_data(mplp_data *data) {
  */
 int read_bam(void *data, bam1_t *b) {
     mplp_data *aux = (mplp_data*) data;
-    uint8_t *tag;
-    bool check_tag = (strcmp(aux->tag_name, "") != 0);
-    bool have_rg = (aux->read_group != NULL);
-    uint8_t *rg;
-    char *rg_val;
-    int ret;
-    while (1) {
-        ret = aux->iter ? sam_itr_next(aux->fp, aux->iter, b) : sam_read1(aux->fp, aux->hdr, b);
-        if (ret<0) break;
-        // only take primary alignments
-        //if (b->core.flag & (BAM_FUNMAP | BAM_FSECONDARY | BAM_FSUPPLEMENTARY | BAM_FQCFAIL | BAM_FDUP)) continue;
-        // maybe remove reads overlapping start
-        if (b->core.pos < aux->min_start) continue;
-        // filter by mapping quality
-        if ((int)b->core.qual < aux->min_mapQ) continue;
-        // filter by tag
-        if (check_tag) {
-            tag = bam_get_tag_caseinsensitive((const bam1_t*) b, aux->tag_name);
-            if (tag == NULL){ // tag isn't present or is currupt
-                if (aux->keep_missing) {
-                    break;
-                } else {
-                    continue;
-                }
-            }
-            errno = 0;
-            int tag_value = bam_aux2i(tag);
-            if (tag_value == 0 && errno == EINVAL) continue; // tag was not integer
-            if (tag_value != aux->tag_value) continue;
-        }
-        // filter by RG (read group):
-        if (have_rg) {
-            rg = bam_get_tag_caseinsensitive((const bam1_t*) b, "RG");
-            if (rg == NULL) continue;  // missing
-            rg_val = bam_aux2Z(rg);
-            if (rg_val == 0 && errno == EINVAL) continue;  // bad parse
-            if (strcmp(aux->read_group, rg_val) != 0) continue;  // not wanted
-        }
-        break;
-    }
-    return ret;
+    return aux->iter ? sam_itr_next(aux->fp, aux->iter, b)
+                     : sam_read1(aux->fp, aux->hdr, b);
 }
 
 
@@ -156,28 +108,19 @@ int *qpos2rpos(bam1_t *b) {
     return posmap;
 }
 
-/** Fetch a BAM tag with case insensitivity
- *
- *  @param b BAM record
- *  @param tag Tag to fetch via bam_aux_get
- *
- */
-uint8_t* bam_get_tag_caseinsensitive(const bam1_t* b, char* tag) {
-
-    uint8_t* ret;
+uint8_t *fc_bam_get_tag_caseinsensitive(const bam1_t *b, const char tag_name[2]) {
+    if (!tag_name || tag_name[0] == '\0') return NULL;
     char upper_tag[3];
     char lower_tag[3];
     upper_tag[2] = '\0';
     lower_tag[2] = '\0';
     for (int i = 0; i < 2; i++) {
-        upper_tag[i] = toupper(tag[i]);
-        lower_tag[i] = tolower(tag[i]);
+        upper_tag[i] = toupper((unsigned char)tag_name[i]);
+        lower_tag[i] = tolower((unsigned char)tag_name[i]);
     }
-    // Try uppercase variant
-    ret = bam_aux_get((const bam1_t*) b, upper_tag);
-    if (ret == NULL){
-        // Try lowercase variant
-        ret = bam_aux_get((const bam1_t*) b, lower_tag);
+    uint8_t *ret = bam_aux_get(b, upper_tag);
+    if (ret == NULL) {
+        ret = bam_aux_get(b, lower_tag);
     }
     return ret;
 }

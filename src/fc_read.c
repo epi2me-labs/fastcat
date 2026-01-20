@@ -6,8 +6,7 @@
 #include "fc_read.h"
 #include "fastqcomments.h"
 #include "common.h"
-
-static const int NOTPRIMARY = BAM_FSUPPLEMENTARY | BAM_FSECONDARY | BAM_FUNMAP;
+#include "fc_filter.h"
 
 // these two are tucked away at the bottom of this file
 static bam1_t* kseq_to_bam(kseq_t* seq);
@@ -17,7 +16,7 @@ static void build_tags_string_from_bam(const bam1_t *b, read_meta meta);
 fc_read* fc_read_from_kseq(kseq_t* seq) {
     fc_read* r = xalloc(1, sizeof(fc_read), "fc_read");
     bam1_t* bam = kseq_to_bam(seq);
-    read_meta meta = create_read_meta(bam, NULL, false, &seq->comment);
+    read_meta meta = create_read_meta(bam, NULL, &seq->comment);
 
     r->bam = bam;
     r->meta = meta;
@@ -34,7 +33,7 @@ fc_read* fc_read_from_bam(bam1_t* bam, const bam_hdr_t* hdr, bool force_recalc_q
     r->bam = bam;
     r->owns_bam = false;
 
-    read_meta meta = create_read_meta(bam, hdr, true, NULL);
+    read_meta meta = create_read_meta(bam, hdr, NULL);
     meta->mean_q = resolve_mean_quality(bam, meta, force_recalc_qual);
 
     r->meta = meta;
@@ -52,9 +51,7 @@ void fc_read_destroy(fc_read* r) {
 }
 
 
-read_meta create_read_meta(
-    const bam1_t *b, const bam_hdr_t *hdr, bool require_nm, const kstring_t *orig_comment
-) {
+read_meta create_read_meta(const bam1_t *b, const bam_hdr_t *hdr, const kstring_t *orig_comment) {
     size_t len = 0;
     const char* src = NULL;
     if (orig_comment && orig_comment->s && orig_comment->l > 0) {
@@ -146,8 +143,8 @@ read_meta create_read_meta(
         aux = bam_aux_next(b, aux);
     }
 
-    bool good_align = ((b->core.flag & (NOTPRIMARY | BAM_FQCFAIL | BAM_FDUP)) == 0);
-    if (require_nm && good_align && (meta->edit_distance == -1)) {
+    bool good_align = fc_is_primary_qc_pass(b);
+    if (good_align && (meta->edit_distance == -1)) {
         fprintf(stderr, "Read '%s' does not contain an integer 'NM' tag.\n", bam_get_qname(b));
         kstring_t rec = {0, 0, NULL};
         if (sam_format1(hdr, b, &rec) < 0) {
@@ -219,6 +216,3 @@ static void build_tags_string_from_bam(const bam1_t *b, read_meta meta) {
         ks_clear(meta->tags_str);
     }
 }
-
-
-
