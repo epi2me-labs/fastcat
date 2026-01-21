@@ -63,6 +63,36 @@ static void test_unknown_key_goes_to_co(void) {
     fc_read_destroy(read);
 }
 
+static void test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open(void) {
+    const char* runid = "12345678-1234-1234-1234-123456789012";
+    fc_read* read = read_from_comment(
+        "runid=12345678-1234-1234-1234-123456789012 empty= no_equals barcode=barcode07 "
+        "fubar= read=7 unknown=foo ch=42");
+    read_meta meta = read->meta;
+    TEST_ASSERT_EQUAL_STRING(runid, meta->runid);
+    TEST_ASSERT_EQUAL_STRING("barcode07", meta->barcode);
+    TEST_ASSERT_EQUAL_INT(7, meta->ibarcode);
+    TEST_ASSERT_EQUAL_UINT64(7, meta->read_number);
+    TEST_ASSERT_EQUAL_UINT64(42, meta->channel);
+
+    uint8_t* co_aux = bam_aux_get(read->bam, "CO");
+    TEST_ASSERT_NOT_NULL(co_aux);
+    TEST_ASSERT_EQUAL_STRING("empty= no_equals fubar= unknown=foo", bam_aux2Z(co_aux));
+
+    uint8_t* sm_aux = bam_aux_get(read->bam, "SM");
+    TEST_ASSERT_NOT_NULL(sm_aux);
+    TEST_ASSERT_EQUAL_STRING("barcode07", bam_aux2Z(sm_aux));
+
+    uint8_t* rn_aux = bam_aux_get(read->bam, "rn");
+    TEST_ASSERT_NOT_NULL(rn_aux);
+    TEST_ASSERT_EQUAL_INT(7, bam_aux2i(rn_aux));
+
+    uint8_t* ch_aux = bam_aux_get(read->bam, "ch");
+    TEST_ASSERT_NOT_NULL(ch_aux);
+    TEST_ASSERT_EQUAL_INT(42, bam_aux2i(ch_aux));
+    fc_read_destroy(read);
+}
+
 static void test_sam_style_tabs(void) {
     fc_read* read = read_from_comment("RG:Z:rg1\tSM:Z:barcode01\tZZ:Z:extra");
     read_meta meta = read->meta;
@@ -160,6 +190,7 @@ void fastqcomments_suite(void) {
     RUN_TEST(test_parse_simple_comment);
     RUN_TEST(test_original_comment_preserved);
     RUN_TEST(test_unknown_key_goes_to_co);
+    RUN_TEST(test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open);
     RUN_TEST(test_sam_style_tabs);
     RUN_TEST(test_barcode_unclassified);
     RUN_TEST(test_rg_populates_runid_and_basecaller);

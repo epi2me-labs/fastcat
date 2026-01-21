@@ -66,13 +66,17 @@ static int parse_key_value_comment_to_bam(const kstring_t* comment, bam1_t* b) {
     char* barcode = NULL;
     bool rg_seen = bam_aux_get(b, "RG") != NULL;
 
-    char *pch = NULL, *p1 = NULL, *p2 = NULL;
+    char *pch = NULL, *p1 = NULL;
     pch = strtok_r(buf, " ", &p1);
     while (pch != NULL) {
-        char* key = strtok_r(pch, "=", &p2);
-        bool has_delim = p2 != NULL;  // p2 will be NULL if no = was found
-        char* value = strtok_r(NULL, "", &p2);
-        if (value == NULL && has_delim) value = "";
+        // Split on the first '=' without relying on strtok_r("") (UB).
+        char* key = pch;
+        char* value = NULL;
+        char* delim = strchr(pch, '=');
+        if (delim != NULL) {
+            *delim = '\0';
+            value = delim + 1; // May be an empty string.
+        }
 
         if (value == NULL) {
             ksprintf_with_opt_delim(&rest, " ", "%s", key);
