@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `pi` tag was being incorrectly parsed as an integer tag, leading to failure to read the data.
   This gave rise to a failure to exclude reads based on having a parent (notably in poly-A tail analysis).
 - A memory leak when performing low-complexity read filtering with `fastlint` or `fastcat --dust`.
+- A difference in behaviour between some operating systems when parsing (perculiar and rare) fastq comment entries.
 ### Changed
 - SAM-style FASTQ header comments are generated through a more robust method. The ordering of keys may
   not respect the ordering in the original FASTQ header, but all keys and values will be preserved.
