@@ -4,6 +4,24 @@ src/**/*.o
 src/**/*.d
 test/**/*.o
 test/**/*.d
+test/tmp/
 libdeflate-*/
 libdeflate-v*.tar.gz
+samtools-*/
 .fastcat_patch_applied
+# executables
+bamindex
+bamcoverage
+bamstats
+fastcat
+fastlint
+libfastcatcore.a
+samtools
+test/unit/unit_tests
+# gumpf
+/fastcat-histograms
+/demultiplex
+.vscode/
+TODO
+mk25.09.fastq.spec.html
+mk26.01.fastq.spec.html

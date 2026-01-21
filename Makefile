@@ -62,6 +62,37 @@ else
 	PEPPER = 
 endif
 
+SHELL := /bin/bash
+REPO_ROOT := $(CURDIR)
+TEST_ROOT := $(REPO_ROOT)/test
+TEST_EXPECTED_FASTCAT := $(TEST_ROOT)/fastcat_expected_results
+TEST_EXPECTED_DEMULTIPLEX := $(TEST_EXPECTED_FASTCAT)/demultiplex
+TEST_TMP_DIR ?= $(TEST_ROOT)/tmp
+TEST_TMP_FASTCAT = $(TEST_TMP_DIR)/fastcat
+TEST_TMP_BAMSTATS = $(TEST_TMP_DIR)/bamstats
+TEST_TMP_META = $(TEST_TMP_DIR)/meta
+TEST_TMP_BAMINDEX = $(TEST_TMP_DIR)/bamindex
+TEST_TMP_FASTLINT = $(TEST_TMP_DIR)/fastlint
+TEST_TMP_BAMCOVERAGE = $(TEST_TMP_DIR)/bamcoverage
+
+RUN_IN_TMP = rm -rf $(1); mkdir -p $(1) && pushd $(1) > /dev/null && $(2) && popd > /dev/null && rm -rf $(1)
+COMPARE_TABLES = \
+	head -n 1 $(1) > $(3).header && \
+	head -n 1 $(2) > $(3).expected.header && \
+	diff $(3).header $(3).expected.header && \
+	tail -n +2 $(1) | LC_ALL=C sort > $(3).sorted && \
+	tail -n +2 $(2) | LC_ALL=C sort > $(3).expected.sorted && \
+	diff $(3).sorted $(3).expected.sorted
+COMPARE_FASTQ = \
+	case "$(1)" in *.gz) gunzip -c "$(1)" ;; *) cat "$(1)" ;; esac \
+		| $(TEST_ROOT)/sort-fastq.py > $(3).sorted && \
+	case "$(2)" in *.gz) gunzip -c "$(2)" ;; *) cat "$(2)" ;; esac \
+		| $(TEST_ROOT)/sort-fastq.py > $(3).expected.sorted && \
+	diff $(3).sorted $(3).expected.sorted
+TEST_DESC = printf '\n%s\n' "$(1)"
+RUN_FASTCAT = $(PEPPER) $(REPO_ROOT)/fastcat
+RUN_BAMSTATS = $(PEPPER) $(REPO_ROOT)/bamstats
+
 
 .PHONY:
 default: fastcat bamstats bamindex fastlint
@@ -106,6 +137,7 @@ test/unit/unit_tests: $(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB)
 
 .PHONY: test_unit
 test_unit: test/unit/unit_tests
+	@$(call TEST_DESC,Unit tests)
 	$(PEPPER) ./test/unit/unit_tests
 
 
@@ -205,7 +237,6 @@ bamcoverage: src/version.o src/bamcoverage/main.o src/bamcoverage/args.o src/bam
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-
 bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
@@ -217,59 +248,101 @@ bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamind
 # fastcat tests
 
 .PHONY:
-test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters
+test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters test_fastcat_demultiplex_outputs test_fastcat_demultiplex_split test_fastcat_regression_results
 
 .PHONY: mem_check_fastcat
 mem_check_fastcat: fastcat
-	rm -rf fastcat-histograms
-	$(GRIND) ./fastcat test/data/*.fastq.gz > /dev/null
+	@$(call TEST_DESC,Memcheck fastcat (fastq))
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/memcheck/fastq, \
+		$(GRIND) $(REPO_ROOT)/fastcat $(TEST_ROOT)/data/*.fastq.gz > /dev/null)
 
 .PHONY: mem_check_fastcat_bam
 mem_check_fastcat_bam: fastcat
-	rm -rf fastcat-histograms
-	$(GRIND) ./fastcat test/data/*.fastq.gz -B > /dev/null
+	@$(call TEST_DESC,Memcheck fastcat (bam))
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/memcheck/bam, \
+		$(GRIND) $(REPO_ROOT)/fastcat $(TEST_ROOT)/data/*.fastq.gz -B > /dev/null)
 
 .PHONY: mem_check_fastcat_demultiplex
 mem_check_fastcat_demultiplex: fastcat
-	rm -rf demultiplex
-	$(GRIND) ./fastcat test/data/*.fastq.gz --demultiplex demultiplex > /dev/null
+	@$(call TEST_DESC,Memcheck fastcat demultiplex (fastq))
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/memcheck/demux, \
+		$(GRIND) $(REPO_ROOT)/fastcat $(TEST_ROOT)/data/*.fastq.gz --demultiplex demultiplex > /dev/null)
 
 .PHONY: mem_check_fastcat_demultiplex_bam
 mem_check_fastcat_demultiplex_bam: fastcat
-	rm -rf demultiplex
-	$(GRIND) ./fastcat test/data/*.fastq.gz --demultiplex demultiplex -B > /dev/null
+	@$(call TEST_DESC,Memcheck fastcat demultiplex (bam))
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/memcheck/demux_bam, \
+		$(GRIND) $(REPO_ROOT)/fastcat $(TEST_ROOT)/data/*.fastq.gz --demultiplex demultiplex -B > /dev/null)
 
 .PHONY: test_fastcat_bam_equivalent
 test_fastcat_bam_equivalent: fastcat bamstats samtools
-	@echo ""
-	@echo "Testing fastcat bam equivalence"
-	rm -rf test/test-tmp-fcb-equiv-van*
-	rm -rf test/test-tmp-fcb-equiv-bam*
-	$(PEPPER) ./fastcat test/data/*.fastq.gz --histograms test/test-tmp-fcb-equiv-van --reheader | ./samtools import -T '*' - | ./test/sort-sam.py > test/test-tmp-fcb-equiv-van.sam && \
-	$(PEPPER) ./fastcat test/data/*.fastq.gz --histograms test/test-tmp-fcb-equiv-bam -B | ./samtools view | ./test/sort-sam.py > test/test-tmp-fcb-equiv-bam.sam && \
-	diff test/test-tmp-fcb-equiv-van.sam test/test-tmp-fcb-equiv-bam.sam
+	@$(call TEST_DESC,Fastcat BAM equivalence)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/bam_equiv, \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/*.fastq.gz --histograms van --reheader | $(REPO_ROOT)/samtools import -T '*' - | $(TEST_ROOT)/sort-sam.py > van.sam && \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/*.fastq.gz --histograms bam -B | $(REPO_ROOT)/samtools view | $(TEST_ROOT)/sort-sam.py > bam.sam && \
+		diff van.sam bam.sam)
 
 .PHONY: test_fastcat_reheader_roundtrip
 test_fastcat_reheader_roundtrip: fastcat samtools
-	@echo ""
-	@echo "Testing fastcat reheader roundtrip"
-	rm -rf test/test-tmp-fc-reheader*
-	$(PEPPER) ./fastcat test/reheader/kv.fastq --histograms test/test-tmp-fc-reheader-hist --reheader > test/test-tmp-fc-reheader.fastq
-	$(PEPPER) ./fastcat test/reheader/kv.fastq --histograms test/test-tmp-fc-reheader-orig -B | ./samtools view > test/test-tmp-fc-reheader-orig.sam && \
-	$(PEPPER) ./fastcat test/test-tmp-fc-reheader.fastq --histograms test/test-tmp-fc-reheader-reheader -B | ./samtools view > test/test-tmp-fc-reheader-reheader.sam && \
-	diff test/test-tmp-fc-reheader-orig.sam test/test-tmp-fc-reheader-reheader.sam
+	@$(call TEST_DESC,Fastcat reheader roundtrip)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/reheader, \
+		$(RUN_FASTCAT) $(TEST_ROOT)/reheader/kv.fastq --histograms hist --reheader > out.fastq && \
+		$(RUN_FASTCAT) $(TEST_ROOT)/reheader/kv.fastq --histograms orig -B | $(REPO_ROOT)/samtools view > orig.sam && \
+		$(RUN_FASTCAT) out.fastq --histograms reheader -B | $(REPO_ROOT)/samtools view > reheader.sam && \
+		diff orig.sam reheader.sam)
 
 .PHONY: test_fastcat_filters
 test_fastcat_filters: fastcat
-	rm -rf test/test-tmp-fc-filters
-	mkdir test/test-tmp-fc-filters && \
-	$(PEPPER) ./fastcat test/filtering/fastcat_filters.fastq -a 5 -b 8 -q 20 --histograms test/test-tmp-fc-filters/hist > test/test-tmp-fc-filters/out.fastq && \
-	grep -q "^@read_ok" test/test-tmp-fc-filters/out.fastq && \
-	! grep -q "^@read_short" test/test-tmp-fc-filters/out.fastq && \
-	! grep -q "^@read_long" test/test-tmp-fc-filters/out.fastq && \
-	! grep -q "^@read_lowq" test/test-tmp-fc-filters/out.fastq
-	rm -r test/test-tmp-fc-filters
+	@$(call TEST_DESC,Fastcat filters)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/filters, \
+		$(RUN_FASTCAT) $(TEST_ROOT)/filtering/fastcat_filters.fastq -a 5 -b 8 -q 20 --histograms hist > out.fastq && \
+		grep -q "^@read_ok" out.fastq && \
+		! grep -q "^@read_short" out.fastq && \
+		! grep -q "^@read_long" out.fastq && \
+		! grep -q "^@read_lowq" out.fastq)
 
+.PHONY: test_fastcat_demultiplex_outputs
+test_fastcat_demultiplex_outputs: fastcat
+	@$(call TEST_DESC,Fastcat demultiplex outputs)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/demultiplex/outputs, \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/bc0.fastq.gz $(TEST_ROOT)/data/bc1.fastq.gz $(TEST_ROOT)/data/bc2.fastq.gz \
+			$(TEST_ROOT)/data/bcEmpty.fastq.gz $(TEST_ROOT)/data/bcMixed.fastq.gz --demultiplex demux > /dev/null && \
+		$(call COMPARE_FASTQ,demux/unclassified/unclassified.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/unclassified.fastq.gz,demux_unclassified) && \
+		$(call COMPARE_FASTQ,demux/barcode0001/barcode0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001.fastq.gz,demux_barcode0001) && \
+		$(call COMPARE_FASTQ,demux/barcode0002/barcode0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0002.fastq.gz,demux_barcode0002) && \
+		test -f demux/unclassified/unclassified.length.hist && \
+		test -f demux/barcode0001/barcode0001.length.hist && \
+		test -f demux/barcode0001/barcode0001.quality.hist)
+
+.PHONY: test_fastcat_demultiplex_split
+test_fastcat_demultiplex_split: fastcat
+	@$(call TEST_DESC,Fastcat demultiplex split files)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/demultiplex/split, \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/bc1.fastq.gz --demultiplex demux --reads_per_file 4 > /dev/null && \
+		$(call COMPARE_FASTQ,demux/barcode0001/barcode0001_0000.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0000.fastq.gz,demux_split_0000) && \
+		$(call COMPARE_FASTQ,demux/barcode0001/barcode0001_0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0001.fastq.gz,demux_split_0001) && \
+		$(call COMPARE_FASTQ,demux/barcode0001/barcode0001_0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0002.fastq.gz,demux_split_0002) && \
+		test -f demux/barcode0001/barcode0001.length.hist)
+
+.PHONY: test_fastcat_regression_results
+test_fastcat_regression_results: fastcat
+	@$(call TEST_DESC,Fastcat regression results)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/regression, \
+		ln -s $(TEST_ROOT)/data data && mkdir -p work && \
+		pushd work > /dev/null && \
+		$(RUN_FASTCAT) ../data/*.fastq.gz --sample sample \
+			--histograms $(TEST_TMP_FASTCAT)/regression/hist \
+			-r $(TEST_TMP_FASTCAT)/regression/per-read.tsv \
+			-f $(TEST_TMP_FASTCAT)/regression/per-file.tsv \
+			> $(TEST_TMP_FASTCAT)/regression/concat.fastq && \
+		$(RUN_FASTCAT) ../data/*.fastq.gz --reheader \
+			--histograms $(TEST_TMP_FASTCAT)/regression/hist_reheader \
+			> $(TEST_TMP_FASTCAT)/regression/concat.reheader.fastq && \
+		popd > /dev/null && \
+		$(call COMPARE_TABLES,per-read.tsv,$(TEST_EXPECTED_FASTCAT)/per-read-stats.tsv,per-read) && \
+		$(call COMPARE_TABLES,per-file.tsv,$(TEST_EXPECTED_FASTCAT)/per-file-stats.tsv,per-file) && \
+		$(call COMPARE_FASTQ,concat.fastq,$(TEST_EXPECTED_FASTCAT)/concat.sorted.fastq.gz,concat) && \
+		$(call COMPARE_FASTQ,concat.reheader.fastq,$(TEST_EXPECTED_FASTCAT)/concat.reheader.sorted.fastq.gz,concat.reheader))
 
 ###
 # bamstats tests
@@ -279,66 +352,69 @@ test_bamstats: test_bamstats_NM test_bamstats_polya test_bamstats_filters mem_ch
 
 .PHONY: test_bamstats_NM
 test_bamstats_NM: bamstats
-	rm -rf test/test-tmp-bs-nm
-	mkdir test/test-tmp-bs-nm && \
-	cd test/test-tmp-bs-nm && \
-	$(PEPPER) ../../bamstats ../bamstats_badNM/test.sam 2> err || grep "appears to contain implausible alignment information" err && rm -rf bamstats-histograms-bs-nm && \
-	rm -rf bamstats-histograms && \
-	$(PEPPER) ../../bamstats ../bamstats_zeroNM/test.sam
-	rm -r test/test-tmp-bs-nm
+	@$(call TEST_DESC,Bamstats NM validation)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/nm, \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats_badNM/test.sam 2> err || grep "appears to contain implausible alignment information" err && rm -rf bamstats-histograms-bs-nm && \
+		rm -rf bamstats-histograms && \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats_zeroNM/test.sam)
 
 .PHONY: test_bamstats_polya
 test_bamstats_polya: bamstats
-	rm -rf test/test-tmp-bs-pa
-	mkdir test/test-tmp-bs-pa && \
-	cd test/test-tmp-bs-pa && \
-	$(PEPPER) ../../bamstats ../bamstats/RCS-100A.bam --poly_a > /dev/null && \
-	diff bamstats-histograms/polya.hist ../bamstats/RCS-100A.bam.polya.hist
-	rm -r test/test-tmp-bs-pa
+	@$(call TEST_DESC,Bamstats polya)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/polya, \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats/RCS-100A.bam --poly_a > /dev/null && \
+		diff bamstats-histograms/polya.hist $(TEST_ROOT)/bamstats/RCS-100A.bam.polya.hist)
 
 .PHONY: test_bamstats_filters
 test_bamstats_filters: bamstats
-	rm -rf test/test-tmp-bs-tag-rg
-	mkdir test/test-tmp-bs-tag-rg && \
-	cd test/test-tmp-bs-tag-rg && \
-	$(PEPPER) ../../bamstats ../filtering/bamstats_filters.sam --tag_name HP --tag_value 1 --histograms hist_tag > out_tag.tsv && \
-	grep -q "^read1" out_tag.tsv && \
-	! grep -q "^read2" out_tag.tsv && \
-	$(PEPPER) ../../bamstats ../filtering/bamstats_filters.sam --read_group rg2 --histograms hist_rg > out_rg.tsv && \
-	grep -q "^read2" out_rg.tsv && \
-	! grep -q "^read1" out_rg.tsv && \
-	$(PEPPER) ../../bamstats ../filtering/bamstats_filters.sam --tag_name HP --tag_value 1 --read_group rg1 --histograms hist_both > out_both.tsv && \
-	grep -q "^read1" out_both.tsv && \
-	! grep -q "^read2" out_both.tsv
-	rm -r test/test-tmp-bs-tag-rg
+	@$(call TEST_DESC,Bamstats filters)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/filters, \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/filtering/bamstats_filters.sam --tag_name HP --tag_value 1 --histograms hist_tag > out_tag.tsv && \
+		grep -q "^read1" out_tag.tsv && \
+		! grep -q "^read2" out_tag.tsv && \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/filtering/bamstats_filters.sam --read_group rg2 --histograms hist_rg > out_rg.tsv && \
+		grep -q "^read2" out_rg.tsv && \
+		! grep -q "^read1" out_rg.tsv && \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/filtering/bamstats_filters.sam --tag_name HP --tag_value 1 --read_group rg1 --histograms hist_both > out_both.tsv && \
+		grep -q "^read1" out_both.tsv && \
+		! grep -q "^read2" out_both.tsv)
 
 .PHONY:
-mem_check_bamstats: bamstats
-	@echo "Memcheck bamstats with good data"
-	rm -rf bamstats-histograms bamstats-coverage
-	$(GRIND) ./bamstats test/parse_rg/dna_r10.4.1_e8.2_400bps_hac@v4.3.0.bam > /dev/null
-	@echo "Memcheck bamstats with bad data"
-	@echo ""
-	rm -rf bamstats-histograms bamstats-coverage
-	$(GRIND) ./bamstats test/parse_rg/bad-ones.bam > /dev/null
-	@echo ""
-	@echo "Memcheck bamstats with qcfails"
-	rm -rf bamstats-histograms
-	$(GRIND) ./bamstats test/bamstats/400ecoli-with-qcfail.bam > /dev/null
-	@echo ""
-	@echo "Memcheck bamstats duplex"
-	rm -rf bamstats-histograms
-	$(GRIND) ./bamstats test/bamstats/310dx.bam > /dev/null
-	@echo ""
-	@echo "Memcheck bamstats coverage"
-	rm -rf bamstats-histograms bamstats-coverage
-	$(GRIND) ./bamstats --coverage bamstats-coverage test/bamstats/400ecoli.bam > /dev/null
-	rm -rf bamstats-histograms bamstats-coverage
+mem_check_bamstats: mem_check_bamstats_good mem_check_bamstats_bad mem_check_bamstats_qcfail mem_check_bamstats_duplex mem_check_bamstats_coverage
+
+.PHONY: mem_check_bamstats_good
+mem_check_bamstats_good: bamstats
+	@$(call TEST_DESC,Memcheck bamstats with good data)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/memcheck/good, \
+		$(GRIND) $(REPO_ROOT)/bamstats $(TEST_ROOT)/parse_rg/dna_r10.4.1_e8.2_400bps_hac@v4.3.0.bam > /dev/null)
+
+.PHONY: mem_check_bamstats_bad
+mem_check_bamstats_bad: bamstats
+	@$(call TEST_DESC,Memcheck bamstats with bad data)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/memcheck/bad, \
+		$(GRIND) $(REPO_ROOT)/bamstats $(TEST_ROOT)/parse_rg/bad-ones.bam > /dev/null)
+
+.PHONY: mem_check_bamstats_qcfail
+mem_check_bamstats_qcfail: bamstats
+	@$(call TEST_DESC,Memcheck bamstats qcfail)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/memcheck/qcfail, \
+		$(GRIND) $(REPO_ROOT)/bamstats $(TEST_ROOT)/bamstats/400ecoli-with-qcfail.bam > /dev/null)
+
+.PHONY: mem_check_bamstats_duplex
+mem_check_bamstats_duplex: bamstats
+	@$(call TEST_DESC,Memcheck bamstats duplex)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/memcheck/duplex, \
+		$(GRIND) $(REPO_ROOT)/bamstats $(TEST_ROOT)/bamstats/310dx.bam > /dev/null)
+
+.PHONY: mem_check_bamstats_coverage
+mem_check_bamstats_coverage: bamstats
+	@$(call TEST_DESC,Memcheck bamstats coverage)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/memcheck/coverage, \
+		$(GRIND) $(REPO_ROOT)/bamstats --coverage bamstats-coverage $(TEST_ROOT)/bamstats/400ecoli.bam > /dev/null)
 
 .PHONY:
 bamstats_overwrite: bamstats
-	@echo ""
-	@echo "Memcheck bamstats with existing basecaller file"
+	@$(call TEST_DESC,Bamstats basecaller file exists)
 	rm -rf bamstats-histograms
 	@$(PEPPER) cat test/bamstats/400ecoli.bam \
 		| ./bamstats -u -l bamstats_results/bamstats.basecallers.tsv - \
@@ -359,36 +435,38 @@ test_meta: test_meta_fastcat test_meta_bamstats
 
 .PHONY: test_meta_fastcat
 test_meta_fastcat: fastcat
-	rm -rf test/test-tmp-meta-fastq
-	mkdir test/test-tmp-meta-fastq && \
-	cd test/test-tmp-meta-fastq && \
-	set -e; \
-	for i in ../parse_rd/*.fastq; do \
-		echo $$i; \
-		$(PEPPER) ../../fastcat $$i --histograms hist -i rd > /dev/null; \
-		diff rd $$i.runids || exit 1; \
-		rm -rf hist rg; \
-	done;
-	rm -r test/test-tmp-meta-fastq
+	@$(call TEST_DESC,Metadata fastcat)
+	$(call RUN_IN_TMP,$(TEST_TMP_META)/fastq, \
+		ln -s $(TEST_ROOT)/parse_rd parse_rd && mkdir -p work && \
+		pushd work > /dev/null && \
+		set -e; \
+		for i in ../parse_rd/*.fastq; do \
+			echo $$i; \
+			$(RUN_FASTCAT) $$i --histograms hist -i rd > /dev/null; \
+			diff rd $$i.runids || exit 1; \
+			rm -rf hist rg; \
+		done; \
+		popd > /dev/null)
 
 .PHONY: test_meta_bamstats
 test_meta_bamstats: bamstats
-	rm -rf test/test-tmp-meta-bam
-	mkdir test/test-tmp-meta-bam && \
-	cd test/test-tmp-meta-bam && \
-	set -e; \
-	for i in ../parse_rg/*.bam; do \
-		$(PEPPER) ../../bamstats $$i --histograms hist -l rg \
-			> /dev/null; \
-		diff rg $$i.callers || exit 1; \
-		rm -rf hist rg; \
-	done;
-	rm -r test/test-tmp-meta-bam
+	@$(call TEST_DESC,Metadata bamstats)
+	$(call RUN_IN_TMP,$(TEST_TMP_META)/bam, \
+		ln -s $(TEST_ROOT)/parse_rg parse_rg && mkdir -p work && \
+		pushd work > /dev/null && \
+		set -e; \
+		for i in ../parse_rg/*.bam; do \
+			$(RUN_BAMSTATS) $$i --histograms hist -l rg \
+				> /dev/null; \
+			diff rg $$i.callers || exit 1; \
+			rm -rf hist rg; \
+		done; \
+		popd > /dev/null)
 
 .PHONY: regression_test_rg_parsing
 regression_test_rg_parsing: test/rg_parse
+	@$(call TEST_DESC,RG parsing regression)
 	$(PEPPER) ./test/rg_parse
-
 
 ###
 # bamindex tests
@@ -398,16 +476,26 @@ test_bamindex: mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamind
 
 .PHONY: mem_check_bamindex-build
 mem_check_bamindex-build: bamindex
-	$(GRIND) ./bamindex build test/bamindex/400.bam
+	@$(call TEST_DESC,Memcheck bamindex build)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMINDEX)/build, \
+		cp $(TEST_ROOT)/bamindex/400.bam . && \
+		$(GRIND) $(REPO_ROOT)/bamindex build 400.bam > /dev/null)
 
 .PHONY: mem_check_bamindex-dump
-mem_check_bamindex-dump: bamindex mem_check_bamindex-build
-	$(GRIND) ./bamindex dump test/bamindex/400.bam.bci > /dev/null
+mem_check_bamindex-dump: bamindex
+	@$(call TEST_DESC,Memcheck bamindex dump)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMINDEX)/dump, \
+		cp $(TEST_ROOT)/bamindex/400.bam . && \
+		$(GRIND) $(REPO_ROOT)/bamindex build 400.bam > /dev/null && \
+		$(GRIND) $(REPO_ROOT)/bamindex dump 400.bam.bci > /dev/null)
 
 .PHONY: mem_check_bamindex-fetch
-mem_check_bamindex-fetch: bamindex mem_check_bamindex-build
-	$(GRIND) ./bamindex fetch test/bamindex/400.bam --chunk 5 > /dev/null
-
+mem_check_bamindex-fetch: bamindex
+	@$(call TEST_DESC,Memcheck bamindex fetch)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMINDEX)/fetch, \
+		cp $(TEST_ROOT)/bamindex/400.bam . && \
+		$(GRIND) $(REPO_ROOT)/bamindex build 400.bam > /dev/null && \
+		$(GRIND) $(REPO_ROOT)/bamindex fetch 400.bam --chunk 5 > /dev/null)
 
 ###
 # fastlint tests
@@ -416,8 +504,9 @@ test_fastlint: mem_check_fastlint
 
 .PHONY:
 mem_check_fastlint: fastlint
-	$(GRIND) ./fastlint test/data/*.fastq.gz > /dev/null
-
+	@$(call TEST_DESC,Memcheck fastlint)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTLINT)/memcheck, \
+		$(GRIND) $(REPO_ROOT)/fastlint $(TEST_ROOT)/data/*.fastq.gz > /dev/null)
 
 ###
 # bamcoverage tests
@@ -426,6 +515,7 @@ test_bamcoverage: mem_check_bamcoverage
 
 .PHONY:
 mem_check_bamcoverage: bamcoverage
-	rm -rf bamstats-coverage
-	$(GRIND) ./bamcoverage test/bamstats/400ecoli.bam
-	rm -rf covtmp
+	@$(call TEST_DESC,Memcheck bamcoverage)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMCOVERAGE)/memcheck, \
+		rm -rf bamstats-coverage covtmp && \
+		$(GRIND) $(REPO_ROOT)/bamcoverage $(TEST_ROOT)/bamstats/400ecoli.bam)
