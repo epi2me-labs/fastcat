@@ -22,10 +22,10 @@ typedef struct {
  *  @param start start position of chr to consider.
  *  @param end end position of chr to consider.
  *
- *  The return value can be freed with destroy_bam_iter_data.
+ *  The return value can be freed with fc_bam_iter_data_destroy.
  *
  */
-mplp_data *create_bam_iter_data(
+mplp_data *fc_bam_iter_data_create(
     htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
     const char *chr, hts_pos_t start, hts_pos_t end);
 
@@ -34,7 +34,7 @@ mplp_data *create_bam_iter_data(
  *  @param data auxiliary structure to clean.
  *
  */
-void destroy_bam_iter_data(mplp_data *data);
+void fc_bam_iter_data_destroy(mplp_data *data);
 
 /** Read a bam record (unfiltered).
  *
@@ -42,7 +42,7 @@ void destroy_bam_iter_data(mplp_data *data);
  *  @param b output pointer.
  *
  */
-int read_bam(void *data, bam1_t *b);
+int fc_bam_read(void *data, bam1_t *b);
 
 /** Create an map of query position to reference position
  *
@@ -50,7 +50,7 @@ int read_bam(void *data, bam1_t *b);
  *
  *  The length of the returned array is b->core->l_qlen.
  */
-int *qpos2rpos(bam1_t *b);
+int *fc_bam_qpos2rpos(bam1_t *b);
 
 uint8_t *fc_bam_get_tag_caseinsensitive(const bam1_t *b, const char tag_name[2]);
 

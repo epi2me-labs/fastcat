@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
+#include <limits.h>
 #include <sys/resource.h>
 #include <time.h>
 #include "htslib/faidx.h"
@@ -12,82 +14,39 @@
 
 #include "args.h"
 #include "common.h"
-#include "../bamcoverage/coverage.h"
 #include "readstats.h"
-#include "../fc_stats_engine.h"
 #include "regiter.h"
+#include "../fc_iter.h"
+#include "../fc_sinks.h"
+#include "../fc_writer.h"
 
-
-void write_header(const char* sample) {
-    char *sn = sample == NULL ? "" : "\tsample_name";
-    fprintf(stdout, 
-        "name\trunid%s\tref\tcoverage\tref_coverage\t"\
-        "qstart\tqend\trstart\trend\t"\
-        "aligned_ref_len\tdirection\tlength\tread_length\tmean_quality\tstart_time\t"\
-        "match\tins\tdel\tsub\tiden\tacc\tduplex\n",
-        sn);
+static void init_bam_file_stats(fc_file_stats *stats) {
+    if (!stats) return;
+    memset(stats, 0, sizeof(*stats));
+    stats->min_length = SIZE_MAX;
 }
 
-// stats array should have 8 entries
-// total, primary, BAM_FSECONDARY, BAM_FSUPPLEMENTARY, BAM_FUNMAP, BAM_FQCFAIL, BAM_FDUP, unused
-// note: HTS spec makes a distinction between "unmapped" (flag & 4) and "unplaced". Unplaced
-//       are not necessarily unmapped but lack definitive coords, this is mainly for paired-end
-//       but we'll keep the distinction here.
-void write_stats_header(FILE* fh, const char* sample) {
-    char *sn = sample == NULL ? "" : "\tsample_name";
-    fprintf(fh, "ref%s\ttotal\tprimary\tsecondary\tsupplementary\tunmapped\tqcfail\tduplicate\tduplex\tduplex_forming\n", sn);
-}
-
-static inline void write_stats(size_t *stats, const char* chr, const char* sample, FILE* fh) {
-    if (fh != NULL) {
-        if (sample == NULL) {
-            fprintf(fh,
-                "%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
-                chr, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6], stats[7], stats[8]
-            );
+static void merge_bam_file_stats(fc_file_stats *dst, const fc_file_stats *src,
+        double *qsum_total, size_t *n_total) {
+    if (!dst || !src) return;
+    dst->n_seqs += src->n_seqs;
+    dst->n_bases += src->n_bases;
+    if (src->n_seqs > 0) {
+        if (dst->min_length == SIZE_MAX) {
+            dst->min_length = src->min_length;
         } else {
-            fprintf(fh,
-                "%s\t%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
-                chr, sample, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6], stats[7], stats[8]
-            );
+            dst->min_length = min(dst->min_length, src->min_length);
         }
+        dst->max_length = max(dst->max_length, src->max_length);
+    }
+    for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
+        dst->failures[i] += src->failures[i];
+    }
+    if (qsum_total && n_total && src->n_seqs > 0) {
+        *qsum_total += src->mean_quality * (double)src->n_seqs;
+        *n_total += src->n_seqs;
     }
 }
-
-static inline void write_counter(const char* fname, kh_counter_t *counter, const char* sample, const char* bam_fname, const char* column_name) {
-    ensure_parent_dir_exists(fname);
-    FILE* stats_fp = fopen(fname, "w");
-    if (stats_fp == NULL) {
-        fprintf(stderr, "ERROR: Cannot open file '%s' for writing.\n", fname);
-        exit(EXIT_FAILURE);
-    }
-    fprintf(stats_fp, "filename\t");
-    if (sample != NULL) fprintf(stats_fp, "sample_name\t");
-    fprintf(stats_fp, "%s\tcount\n", column_name);
-    for (khiter_t k = 0; k < kh_end(counter); ++k) {
-        if (kh_exist(counter, k)) {
-            fprintf(stats_fp, "%s\t", bam_fname);
-            if (sample != NULL) fprintf(stats_fp, "%s\t", sample);
-            fprintf(stats_fp, "%s\t%d\n", kh_key(counter, k), kh_val(counter, k));
-        }
-    }
-    fclose(stats_fp);
-}
-
-
-void write_hist_stats(read_stats* stats, char* prefix, char* name) {
-    char* path = calloc(strlen(prefix) + strlen(name) + 2, sizeof(char));
-    sprintf(path, "%s/%s", prefix, name);
-    ensure_parent_dir_exists(path);
-    FILE* fp = fopen(path, "w");
-    if (fp == NULL) {
-        fprintf(stderr, "ERROR: Cannot open file '%s' for writing.\n", path);
-        exit(EXIT_FAILURE);
-    }
-    print_stats(stats, false, true, fp);
-    fclose(fp); free(path);
-}
-
 
 int main(int argc, char *argv[]) {
     clock_t begin = clock();
@@ -123,8 +82,6 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    write_header(args.sample);
-
     htsFile *fp = hts_open(args.bam, "rb");
     sam_hdr_t *hdr = sam_hdr_read(fp);
     if (hdr == 0 || fp == 0) {
@@ -139,65 +96,133 @@ int main(int argc, char *argv[]) {
         hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
     }
 
-    FILE* flagstats = NULL;
     flag_stats* flag_counts = NULL;
     if (args.flagstats != NULL) {
-        ensure_parent_dir_exists(args.flagstats);
-        flagstats = fopen(args.flagstats, "w");
-        if (flagstats == NULL) {
-            fprintf(stderr, "ERROR: Cannot open file '%s' for writing.\n", args.flagstats);
-            exit(EXIT_FAILURE);
-        }
-        write_stats_header(flagstats, args.sample);
         flag_counts = create_flag_stats(
             args.region == NULL ? hdr->n_targets : 1, args.unmapped
         );
     }
 
-    // prepare coverage writer
-    cov_writer coverage = NULL;
+    fc_writer *writer = fc_writer_create();
+    if (writer == NULL) exit(EXIT_FAILURE);
+    fc_writer_set_barcode_count(writer, 1, false);
+
+    fc_stats_engine_config stats_cfg = {
+        .track_alignment = true,
+        .track_unmapped = args.unmapped,
+        .track_polya = args.poly_a,
+        .polya_cover = args.poly_a_cover,
+        .polya_qual = args.poly_a_qual,
+        .polya_rev = args.poly_a_rev,
+        .create_default = true
+    };
+    fc_writer_configure_stats(writer, &stats_cfg, false);
+
+    bool region_mode = (args.region != NULL) || (args.bed != NULL);
+    fc_perread_sink_opts perread_opts = {
+        .path = NULL,
+        .sample = args.sample,
+        .include_alignment = true,
+        .output_unmapped = args.unmapped
+    };
+    fc_writer_add_sink(writer, fc_perread_sink_create(&perread_opts));
+    if (args.histograms) {
+        size_t engine_count = 0;
+        fc_stats_engine **stats_engines = fc_writer_get_stats_engines(writer, &engine_count);
+        fc_hist_sink_opts hist_opts = {
+            .hist_dir = args.histograms,
+            .demux_dir = NULL,
+            .use_barcodes = false,
+            .create_hist_dir = false,
+            .write_unmapped = args.unmapped && !region_mode,
+            .write_alignment_metrics = true,
+            .write_polya = args.poly_a,
+            .unmapped_is_primary = false,
+            .engines = stats_engines,
+            .engine_count = engine_count
+        };
+        fc_writer_add_sink(writer, fc_hist_sink_create(&hist_opts));
+    }
+    if (args.runids || args.basecallers) {
+        fc_writer_add_sink(writer, fc_counter_sink_create(args.runids, args.basecallers, args.sample));
+    }
     if (args.coverage) {
-        coverage = init_coverage_writer(
-            args.coverages, true, false,
-            -1, -1, true,
-            hdr, &p,
-            args.coverage_beds, args.coverage_names, args.n_coverage_beds,
-            args.coverage_thresholds, args.n_coverage_thresholds,
-            args.segments, args.n_segments);
+        fc_coverage_sink_opts cov_opts = {
+            .out_dir = args.coverages,
+            .per_base = true,
+            .use_cigar = false,
+            .exclude_flags = -1,
+            .include_flags = -1,
+            .by_strand = true,
+            .hdr = hdr,
+            .pool = &p,
+            .bed_files = args.coverage_beds,
+            .bed_names = args.coverage_names,
+            .n_beds = args.n_coverage_beds,
+            .thresholds = args.coverage_thresholds,
+            .n_thresholds = args.n_coverage_thresholds,
+            .segments = args.segments,
+            .n_segments = args.n_segments
+        };
+        fc_writer_add_sink(writer, fc_coverage_sink_create(&cov_opts));
+    }
+    if (flag_counts != NULL) {
+        fc_flagstats_sink_opts flag_opts = {
+            .stats = flag_counts,
+            .region_mode = region_mode,
+            .track_unmapped = args.unmapped,
+            .out_path = args.flagstats,
+            .sample = args.sample,
+            .hdr = hdr
+        };
+        fc_writer_add_sink(writer, fc_flagstats_sink_create(&flag_opts));
     }
 
-    kh_counter_t *run_ids = kh_counter_init();
-    kh_counter_t *basecallers = kh_counter_init();
-    fc_stats_engine* stats_engine = fc_stats_engine_create(
-        args.unmapped,
-        true,
-        args.poly_a,
-        args.poly_a_cover,
-        args.poly_a_qual,
-        args.poly_a_rev);
+    fc_bam_iter_opts iter_opts = {
+        .read_group = args.read_group,
+        .tag_name = { args.tag_name[0], args.tag_name[1] },
+        .tag_value = args.tag_value,
+        .force_recalc_qual = args.force_recalc_qual,
+        .min_length = 0,
+        .max_length = (size_t)-1,
+        .min_qscore = 0.0f,
+        .dust = false,
+        .dust_t = 0,
+        .dust_w = 0,
+        .max_dust = 0.0f
+    };
 
-    if (args.region == NULL && args.bed == NULL) {
-        // iterate over the entire file
-        process_bams(
-            fp, NULL, hdr, args.sample,
-            NULL, 0, INT64_MAX,
-            args.read_group, args.tag_name, args.tag_value,
-            flag_counts, args.unmapped,
-            stats_engine,
-            run_ids, basecallers, args.force_recalc_qual, coverage);
+    fc_file_stats file_stats = {0};
+    init_bam_file_stats(&file_stats);
+    double qsum_total = 0.0;
+    size_t n_total = 0;
+    bool saw_stream_error = false;
+    bool saw_unknown_error = false;
 
-        // write flagstat counts if requested
-        if (flag_counts != NULL) {
-            for (int i=0; i < hdr->n_targets; ++i) {
-                const char* chr = sam_hdr_tid2name(hdr, i);
-                write_stats(flag_counts->counts[i], chr, args.sample, flagstats);
+    fc_writer_begin_file(writer, args.bam);
+
+    if (!region_mode) {
+        fc_bam_iter iter = {0};
+        if (fc_bam_iter_open(&iter, fp, NULL, hdr, NULL, 0, INT64_MAX, &iter_opts) == 0) {
+            fc_read *fr = NULL;
+            while ((fr = fc_bam_iter_next(&iter, hdr)) != NULL) {
+                fc_writer_add_read(writer, fr, args.bam, hdr);
+                fc_read_destroy(fr);
             }
-            if (args.unmapped) {
-                write_stats(flag_counts->unmapped, "*", args.sample, flagstats);
-            }
+            fc_file_stats iter_stats = {0};
+            fc_bam_iter_finish(&iter, &iter_stats);
+            saw_stream_error |= (iter_stats.failures[F_STREAM_ERROR] > 0);
+            saw_unknown_error |= (iter_stats.failures[F_UNKNOWN_ERROR] > 0);
+            iter_stats.failures[F_FILE_OK] = 0;
+            iter_stats.failures[F_STREAM_ERROR] = 0;
+            iter_stats.failures[F_UNKNOWN_ERROR] = 0;
+            merge_bam_file_stats(&file_stats, &iter_stats, &qsum_total, &n_total);
+            fc_bam_iter_close(&iter);
+        } else {
+            saw_unknown_error = true;
         }
+
     } else {
-        // process given region / BED
         hts_idx_t *idx = sam_index_load(fp, args.bam);
         if (idx == 0){
             fprintf(stderr, "ERROR: Cannot find index file for '%s', which is required for processing by region.\n", args.bam);
@@ -208,67 +233,64 @@ int main(int argc, char *argv[]) {
         int check = 0;
         while ((check = next_region(&rit)) != -1) {
             if (check == -2 && args.bed == NULL) {
-                // we were given only a region, not a bed, and that region was garbage
-                // => user error, should stop immediately
                 exit(EXIT_FAILURE);
             }
-            if (check != 0) continue;  // skip other errors
+            if (check != 0) continue;
 
-            process_bams(
-                fp, idx, hdr, args.sample,
-                rit.chr, rit.start, rit.end,
-                args.read_group, args.tag_name, args.tag_value,
-                flag_counts, args.unmapped,
-                stats_engine,
-                run_ids, basecallers, args.force_recalc_qual, coverage);
-            if (flag_counts != NULL) {
-                // TODO: regions might not be whole chromosomes...
-                write_stats(flag_counts->counts[0], rit.chr, args.sample, flagstats);
+            fc_bam_iter iter = {0};
+            if (fc_bam_iter_open(&iter, fp, idx, hdr, rit.chr, rit.start, rit.end, &iter_opts) == 0) {
+                fc_read *fr = NULL;
+                while ((fr = fc_bam_iter_next(&iter, hdr)) != NULL) {
+                    fc_writer_add_read(writer, fr, args.bam, hdr);
+                    fc_read_destroy(fr);
+                }
+                fc_file_stats iter_stats = {0};
+                fc_bam_iter_finish(&iter, &iter_stats);
+                saw_stream_error |= (iter_stats.failures[F_STREAM_ERROR] > 0);
+                saw_unknown_error |= (iter_stats.failures[F_UNKNOWN_ERROR] > 0);
+                iter_stats.failures[F_FILE_OK] = 0;
+                iter_stats.failures[F_STREAM_ERROR] = 0;
+                iter_stats.failures[F_UNKNOWN_ERROR] = 0;
+                merge_bam_file_stats(&file_stats, &iter_stats, &qsum_total, &n_total);
+                fc_bam_iter_close(&iter);
+            } else {
+                saw_unknown_error = true;
             }
         }
         fprintf(stderr, "Processed %d regions\n", rit.n_regions);
-        
+
         destroy_region_iterator(&rit);
         hts_idx_destroy(idx);
     }
 
-    write_hist_stats(stats_engine->length_stats, args.histograms, "length.hist");
-    write_hist_stats(stats_engine->qual_stats, args.histograms, "quality.hist");
-    if (stats_engine->acc_stats) {
-        write_hist_stats(stats_engine->acc_stats, args.histograms, "accuracy.hist");
+    if (n_total > 0) {
+        file_stats.mean_quality = qsum_total / (double)n_total;
+    } else {
+        file_stats.mean_quality = 0.0;
     }
-    if (stats_engine->cov_stats) {
-        write_hist_stats(stats_engine->cov_stats, args.histograms, "coverage.hist");
+    if (file_stats.min_length == SIZE_MAX) {
+        file_stats.min_length = 0;
     }
-    if (stats_engine->polya_stats != NULL) {
-        write_hist_stats(stats_engine->polya_stats, args.histograms, "polya.hist");
-    } 
+    file_stats.failures[F_STREAM_ERROR] = saw_stream_error ? 1 : 0;
+    file_stats.failures[F_UNKNOWN_ERROR] = saw_unknown_error ? 1 : 0;
+    file_stats.failures[F_FILE_OK] = (!saw_stream_error && !saw_unknown_error) ? 1 : 0;
 
-    // Save also histograms for the unmapped reads if requested
-    // and if the user is not asking for a region
-    if (args.unmapped && args.region == NULL && stats_engine->length_stats_unmapped) {
-        write_hist_stats(stats_engine->length_stats_unmapped, args.histograms, "length.unmap.hist");
-        write_hist_stats(stats_engine->qual_stats_unmapped, args.histograms, "quality.unmap.hist");
-    }
+    fc_writer_end_file(writer, args.bam, &file_stats);
+    fc_writer_finish(writer);
 
-    // write runids summary
-    if (args.runids != NULL) {
-        write_counter(args.runids, run_ids, args.sample, args.bam, "run_id");
-    } 
-    // write basecallers summary
-    if (args.basecallers != NULL) {
-        write_counter(args.basecallers, basecallers, args.sample, args.bam, "basecaller");
-    } 
-
-    fc_stats_engine_destroy(stats_engine);
-    kh_counter_destroy(basecallers);
-    kh_counter_destroy(run_ids);
-
-    if (flagstats != NULL) {
-        fclose(flagstats);
+    uint64_t total_records =
+        file_stats.failures[R_RECORD_OK]
+        + file_stats.failures[R_TOO_LONG]
+        + file_stats.failures[R_TOO_SHORT]
+        + file_stats.failures[R_LOW_QUALITY]
+        + file_stats.failures[R_DUST_MASKED];
+    fprintf(stderr, "INFO   : Processed %" PRIu64 " records in 1 files.\n", total_records);
+    fprintf(stderr, "\nParsing/filtering summary:\n");
+    for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
+        fprintf(stderr, "%s\t%" PRIu64 "\n", failure_type[i], file_stats.failures[i]);
     }
 
-    destroy_coverage_writer(coverage);
+    fc_writer_destroy(writer);
 
     if (flag_counts != NULL) destroy_flag_stats(flag_counts);
     sam_hdr_destroy(hdr);

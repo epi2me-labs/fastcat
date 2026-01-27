@@ -23,11 +23,7 @@ typedef enum {
     NUM_FAILURE_CODES
 } failure_code;
 
-static const char *failure_type[NUM_FAILURE_CODES] = {
-#define X(code) #code,
-    PARSE_CODES
-#undef X
-};
+extern const char *failure_type[NUM_FAILURE_CODES];
 
 
 #endif

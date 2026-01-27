@@ -13,10 +13,10 @@
  *  @param chr bam target name.
  *  @param start start position of chr to consider.
  *  @param end end position of chr to consider.
- *  The return value can be freed with destroy_bam_iter_data.
+ *  The return value can be freed with fc_bam_iter_data_destroy.
  *
  */
-mplp_data *create_bam_iter_data(
+mplp_data *fc_bam_iter_data_create(
         htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
         const char *chr, hts_pos_t start, hts_pos_t end) {
 
@@ -52,7 +52,7 @@ mplp_data *create_bam_iter_data(
  *  @param data auxiliary structure to clean.
  *
  */
-void destroy_bam_iter_data(mplp_data *data) {
+void fc_bam_iter_data_destroy(mplp_data *data) {
     bam_itr_destroy(data->iter);
     free(data);
 }
@@ -64,7 +64,7 @@ void destroy_bam_iter_data(mplp_data *data) {
  *  @param b output pointer.
  *
  */
-int read_bam(void *data, bam1_t *b) {
+int fc_bam_read(void *data, bam1_t *b) {
     mplp_data *aux = (mplp_data*) data;
     return aux->iter ? sam_itr_next(aux->fp, aux->iter, b)
                      : sam_read1(aux->fp, aux->hdr, b);
@@ -77,7 +77,7 @@ int read_bam(void *data, bam1_t *b) {
  *
  *  The length of the returned array is b->core->l_qlen.
  */
-int *qpos2rpos(bam1_t *b) {
+int *fc_bam_qpos2rpos(bam1_t *b) {
     // we only deal in primary/soft-clipped alignments so length
     // of qseq member is the length of the intact query sequence.
     // TODO: add check for alignment being primary / no hard clipping

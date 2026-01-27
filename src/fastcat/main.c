@@ -3,33 +3,38 @@
 #include <dirent.h>
 #include <errno.h>
 
-#include <zlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
-
-#include "htslib/kseq.h"
-KSEQ_INIT(gzFile, gzread)
-#define KSEQ_DECLARED
+#include <stdlib.h>
 
 #include "../common.h"
-#include "../fastqcomments.h"
-#include "../kh_counter.h"
 #include "args.h"
 #include "parsing.h"
-#include "writer.h"
-#include "../fc_filter.h"
-#include "../fc_read.h"
+#include "../fc_iter.h"
+#include "../fc_sinks.h"
+#include "../fc_writer.h"
 
 
 const char filetypes[4][10] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
 size_t nfiletypes = 4;
 
-// defined below -- recursion
-int process_file(char* fname, writer writer, arguments_t *args, int recurse);
+static char* strip_trailing_slash(const char* input) {
+    if (input == NULL) return NULL;
+    size_t len = strlen(input);
+    if (len > 0 && input[len - 1] == '/') len--;
+    char* output = calloc(len + 1, sizeof(char));
+    memcpy(output, input, len);
+    return output;
+}
 
-int process_dir(const char *name, writer writer, arguments_t *args, int recurse) {
+// defined below -- recursion
+int process_file(char* fname, fc_writer* writer, const fc_fastq_iter_opts* iter_opts,
+        uint64_t* failures, arguments_t *args, int recurse);
+
+int process_dir(const char *name, fc_writer* writer, const fc_fastq_iter_opts* iter_opts,
+        uint64_t* failures, arguments_t *args, int recurse) {
     int status = 0;
     DIR *dir;
     struct dirent *entry;
@@ -52,7 +57,7 @@ int process_dir(const char *name, writer writer, arguments_t *args, int recurse)
                     if (args->verbose) {
                         fprintf(stderr, "Processing %s\n", path);
                     }
-                    int rtn = process_file(path, writer, args, recurse - 1);
+                    int rtn = process_file(path, writer, iter_opts, failures, args, recurse - 1);
                     status = max(status, rtn);
                     break;
                 }
@@ -75,7 +80,7 @@ int process_dir(const char *name, writer writer, arguments_t *args, int recurse)
                 free(path);
                 continue;
             }
-            int rtn = process_dir(path, writer, args, recurse - 1);
+            int rtn = process_dir(path, writer, iter_opts, failures, args, recurse - 1);
             status = max(status, rtn);
         } else {
             // skip
@@ -88,7 +93,8 @@ int process_dir(const char *name, writer writer, arguments_t *args, int recurse)
 }
 
 
-int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
+int process_file(char* fname, fc_writer* writer, const fc_fastq_iter_opts* iter_opts,
+        uint64_t* failures, arguments_t* args, int recurse) {
     int status = 0;
     struct stat finfo;
     int res = stat(fname, &finfo);
@@ -97,173 +103,37 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
         return errno;
     }
 
-    // handle directory input
     if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
         if (recurse != 0) {
-            char* sfname = strip_path(fname);
-            int rtn = process_dir(sfname, writer, args, recurse - 1);
+            char* sfname = strip_trailing_slash(fname);
+            int rtn = process_dir(sfname, writer, iter_opts, failures, args, recurse - 1);
             status = max(status, rtn);
             free(sfname);
         }
         return status;
     }
 
-    // these are all per-file stats, separate from writer stats
-    size_t n_valid = 0, total_bases = 0;
-    size_t min_len = UINTMAX_MAX, max_len = 0;
-    double average_q = 0.0, q_sum = 0.0;
-    kh_counter_t *run_ids = kh_counter_init();
-    kh_counter_t *basecallers = kh_counter_init();
-    uint64_t failures[NUM_FAILURE_CODES] = {0};
+    fc_fastq_iter iter = {0};
+    status = fc_fastq_iter_open(&iter, fname, iter_opts);
+    if (status != 0) {
+        return status;
+    }
 
-    gzFile fp;
-    kseq_t *seq;
-    fp = gzopen(fname, "r");
-    seq = kseq_init(fp);
-    bool truncated = false;  // track if last read record was truncated
-    fc_filter_opts filter_opts = {
-        .min_length = args->min_length,
-        .max_length = args->max_length,
-        .min_qscore = args->min_qscore
-    };
-    status = 0;
-    while ((status = kseq_read(seq)) != -1) {  // EOF - normal exit
-        if (status == -2) {  // truncated quality string
-            failures[F_QUAL_TRUNCATED]++;
-            truncated = true;
-            continue;
-        } else if (status == -3) {  // error reading stream
-            failures[F_STREAM_ERROR]++;
-            break;
-        } else if (status < 0) {  // other errors
-            failures[F_UNKNOWN_ERROR]++;
-            break;
-        }
-        if (seq->qual.l == 0) {
-            failures[F_QUAL_MISSING]++;
-            truncated = true; // not present is truncated \:D/
-            status = -2;
-            continue;
-        } else {
-            truncated = false;
-            failures[R_RECORD_OK]++;
-        }
-
-        // accumulate stats only for reads within length and quality thresholds
-        fc_filter_result filter = fc_filter_length(seq->seq.l, &filter_opts);
-        if (filter == FC_FILTER_TOO_LONG) {
-            failures[R_TOO_LONG]++;
-            continue;
-        }
-        if (filter == FC_FILTER_TOO_SHORT) {
-            failures[R_TOO_SHORT]++;
-            continue;
-        }
-
-        // build fc_read now as it handles mean_q from meta or recomputing
-        fc_read* fr = fc_read_from_kseq(seq);
-        float mean_q = fr->meta->mean_q;
-        filter = fc_filter_quality(mean_q, &filter_opts);
-        if (filter == FC_FILTER_LOW_QUALITY) {
-            fc_read_destroy(fr);
-            failures[R_LOW_QUALITY]++;
-            continue;
-        }
-
-        if (args->dust) {
-            if (!fc_filter_dust((uint8_t*)seq->seq.s, seq->seq.l,
-                    args->dust_t, args->dust_w, args->max_dust)) {
-                failures[R_DUST_MASKED]++;
-                continue;
-            }
-        }
-
-        // update per-file stats
-        ++n_valid ; total_bases += seq->seq.l;
-        min_len = min(min_len, seq->seq.l);
-        max_len = max(max_len, seq->seq.l);
-        kahan_sum(&average_q, mean_q, &q_sum);
-        kh_counter_increment(run_ids, fr->meta->runid);
-        kh_counter_increment(basecallers, fr->meta->basecaller);
-
-        // write read to output
-        write_read(writer, fr, fname);
+    fc_writer_begin_file(writer, fname);
+    fc_read *fr = NULL;
+    while ((fr = fc_fastq_iter_next(&iter)) != NULL) {
+        fc_writer_add_read(writer, fr, fname, NULL);
         fc_read_destroy(fr);
     }
 
-    // handle final reader status
-    if (truncated) {
-        // truncated treated as stream error
-        failures[F_STREAM_ERROR]++;
-        status = -3;
-    }
-    else if (status == -1) {
-        failures[F_FILE_OK]++;
-    }
-
-    status = status == -1 ? EXIT_SUCCESS : EXIT_FAILURE;
-
-    if (failures[F_STREAM_ERROR] > 0) {
-        fprintf(stderr,
-            "WARNING: file '%s' is possibly truncated.\n",
-            fname);
-    } else if (failures[F_QUAL_MISSING] > 0) {
-        fprintf(stderr,
-           "WARNING: no quality string found for %" PRIu64 " records in file '%s'.\n",
-           failures[F_QUAL_MISSING], fname);
-    } else if (failures[F_QUAL_TRUNCATED] > 0) {
-        fprintf(stderr,
-            "WARNING: truncated quality string found for %" PRIu64 " records in file '%s'.\n",
-            failures[F_QUAL_TRUNCATED], fname);
-    } else if (failures[F_UNKNOWN_ERROR] > 0) {
-        fprintf(stderr, "WARNING: unknown error reading file '%s'.\n", fname);
-    }
-
-    // summary entries
-    // TODO: move this to writer, we can wrap per file stats in a struct and pass that
-    if(writer->perfile != NULL) {
-        fprintf(writer->perfile, "%s\t", fname);
-        if (writer->sample != NULL) fprintf(writer->perfile, "%s\t", args->sample);
-        if (n_valid == 0) {
-            // there were no reads in the input file
-            fprintf(writer->perfile, "0\t0\t0\t0\t0.00");
-        } else {
-            fprintf(writer->perfile, "%zu\t%zu\t%zu\t%zu\t%.2f",
-                n_valid, total_bases, min_len, max_len, average_q / n_valid
-            );
-        }
+    fc_file_stats stats = {0};
+    status = fc_fastq_iter_finish(&iter, &stats);
+    fc_writer_end_file(writer, fname, &stats);
+    if (failures) {
         for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
-            fprintf(writer->perfile, "\t%" PRIu64, failures[i]);
-        }
-        fprintf(writer->perfile, "\n");
-    }
-    if(writer->runids != NULL) {
-        for (khiter_t k = 0; k < kh_end(run_ids); ++k) {
-            if (kh_exist(run_ids, k)) {
-                fprintf(writer->runids, "%s\t", fname);
-                if (writer->sample != NULL) fprintf(writer->runids, "%s\t", args->sample);
-                fprintf(writer->runids, "%s\t%d\n", kh_key(run_ids, k), kh_val(run_ids, k));
-            }
+            failures[i] += stats.failures[i];
         }
     }
-    if(writer->basecallers != NULL) {
-        for (khiter_t k = 0; k < kh_end(basecallers); ++k) {
-            if (kh_exist(basecallers, k)) {
-                fprintf(writer->basecallers, "%s\t", fname);
-                if (writer->sample != NULL) fprintf(writer->basecallers, "%s\t", args->sample);
-                fprintf(writer->basecallers, "%s\t%d\n", kh_key(basecallers, k), kh_val(basecallers, k));
-            }
-        }
-    }
-    for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
-        writer->failures[i] += failures[i];
-    }
-
-    // cleanup
-    kh_counter_destroy(basecallers);
-    kh_counter_destroy(run_ids);
-    kseq_destroy(seq);
-    gzclose(fp);
     return status;
 }
 
@@ -271,12 +141,77 @@ int process_file(char* fname, writer writer, arguments_t* args, int recurse) {
 int main(int argc, char **argv) {
     arguments_t args = parse_arguments(argc, argv);
 
-    writer writer = initialize_writer(
-        args.demultiplex_dir, args.histograms, args.perread, args.perfile,
-        args.runids, args.basecallers, args.sample,
-        args.reheader, args.write_bam, args.reads_per_file,
-        args.threads);
+    fc_writer *writer = fc_writer_create();
     if (writer == NULL) exit(1);
+    bool use_barcodes = args.demultiplex_dir != NULL;
+    size_t barcode_count = use_barcodes ? MAX_BARCODES : 1;
+    fc_writer_set_barcode_count(writer, barcode_count, use_barcodes);
+
+    fc_output_sink_opts output_opts = {
+        .output_dir = args.demultiplex_dir,
+        .reads_per_file = args.reads_per_file,
+        .reheader = args.reheader,
+        .write_bam = args.write_bam,
+        .threads = args.threads
+    };
+    fc_writer_add_sink(writer, fc_output_sink_create(&output_opts));
+    if (args.histograms) {
+        fc_stats_engine_config stats_cfg = {
+            .track_alignment = false,
+            .track_unmapped = true,
+            .track_polya = false,
+            .polya_cover = 0.0f,
+            .polya_qual = 0.0f,
+            .polya_rev = false,
+            .create_default = !use_barcodes
+        };
+        fc_writer_configure_stats(writer, &stats_cfg, use_barcodes);
+
+        size_t engine_count = 0;
+        fc_stats_engine **stats_engines = fc_writer_get_stats_engines(writer, &engine_count);
+        fc_hist_sink_opts hist_opts = {
+            .hist_dir = args.histograms,
+            .demux_dir = args.demultiplex_dir,
+            .use_barcodes = use_barcodes,
+            .create_hist_dir = true,
+            .write_unmapped = false,
+            .write_alignment_metrics = false,
+            .write_polya = false,
+            .unmapped_is_primary = true,
+            .engines = stats_engines,
+            .engine_count = engine_count
+        };
+        fc_writer_add_sink(writer, fc_hist_sink_create(&hist_opts));
+    }
+    if (args.perread) {
+        fc_perread_sink_opts perread_opts = {
+            .path = args.perread,
+            .sample = args.sample,
+            .include_alignment = false,
+            .output_unmapped = true
+        };
+        fc_writer_add_sink(writer, fc_perread_sink_create(&perread_opts));
+    }
+    if (args.perfile) {
+        fc_writer_add_sink(writer, fc_perfile_sink_create(args.perfile, args.sample));
+    }
+    if (args.runids || args.basecallers) {
+        fc_writer_add_sink(writer, fc_counter_sink_create(args.runids, args.basecallers, args.sample));
+    }
+
+    fc_fastq_iter_opts iter_opts = {
+        .min_length = args.min_length,
+        .max_length = args.max_length,
+        .min_qscore = args.min_qscore,
+        .dust = args.dust,
+        .dust_t = args.dust_t,
+        .dust_w = args.dust_w,
+        .max_dust = args.max_dust,
+        .read_group = NULL,
+        .tag_name = { 0, 0 },
+        .tag_value = 0
+    };
+    uint64_t failures[NUM_FAILURE_CODES] = {0};
 
     size_t nfile = 0;
     int status = 0;
@@ -289,23 +224,25 @@ int main(int argc, char **argv) {
         int recurse = 0;
         while ((nchr = getline (&ln, &n, stdin)) != -1) {
             ln[strcspn(ln, "\r\n")] = 0;
-            int rtn = process_file(ln, writer, &args, recurse);
+            int rtn = process_file(ln, writer, &iter_opts, failures, &args, recurse);
             status = max(status, rtn);
         }
         free(ln);
     } else {
         for (size_t i=0; i<nfile; ++i) {
-            int rtn = process_file(args.files[i], writer, &args, args.recurse);
+            int rtn = process_file(args.files[i], writer, &iter_opts, failures, &args, args.recurse);
             status = max(status, rtn);
         }
     }
 
+    fc_writer_finish(writer);
+
     uint64_t total_records =
-        writer->failures[R_RECORD_OK] 
-        + writer->failures[R_TOO_LONG]
-        + writer->failures[R_TOO_SHORT]
-        + writer->failures[R_LOW_QUALITY]
-        + writer->failures[R_DUST_MASKED];
+        failures[R_RECORD_OK]
+        + failures[R_TOO_LONG]
+        + failures[R_TOO_SHORT]
+        + failures[R_LOW_QUALITY]
+        + failures[R_DUST_MASKED];
     fprintf(stderr, "INFO   : Processed %" PRIu64 " records in %zu files.\n", total_records, nfile);
     if (status != EXIT_SUCCESS) {
         fprintf(stderr, "WARNING: Error processing files.\n");
@@ -316,8 +253,8 @@ int main(int argc, char **argv) {
 
     fprintf(stderr, "\nParsing/filtering summary:\n");
     for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
-        fprintf(stderr, "%s\t%" PRIu64 "\n", failure_type[i], writer->failures[i]);
+        fprintf(stderr, "%s\t%" PRIu64 "\n", failure_type[i], failures[i]);
     }
-    destroy_writer(writer);
+    fc_writer_destroy(writer);
     return status;
 }

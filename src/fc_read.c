@@ -16,7 +16,7 @@ static void build_tags_string_from_bam(const bam1_t *b, read_meta meta);
 fc_read* fc_read_from_kseq(kseq_t* seq) {
     fc_read* r = xalloc(1, sizeof(fc_read), "fc_read");
     bam1_t* bam = kseq_to_bam(seq);
-    read_meta meta = create_read_meta(bam, NULL, &seq->comment);
+    read_meta meta = fc_read_meta_create(bam, NULL, &seq->comment);
 
     r->bam = bam;
     r->meta = meta;
@@ -33,7 +33,7 @@ fc_read* fc_read_from_bam(bam1_t* bam, const bam_hdr_t* hdr, bool force_recalc_q
     r->bam = bam;
     r->owns_bam = false;
 
-    read_meta meta = create_read_meta(bam, hdr, NULL);
+    read_meta meta = fc_read_meta_create(bam, hdr, NULL);
     meta->mean_q = resolve_mean_quality(bam, meta, force_recalc_qual);
 
     r->meta = meta;
@@ -46,12 +46,12 @@ void fc_read_destroy(fc_read* r) {
     if (r->owns_bam && r->bam) {
         bam_destroy1(r->bam);
     }
-    if (r->meta) destroy_read_meta(r->meta);
+    if (r->meta) fc_read_meta_destroy(r->meta);
     free(r);
 }
 
 
-read_meta create_read_meta(const bam1_t *b, const bam_hdr_t *hdr, const kstring_t *orig_comment) {
+read_meta fc_read_meta_create(const bam1_t *b, const bam_hdr_t *hdr, const kstring_t *orig_comment) {
     size_t len = 0;
     const char* src = NULL;
     if (orig_comment && orig_comment->s && orig_comment->l > 0) {
@@ -166,7 +166,7 @@ read_meta create_read_meta(const bam1_t *b, const bam_hdr_t *hdr, const kstring_
 }
 
 
-void destroy_read_meta(read_meta meta) {
+void fc_read_meta_destroy(read_meta meta) {
     free(meta->orig_comment);
     destroy_rg_info(meta->rg_info);
     free(meta->tags_str->s);

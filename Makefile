@@ -105,14 +105,14 @@ test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_f
 
 .PHONY:
 clean:
-	rm -rf fastcat bamstats bamindex libfastcatcore.a src/fastcat/*.o src/fastlint/*.o src/bamstats/*.o src/bamindex/*.o src/*.o
+	rm -rf fastcat bamstats bamindex libfastcatcore.a src/fastcat/*.o src/fastlint/*.o src/bamstats/*.o src/bamindex/*.o src/*.o src/sink/*.o
 
 .PHONY: clean_htslib
 clean_htslib:
 	cd htslib && make clean
 
 # core library
-CORE_OBJS = src/common.o src/stats.o src/fc_stats_engine.o src/fastqcomments.o src/fc_read.o src/fc_filter.o src/fc_bam_utils.o src/fc_dust.o src/sdust/sdust.o src/sdust/kalloc.o src/kh_counter.o src/regiter.o
+CORE_OBJS = src/common.o src/stats.o src/fc_stats_engine.o src/fastqcomments.o src/fc_read.o src/fc_filter.o src/fc_bam_utils.o src/fc_dust.o src/fc_iter.o src/fc_writer.o src/fastcat/parsing.o src/sink/common.o src/sink/output.o src/sink/perread.o src/sink/perfile.o src/sink/counter.o src/sink/hist.o src/sink/coverage.o src/sink/flagstats.o src/bamcoverage/coverage.o src/sdust/sdust.o src/sdust/kalloc.o src/kh_counter.o src/regiter.o
 CORE_LIB = libfastcatcore.a
 
 # unit tests
@@ -206,10 +206,11 @@ $(CORE_LIB): $(CORE_OBJS) Makefile
 	$(AR) rcs $@ $(CORE_OBJS)
 
 -include $(wildcard src/*.d)
+-include $(wildcard src/sink/*.d)
 -include $(wildcard test/unit/*.d)
 -include $(wildcard test/unity/*.d)
 
-fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o src/fastcat/writer.o $(CORE_LIB) $(STATIC_HTSLIB) zlib-ng/libz.a
+fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o $(CORE_LIB) $(STATIC_HTSLIB) zlib-ng/libz.a
 	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -223,7 +224,7 @@ fastlint: src/version.o src/fastlint/main.o src/fastlint/args.o src/sdust/sdust.
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-bamstats: src/version.o src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o src/bamcoverage/coverage.o $(CORE_LIB) $(STATIC_HTSLIB)
+bamstats: src/version.o src/bamstats/main.o src/bamstats/args.o src/bamstats/readstats.o $(CORE_LIB) $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
