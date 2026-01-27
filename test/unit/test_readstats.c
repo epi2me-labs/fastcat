@@ -36,30 +36,30 @@ static bam1_t* build_read(const char* qname, const char* seq, const char* qual, 
 
 static void test_resolve_mean_quality_prefers_qs(void) {
     bam1_t* b = build_read("r1", "ACGT", "!!!!", BAM_FUNMAP, 42.0f, true);
-    read_meta meta = create_read_meta(b, NULL, NULL);
+    read_meta meta = fc_read_meta_create(b, NULL, NULL);
     meta->mean_q = 42.0f;
     float mq = resolve_mean_quality(b, meta, false);
-    destroy_read_meta(meta);
+    fc_read_meta_destroy(meta);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 42.0f, mq);
     bam_destroy1(b);
 }
 
 static void test_resolve_mean_quality_force_recalc(void) {
     bam1_t* b = build_read("r1", "ACGT", "!!!!", BAM_FUNMAP, 42.0f, true);
-    read_meta meta = create_read_meta(b, NULL, NULL);
+    read_meta meta = fc_read_meta_create(b, NULL, NULL);
     meta->mean_q = 42.0f;
     float mq = resolve_mean_quality(b, meta, true);
-    destroy_read_meta(meta);
+    fc_read_meta_destroy(meta);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 0.0f, mq);
     bam_destroy1(b);
 }
 
 static void test_resolve_mean_quality_without_qs(void) {
     bam1_t* b = build_read("r1", "ACGT", "5555", BAM_FUNMAP, -1.0f, false);
-    read_meta meta = create_read_meta(b, NULL, NULL);
+    read_meta meta = fc_read_meta_create(b, NULL, NULL);
     meta->mean_q = -1.0f;
     float mq = resolve_mean_quality(b, meta, false);
-    destroy_read_meta(meta);
+    fc_read_meta_destroy(meta);
     TEST_ASSERT_FLOAT_WITHIN(1e-2, 20.0f, mq);
     bam_destroy1(b);
 }

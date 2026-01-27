@@ -10,14 +10,14 @@ libdeflate-v*.tar.gz
 samtools-*/
 .fastcat_patch_applied
 # executables
-bamindex
-bamcoverage
-bamstats
-fastcat
-fastlint
-libfastcatcore.a
-samtools
-test/unit/unit_tests
+/bamindex
+/bamcoverage
+/bamstats
+/fastcat
+/fastlint
+/libfastcatcore.a
+/samtools
+/test/unit/unit_tests
 # gumpf
 /fastcat-histograms
 /demultiplex

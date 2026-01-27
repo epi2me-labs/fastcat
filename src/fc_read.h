@@ -52,21 +52,21 @@ static inline float resolve_mean_quality(const bam1_t *b, const read_meta meta, 
     return mean_quality;
 }
 
-// Free a read_meta and any associated allocations.
-void destroy_read_meta(read_meta meta);
-
 // Construct from an existing BAM record; does not take ownership of bam.
 fc_read* fc_read_from_bam(bam1_t* bam, const bam_hdr_t* hdr, bool force_recalc_qual);
 
 // Construct from FASTQ (kseq); owns the BAM.
 fc_read* fc_read_from_kseq(kseq_t* seq);
 
+// Free a read_meta and any associated allocations.
+void fc_read_meta_destroy(read_meta meta);
+
 // Free metadata/tags, and BAM if owned.
 void fc_read_destroy(fc_read* r);
 
 // Construct read_meta from BAM aux tags, optionally preserving the original FASTQ comment.
 // Caller owns the returned read_meta and must destroy it.
-read_meta create_read_meta(const bam1_t *b, const bam_hdr_t *hdr,
-                           const kstring_t *orig_comment);
+read_meta fc_read_meta_create(const bam1_t *b, const bam_hdr_t *hdr,
+                              const kstring_t *orig_comment);
 
 #endif
