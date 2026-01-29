@@ -1,6 +1,8 @@
 #include "fc_sinks.h"
 
 #include <stdlib.h>
+#include <stdio.h>
+#include "sink/common.h"
 
 // Coverage is a thin adapter: cov_writer owns most lifecycle and file I/O concerns that would
 // otherwise live in the sink/dispatcher layer. Future cleanup could lift output setup/teardown
@@ -30,10 +32,13 @@ static void coverage_sink_destroy(void *ctx) {
 
 fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts) {
     fc_sink sink = {0};
-    if (!opts || !opts->out_dir) return sink;
+    if (!opts || !opts->output_root) return sink;
+
+    char *out_dir = fc_sink_join_path(opts->output_root, "coverage");
+    if (!out_dir) return sink;
 
     cov_writer coverage = init_coverage_writer(
-        opts->out_dir,
+        out_dir,
         opts->per_base,
         opts->use_cigar,
         opts->exclude_flags,
@@ -48,6 +53,7 @@ fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts) {
         opts->n_thresholds,
         opts->segments,
         opts->n_segments);
+    free(out_dir);
 
     if (!coverage) return sink;
     coverage_sink *state = calloc(1, sizeof(*state));

@@ -25,9 +25,11 @@ static struct argp_option options[] = {
 
     {0, 0, 0, 0,
         "Output options:", 0},
+    {"output", 'o', "DIRECTORY", 0,
+        "Output root directory (default: fastcat-qc). Must not already exist.", 0},
     {"sample", 's', "SAMPLE NAME",   0,
         "Sample name (if given, adds a 'sample_name' column).", 0},
-    {"reads_per_file", 'c', "NUM", 0,
+    {"reads-per-file", 'c', "NUM", 0,
         "Split reads into files with a set number of reads (default: single file).", 0},
     {"reheader", 'H', 0, 0,
         "Rewrite fastq header comments as SAM tags (useful for passing through minimap2).", 0},
@@ -38,37 +40,29 @@ static struct argp_option options[] = {
 
     {0, 0, 0, 0,
         "Output file selection:", 0},
-    {"read", 'r', "READ SUMMARY",  0,
-        "Per-read summary output", 0},
-    {"file", 'f', "FILE SUMMARY",  0,
-        "Per-file summary output", 0},
-    {"runids", 'i', "ID SUMMARY",  0,
-        "Run ID summary output", 0},
-    {"basecallers", 'l', "CALLER SUMMARY",  0,
-        "Basecaller mode summary output", 0},
-    {"demultiplex", 'd', "OUT DIR",  0,
-        "Separate barcoded samples using fastq header information. Option value is top-level output directory.", 0},
-    {"histograms", 0x400, "DIRECTORY", 0,
-        "Directory for outputting histogram information. When --demultiplex is enabled histograms are written to per-sample demultiplexed output directories. (default: fastcat-histograms)", 0},
+    {"per-read", 'p', 0, 0,
+        "Write per-read TSV (large). Disabled by default.", 0},
+    {"demultiplex", 'd', 0, 0,
+        "Separate barcoded samples using fastq header information; outputs go under <output>/demux/.", 0},
 
     {0, 0, 0, 0,
         "Read filtering options:", 0},
-    {"min_length", 'a', "MIN READ LENGTH", 0,
+    {"min-length", 'a', "MIN READ LENGTH", 0,
         "minimum read length to output (excluded reads remain listed in summaries).", 0},
-    {"max_length", 'b', "MAX READ LENGTH", 0,
+    {"max-length", 'b', "MAX READ LENGTH", 0,
         "maximum read length to output (excluded reads remain listed in summaries).", 0},
-    {"min_qscore", 'q', "MIN READ QSCORE", 0,
+    {"min-qscore", 'q', "MIN READ QSCORE", 0,
         "minimum read Qscore to output (excluded reads remain listed in summaries).", 0},
     {"dust", 0x500, 0, 0,
         "Enable DUST filtering of reads (default: disabled).", 0},
 
     { 0, 0, 0, 0,
         "Advanced cleaning options:", 0},
-    {"max_dust", 0x600, "MAX DUST", 0,
+    {"max-dust", 0x600, "MAX DUST", 0,
         "Maximum proportion of low-complexity regions to allow in reads (default: 0.95).", 0},
-    {"dust_w", 0x700, "DUST W", 0,
+    {"dust-w", 0x700, "DUST W", 0,
         "Window size for DUST filtering (default: 64).", 0},
-    {"dust_t", 0x800, "DUST T", 0,
+    {"dust-t", 0x800, "DUST T", 0,
         "Threshold for DUST filtering (default: 20).", 0},
     { 0 }
 };
@@ -77,20 +71,14 @@ static struct argp_option options[] = {
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     arguments_t *arguments = state->input;
     switch (key) {
-        case 'r':
-            arguments->perread = arg;
-            break;
-        case 'f':
-            arguments->perfile = arg;
-            break;
-        case 'i':
-            arguments->runids = arg;
-            break;
-        case 'l':
-            arguments->basecallers = arg;
-            break;
         case 's':
             arguments->sample = arg;
+            break;
+        case 'o':
+            arguments->output_dir = arg;
+            break;
+        case 'p':
+            arguments->per_read = true;
             break;
         case 'a':
             arguments->min_length = atoi(arg);
@@ -102,10 +90,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             arguments->reads_per_file = atoi(arg);
             break;
         case 'd':
-            arguments->demultiplex_dir = arg;
-            break;
-        case 0x400:
-            arguments->histograms = arg;
+            arguments->demultiplex = true;
             break;
         case 0x500:
             arguments->dust = 1;
@@ -167,17 +152,14 @@ static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
 
 arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;
-    args.perread = NULL;
-    args.perfile = NULL;
-    args.runids = NULL;
-    args.basecallers = NULL;
+    args.output_dir = "fastcat-qc";
     args.sample = "";
     args.min_length = 0;
     args.max_length = (size_t)-1;
     args.min_qscore = 0;
     args.recurse = 1; // always allow descent into TLD
-    args.demultiplex_dir = NULL;
-    args.histograms = "fastcat-histograms";
+    args.demultiplex = false;
+    args.per_read = false;
     args.dust = 0;
     args.max_dust = 0.95;
     args.dust_w = 64;

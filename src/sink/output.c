@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include <zlib.h>
 
@@ -58,6 +59,7 @@ static int gz_fprintf_bridge(void *h, const char *fmt, ...) {
 typedef struct {
     char *output;
     size_t reads_per_file;
+    size_t barcode_count;
     bool reheader;
     bool write_bam;
     gzFile *handles;
@@ -159,10 +161,10 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
     (void)hdr;
 
     size_t barcode = read_ctx->barcode;
-    if (barcode > MAX_BARCODES - 1) {
+    if (barcode >= sink->barcode_count) {
         fprintf(stderr,
-            "ERROR: Read's barcode number (%lu) is greater than MAX_BARCODES (%i)\n",
-            barcode, MAX_BARCODES);
+            "ERROR: Read's barcode number (%lu) exceeds configured barcode slots (%zu)\n",
+            barcode, sink->barcode_count);
         exit(1);
     }
 
@@ -225,7 +227,7 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
 
 static void output_sink_destroy(void *ctx) {
     output_sink *sink = (output_sink *)ctx;
-    for (size_t i = 0; i < MAX_BARCODES; ++i) {
+    for (size_t i = 0; i < sink->barcode_count; ++i) {
         if (sink->write_bam) {
             if (sink->bam_files && sink->bam_files[i] != NULL) {
                 hts_close(sink->bam_files[i]);
@@ -256,17 +258,24 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
     fc_sink sink = {0};
     if (!opts) return sink;
 
+    // Convention: non-NULL output_root means demuxed file output under <output_root>/demux; NULL streams to stdout.
     output_sink *state = calloc(1, sizeof(*state));
-    state->output = fc_sink_strip_path(opts->output_dir);
+    state->output = NULL;
+    if (opts->output_root) {
+        char *path = fc_sink_join_path(opts->output_root, "demux");
+        state->output = fc_sink_strip_path(path);
+        free(path);
+    }
     state->reads_per_file = opts->reads_per_file;
+    state->barcode_count = opts->barcode_count ? opts->barcode_count : 1;
     state->reheader = opts->reheader;
     state->write_bam = opts->write_bam;
-    state->reads_written = calloc(MAX_BARCODES, sizeof(size_t));
-    state->file_index = calloc(MAX_BARCODES, sizeof(size_t));
+    state->reads_written = calloc(state->barcode_count, sizeof(size_t));
+    state->file_index = calloc(state->barcode_count, sizeof(size_t));
 
     if (state->output != NULL) {
         int rtn = mkdir_hier(state->output);
-        if (rtn == -1) {
+        if (rtn == -1 && errno != EEXIST) {
             fprintf(stderr,
                 "Error: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
                 state->output);
@@ -285,7 +294,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
         state->bam_hdr = sam_hdr_init();
         sam_hdr_add_line(state->bam_hdr, "HD", "VN", SAM_FORMAT_VERSION, "SO", "unsorted", NULL);
         sam_hdr_add_line(state->bam_hdr, "PG", "ID", "fastcat", "PN", "fastcat", "VN", argp_program_version, NULL);
-        state->bam_files = calloc(MAX_BARCODES, sizeof(htsFile *));
+        state->bam_files = calloc(state->barcode_count, sizeof(htsFile *));
         if (state->output == NULL) {
             state->bam_files[0] = hts_open("-", "wb");
             hts_set_opt(state->bam_files[0], HTS_OPT_THREAD_POOL, &state->hts_pool);
@@ -295,7 +304,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
             }
         }
     } else {
-        state->handles = calloc(MAX_BARCODES, sizeof(gzFile));
+        state->handles = calloc(state->barcode_count, sizeof(gzFile));
     }
 
     sink.ctx = state;

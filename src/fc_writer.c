@@ -5,9 +5,36 @@
 
 #include "fc_filter.h"
 
-fc_writer *fc_writer_create(void) {
+#define MAX_BARCODES 1025  // barcode 0 is reserved for "unclassified"
+
+fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *stats_cfg) {
     fc_writer *writer = calloc(1, sizeof(*writer));
-    writer->barcode_count = 1;
+    if (!writer) return NULL;
+
+    writer->use_barcodes = use_barcodes;
+    writer->barcode_count = use_barcodes ? MAX_BARCODES : 1;
+
+    writer->stats_per_barcode = use_barcodes;
+    writer->stats_cfg_set = (stats_cfg != NULL);
+    if (writer->stats_cfg_set) {
+        writer->stats_cfg = *stats_cfg;
+        writer->stats_engine_count = writer->stats_per_barcode ? writer->barcode_count : 1;
+        writer->stats_engines = calloc(writer->stats_engine_count, sizeof(*writer->stats_engines));
+        if (!writer->stats_engines) {
+            free(writer);
+            return NULL;
+        }
+        // Non-demux runs use a single shared engine; create it eagerly.
+        if (!writer->stats_per_barcode && writer->stats_engine_count > 0) {
+            writer->stats_engines[0] = fc_stats_engine_create(
+                writer->stats_cfg.track_unmapped,
+                writer->stats_cfg.track_alignment,
+                writer->stats_cfg.track_polya,
+                writer->stats_cfg.polya_cover,
+                writer->stats_cfg.polya_qual,
+                writer->stats_cfg.polya_rev);
+        }
+    }
     return writer;
 }
 
@@ -23,48 +50,6 @@ void fc_writer_add_sink(fc_writer *writer, fc_sink sink) {
         writer->sink_capacity = new_cap;
     }
     writer->sinks[writer->sink_count++] = sink;
-}
-
-void fc_writer_set_barcode_count(fc_writer *writer, size_t barcode_count, bool use_barcodes) {
-    if (!writer) return;
-    writer->barcode_count = barcode_count;
-    writer->use_barcodes = use_barcodes;
-}
-
-void fc_writer_configure_stats(fc_writer *writer, const fc_stats_engine_config *config, bool per_barcode) {
-    if (!writer || !config) return;
-    if (writer->stats_engines) {
-        for (size_t i = 0; i < writer->stats_engine_count; ++i) {
-            if (writer->stats_engines[i] != NULL) {
-                fc_stats_engine_destroy(writer->stats_engines[i]);
-            }
-        }
-        free(writer->stats_engines);
-    }
-    writer->stats_per_barcode = per_barcode;
-    writer->stats_cfg_set = true;
-    writer->stats_cfg = *config;
-    writer->stats_engine_count = per_barcode ? writer->barcode_count : 1;
-    writer->stats_engines = calloc(writer->stats_engine_count, sizeof(*writer->stats_engines));
-    if (!writer->stats_engines) {
-        fprintf(stderr, "ERROR: failed to allocate stats engines\n");
-        exit(EXIT_FAILURE);
-    }
-    if (config->create_default && writer->stats_engine_count > 0) {
-        writer->stats_engines[0] = fc_stats_engine_create(
-            config->track_unmapped,
-            config->track_alignment,
-            config->track_polya,
-            config->polya_cover,
-            config->polya_qual,
-            config->polya_rev);
-    }
-}
-
-fc_stats_engine **fc_writer_get_stats_engines(fc_writer *writer, size_t *engine_count) {
-    if (!writer) return NULL;
-    if (engine_count) *engine_count = writer->stats_engine_count;
-    return writer->stats_engines;
 }
 
 void fc_writer_begin_file(fc_writer *writer, const char *fname) {

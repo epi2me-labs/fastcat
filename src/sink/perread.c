@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "sink/common.h"
 #include "htslib/sam.h"
 
 typedef struct {
@@ -12,7 +13,6 @@ typedef struct {
     char *sample;
     bool include_alignment;
     bool output_unmapped;
-    bool owns_fp;
 } perread_sink;
 
 static void perread_sink_write_header(perread_sink *sink) {
@@ -88,30 +88,26 @@ static void perread_sink_add_read(void *ctx, const fc_read *read, const fc_read_
 
 static void perread_sink_destroy(void *ctx) {
     perread_sink *sink = (perread_sink *)ctx;
-    if (sink->fp && sink->owns_fp) fclose(sink->fp);
+    if (sink->fp) fclose(sink->fp);
     free(sink->sample);
     free(sink);
 }
 
 fc_sink fc_perread_sink_create(const fc_perread_sink_opts *opts) {
     fc_sink sink = {0};
-    if (!opts) return sink;
+    if (!opts || !opts->output_root) return sink;
 
     perread_sink *state = calloc(1, sizeof(*state));
     state->include_alignment = opts->include_alignment;
     state->output_unmapped = opts->output_unmapped;
-    if (opts->path) {
-        ensure_parent_dir_exists(opts->path);
-        state->fp = fopen(opts->path, "w");
-        if (state->fp == NULL) {
-            fprintf(stderr, "Error opening per-read file '%s' for writing.\n", opts->path);
-            exit(EXIT_FAILURE);
-        }
-        state->owns_fp = true;
-    } else {
-        state->fp = stdout;
-        state->owns_fp = false;
+    char *path = fc_sink_join_path(opts->output_root, "per_read.tsv");
+    ensure_parent_dir_exists(path);
+    state->fp = fopen(path, "w");
+    if (state->fp == NULL) {
+        fprintf(stderr, "Error opening per-read file '%s' for writing.\n", path);
+        exit(EXIT_FAILURE);
     }
+    free(path);
     if (opts->sample && opts->sample[0]) {
         state->sample = strdup(opts->sample);
     }

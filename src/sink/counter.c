@@ -6,6 +6,7 @@
 
 #include "common.h"
 #include "kh_counter.h"
+#include "sink/common.h"
 
 typedef struct {
     FILE *runids;
@@ -79,36 +80,37 @@ static void counter_sink_destroy(void *ctx) {
     free(sink);
 }
 
-fc_sink fc_counter_sink_create(const char *runids_path, const char *basecallers_path, const char *sample) {
+fc_sink fc_counter_sink_create(const char *output_root, const char *sample) {
     fc_sink sink = {0};
-    if (!runids_path && !basecallers_path) return sink;
+    if (!output_root) return sink;
 
     counter_sink *state = calloc(1, sizeof(*state));
     if (sample && sample[0]) {
         state->sample = strdup(sample);
     }
-    if (runids_path) {
-        ensure_parent_dir_exists(runids_path);
-        state->runids = fopen(runids_path, "w");
-        if (state->runids == NULL) {
-            fprintf(stderr, "Error opening runids file '%s' for writing.\n", runids_path);
-            exit(EXIT_FAILURE);
-        }
-        fprintf(state->runids, "filename\t");
-        if (state->sample) fprintf(state->runids, "sample_name\t");
-        fprintf(state->runids, "run_id\tcount\n");
+    char *runids_path = fc_sink_join_path(output_root, "runids.tsv");
+    ensure_parent_dir_exists(runids_path);
+    state->runids = fopen(runids_path, "w");
+    if (state->runids == NULL) {
+        fprintf(stderr, "Error opening runids file '%s' for writing.\n", runids_path);
+        exit(EXIT_FAILURE);
     }
-    if (basecallers_path) {
-        ensure_parent_dir_exists(basecallers_path);
-        state->basecallers = fopen(basecallers_path, "w");
-        if (state->basecallers == NULL) {
-            fprintf(stderr, "Error opening basecallers file '%s' for writing.\n", basecallers_path);
-            exit(EXIT_FAILURE);
-        }
-        fprintf(state->basecallers, "filename\t");
-        if (state->sample) fprintf(state->basecallers, "sample_name\t");
-        fprintf(state->basecallers, "basecaller\tcount\n");
+    fprintf(state->runids, "filename\t");
+    if (state->sample) fprintf(state->runids, "sample_name\t");
+    fprintf(state->runids, "run_id\tcount\n");
+    free(runids_path);
+
+    char *basecallers_path = fc_sink_join_path(output_root, "basecallers.tsv");
+    ensure_parent_dir_exists(basecallers_path);
+    state->basecallers = fopen(basecallers_path, "w");
+    if (state->basecallers == NULL) {
+        fprintf(stderr, "Error opening basecallers file '%s' for writing.\n", basecallers_path);
+        exit(EXIT_FAILURE);
     }
+    fprintf(state->basecallers, "filename\t");
+    if (state->sample) fprintf(state->basecallers, "sample_name\t");
+    fprintf(state->basecallers, "basecaller\tcount\n");
+    free(basecallers_path);
 
     state->run_ids = kh_counter_init();
     state->basecallers_counter = kh_counter_init();
