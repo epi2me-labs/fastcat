@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "fastcat/parsing.h"
+#include "sink/common.h"
 
 typedef struct {
     FILE *fp;
@@ -39,17 +40,19 @@ static void perfile_sink_destroy(void *ctx) {
     free(sink);
 }
 
-fc_sink fc_perfile_sink_create(const char *path, const char *sample) {
+fc_sink fc_perfile_sink_create(const char *output_root, const char *sample) {
     fc_sink sink = {0};
-    if (!path) return sink;
+    if (!output_root) return sink;
 
     perfile_sink *state = calloc(1, sizeof(*state));
+    char *path = fc_sink_join_path(output_root, "per_file.tsv");
     ensure_parent_dir_exists(path);
     state->fp = fopen(path, "w");
     if (state->fp == NULL) {
         fprintf(stderr, "Error opening per-file file '%s' for writing.\n", path);
         exit(EXIT_FAILURE);
     }
+    free(path);
     if (sample && sample[0]) {
         state->sample = strdup(sample);
     }

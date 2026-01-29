@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "common.h"
 #include "sink/common.h"
@@ -113,28 +114,42 @@ static void hist_sink_destroy(void *ctx) {
 
 fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts) {
     fc_sink sink = {0};
-    if (!opts || !opts->hist_dir || !opts->engines || opts->engine_count == 0) return sink;
+    if (!opts || !opts->output_root || !opts->engines || opts->engine_count == 0) return sink;
 
     hist_sink *state = calloc(1, sizeof(*state));
-    state->hist_dir = fc_sink_strip_path(opts->hist_dir);
-    state->output_dir = opts->use_barcodes ? fc_sink_strip_path(opts->demux_dir) : NULL;
-    state->use_barcodes = opts->use_barcodes && state->output_dir != NULL;
+
+    if (opts->use_barcodes) {
+        // Demultiplexed: write under <output_root>/demux/...; no top-level hist_dir
+        char *default_demux = fc_sink_join_path(opts->output_root, "demux");
+        state->output_dir = fc_sink_strip_path(default_demux);
+        free(default_demux);
+        state->hist_dir = NULL;
+        state->use_barcodes = true;
+    } else {
+        // Single set of histograms under <output_root>/histograms
+        char *default_hist = fc_sink_join_path(opts->output_root, "histograms");
+        state->hist_dir = fc_sink_strip_path(default_hist);
+        free(default_hist);
+        state->output_dir = NULL;
+        state->use_barcodes = false;
+
+        if (state->hist_dir != NULL) {
+            int rtn = mkdir_hier(state->hist_dir);
+            if (rtn == -1 && errno != EEXIST) {
+                fprintf(stderr,
+                    "Error: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
+                    state->hist_dir);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
     state->write_unmapped = opts->write_unmapped;
     state->write_alignment_metrics = opts->write_alignment_metrics;
     state->write_polya = opts->write_polya;
     state->unmapped_is_primary = opts->unmapped_is_primary;
     state->engine_count = opts->engine_count;
     state->engines = opts->engines;
-
-    if (opts->create_hist_dir && state->output_dir == NULL) {
-        int rtn = mkdir_hier(state->hist_dir);
-        if (rtn == -1) {
-            fprintf(stderr,
-                "Error: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
-                state->hist_dir);
-            exit(EXIT_FAILURE);
-        }
-    }
 
     sink.ctx = state;
     sink.finish = hist_sink_finish;

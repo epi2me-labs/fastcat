@@ -24,19 +24,29 @@ made in `fc_writer` and encoded in `fc_read_ctx` for each read.
 ## Example wiring
 
 ```c
-fc_writer *writer = fc_writer_create();
+fc_stats_engine_config stats_cfg = {
+    .track_alignment = false,
+    .track_unmapped = true,
+    .track_polya = false,
+    .polya_cover = 0.0f,
+    .polya_qual = 0.0f,
+    .polya_rev = false
+};
+
+fc_writer *writer = fc_writer_create(/*use_barcodes=*/false, &stats_cfg);
 
 fc_output_sink_opts out_opts = {
-    .output_dir = args.demultiplex_dir,
+    .output_root = args.output_dir,   // NULL to stream FASTQ/BAM to stdout
     .reads_per_file = args.reads_per_file,
     .reheader = args.reheader,
     .write_bam = args.write_bam,
-    .threads = args.threads
+    .threads = args.threads,
+    .barcode_count = writer->barcode_count
 };
 fc_writer_add_sink(writer, fc_output_sink_create(&out_opts));
 
 fc_perread_sink_opts perread_opts = {
-    .path = args.perread,
+    .output_root = args.output_dir,
     .sample = args.sample,
     .include_alignment = false,
     .output_unmapped = true

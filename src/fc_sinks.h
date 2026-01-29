@@ -8,51 +8,44 @@
 #include "fc_stats_engine.h"
 #include "fc_writer.h"
 
-// barcode 0 is reserved for "unclassified"
-#define MAX_BARCODES 1025
-
 typedef struct {
-    const char *output_dir;
+    const char *output_root;   // NULL => stream to stdout; non-NULL => write files under <output_root>/demux
     size_t reads_per_file;
     bool reheader;
     bool write_bam;
     int threads;
+    size_t barcode_count;      // size of per-barcode buffers
 } fc_output_sink_opts;
 
 fc_sink fc_output_sink_create(const fc_output_sink_opts *opts);
 
 typedef struct {
-    const char *path;
+    const char *output_root;
     const char *sample;
     bool include_alignment;
     bool output_unmapped;
 } fc_perread_sink_opts;
 
 fc_sink fc_perread_sink_create(const fc_perread_sink_opts *opts);
-fc_sink fc_perfile_sink_create(const char *path, const char *sample);
-fc_sink fc_counter_sink_create(const char *runids_path, const char *basecallers_path, const char *sample);
+fc_sink fc_perfile_sink_create(const char *output_root, const char *sample);
+fc_sink fc_counter_sink_create(const char *output_root, const char *sample);
 typedef struct {
-    const char *hist_dir;
-    const char *demux_dir;
+    const char *output_root;   // top-level output directory
     bool use_barcodes;
-    bool create_hist_dir;
     bool write_unmapped;
     bool write_alignment_metrics;
     bool write_polya;
     bool unmapped_is_primary;
-    fc_stats_engine **engines;
+    fc_stats_engine **engines;   // array sized by writer->stats_engine_count
     size_t engine_count;
 } fc_hist_sink_opts;
 
 fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts);
 
-typedef struct flag_stats flag_stats;
-
 typedef struct {
-    flag_stats *stats;
     bool region_mode;
     bool track_unmapped;
-    const char *out_path;
+    const char *output_root;
     const char *sample;
     const bam_hdr_t *hdr;
 } fc_flagstats_sink_opts;
@@ -60,7 +53,7 @@ typedef struct {
 fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts);
 
 typedef struct {
-    const char *out_dir;
+    const char *output_root;
     bool per_base;
     bool use_cigar;
     int exclude_flags;

@@ -31,7 +31,6 @@ typedef struct {
     float polya_cover;
     float polya_qual;
     bool polya_rev;
-    bool create_default;
 } fc_stats_engine_config;
 
 typedef struct {
@@ -47,11 +46,8 @@ typedef struct {
     fc_stats_engine_config stats_cfg;
 } fc_writer;
 
-fc_writer *fc_writer_create(void);
+fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *stats_cfg);
 void fc_writer_add_sink(fc_writer *writer, fc_sink sink);
-void fc_writer_set_barcode_count(fc_writer *writer, size_t barcode_count, bool use_barcodes);
-void fc_writer_configure_stats(fc_writer *writer, const fc_stats_engine_config *config, bool per_barcode);
-fc_stats_engine **fc_writer_get_stats_engines(fc_writer *writer, size_t *engine_count);
 
 void fc_writer_begin_file(fc_writer *writer, const char *fname);
 void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, const sam_hdr_t *hdr);

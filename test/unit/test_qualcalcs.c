@@ -4,7 +4,6 @@
 #include "unity.h"
 #include "htslib/sam.h"
 
-#include "bamstats/readstats.h"
 #include "fc_read.h"
 
 // helper to build a simple BAM record with given qualities and optional QS tag
@@ -64,7 +63,7 @@ static void test_resolve_mean_quality_without_qs(void) {
     bam_destroy1(b);
 }
 
-void readstats_suite(void) {
+void qualcalcs_suite(void) {
     RUN_TEST(test_resolve_mean_quality_prefers_qs);
     RUN_TEST(test_resolve_mean_quality_force_recalc);
     RUN_TEST(test_resolve_mean_quality_without_qs);

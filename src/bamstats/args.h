@@ -6,10 +6,8 @@
 
 typedef struct arguments {
     const char* bam;
-    char* flagstats;
-    char* runids;
-    char* basecallers;
-    char* histograms;
+    bool demultiplex;
+    char* output_dir;
     bool poly_a;
     float poly_a_cover;
     float poly_a_qual;
@@ -24,9 +22,9 @@ typedef struct arguments {
     int threads;
     bool unmapped;
     bool force_recalc_qual;
+    bool per_read;
     // coverage calculations
     bool coverage;
-    char* coverages;
     const char** coverage_beds;
     size_t n_coverage_beds;
     const char** coverage_names;

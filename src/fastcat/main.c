@@ -141,63 +141,62 @@ int process_file(char* fname, fc_writer* writer, const fc_fastq_iter_opts* iter_
 int main(int argc, char **argv) {
     arguments_t args = parse_arguments(argc, argv);
 
-    fc_writer *writer = fc_writer_create();
+    int can_output = can_make_dir(args.output_dir);
+    if (can_output != 1) {
+        fprintf(stderr, "ERROR  : Output directory '%s' already exists or cannot be created.\n", args.output_dir);
+        exit(EXIT_FAILURE);
+    }
+    if (mkdir_hier(args.output_dir) == -1) {
+        fprintf(stderr, "ERROR  : Failed to create output directory '%s'.\n", args.output_dir);
+        exit(EXIT_FAILURE);
+    }
+
+    fc_stats_engine_config stats_cfg = {
+        .track_alignment = false,
+        .track_unmapped = true,
+        .track_polya = false,
+        .polya_cover = 0.0f,
+        .polya_qual = 0.0f,
+        .polya_rev = false
+    };
+
+    // derive default paths under the output root
+    fc_writer *writer = fc_writer_create(args.demultiplex, &stats_cfg);
     if (writer == NULL) exit(1);
-    bool use_barcodes = args.demultiplex_dir != NULL;
-    size_t barcode_count = use_barcodes ? MAX_BARCODES : 1;
-    fc_writer_set_barcode_count(writer, barcode_count, use_barcodes);
 
     fc_output_sink_opts output_opts = {
-        .output_dir = args.demultiplex_dir,
+        // when demultiplexing, output should go to output_dir; else to stdout
+        .output_root = args.demultiplex ? args.output_dir : NULL,
         .reads_per_file = args.reads_per_file,
         .reheader = args.reheader,
         .write_bam = args.write_bam,
-        .threads = args.threads
+        .threads = args.threads,
+        .barcode_count = writer->barcode_count
     };
     fc_writer_add_sink(writer, fc_output_sink_create(&output_opts));
-    if (args.histograms) {
-        fc_stats_engine_config stats_cfg = {
-            .track_alignment = false,
-            .track_unmapped = true,
-            .track_polya = false,
-            .polya_cover = 0.0f,
-            .polya_qual = 0.0f,
-            .polya_rev = false,
-            .create_default = !use_barcodes
-        };
-        fc_writer_configure_stats(writer, &stats_cfg, use_barcodes);
 
-        size_t engine_count = 0;
-        fc_stats_engine **stats_engines = fc_writer_get_stats_engines(writer, &engine_count);
-        fc_hist_sink_opts hist_opts = {
-            .hist_dir = args.histograms,
-            .demux_dir = args.demultiplex_dir,
-            .use_barcodes = use_barcodes,
-            .create_hist_dir = true,
-            .write_unmapped = false,
-            .write_alignment_metrics = false,
-            .write_polya = false,
-            .unmapped_is_primary = true,
-            .engines = stats_engines,
-            .engine_count = engine_count
-        };
-        fc_writer_add_sink(writer, fc_hist_sink_create(&hist_opts));
-    }
-    if (args.perread) {
+    fc_hist_sink_opts hist_opts = {
+        .output_root = args.output_dir,
+        .use_barcodes = args.demultiplex,
+        .write_unmapped = false,
+        .write_alignment_metrics = false,
+        .write_polya = false,
+        .unmapped_is_primary = true,
+        .engines = writer->stats_engines,
+        .engine_count = writer->stats_engine_count
+    };
+    fc_writer_add_sink(writer, fc_hist_sink_create(&hist_opts));
+    if (args.per_read) {
         fc_perread_sink_opts perread_opts = {
-            .path = args.perread,
+            .output_root = args.output_dir,
             .sample = args.sample,
             .include_alignment = false,
             .output_unmapped = true
         };
         fc_writer_add_sink(writer, fc_perread_sink_create(&perread_opts));
     }
-    if (args.perfile) {
-        fc_writer_add_sink(writer, fc_perfile_sink_create(args.perfile, args.sample));
-    }
-    if (args.runids || args.basecallers) {
-        fc_writer_add_sink(writer, fc_counter_sink_create(args.runids, args.basecallers, args.sample));
-    }
+    fc_writer_add_sink(writer, fc_perfile_sink_create(args.output_dir, args.sample));
+    fc_writer_add_sink(writer, fc_counter_sink_create(args.output_dir, args.sample));
 
     fc_fastq_iter_opts iter_opts = {
         .min_length = args.min_length,

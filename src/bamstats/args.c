@@ -25,16 +25,14 @@ static struct argp_option options[] = {
         "BED file for regions to process.", 0},
     {"threads", 't', "THREADS", 0,
         "Number of threads (for BAM decompression and BED output compression).", 0},
+    {"output", 'o', "DIRECTORY", 0,
+        "Output root directory (default: fastcat-qc). Must not already exist.", 0},
+    {"demultiplex", 'd', 0, 0,
+        "Separate outputs per barcode under <output>/demux/barcodeXXXX/.", 0},
     {"sample", 's',"SAMPLE NAME",   0,
         "Sample name (if given, adds a 'sample_name' column).", 0},
-    {"flagstats", 'f', "FLAGSTATS", 0,
-        "File for outputting alignment flag counts.", 0},
-    {"runids", 'i', "ID SUMMARY",  0,
-        "Run ID summary output", 0},
-    {"basecallers", 'l', "BASECALLERS", 0,
-        "Basecaller summary output", 0},
-    {"histograms", 0x400, "DIRECTORY", 0,
-        "Directory for outputting histogram information. (default: bamstats-histograms)", 0},
+    {"per-read", 'p', 0, 0,
+        "Write per-read TSV (large). Disabled by default.", 0},
     {"recalc_qual", 0x900, 0, 0,
         "Force recomputing mean quality, else use 'qs' tag in BAM if present.", 0},
     
@@ -42,11 +40,11 @@ static struct argp_option options[] = {
         "Read filtering options:", 0},
     {"unmapped", 'u', 0, 0,
         "Include unmapped/unplaced reads in output.", 2},
-    {"read_group", 'g', "RG", 0,
+    {"read-group", 'g', "RG", 0,
         "Only process reads from given read group.", 2},
-    {"tag_name", 0x100, "TN", 0,
+    {"tag-name", 0x100, "TN", 0,
         "Only process reads with a given tag (see --tag_value).", 2},
-    {"tag_value", 0x200, "VAL", 0,
+    {"tag-value", 0x200, "VAL", 0,
         "Only process reads with a given tag value.", 2},
     {"haplotype", 0x300, "VAL", 0,
         "Only process reads from a given haplotype. Equivalent to --tag_name HP --tag_value VAL.", 2},
@@ -55,11 +53,11 @@ static struct argp_option options[] = {
         "Coverage calculation options:", 0},
     {0, 0, 0, 0,
         "Outputs produced are similar to that by mosdepth. Outputs for all sequences in the BAM index are produced in the top-level directory (stratified by reference sequence). An identical set of files is produced (in sub-directories) for each BED file provided. Each BED file must have a corresponding name provided via --coverage_names, which is used to name the sub-directory. The --segments option is used to produce outputs across the full reference broken into fixed-length segments, and output to segments-LENGTH. The use of the segments option with small lengths can significantly affect the performance of the program: it should be preferred to use the per-base output and segment after the fact.\n" , 3},
-    {"coverage", 0x1004, "DIRECTORY", 0,
-        "Enable coverage calculations and output to provided directory. (default: bamstats-coverages)", 3},
-    {"coverage_beds", 0x1000, "BEDFILE ...", 0,
+    {"coverage", 0x1004, 0, 0,
+        "Enable coverage calculations.", 3},
+    {"coverage-beds", 0x1000, "BEDFILE ...", 0,
         "BED file(s) for calculating coverage (space-separated list).", 3},
-    {"coverage_names", 0x1001, "NAME ...", 0,
+    {"coverage-names", 0x1001, "NAME ...", 0,
         "Name(s) for coverage BED file(s) (space-separated list).", 3},
     {"thresholds", 0x1002, "VALUES ...", 0,
         "Coverage thresholds to produce sparse cumulative distribution (space-separated integers).", 3},
@@ -68,13 +66,13 @@ static struct argp_option options[] = {
 
     {0, 0, 0, 0,
         "Poly-A Options:", 0},
-    {"poly_a", 0x500, 0, 0,
+    {"poly-a", 0x500, 0, 0,
         "Enable poly-A tail length histogram.", 4},
-    {"poly_a_cover", 0x600, "PCT_COVERAGE", 0,
+    {"poly-a-cover", 0x600, "PCT_COVERAGE", 0,
         "Reference alignment coverage for acceptance of read. (default: 95)", 4},
-    {"poly_a_qual", 0x700, "QUAL", 0,
+    {"poly-a-qual", 0x700, "QUAL", 0,
         "Read mean Q score for acceptance of read. (default: 10)", 4},
-    {"poly_a_rev", 0x800, 0, 0,
+    {"poly-a-rev", 0x800, 0, 0,
         "Allow reverse alignments (useful for cDNA, default is appropriate for direct RNA seq).", 4},
     { 0 }
 };
@@ -92,20 +90,14 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
         case 'b':
             arguments->bed = arg;
             break;
+        case 'o':
+            arguments->output_dir = arg;
+            break;
+        case 'd':
+            arguments->demultiplex = true;
+            break;
         case 'g':
             arguments->read_group = arg;
-            break;
-        case 'f':
-            arguments->flagstats = arg;
-            break;
-        case 'i':
-            arguments->runids = arg;
-            break;
-        case 'l':
-            arguments->basecallers = arg;
-            break;
-        case 0x400:
-            arguments->histograms = arg;
             break;
         case 0x500:
             arguments->poly_a = true;
@@ -147,6 +139,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
         case 't':
             arguments->threads = atoi(arg);
             break;
+        case 'p':
+            arguments->per_read = true;
+            break;
         case 0x900:
             arguments->force_recalc_qual = true;
             break;
@@ -164,7 +159,6 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 0x1004:
             arguments->coverage = true;
-            arguments->coverages = arg;
             break;
 
         case ARGP_KEY_ARG:
@@ -198,10 +192,8 @@ static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
 arguments_t parse_arguments(int argc, char** argv) {
     arguments_t args;
     args.bam = NULL;
-    args.flagstats = NULL;
-    args.runids = NULL;
-    args.basecallers = NULL;
-    args.histograms = "bamstats-histograms";
+    args.demultiplex = false;
+    args.output_dir = "fastcat-qc";
     args.poly_a = false;
     args.poly_a_cover = 95;
     args.poly_a_qual = 10;
@@ -216,8 +208,8 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.tag_value = -1;
     args.threads = 1;
     args.force_recalc_qual = false;
+    args.per_read = false;
     args.coverage = false;
-    args.coverages = "bamstats-coverages";  // will be overwrite by user
     args.coverage_beds = NULL;
     args.n_coverage_beds = 0;
     args.coverage_names = NULL;

@@ -14,7 +14,6 @@
 
 #include "args.h"
 #include "common.h"
-#include "readstats.h"
 #include "regiter.h"
 #include "../fc_iter.h"
 #include "../fc_sinks.h"
@@ -59,28 +58,17 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-
-    // Check all outputs do not pre-exist to avoid overwriting 
-    int rtn = mkdir_hier(args.histograms);
-    if (rtn == -1) {
-        fprintf(stderr,
-           "ERROR: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
-           args.histograms);
+    // set up output root (must not pre-exist)
+    int can_output = can_make_dir(args.output_dir);
+    if (can_output != 1) {
+        fprintf(stderr, "ERROR: Output directory '%s' already exists or cannot be created.\n", args.output_dir);
+        exit(EXIT_FAILURE);
+    }
+    if (mkdir_hier(args.output_dir) == -1) {
+        fprintf(stderr, "ERROR: Failed to create output directory '%s'.\n", args.output_dir);
         exit(EXIT_FAILURE);
     }
 
-    if (args.flagstats != NULL && file_exists(args.flagstats)) {
-        fprintf(stderr, "ERROR: Output file '%s' already exists, please remove it or use a different name.\n", args.flagstats);
-        exit(EXIT_FAILURE);
-    }
-    if (args.runids != NULL && file_exists(args.runids)) {
-        fprintf(stderr, "ERROR: Output file '%s' already exists, please remove it or use a different name.\n", args.runids);
-        exit(EXIT_FAILURE);
-    }
-    if (args.basecallers != NULL && file_exists(args.basecallers)) {
-        fprintf(stderr, "ERROR: Output file '%s' already exists, please remove it or use a different name.\n", args.basecallers);
-        exit(EXIT_FAILURE);
-    }
 
     htsFile *fp = hts_open(args.bam, "rb");
     sam_hdr_t *hdr = sam_hdr_read(fp);
@@ -96,59 +84,44 @@ int main(int argc, char *argv[]) {
         hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
     }
 
-    flag_stats* flag_counts = NULL;
-    if (args.flagstats != NULL) {
-        flag_counts = create_flag_stats(
-            args.region == NULL ? hdr->n_targets : 1, args.unmapped
-        );
-    }
-
-    fc_writer *writer = fc_writer_create();
-    if (writer == NULL) exit(EXIT_FAILURE);
-    fc_writer_set_barcode_count(writer, 1, false);
-
     fc_stats_engine_config stats_cfg = {
         .track_alignment = true,
         .track_unmapped = args.unmapped,
         .track_polya = args.poly_a,
         .polya_cover = args.poly_a_cover,
         .polya_qual = args.poly_a_qual,
-        .polya_rev = args.poly_a_rev,
-        .create_default = true
+        .polya_rev = args.poly_a_rev
     };
-    fc_writer_configure_stats(writer, &stats_cfg, false);
+    fc_writer *writer = fc_writer_create(args.demultiplex, &stats_cfg);
+    if (writer == NULL) exit(EXIT_FAILURE);
 
     bool region_mode = (args.region != NULL) || (args.bed != NULL);
-    fc_perread_sink_opts perread_opts = {
-        .path = NULL,
-        .sample = args.sample,
-        .include_alignment = true,
-        .output_unmapped = args.unmapped
-    };
-    fc_writer_add_sink(writer, fc_perread_sink_create(&perread_opts));
-    if (args.histograms) {
-        size_t engine_count = 0;
-        fc_stats_engine **stats_engines = fc_writer_get_stats_engines(writer, &engine_count);
-        fc_hist_sink_opts hist_opts = {
-            .hist_dir = args.histograms,
-            .demux_dir = NULL,
-            .use_barcodes = false,
-            .create_hist_dir = false,
-            .write_unmapped = args.unmapped && !region_mode,
-            .write_alignment_metrics = true,
-            .write_polya = args.poly_a,
-            .unmapped_is_primary = false,
-            .engines = stats_engines,
-            .engine_count = engine_count
+    if (args.per_read) {
+        fc_perread_sink_opts perread_opts = {
+            .output_root = args.output_dir,
+            .sample = args.sample,
+            .include_alignment = true,
+            .output_unmapped = args.unmapped
         };
-        fc_writer_add_sink(writer, fc_hist_sink_create(&hist_opts));
+        fc_writer_add_sink(writer, fc_perread_sink_create(&perread_opts));
     }
-    if (args.runids || args.basecallers) {
-        fc_writer_add_sink(writer, fc_counter_sink_create(args.runids, args.basecallers, args.sample));
-    }
+    // per-file summary (single entry for bamstats)
+    fc_writer_add_sink(writer, fc_perfile_sink_create(args.output_dir, args.sample));
+    fc_hist_sink_opts hist_opts = {
+        .output_root = args.output_dir,
+        .use_barcodes = args.demultiplex,
+        .write_unmapped = args.unmapped && !region_mode,
+        .write_alignment_metrics = true,
+        .write_polya = args.poly_a,
+        .unmapped_is_primary = false,
+        .engines = writer->stats_engines,
+        .engine_count = writer->stats_engine_count
+    };
+    fc_writer_add_sink(writer, fc_hist_sink_create(&hist_opts));
+    fc_writer_add_sink(writer, fc_counter_sink_create(args.output_dir, args.sample));
     if (args.coverage) {
         fc_coverage_sink_opts cov_opts = {
-            .out_dir = args.coverages,
+            .output_root = args.output_dir,
             .per_base = true,
             .use_cigar = false,
             .exclude_flags = -1,
@@ -166,17 +139,14 @@ int main(int argc, char *argv[]) {
         };
         fc_writer_add_sink(writer, fc_coverage_sink_create(&cov_opts));
     }
-    if (flag_counts != NULL) {
-        fc_flagstats_sink_opts flag_opts = {
-            .stats = flag_counts,
-            .region_mode = region_mode,
-            .track_unmapped = args.unmapped,
-            .out_path = args.flagstats,
-            .sample = args.sample,
-            .hdr = hdr
-        };
-        fc_writer_add_sink(writer, fc_flagstats_sink_create(&flag_opts));
-    }
+    fc_flagstats_sink_opts flag_opts = {
+        .region_mode = region_mode,
+        .track_unmapped = args.unmapped,
+        .output_root = args.output_dir,
+        .sample = args.sample,
+        .hdr = hdr
+    };
+    fc_writer_add_sink(writer, fc_flagstats_sink_create(&flag_opts));
 
     fc_bam_iter_opts iter_opts = {
         .read_group = args.read_group,
@@ -223,6 +193,7 @@ int main(int argc, char *argv[]) {
         }
 
     } else {
+        // proces given region / BED
         hts_idx_t *idx = sam_index_load(fp, args.bam);
         if (idx == 0){
             fprintf(stderr, "ERROR: Cannot find index file for '%s', which is required for processing by region.\n", args.bam);
@@ -233,9 +204,11 @@ int main(int argc, char *argv[]) {
         int check = 0;
         while ((check = next_region(&rit)) != -1) {
             if (check == -2 && args.bed == NULL) {
+                // we were given only a region, not a bed, and that region was garbage
+                // => user error, should stop immediately
                 exit(EXIT_FAILURE);
             }
-            if (check != 0) continue;
+            if (check != 0) continue;  // skip other errors
 
             fc_bam_iter iter = {0};
             if (fc_bam_iter_open(&iter, fp, idx, hdr, rit.chr, rit.start, rit.end, &iter_opts) == 0) {
@@ -291,8 +264,6 @@ int main(int argc, char *argv[]) {
     }
 
     fc_writer_destroy(writer);
-
-    if (flag_counts != NULL) destroy_flag_stats(flag_counts);
     sam_hdr_destroy(hdr);
     hts_close(fp);
     if (p.pool) { // must be after fp
