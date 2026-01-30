@@ -119,7 +119,7 @@ clean_htslib:
 	cd htslib && make clean
 
 # core library
-CORE_OBJS = src/common.o src/stats.o src/fc_stats_engine.o src/fastqcomments.o src/fc_read.o src/fc_filter.o src/fc_bam_utils.o src/fc_dust.o src/fc_iter.o src/fc_writer.o src/fastcat/parsing.o src/sink/common.o src/sink/output.o src/sink/perread.o src/sink/perfile.o src/sink/counter.o src/sink/hist.o src/sink/coverage.o src/sink/flagstats.o src/bamcoverage/coverage.o src/sdust/sdust.o src/sdust/kalloc.o src/kh_counter.o src/regiter.o
+CORE_OBJS = src/common.o src/fc_log.o src/stats.o src/fc_stats_engine.o src/fastqcomments.o src/fc_read.o src/fc_filter.o src/fc_bam_utils.o src/fc_dust.o src/fc_iter.o src/fc_writer.o src/fastcat/parsing.o src/sink/common.o src/sink/output.o src/sink/perread.o src/sink/perfile.o src/sink/counter.o src/sink/hist.o src/sink/coverage.o src/sink/flagstats.o src/bamcoverage/coverage.o src/sdust/sdust.o src/sdust/kalloc.o src/kh_counter.o src/regiter.o
 CORE_LIB = libfastcatcore.a
 
 # unit tests
@@ -224,7 +224,7 @@ fastcat: src/version.o src/fastcat/main.o src/fastcat/args.o $(CORE_LIB) $(STATI
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-fastlint: src/version.o src/fastlint/main.o src/fastlint/args.o src/sdust/sdust.o src/sdust/kalloc.o $(STATIC_HTSLIB) zlib-ng/libz.a
+fastlint: src/version.o src/fastlint/main.o src/fastlint/args.o src/sdust/sdust.o src/sdust/kalloc.o src/fc_log.o $(STATIC_HTSLIB) zlib-ng/libz.a
 	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
@@ -238,14 +238,14 @@ bamstats: src/version.o src/bamstats/main.o src/bamstats/args.o $(CORE_LIB) $(ST
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-bamcoverage: src/version.o src/bamcoverage/main.o src/bamcoverage/args.o src/bamcoverage/coverage.o src/common.o src/regiter.o $(STATIC_HTSLIB)
+bamcoverage: src/version.o src/bamcoverage/main.o src/bamcoverage/args.o src/bamcoverage/coverage.o src/common.o src/regiter.o src/fc_log.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
 
-bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o $(STATIC_HTSLIB)
+bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o src/fc_log.o $(STATIC_HTSLIB)
 	$(CC) -Isrc -Ihtslib $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \

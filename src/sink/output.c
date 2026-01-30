@@ -13,6 +13,7 @@
 
 #include "common.h"
 #include "sink/common.h"
+#include "../fc_log.h"
 #include "version.h"
 
 // default buffer size for writing to gzip, this is large enough that most reads will not require
@@ -112,12 +113,12 @@ static void output_write_fastq(output_sink *sink, bam1_t *bam, read_meta meta, v
 
 static void output_write_bam(output_sink *sink, bam1_t *bam, htsFile *handle) {
     if (bam == NULL) {
-        fprintf(stderr, "Internal error: BAM record missing for output.\n");
+        FC_LOG_ERROR("Internal error: BAM record missing for output.");
         exit(1);
     }
 
     if (sam_write1(handle, sink->bam_hdr, bam) < 0) {
-        fprintf(stderr, "Error writing read to BAM file.\n");
+        FC_LOG_ERROR("Error writing read to BAM file.");
         exit(1);
     }
 }
@@ -148,7 +149,7 @@ static void output_ensure_directory(output_sink *sink, size_t barcode, char *pat
             || (sink->file_index[barcode] == 0 && sink->reads_written[barcode] == 0)) {
         int rtn = mkdir_hier(path);
         if (rtn == -1) {
-            fprintf(stderr, "Failed to create barcode directory '%s\n'.", path);
+            FC_LOG_ERROR("Failed to create barcode directory '%s'.", path);
             exit(1);
         }
     }
@@ -162,9 +163,8 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
 
     size_t barcode = read_ctx->barcode;
     if (barcode >= sink->barcode_count) {
-        fprintf(stderr,
-            "ERROR: Read's barcode number (%lu) exceeds configured barcode slots (%zu)\n",
-            barcode, sink->barcode_count);
+        FC_LOG_ERROR("Read's barcode number (%lu) exceeds configured barcode slots (%zu)",
+                     barcode, sink->barcode_count);
         exit(1);
     }
 
@@ -183,7 +183,7 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
             sink->bam_files[barcode] = NULL;
         } else {
             if (sink->handles[barcode] == NULL) {
-                fprintf(stderr, "Unexpected output file status encountered.");
+                FC_LOG_ERROR("Unexpected output file status encountered.");
                 exit(1);
             }
             gzflush(sink->handles[barcode], Z_FINISH);
@@ -204,7 +204,7 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
                 sink->bam_files[barcode] = hts_open(filepath, "wb");
                 hts_set_opt(sink->bam_files[barcode], HTS_OPT_THREAD_POOL, &sink->hts_pool);
                 if (sam_hdr_write(sink->bam_files[barcode], sink->bam_hdr)) {
-                    fprintf(stderr, "Error writing header to BAM file\n");
+                    FC_LOG_ERROR("Error writing header to BAM file");
                     exit(1);
                 }
             }
@@ -276,19 +276,19 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
     if (state->output != NULL) {
         int rtn = mkdir_hier(state->output);
         if (rtn == -1 && errno != EEXIST) {
-            fprintf(stderr,
-                "Error: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
+            FC_LOG_ERROR(
+                "Cannot create output directory '%s'. Check location is writeable and directory does not exist.",
                 state->output);
             exit(EXIT_FAILURE);
         }
     }
 
     if (state->write_bam) {
-        fprintf(stderr, "Using %d threads for BAM writing\n", opts->threads);
+        FC_LOG_INFO("Using %d threads for BAM writing", opts->threads);
         state->hts_pool.pool = hts_tpool_init(opts->threads);
         state->hts_pool.qsize = 0;
         if (state->hts_pool.pool == NULL) {
-            fprintf(stderr, "Error creating thread pool\n");
+            FC_LOG_ERROR("Error creating thread pool");
             exit(1);
         }
         state->bam_hdr = sam_hdr_init();
@@ -299,7 +299,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
             state->bam_files[0] = hts_open("-", "wb");
             hts_set_opt(state->bam_files[0], HTS_OPT_THREAD_POOL, &state->hts_pool);
             if (sam_hdr_write(state->bam_files[0], state->bam_hdr)) {
-                fprintf(stderr, "Error writing header to BAM on stdout\n");
+                FC_LOG_ERROR("Error writing header to BAM on stdout");
                 exit(1);
             }
         }

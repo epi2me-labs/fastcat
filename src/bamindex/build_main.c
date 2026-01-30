@@ -14,6 +14,7 @@
 
 #include "index.h"
 #include "../version.h"
+#include "../fc_log.h"
 
 #include <argp.h>
 
@@ -83,7 +84,7 @@ void index_build(const char* filename, const char* output_fname, int threads, si
     htsFile *fp = hts_open(filename, "r");
     bam_hdr_t *h = sam_hdr_read(fp);
     if(fp == NULL || h == NULL) {
-        fprintf(stderr, "Could not open %s\n", filename);
+        FC_LOG_ERROR("Could not open %s", filename);
         exit(EXIT_FAILURE);
     }
     
@@ -91,7 +92,7 @@ void index_build(const char* filename, const char* output_fname, int threads, si
     bc_idx_t *idx = bc_idx_init1(every);
     size_t rtn;
     if ((rtn = bc_idx_write_header(out_fp, idx)) > 0) {
-        fprintf(stderr, "Failed to write header to index. Error %zu.\n", rtn);
+        FC_LOG_ERROR("Failed to write header to index. Error %zu.", rtn);
     }
 
     htsThreadPool p = {NULL, 0};
@@ -111,10 +112,10 @@ void index_build(const char* filename, const char* output_fname, int threads, si
             continue;
         }
         if (i % 100000 == 0) {
-            fprintf(stderr, "Record %d %zu\n", i, file_offset);
+            FC_LOG_INFO("Record %d %zu", i, file_offset);
         }
         if (bc_idx_write(out_fp, idx, file_offset, bam_get_qname(b)) < 0) {
-            fprintf(stderr, "Failed to write records to index.\n");
+            FC_LOG_ERROR("Failed to write records to index.");
             exit(EXIT_FAILURE);
         }
         file_offset = bgzf_tell(fp->fp.bgzf);
@@ -130,22 +131,28 @@ void index_build(const char* filename, const char* output_fname, int threads, si
 
     // fill in how many records we wrote
     if (bc_idx_write_header(out_fp, idx) > 0) {
-        fprintf(stderr, "Failed to write header to index.\n");
+        FC_LOG_ERROR("Failed to write header to index.");
     }
     fclose(out_fp);
-    fprintf(stderr, "Written %zu/%d records to index.\n", idx->n_chunks, i);
+    FC_LOG_INFO("Written %zu/%d records to index.", idx->n_chunks, i);
     bc_idx_destroy(idx);
 }
 
 
 int main_build(int argc, char *argv[]) {
+    fc_log_config log_cfg = {
+        .level = FC_LOG_INFO,
+        .module = "BAMBUILD",
+        .target = NULL,
+        .color = FC_LOG_COLOR_AUTO
+    };
+    fc_log_init(&log_cfg);
+
     clock_t begin = clock();
     arguments_t args = parse_arguments(argc, argv);
 #ifdef NOTHREADS
     if (args.threads != 1) {
-        fprintf(
-            stderr,
-            "--threads set to %d, but threading not supported by this build.\n", args.threads);
+        FC_LOG_WARN("--threads set to %d, but threading not supported by this build.", args.threads);
     }
 #endif
 
@@ -154,6 +161,7 @@ int main_build(int argc, char *argv[]) {
     free(index_fname);
 
     clock_t end = clock();
-    fprintf(stderr, "Total CPU time: %fs\n", (double)(end - begin) / CLOCKS_PER_SEC);
+    FC_LOG_INFO("Total CPU time: %fs", (double)(end - begin) / CLOCKS_PER_SEC);
+    fc_log_destroy();
     return EXIT_SUCCESS;
 }

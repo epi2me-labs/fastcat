@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "fc_log.h"
 
 
 // used with qsort to sort an array of uint32_t
@@ -254,7 +255,7 @@ void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state
 void *xalloc(size_t num, size_t size, char* msg){
     void *res = calloc(num, size);
     if (res == NULL){
-        fprintf(stderr, "Failed to allocate mem for %s\n", msg);
+        FC_LOG_ERROR("Failed to allocate mem for %s", msg);
         exit(1);
     }
     return res;
@@ -272,7 +273,7 @@ void *xalloc(size_t num, size_t size, char* msg){
 void *xrealloc(void *ptr, size_t size, char* msg){
     void *res = realloc(ptr, size);
     if (res == NULL){
-        fprintf(stderr, "Failed to reallocate mem for %s\n", msg);
+        FC_LOG_ERROR("Failed to reallocate mem for %s", msg);
         exit(1);
     }
     return res;
@@ -292,7 +293,7 @@ void *xrealloc(void *ptr, size_t size, char* msg){
 void *xrecalloc(void* ptr, size_t orig, size_t num, size_t size, char* msg) {
     void *res = realloc(ptr, num * size);
     if (res == NULL) {
-        fprintf(stderr, "Failed to reallocate mem for %s\n", msg);
+        FC_LOG_ERROR("Failed to reallocate mem for %s", msg);
         exit(1);
     }
     // zero out the new memory
@@ -434,7 +435,7 @@ void strip_hex_suffix(char *str) {
     // the 16 edge cases of 0 ("") to F. No one should have and RG ID
     // ending in "-", right?
     if (regcomp(&regex, "-[0-9A-Fa-f]{0,8}$", REG_EXTENDED) != 0) {
-        fprintf(stderr, "Could not compile regex\n");
+        FC_LOG_ERROR("Could not compile regex");
         exit(1);
     }
 

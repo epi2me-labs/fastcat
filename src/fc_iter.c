@@ -13,6 +13,7 @@ KSEQ_INIT2(, gzFile, gzread)
 #include <string.h>
 #include <sys/stat.h>
 
+#include "fc_log.h"
 #include "fc_bam_utils.h"
 #include "fc_filter.h"
 
@@ -62,7 +63,7 @@ int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_fastq_it
 
     struct stat finfo;
     if (stat(fname, &finfo) == -1) {
-        fprintf(stderr, "ERROR  : could not process file %s: %s\n", fname, strerror(errno));
+        FC_LOG_ERROR("could not process file %s: %s", fname, strerror(errno));
         return errno;
     }
 
@@ -72,7 +73,7 @@ int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_fastq_it
 
     iter->fp = gzopen(fname, "r");
     if (iter->fp == NULL) {
-        fprintf(stderr, "ERROR  : could not open file %s: %s\n", fname, strerror(errno));
+        FC_LOG_ERROR("could not open file %s: %s", fname, strerror(errno));
         return errno;
     }
 
@@ -168,17 +169,15 @@ int fc_fastq_iter_finish(fc_fastq_iter *iter, fc_file_stats *out_stats) {
     if (!iter) return EINVAL;
 
     if (iter->stats.failures[F_STREAM_ERROR] > 0) {
-        fprintf(stderr, "WARNING: file '%s' is possibly truncated.\n", iter->fname);
+        FC_LOG_WARN("file '%s' is possibly truncated.", iter->fname);
     } else if (iter->stats.failures[F_QUAL_MISSING] > 0) {
-        fprintf(stderr,
-            "WARNING: no quality string found for %" PRIu64 " records in file '%s'.\n",
+        FC_LOG_WARN("no quality string found for %" PRIu64 " records in file '%s'.",
             iter->stats.failures[F_QUAL_MISSING], iter->fname);
     } else if (iter->stats.failures[F_QUAL_TRUNCATED] > 0) {
-        fprintf(stderr,
-            "WARNING: truncated quality string found for %" PRIu64 " records in file '%s'.\n",
+        FC_LOG_WARN("truncated quality string found for %" PRIu64 " records in file '%s'.",
             iter->stats.failures[F_QUAL_TRUNCATED], iter->fname);
     } else if (iter->stats.failures[F_UNKNOWN_ERROR] > 0) {
-        fprintf(stderr, "WARNING: unknown error reading file '%s'.\n", iter->fname);
+        FC_LOG_WARN("unknown error reading file '%s'.", iter->fname);
     }
 
     finalize_file_stats(&iter->stats, iter->n_valid, iter->average_q);

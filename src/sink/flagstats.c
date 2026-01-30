@@ -7,6 +7,7 @@
 #include "fc_filter.h"
 #include "sink/common.h"
 #include "../fc_sinks.h"
+#include "../fc_log.h"
 
 
 #define FLAG_COLS 9
@@ -159,7 +160,7 @@ fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts) {
         ensure_parent_dir_exists(path);
         state->fp = fopen(path, "w");
         if (!state->fp) {
-            fprintf(stderr, "ERROR: Cannot open file '%s' for writing.\n", path);
+            FC_LOG_ERROR("Cannot open file '%s' for writing.", path);
             exit(EXIT_FAILURE);
         }
         flagstats_write_header(state->fp, state->sample);

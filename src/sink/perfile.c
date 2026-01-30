@@ -9,6 +9,7 @@
 #include "common.h"
 #include "fastcat/parsing.h"
 #include "sink/common.h"
+#include "../fc_log.h"
 
 typedef struct {
     FILE *fp;
@@ -49,7 +50,7 @@ fc_sink fc_perfile_sink_create(const char *output_root, const char *sample) {
     ensure_parent_dir_exists(path);
     state->fp = fopen(path, "w");
     if (state->fp == NULL) {
-        fprintf(stderr, "Error opening per-file file '%s' for writing.\n", path);
+        FC_LOG_ERROR("Error opening per-file file '%s' for writing.", path);
         exit(EXIT_FAILURE);
     }
     free(path);

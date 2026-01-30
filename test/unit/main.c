@@ -1,4 +1,5 @@
 #include "unity.h"
+#include "../../src/fc_log.h"
 
 void common_suite(void);
 void stats_suite(void);
@@ -15,6 +16,14 @@ void setUp(void) {}
 void tearDown(void) {}
 
 int main(void) {
+    fc_log_config log_cfg = {
+        .level = FC_LOG_DEBUG,
+        .module = "UNIT_TEST",
+        .target = NULL,
+        .color = FC_LOG_COLOR_OFF
+    };
+    fc_log_init(&log_cfg);
+
     UNITY_BEGIN();
     common_suite();
     stats_suite();
@@ -26,5 +35,8 @@ int main(void) {
     quality_suite();
     bam_utils_suite();
     qualcalcs_suite();
-    return UNITY_END();
+    int rc = UNITY_END();
+
+    fc_log_destroy();
+    return rc;
 }

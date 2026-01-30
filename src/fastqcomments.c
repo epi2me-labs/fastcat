@@ -10,6 +10,7 @@
 #include "common.h"
 #include "fastqcomments.h"
 #include "htslib/sam.h"
+#include "fc_log.h"
 
 
 // like `ksprintf()`, but will put the optional delimiter `d` before the added string if
@@ -178,7 +179,7 @@ int fastq_comment_to_bam(const kstring_t* comment, bam1_t* b) {
     if (sam_like) {
         int orig_len = b->l_data;
         if (sam_aux_parse(comment->s, comment->s + comment->l, b, 1) < 0) {
-            fprintf(stderr, "Error parsing SAM-style tags from FASTQ comment.\n");
+            FC_LOG_WARN("Error parsing SAM-style tags from FASTQ comment.");
             return -1;
         }
         if (b->l_data > orig_len) {
@@ -187,7 +188,7 @@ int fastq_comment_to_bam(const kstring_t* comment, bam1_t* b) {
     }
 
     if (parse_key_value_comment_to_bam(comment, b) < 0) {
-        fprintf(stderr, "Error parsing key=value tags from FASTQ comment.\n");
+        FC_LOG_WARN("Error parsing key=value tags from FASTQ comment.");
         return -1;
     }
     return 0;

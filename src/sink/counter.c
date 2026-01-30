@@ -7,6 +7,7 @@
 #include "common.h"
 #include "kh_counter.h"
 #include "sink/common.h"
+#include "../fc_log.h"
 
 typedef struct {
     FILE *runids;
@@ -92,7 +93,7 @@ fc_sink fc_counter_sink_create(const char *output_root, const char *sample) {
     ensure_parent_dir_exists(runids_path);
     state->runids = fopen(runids_path, "w");
     if (state->runids == NULL) {
-        fprintf(stderr, "Error opening runids file '%s' for writing.\n", runids_path);
+        FC_LOG_ERROR("Error opening runids file '%s' for writing.", runids_path);
         exit(EXIT_FAILURE);
     }
     fprintf(state->runids, "filename\t");
@@ -104,7 +105,7 @@ fc_sink fc_counter_sink_create(const char *output_root, const char *sample) {
     ensure_parent_dir_exists(basecallers_path);
     state->basecallers = fopen(basecallers_path, "w");
     if (state->basecallers == NULL) {
-        fprintf(stderr, "Error opening basecallers file '%s' for writing.\n", basecallers_path);
+        FC_LOG_ERROR("Error opening basecallers file '%s' for writing.", basecallers_path);
         exit(EXIT_FAILURE);
     }
     fprintf(state->basecallers, "filename\t");

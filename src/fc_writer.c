@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "fc_log.h"
 #include "fc_filter.h"
 
 #define MAX_BARCODES 1025  // barcode 0 is reserved for "unclassified"
@@ -66,7 +67,7 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
     fc_read_ctx ctx = {0};
     ctx.barcode = writer->use_barcodes ? read->meta->ibarcode : 0;
     if (writer->barcode_count > 0 && ctx.barcode >= writer->barcode_count) {
-        fprintf(stderr, "ERROR: read barcode (%zu) exceeds configured count (%zu)\n",
+        FC_LOG_ERROR("read barcode (%zu) exceeds configured count (%zu)",
             ctx.barcode, writer->barcode_count);
         exit(EXIT_FAILURE);
     }
