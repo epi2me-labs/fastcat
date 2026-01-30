@@ -4,8 +4,17 @@
 #include "htslib/thread_pool.h"
 #include "coverage.h"
 #include "args.h"
+#include "../fc_log.h"
 
 int main(int argc, char** argv) {
+    fc_log_config log_cfg = {
+        .level = FC_LOG_INFO,
+        .module = "BAMCOVER",
+        .target = NULL,
+        .color = FC_LOG_COLOR_AUTO
+    };
+    fc_log_init(&log_cfg);
+
     arguments_t args = parse_arguments(argc, argv);
 
     htsThreadPool p = {NULL, 0};
@@ -37,7 +46,8 @@ int main(int argc, char** argv) {
 
     hts_tpool_destroy(p.pool);
 
-    fprintf(stderr, "Processed %zu regions from %s\n", args.n_beds, args.bam);
+    FC_LOG_INFO("Processed %zu regions from %s", args.n_beds, args.bam);
 
+    fc_log_destroy();
     return 0;
 }

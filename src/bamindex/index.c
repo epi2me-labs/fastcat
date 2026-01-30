@@ -5,6 +5,7 @@
 #include "htslib/sam.h"
 
 #include "index.h"
+#include "../fc_log.h"
 
 #define MAGIC_LEN 5
 static const char FILE_MAGIC[MAGIC_LEN] = "FANZ";
@@ -65,12 +66,12 @@ bc_idx_t *bc_idx_read(FILE *fp) {
     char buf[MAGIC_LEN];
     size_t magic_len = fread(&(buf), sizeof(char), MAGIC_LEN, fp);
     if (magic_len != MAGIC_LEN || memcmp(buf, FILE_MAGIC, MAGIC_LEN)) {
-        fprintf(stderr, "Invalid BAM chunk index binary header.\n");
+        FC_LOG_ERROR("Invalid BAM chunk index binary header.");
         return NULL;
     }
     bc_idx_t *h = bc_idx_init();
     if(h == NULL) {
-        fprintf(stderr, "Failed to allocate header.\n");
+        FC_LOG_ERROR("Failed to allocate header.");
         return NULL;
     }
     size_t items = 0;
@@ -79,7 +80,7 @@ bc_idx_t *bc_idx_read(FILE *fp) {
     items += fread(&(h->n_chunks), sizeof(h->n_chunks), 1, fp);
     if (items != 3) {
         bc_idx_destroy(h);
-        fprintf(stderr, "Invalid BAM chunk index binary header.\n");
+        FC_LOG_ERROR("Invalid BAM chunk index binary header.");
         return NULL;
     }
 
@@ -87,18 +88,21 @@ bc_idx_t *bc_idx_read(FILE *fp) {
     h->recs = (bc_rec_t*)calloc(h->stored, sizeof(bc_rec_t));
 
     size_t valid = 0;
-    char *msg = "Failed to read index contents. File is currupt.\n";
+    const char *msg = "Failed to read index contents. File is corrupt.";
     for (size_t i=0; i<h->n_chunks; ++i, ++valid) {
         bc_rec_t *r = &(h->recs[i]);
         if (fread(&(r->file_offset), sizeof(r->file_offset), 1, fp) != 1) {
-            fputs(msg, stderr); break;
+            FC_LOG_ERROR("%s", msg);
+            break;
         }
         if (fread(&(r->lqname), sizeof(r->lqname), 1, fp) != 1) {
-            fputs(msg, stderr); break;
+            FC_LOG_ERROR("%s", msg);
+            break;
         }
         r->qname = (char*)calloc(r->lqname, sizeof(char));
         if (fread(r->qname, sizeof(char), r->lqname, fp) != r->lqname) {
-            fputs(msg, stderr); break;
+            FC_LOG_ERROR("%s", msg);
+            break;
         }
     }
     if (valid != h->stored) {

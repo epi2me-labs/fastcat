@@ -7,10 +7,19 @@ KSEQ_INIT(gzFile, gzread)
 
 #include "../sdust/sdust.h"
 #include "args.h"
+#include "../fc_log.h"
 
 int main(int argc, char *argv[]) {
     gzFile fp;
     kseq_t *ks;
+
+    fc_log_config log_cfg = {
+        .level = FC_LOG_INFO,
+        .module = "FASTLINT",
+        .target = NULL,
+        .color = FC_LOG_COLOR_AUTO
+    };
+    fc_log_init(&log_cfg);
 
     arguments_t args = parse_arguments(argc, argv);
 
@@ -38,8 +47,8 @@ int main(int argc, char *argv[]) {
             int read_length = ks->seq.l;
             double masked_fraction = (double)masked_bases / read_length;
             if (masked_fraction > args.max_proportion) {
-                fprintf(stderr, "Read %s masked fraction %.2f exceeds threshold %.2f, skipping.\n",
-                    ks->name.s, masked_fraction, args.max_proportion);
+                FC_LOG_WARN("Read %s masked fraction %.2f exceeds threshold %.2f, skipping.",
+                            ks->name.s, masked_fraction, args.max_proportion);
             }
             else {
                 // for reasons unknown, we care about preserving the separator
@@ -62,5 +71,6 @@ int main(int argc, char *argv[]) {
         kseq_destroy(ks);
         gzclose(fp);
     }
+    fc_log_destroy();
 	return 0;
 }

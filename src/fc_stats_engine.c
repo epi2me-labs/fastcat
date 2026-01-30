@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "fc_log.h"
 #include "fc_filter.h"
 
 static inline size_t* create_cigar_stats(bam1_t* b) {
@@ -27,7 +28,7 @@ static inline size_t get_query_start(bam1_t* b) {
         uint32_t op = bam_cigar_op(cigar[i]);
         if (op == BAM_CHARD_CLIP) {
             if ((start_offset != 0) && (start_offset != qlen)) {
-                fprintf(stderr, "Invalid clipping in cigar string.\n");
+                FC_LOG_ERROR("Invalid clipping in cigar string.");
                 exit(EXIT_FAILURE);
             }
         } else if (op == BAM_CSOFT_CLIP) {
@@ -47,7 +48,7 @@ static inline size_t get_query_end(bam1_t* b) {
         uint32_t op = bam_cigar_op(cigar[i]);
         if (op == BAM_CHARD_CLIP) {
             if (end_offset != qlen) {
-                fprintf(stderr, "Invalid clipping in cigar string.\n");
+                FC_LOG_ERROR("Invalid clipping in cigar string.");
                 exit(EXIT_FAILURE);
             }
         } else if (op == BAM_CSOFT_CLIP) {
@@ -117,7 +118,7 @@ static void fc_stats_engine_add_aligned(fc_stats_engine* engine, const fc_read* 
     float iden = 100 * ((float)(match - sub)) / match;
     float acc = 100 - 100 * ((float)(fr->meta->edit_distance)) / length;
     if (iden < 0.0 || acc < 0.0 || (size_t)fr->meta->edit_distance > length) {
-        fprintf(stderr, "Read '%s' appears to contain implausible alignment information\n", bam_get_qname(b));
+        FC_LOG_ERROR("Read '%s' appears to contain implausible alignment information", bam_get_qname(b));
         exit(EXIT_FAILURE);
     }
 
@@ -200,11 +201,11 @@ fc_stats_read_kind fc_stats_engine_add_read(
     }
 
     if (!engine->track_alignment) {
-        fprintf(stderr, "Stats engine requires alignment tracking for mapped reads.\n");
+        FC_LOG_ERROR("Stats engine requires alignment tracking for mapped reads.");
         exit(EXIT_FAILURE);
     }
     if (hdr == NULL) {
-        fprintf(stderr, "Stats engine requires a BAM header for aligned reads.\n");
+        FC_LOG_ERROR("Stats engine requires a BAM header for aligned reads.");
         exit(EXIT_FAILURE);
     }
 

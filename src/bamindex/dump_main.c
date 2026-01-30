@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include "index.h"
+#include "../fc_log.h"
 
 #include <argp.h>
 
@@ -65,7 +66,7 @@ void index_dump(const char* filename) {
     FILE *fp = fopen(filename, "rb");
     bc_idx_t *idx;
     if((idx = bc_idx_read(fp)) == NULL) {
-        fprintf(stderr, "Couldn't read index file: %s.\n", filename);
+        FC_LOG_ERROR("Couldn't read index file: %s.", filename);
         exit(EXIT_FAILURE);
     }
     fprintf(stdout, "Index contains %zu chunks of size %zu.\n", idx->n_chunks, idx->chunk_size);
@@ -79,10 +80,18 @@ void index_dump(const char* filename) {
 
 int main_dump(int argc, char *argv[]) {
     clock_t begin = clock();
+    fc_log_config log_cfg = {
+        .level = FC_LOG_INFO,
+        .module = "BAMDUMP",
+        .target = NULL,
+        .color = FC_LOG_COLOR_AUTO
+    };
+    fc_log_init(&log_cfg);
+
     arguments_t args = parse_arguments(argc, argv);
     index_dump(args.index);
     clock_t end = clock();
-    fprintf(stderr, "Total CPU time: %fs\n", (double)(end - begin) / CLOCKS_PER_SEC);
+    FC_LOG_INFO("Total CPU time: %fs", (double)(end - begin) / CLOCKS_PER_SEC);
+    fc_log_destroy();
     return EXIT_SUCCESS;
 }
-

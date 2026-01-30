@@ -8,6 +8,7 @@
 #include "common.h"
 #include "sink/common.h"
 #include "stats.h"
+#include "../fc_log.h"
 
 typedef struct {
     char *hist_dir;
@@ -45,7 +46,7 @@ static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t 
     ensure_parent_dir_exists(filepath);
     FILE *fp = fopen(filepath, "w");
     if (fp == NULL) {
-        fprintf(stderr, "Error: Could not open file %s for writing\n", filepath);
+        FC_LOG_ERROR("Could not open file %s for writing", filepath);
         exit(1);
     }
     print_stats(stats, false, true, fp);
@@ -136,8 +137,8 @@ fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts) {
         if (state->hist_dir != NULL) {
             int rtn = mkdir_hier(state->hist_dir);
             if (rtn == -1 && errno != EEXIST) {
-                fprintf(stderr,
-                    "Error: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
+                FC_LOG_ERROR(
+                    "Cannot create output directory '%s'. Check location is writeable and directory does not exist.",
                     state->hist_dir);
                 exit(EXIT_FAILURE);
             }

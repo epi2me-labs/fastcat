@@ -2,6 +2,7 @@
 #define _BAMSTATS_ARGS_H
 
 #include <stdbool.h>
+#include "../fc_log.h"
 
 
 typedef struct arguments {
@@ -33,6 +34,10 @@ typedef struct arguments {
     size_t n_coverage_thresholds;
     uint32_t* segments;
     size_t n_segments;
+    // logging
+    fc_log_level log_level;
+    char *log_file;
+    bool log_mono;
 } arguments_t;
 
 arguments_t parse_arguments(int argc, char** argv);

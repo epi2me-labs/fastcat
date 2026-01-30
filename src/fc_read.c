@@ -7,6 +7,7 @@
 #include "fastqcomments.h"
 #include "common.h"
 #include "fc_filter.h"
+#include "fc_log.h"
 
 // these two are tucked away at the bottom of this file
 static bam1_t* kseq_to_bam(kseq_t* seq);
@@ -145,12 +146,12 @@ read_meta fc_read_meta_create(const bam1_t *b, const bam_hdr_t *hdr, const kstri
 
     bool good_align = fc_is_primary_qc_pass(b);
     if (good_align && (meta->edit_distance == -1)) {
-        fprintf(stderr, "Read '%s' does not contain an integer 'NM' tag.\n", bam_get_qname(b));
+        FC_LOG_WARN("Read '%s' does not contain an integer 'NM' tag.", bam_get_qname(b));
         kstring_t rec = {0, 0, NULL};
         if (sam_format1(hdr, b, &rec) < 0) {
-            fprintf(stderr, "Failed to format record for error message.\n");
+            FC_LOG_ERROR("Failed to format record for error message.");
         } else {
-            fprintf(stderr, "%s\n", rec.s);
+            FC_LOG_ERROR("%s", rec.s);
         }
         ks_free(&rec);
         exit(EXIT_FAILURE);
@@ -194,7 +195,7 @@ static bam1_t* kseq_to_bam(kseq_t* seq) {
 
     if (seq->comment.l > 0) {
         if (fastq_comment_to_bam(&seq->comment, b) < 0) {
-            fprintf(stderr, "Error parsing auxiliary tags for read '%s'\n", seq->name.s);
+            FC_LOG_ERROR("Error parsing auxiliary tags for read '%s'", seq->name.s);
             exit(1);
         }
     }

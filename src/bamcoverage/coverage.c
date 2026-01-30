@@ -10,6 +10,7 @@
 #include "htslib/thread_pool.h"
 
 #include "common.h"
+#include "../fc_log.h"
 #include "coverage.h"
 #include "regiter.h"
 
@@ -35,7 +36,7 @@ static inline void _write_bedgraph_line(
     int n = snprintf(buf, sizeof(buf), "%s\t%" PRId64 "\t%" PRId64 "\t%u\n",
                      chrom, s, e, cov);
     if (n < 0 || bgzf_write_small(fp, buf, n) != n) {
-        fprintf(stderr, "bgzf_write failed\n");
+        FC_LOG_ERROR("bgzf_write failed");
         exit(1);
     }
 }
@@ -270,9 +271,9 @@ cov_writer_region init_coverage_writer_region(
         const bam_hdr_t* hdr, const htsThreadPool* pool) {
 
     if (mkdir_hier((char*)out_dir) == -1) {
-        fprintf(stderr,
-           "ERROR: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
-           out_dir);
+        FC_LOG_ERROR(
+            "Cannot create output directory '%s'. Check location is writeable and directory does not exist.",
+            out_dir);
         exit(EXIT_FAILURE);
     }
 
@@ -332,7 +333,7 @@ cov_writer_region init_coverage_writer_region(
             sprintf(*fn[i], "%s/%s%s", out_dir, name, suffixes[i]);
             *fh[i] = bgzf_open(*fn[i], "w1");
             if (NULL == *fh[i]) {
-                fprintf(stderr, "Error: cannot open bedgraph output '%s'\n", *fn[i]);
+                FC_LOG_ERROR("Cannot open bedgraph output '%s'", *fn[i]);
                 exit(EXIT_FAILURE);
             }
             bgzf_index_build_init(*fh[i]);
@@ -349,7 +350,7 @@ cov_writer_region init_coverage_writer_region(
         sprintf(fname, "%s/%s%s", out_dir, name, suffix);
         w->fh_summary = fopen(fname, "w");
         if (NULL == w->fh_summary) {
-            fprintf(stderr, "Error: cannot open summary output '%s'\n", fname);
+            FC_LOG_ERROR("Cannot open summary output '%s'", fname);
             exit(EXIT_FAILURE);
         }
         //TODO: mosdepth allows mean to be changed to median
@@ -368,7 +369,7 @@ cov_writer_region init_coverage_writer_region(
         sprintf(fname, "%s/%s%s", out_dir, name, suffix);
         w->fh_dist = fopen(fname, "w");
         if (NULL == w->fh_dist) {
-            fprintf(stderr, "Error: cannot open summary output '%s'\n", fname);
+            FC_LOG_ERROR("Cannot open summary output '%s'", fname);
             exit(EXIT_FAILURE);
         }
         free(fname);
@@ -381,7 +382,6 @@ cov_writer_region init_coverage_writer_region(
     //    sprintf(fname, "%s/%s%s", out_dir, name, suffix);
     //    w->fh_thresh = fopen(fname, "w");
     //    if (NULL == w->fh_thresh) {
-    //        fprintf(stderr, "Error: cannot open thresholds output '%s'\n", fname);
     //        exit(EXIT_FAILURE);
     //    }
     //    fprintf(w->fh_thresh, "chrom\tcoverage\tfraction\n");
@@ -420,11 +420,11 @@ void destroy_coverage_writer_region(cov_writer_region w) {
         for (int i = 0; i < 3; ++i) {
             if (fhs[i] == NULL) continue; // from by_strand == false
             if (bgzf_index_dump(fhs[i], *fns[i], ".csi") < 0) {
-                fprintf(stderr, "Error: cannot write index for '%s'\n", *fns[i]);
+                FC_LOG_ERROR("Cannot write index for '%s'", *fns[i]);
                 exit(EXIT_FAILURE);
             }
             if (bgzf_close(fhs[i]) < 0) {
-                fprintf(stderr, "Error: cannot close '%s'\n", *fns[i]);
+                FC_LOG_ERROR("Cannot close '%s'", *fns[i]);
                 exit(EXIT_FAILURE);
             }
             free(*fns[i]);
@@ -450,20 +450,20 @@ cov_writer init_coverage_writer(
     // check outputs are writeable, we don't use mkdir_hier here because otherwise
     // the global coverage writer would fail to make the TLD.
     if (can_make_dir(out_dir) < 1) {
-        fprintf(stderr,
-           "ERROR: Cannot create output directory '%s'. Check location is writeable and directory does not exist.\n",
-           out_dir);
+        FC_LOG_ERROR(
+            "Cannot create output directory '%s'. Check location is writeable and directory does not exist.",
+            out_dir);
         exit(EXIT_FAILURE);
     }
 
     kstring_t ks = KS_INITIALIZE;
     if (sam_hdr_find_tag_hd((bam_hdr_t*)hdr, "SO", &ks) >= 0) {
         if (strcmp(ks.s, "coordinate") != 0) {
-            fprintf(stderr, "ERROR: BAM sort order is '%s', must be 'coordinate'. Cannot calculate coverage data.\n", ks.s);
+            FC_LOG_ERROR("BAM sort order is '%s', must be 'coordinate'. Cannot calculate coverage data.", ks.s);
             exit(EXIT_FAILURE);
         }
     } else {
-        fprintf(stderr, "ERROR: BAM header missing 'SO' (sort order) tag. Cannot calculate coverage data.\n");
+        FC_LOG_ERROR("BAM header missing 'SO' (sort order) tag. Cannot calculate coverage data.");
         exit(EXIT_FAILURE);
     }
     free(ks.s);

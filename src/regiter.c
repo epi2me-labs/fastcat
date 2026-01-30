@@ -4,6 +4,7 @@
 
 #include "regiter.h"
 #include "common.h"
+#include "fc_log.h"
 
 
 int region_from_string(char* input, char** chr, int* start, int* end) {
@@ -57,7 +58,7 @@ int region_from_bed(FILE* bed_fp, char** chr, int* start, int* end) {
         // get chromosome
         char* tok = strtok(line, "\t");
         if (tok == NULL) {
-            fprintf(stderr, "WARNING: Missing chromosome field in BED file line: '%s'.\n", line_copy);
+            FC_LOG_ERROR("Missing chromosome field in BED file line: '%s'.", line_copy);
             rtn = -2;
             goto cleanup;
         }
@@ -67,14 +68,14 @@ int region_from_bed(FILE* bed_fp, char** chr, int* start, int* end) {
         // get start coordinate
         tok = strtok(NULL, "\t");
         if (tok == NULL) {
-            fprintf(stderr, "WARNING: Missing start field in BED file line: '%s'.\n", line_copy);
+            FC_LOG_ERROR("Missing start field in BED file line: '%s'.", line_copy);
             rtn = -2;
             goto cleanup;
         }
         char* endptr;
         *start = strtol(tok, &endptr, 10);
         if (*endptr != '\0') {
-            fprintf(stderr, "WARNING: Invalid start field in BED file line: '%s'.\n", line_copy);
+            FC_LOG_ERROR("Invalid start field in BED file line: '%s'.", line_copy);
             rtn = -2;
             goto cleanup;
         }
@@ -82,20 +83,20 @@ int region_from_bed(FILE* bed_fp, char** chr, int* start, int* end) {
         // get end coordinate
         tok = strtok(NULL, "\t");
         if (tok == NULL) {
-            fprintf(stderr, "WARNING: Missing end field in BED file line: '%s'.\n", line_copy);
+            FC_LOG_ERROR("Missing end field in BED file line: '%s'.", line_copy);
             rtn = -2;
             goto cleanup;
         }
         *end = strtol(tok, &endptr, 10);
         if (*endptr != '\0') {
-            fprintf(stderr, "WARNING: Invalid end field in BED file line: '%s'.\n", line_copy);
+            FC_LOG_ERROR("Invalid end field in BED file line: '%s'.", line_copy);
             rtn = -2;
             goto cleanup;
         }
 
         // Validate start and end
         if (*start < 0 || *end < 0 || *start >= *end) {
-            fprintf(stderr, "WARNING: Invalid region in BED file line: '%s'.\n", line_copy);
+            FC_LOG_ERROR("Invalid region in BED file line: '%s'.", line_copy);
             rtn = -2;
             goto cleanup;
         }
@@ -117,7 +118,7 @@ regiter init_region_iterator(const char *bed_file, const char *single_region, co
     if (bed_file != NULL) {
         it.bed_fp = fopen(bed_file, "r");
         if (it.bed_fp == NULL) {
-            fprintf(stderr, "ERROR: Unable to open BED file: %s\n", bed_file);
+            FC_LOG_ERROR("Unable to open BED file: %s", bed_file);
             it.error |= 1;
         }
     } else if (single_region != NULL) {
@@ -151,7 +152,7 @@ int next_region(regiter *it) {
         if (it->single_region) {
             rtn = region_from_string(it->single_region, &it->chr, &it->start, &it->end);
             if (rtn == -1) {
-                fprintf(stderr, "WARNING: Failed to parse region string: %s\n", it->single_region);
+                FC_LOG_WARN("Failed to parse region string: %s", it->single_region);
                 it->error |= 2;
                 rtn = -2;
             }
@@ -162,7 +163,7 @@ int next_region(regiter *it) {
         // check reference exists and tidy up length
         int tid = sam_hdr_name2tid((sam_hdr_t*)it->hdr, it->chr);
         if (tid < 0) {
-            fprintf(stderr, "WARNING: Failed to find reference '%s' in BAM header.\n", it->chr);
+            FC_LOG_WARN("Failed to find reference '%s' in BAM header.", it->chr);
             rtn = -3;
         }
         else {
@@ -171,7 +172,7 @@ int next_region(regiter *it) {
             int ns = min(it->start, (int)ref_length);
             int ne = min(it->end, (int)ref_length);
             if (ns >= ne) {
-                fprintf(stderr, "WARNING: Zero-length region created after truncating to reference length (%ld) '%s:%d-%d'.\n", ref_length, it->chr, it->start, it->end);
+                FC_LOG_WARN("Zero-length region created after truncating to reference length (%ld) '%s:%d-%d'.", ref_length, it->chr, it->start, it->end);
                 rtn = -2;
             }
             else {
@@ -229,8 +230,8 @@ bed_regions init_bed(const char* bed_path, const sam_hdr_t* hdr) {
             bed_region dst = &out->regions[out->n_regions];
             dst->chr = strdup(it.chr);
             if (dst->chr == NULL) {
+                FC_LOG_ERROR("could not allocate memory for chromosome name '%s'", it.chr);
                 destroy_region_iterator(&it);
-                fprintf(stderr, "ERROR: could not allocate memory for chromosome name '%s'\n", it.chr);
                 exit(EXIT_FAILURE);
             }
             dst->start = it.start;
@@ -284,7 +285,7 @@ bed_regions init_bed_from_sam(const sam_hdr_t* hdr, uint32_t segment_length) {
             dst->chr = strdup(hdr->target_name[i]);
             if (dst->chr == NULL) {
                 destroy_bed(regions);
-                fprintf(stderr, "ERROR: could not allocate memory for chromosome name '%s'\n", hdr->target_name[i]);
+                FC_LOG_ERROR("could not allocate memory for chromosome name '%s'", hdr->target_name[i]);
                 exit(EXIT_FAILURE);
             }
             dst->start = start;

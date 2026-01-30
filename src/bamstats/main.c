@@ -15,6 +15,7 @@
 #include "args.h"
 #include "common.h"
 #include "regiter.h"
+#include "../fc_log.h"
 #include "../fc_iter.h"
 #include "../fc_sinks.h"
 #include "../fc_writer.h"
@@ -50,6 +51,13 @@ static void merge_bam_file_stats(fc_file_stats *dst, const fc_file_stats *src,
 int main(int argc, char *argv[]) {
     clock_t begin = clock();
     arguments_t args = parse_arguments(argc, argv);
+    fc_log_config log_cfg = {
+        .module = "BAMSTATS",
+        .level = args.log_level,
+        .target = args.log_file,
+        .color = args.log_mono ? FC_LOG_COLOR_OFF : FC_LOG_COLOR_AUTO
+    };
+    fc_log_init(&log_cfg);
 #ifdef NOTHREADS
     if (args.threads != 1) {
         fprintf(
@@ -61,11 +69,11 @@ int main(int argc, char *argv[]) {
     // set up output root (must not pre-exist)
     int can_output = can_make_dir(args.output_dir);
     if (can_output != 1) {
-        fprintf(stderr, "ERROR: Output directory '%s' already exists or cannot be created.\n", args.output_dir);
+        FC_LOG_ERROR("Output directory '%s' already exists or cannot be created.", args.output_dir);
         exit(EXIT_FAILURE);
     }
     if (mkdir_hier(args.output_dir) == -1) {
-        fprintf(stderr, "ERROR: Failed to create output directory '%s'.\n", args.output_dir);
+        FC_LOG_ERROR("Failed to create output directory '%s'.", args.output_dir);
         exit(EXIT_FAILURE);
     }
 
@@ -73,13 +81,13 @@ int main(int argc, char *argv[]) {
     htsFile *fp = hts_open(args.bam, "rb");
     sam_hdr_t *hdr = sam_hdr_read(fp);
     if (hdr == 0 || fp == 0) {
-        fprintf(stderr, "ERROR: Failed to read .bam file '%s'.\n", args.bam);
+        FC_LOG_ERROR("Failed to read .bam file '%s'.", args.bam);
         exit(EXIT_FAILURE);
     }
 
     htsThreadPool p = {NULL, 0};
     if (args.threads > 1) {
-        fprintf(stderr, "Using %d threads\n", args.threads);
+        FC_LOG_INFO("Using %d threads", args.threads);
         p.pool = hts_tpool_init(args.threads);
         hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
     }
@@ -196,7 +204,7 @@ int main(int argc, char *argv[]) {
         // proces given region / BED
         hts_idx_t *idx = sam_index_load(fp, args.bam);
         if (idx == 0){
-            fprintf(stderr, "ERROR: Cannot find index file for '%s', which is required for processing by region.\n", args.bam);
+            FC_LOG_ERROR("Cannot find index file for '%s', which is required for processing by region.", args.bam);
             exit(EXIT_FAILURE);
         }
 
@@ -230,7 +238,7 @@ int main(int argc, char *argv[]) {
                 saw_unknown_error = true;
             }
         }
-        fprintf(stderr, "Processed %d regions\n", rit.n_regions);
+        FC_LOG_INFO("Processed %d regions", rit.n_regions);
 
         destroy_region_iterator(&rit);
         hts_idx_destroy(idx);
@@ -257,10 +265,10 @@ int main(int argc, char *argv[]) {
         + file_stats.failures[R_TOO_SHORT]
         + file_stats.failures[R_LOW_QUALITY]
         + file_stats.failures[R_DUST_MASKED];
-    fprintf(stderr, "INFO   : Processed %" PRIu64 " records in 1 files.\n", total_records);
-    fprintf(stderr, "\nParsing/filtering summary:\n");
+    FC_LOG_INFO("Processed %" PRIu64 " records in 1 files.", total_records);
+    FC_LOG_INFO("Parsing/filtering summary:");
     for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
-        fprintf(stderr, "%s\t%" PRIu64 "\n", failure_type[i], file_stats.failures[i]);
+        FC_LOG_INFO("%s\t%" PRIu64, failure_type[i], file_stats.failures[i]);
     }
 
     fc_writer_destroy(writer);
@@ -273,6 +281,7 @@ int main(int argc, char *argv[]) {
     destroy_args(&args);
 
     clock_t end = clock();
-    fprintf(stderr, "Total CPU time: %fs\n", (double)(end - begin) / CLOCKS_PER_SEC);
+    FC_LOG_INFO("Total CPU time: %fs", (double)(end - begin) / CLOCKS_PER_SEC);
+    fc_log_destroy();
     exit(EXIT_SUCCESS);
 }

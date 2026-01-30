@@ -1,6 +1,7 @@
 #ifndef FASTCAT_ARGS_H
 #define FASTCAT_ARGS_H
 #include <stdbool.h>
+#include "../fc_log.h"
 
 
 typedef struct arguments {
@@ -23,6 +24,10 @@ typedef struct arguments {
     bool verbose;
     bool force_error;
     bool per_read;
+    // logging
+    fc_log_level log_level;
+    char *log_file;
+    bool log_mono;
 } arguments_t;
 
 arguments_t parse_arguments(int argc, char** argv);

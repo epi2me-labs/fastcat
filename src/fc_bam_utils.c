@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "fc_log.h"
 
 /** Set up a bam file for reading records.
  *  
@@ -33,7 +34,7 @@ mplp_data *fc_bam_iter_data_create(
         } else {
             mytid = sam_hdr_name2tid(hdr, chr);
             if (mytid < 0) {
-                fprintf(stderr, "Failed to find reference sequence '%s' in bam.\n", chr);
+                FC_LOG_ERROR("Failed to find reference sequence '%s' in bam.", chr);
                 free(data);
                 return NULL;
             }

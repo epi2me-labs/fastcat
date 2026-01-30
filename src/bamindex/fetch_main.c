@@ -12,6 +12,7 @@
 #include "htslib/bgzf.h"
 
 #include "index.h"
+#include "../fc_log.h"
 
 #include <argp.h>
 
@@ -84,7 +85,7 @@ void index_fetch(const char* bam_fname, const char* index_fname, int chunk, int 
     htsFile *fp = hts_open(bam_fname, "r");
     bam_hdr_t *h = sam_hdr_read(fp);
     if(fp == NULL || h == NULL) {
-        fprintf(stderr, "Could not open %s\n", bam_fname);
+        FC_LOG_ERROR("Could not open %s", bam_fname);
         exit(EXIT_FAILURE);
     }
     htsThreadPool p = {NULL, 0};
@@ -101,18 +102,18 @@ void index_fetch(const char* bam_fname, const char* index_fname, int chunk, int 
     FILE* idx_fp = fopen(index_fname, "rb");
     bc_idx_t *idx;
     if((idx = bc_idx_read(idx_fp)) == NULL) {
-        fprintf(stderr, "Couldn't read index file: %s.\n", index_fname);
+        FC_LOG_ERROR("Couldn't read index file: %s.", index_fname);
         exit(EXIT_FAILURE);
     }
     fclose(idx_fp);
     bc_rec_t rec = idx->recs[chunk];
 
-    fprintf(stderr, "Starting from: %zu %s\n", rec.file_offset, rec.qname);
-    fprintf(stderr, "Reading %zu records from bam.\n", idx->chunk_size);
+    FC_LOG_INFO("Starting from: %zu %s", rec.file_offset, rec.qname);
+    FC_LOG_INFO("Reading %zu records from bam.", idx->chunk_size);
 
 
     if(bgzf_seek(fp->fp.bgzf, rec.file_offset, SEEK_SET) != 0) {
-        fprintf(stderr, "Failed to seek to first record.\n");
+        FC_LOG_ERROR("Failed to seek to first record.");
         exit(EXIT_FAILURE);
     }
 
@@ -120,22 +121,22 @@ void index_fetch(const char* bam_fname, const char* index_fname, int chunk, int 
     bam1_t* b = bam_init1();
     htsFile * out_fp;
     if ((out_fp = hts_open("-", "wb0")) == 0) {
-        fprintf(stderr, "Failed to open standard output for writing.\n");
+        FC_LOG_ERROR("Failed to open standard output for writing.");
         exit(EXIT_FAILURE);
     }
 
     // TODO: fill in the NULLs here
     if(sam_hdr_add_pg(h, "bamindex.fetch", "VN", argp_program_version, NULL, NULL, NULL) != 0){
-        fprintf(stderr, "Failed to add PG line to the header.\n");
+        FC_LOG_ERROR("Failed to add PG line to the header.");
         exit(EXIT_FAILURE);
     }
     if(sam_hdr_write(out_fp, h) != 0) {
-        fprintf(stderr, "Failed to write the SAM header.\n");
+        FC_LOG_ERROR("Failed to write the SAM header.");
         exit(EXIT_FAILURE);
     }
     while ((sam_read1(fp, h, b) >= 0) && (written < (idx->chunk_size))) {
         if((sam_write1(out_fp, h, b) < 0)) {
-            fprintf(stderr, "Failed to write output record.");
+            FC_LOG_ERROR("Failed to write output record.");
             exit(EXIT_FAILURE);
         }
         written++;
@@ -150,16 +151,25 @@ void index_fetch(const char* bam_fname, const char* index_fname, int chunk, int 
     }
 
     bc_idx_destroy(idx);
-    fprintf(stderr, "Written %zu records to output.\n", written);
+    FC_LOG_INFO("Written %zu records to output.", written);
 }
 
 
 int main_fetch(int argc, char *argv[]) {
     clock_t begin = clock();
+    fc_log_config log_cfg = {
+        .level = FC_LOG_INFO,
+        .module = "BAMFETCH",
+        .target = NULL,
+        .color = FC_LOG_COLOR_AUTO
+    };
+    fc_log_init(&log_cfg);
+
     arguments_t args = parse_arguments(argc, argv);
     index_fetch(args.bam, args.index, args.chunk_idx, args.threads);
     free((char*)args.index);
     clock_t end = clock();
-    fprintf(stderr, "Total CPU time: %fs\n", (double)(end - begin) / CLOCKS_PER_SEC);
+    FC_LOG_INFO("Total CPU time: %fs", (double)(end - begin) / CLOCKS_PER_SEC);
+    fc_log_destroy();
     return EXIT_SUCCESS;
 }

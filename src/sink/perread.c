@@ -7,6 +7,7 @@
 #include "common.h"
 #include "sink/common.h"
 #include "htslib/sam.h"
+#include "../fc_log.h"
 
 typedef struct {
     FILE *fp;
@@ -104,7 +105,7 @@ fc_sink fc_perread_sink_create(const fc_perread_sink_opts *opts) {
     ensure_parent_dir_exists(path);
     state->fp = fopen(path, "w");
     if (state->fp == NULL) {
-        fprintf(stderr, "Error opening per-read file '%s' for writing.\n", path);
+        FC_LOG_ERROR("Error opening per-read file '%s' for writing.", path);
         exit(EXIT_FAILURE);
     }
     free(path);

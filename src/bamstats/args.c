@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <strings.h>
 #include <argp.h>
 
 #include "htslib/sam.h"
@@ -9,6 +10,7 @@
 #include "args.h"
 #include "common.h"
 #include "../version.h"
+#include "../fc_log.h"
 
 const char *argp_program_bug_address = "support@nanoporetech.com";
 static char doc[] = 
@@ -74,9 +76,17 @@ static struct argp_option options[] = {
         "Read mean Q score for acceptance of read. (default: 10)", 4},
     {"poly-a-rev", 0x800, 0, 0,
         "Allow reverse alignments (useful for cDNA, default is appropriate for direct RNA seq).", 4},
+
+    {0, 0, 0, 0,
+        "Logging options:", 0},
+    {"log-level", 0x1200, "LEVEL", 0,
+        "Log level: error, warn, info, debug (default: info).", 5},
+    {"log-file", 0x1201, "PATH", 0,
+        "Write logs to PATH instead of stderr.", 5},
+    {"log-mono", 0x1202, 0, 0,
+        "Force monochrome logging output (disable ANSI colors).", 5},
     { 0 }
 };
-
 
 static int tag_items = 0;
 static bool tag_given = false;
@@ -160,6 +170,18 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
         case 0x1004:
             arguments->coverage = true;
             break;
+        case 0x1200:
+            arguments->log_level = fc_log_level_from_string(arg, FC_LOG_INFO);
+            if (arguments->log_level == FC_LOG_INFO && arg && strcasecmp(arg, "info") != 0) {
+                argp_error(state, "Unknown log level '%s' (expected error|warn|info|debug).", arg);
+            }
+            break;
+        case 0x1201:
+            arguments->log_file = arg;
+            break;
+        case 0x1202:
+            arguments->log_mono = true;
+            break;
 
         case ARGP_KEY_ARG:
             if (state->arg_num == 0) {
@@ -218,13 +240,16 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.n_coverage_thresholds = 0;
     args.segments = NULL;
     args.n_segments = 0;
+    args.log_level = FC_LOG_INFO;
+    args.log_file = NULL;
+    args.log_mono = false;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     if (tag_items % 2 > 0) {
-        fprintf(stderr, "ERROR: Both or neither of --tag_name and --tag_value must be given.\n");
+        FC_LOG_ERROR("Both or neither of --tag_name and --tag_value must be given.");
         exit(EXIT_FAILURE);
     }
     if (tag_given && hp_given) {
-        fprintf(stderr, "ERROR: If --haplotype is given neither of --tag_name or --tag_value should be provided.\n");
+        FC_LOG_ERROR("If --haplotype is given neither of --tag_name or --tag_value should be provided.");
         exit(EXIT_FAILURE);
     }
     return args;

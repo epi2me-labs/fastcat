@@ -1,8 +1,10 @@
 #include <stdlib.h>
+#include <strings.h>
 #include <argp.h>
 
 #include "args.h"
 #include "../version.h"
+#include "../fc_log.h"
 
 const char *argp_program_bug_address = "support@nanoporetech.com";
 static char doc[] = 
@@ -64,9 +66,17 @@ static struct argp_option options[] = {
         "Window size for DUST filtering (default: 64).", 0},
     {"dust-t", 0x800, "DUST T", 0,
         "Threshold for DUST filtering (default: 20).", 0},
+
+    {0, 0, 0, 0,
+        "Logging options:", 0},
+    {"log-level", 0x900, "LEVEL", 0,
+        "Log level: error, warn, info, debug (default: info).", 0},
+    {"log-file",  0x901, "PATH", 0,
+        "Write logs to PATH instead of stderr.", 0},
+    {"log-mono",  0x902, 0, 0,
+        "Force monochrome logging output (disable ANSI colors).", 0},
     { 0 }
 };
-
 
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     arguments_t *arguments = state->input;
@@ -112,6 +122,18 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             if (arguments->dust_t <= 0) {
                 argp_error(state, "dust_t must be a positive integer.");
             }
+            break;
+        case 0x900:
+            arguments->log_level = fc_log_level_from_string(arg, FC_LOG_INFO);
+            if (arguments->log_level == FC_LOG_INFO && arg && strcasecmp(arg, "info") != 0) {
+                argp_error(state, "Unknown log level '%s' (expected error|warn|info|debug).", arg);
+            }
+            break;
+        case 0x901:
+            arguments->log_file = arg;
+            break;
+        case 0x902:
+            arguments->log_mono = true;
             break;
         case 'q':
             arguments->min_qscore = (float)atof(arg);
@@ -169,6 +191,9 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.threads = 1;
     args.reads_per_file = 0;
     args.force_error = 0;
+    args.log_level = FC_LOG_INFO;
+    args.log_file = NULL;
+    args.log_mono = false;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     return args;
 }

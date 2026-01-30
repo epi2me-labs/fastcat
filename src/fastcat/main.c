@@ -10,6 +10,7 @@
 #include <stdlib.h>
 
 #include "../common.h"
+#include "../fc_log.h"
 #include "args.h"
 #include "parsing.h"
 #include "../fc_iter.h"
@@ -42,7 +43,7 @@ int process_dir(const char *name, fc_writer* writer, const fc_fastq_iter_opts* i
 
     // read all files in directory
     if (!(dir = opendir(name))) {
-        fprintf(stderr, "ERROR  : could not process directory %s: %s\n", name, strerror(errno));
+        FC_LOG_ERROR("could not process directory %s: %s", name, strerror(errno));
         return errno;
     }
     while ((entry = readdir(dir)) != NULL) {
@@ -55,7 +56,7 @@ int process_dir(const char *name, fc_writer* writer, const fc_fastq_iter_opts* i
                 search = strstr(entry->d_name, filetypes[i]);
                 if (search != NULL) {
                     if (args->verbose) {
-                        fprintf(stderr, "Processing %s\n", path);
+                        FC_LOG_INFO("Processing %s", path);
                     }
                     int rtn = process_file(path, writer, iter_opts, failures, args, recurse - 1);
                     status = max(status, rtn);
@@ -69,7 +70,7 @@ int process_dir(const char *name, fc_writer* writer, const fc_fastq_iter_opts* i
 
     // start again and look at child directories
     if (!(dir = opendir(name))) {
-        fprintf(stderr, "ERROR  : could not process directory %s: %s\n", name, strerror(errno));
+        FC_LOG_ERROR("could not process directory %s: %s", name, strerror(errno));
         return errno;
     }
     while ((entry = readdir(dir)) != NULL) {
@@ -99,7 +100,7 @@ int process_file(char* fname, fc_writer* writer, const fc_fastq_iter_opts* iter_
     struct stat finfo;
     int res = stat(fname, &finfo);
     if (res == -1) {
-        fprintf(stderr, "ERROR  : could not process file %s: %s\n", fname, strerror(errno));
+        FC_LOG_ERROR("could not process file %s: %s", fname, strerror(errno));
         return errno;
     }
 
@@ -140,14 +141,21 @@ int process_file(char* fname, fc_writer* writer, const fc_fastq_iter_opts* iter_
 
 int main(int argc, char **argv) {
     arguments_t args = parse_arguments(argc, argv);
+    fc_log_config log_cfg = {
+        .module = "FASTCAT",
+        .level = args.log_level,
+        .target = args.log_file,
+        .color = args.log_mono ? FC_LOG_COLOR_OFF : FC_LOG_COLOR_AUTO
+    };
+    fc_log_init(&log_cfg);
 
     int can_output = can_make_dir(args.output_dir);
     if (can_output != 1) {
-        fprintf(stderr, "ERROR  : Output directory '%s' already exists or cannot be created.\n", args.output_dir);
+        FC_LOG_ERROR("Output directory '%s' already exists or cannot be created.", args.output_dir);
         exit(EXIT_FAILURE);
     }
     if (mkdir_hier(args.output_dir) == -1) {
-        fprintf(stderr, "ERROR  : Failed to create output directory '%s'.\n", args.output_dir);
+        FC_LOG_ERROR("Failed to create output directory '%s'.", args.output_dir);
         exit(EXIT_FAILURE);
     }
 
@@ -242,18 +250,19 @@ int main(int argc, char **argv) {
         + failures[R_TOO_SHORT]
         + failures[R_LOW_QUALITY]
         + failures[R_DUST_MASKED];
-    fprintf(stderr, "INFO   : Processed %" PRIu64 " records in %zu files.\n", total_records, nfile);
+    FC_LOG_INFO("Processed %" PRIu64 " records in %zu files.", total_records, nfile);
     if (status != EXIT_SUCCESS) {
-        fprintf(stderr, "WARNING: Error processing files.\n");
+        FC_LOG_WARN("Error processing files.");
     }
     if (!args.force_error) {
         status = EXIT_SUCCESS;
     }
 
-    fprintf(stderr, "\nParsing/filtering summary:\n");
+    FC_LOG_INFO("Parsing/filtering summary:");
     for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
-        fprintf(stderr, "%s\t%" PRIu64 "\n", failure_type[i], failures[i]);
+        FC_LOG_INFO("%s\t%" PRIu64, failure_type[i], failures[i]);
     }
     fc_writer_destroy(writer);
+    fc_log_destroy();
     return status;
 }
