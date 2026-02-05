@@ -55,16 +55,11 @@ typedef struct {
     gzFile fp;
     kseq_t *seq;
     fc_fastq_iter_opts opts;
-    fc_filter_opts filter_opts;
     fc_file_stats stats;
     bool truncated;
     int status;
-    size_t n_valid;
-    size_t total_bases;
-    size_t min_len;
-    size_t max_len;
-    double average_q;
     double q_sum;
+    double q_comp;
 } fc_fastq_iter;
 
 int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_fastq_iter_opts *opts);
@@ -75,15 +70,10 @@ typedef struct {
     mplp_data *bam;
     bam1_t *b;
     fc_bam_iter_opts opts;
-    fc_filter_opts filter_opts;
     bool apply_filters;
     fc_file_stats stats;
-    size_t n_valid;
-    size_t total_bases;
-    size_t min_len;
-    size_t max_len;
-    double average_q;
     double q_sum;
+    double q_comp;
     bool has_opts;
     int status;
 } fc_bam_iter;

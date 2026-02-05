@@ -11,6 +11,7 @@ void regiter_suite(void);
 void quality_suite(void);
 void bam_utils_suite(void);
 void qualcalcs_suite(void);
+void iter_suite(void);
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -35,6 +36,7 @@ int main(void) {
     quality_suite();
     bam_utils_suite();
     qualcalcs_suite();
+    iter_suite();
     int rc = UNITY_END();
 
     fc_log_destroy();

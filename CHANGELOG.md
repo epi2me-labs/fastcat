@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The read group (RG) tag for a read is inferred from the protocol ("run") ID, the basecaller model, and
   optionally the barcode ID, when not explicitly provided in the FASTQ header.
 - The `--unmapped` options is removed from both `bamstats`; statististics for unmapped reads are always produced.
+- The `fastcat` program will now respect the `qs` mean quality score tag in fastq headers rather than recomputing mean quality from the base qualities. This can be overridden with the `--recalc-qual` flag.
 ### Added
 - Summary outputs from `bamstats` have been harmonized with `fastcat`; running `bamstats` on strictly unaligned reads will produce the same outputs (bar fastq/bam output) as running `fastcat`.
 - All ancilliarly file outputs are consistent in the case that demultiplexing is performance, and when it is not. i.e This means that a single demultiplexed output folder contains all the same files as when processing an input without demultiplexing and a single barcode.
