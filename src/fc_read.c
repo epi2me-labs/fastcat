@@ -21,9 +21,7 @@ fc_read* fc_read_from_kseq(kseq_t* seq) {
 
     r->bam = bam;
     r->meta = meta;
-    // TODO: honour qs tag if present in the FASTQ comment; currently we match
-    // the original fastcat behaviour and always recompute.
-    meta->mean_q = mean_qual_naive(seq->qual.s, seq->qual.l);
+    meta->mean_q = resolve_mean_quality(bam, meta, false);
     r->owns_bam = true;
     return r;
 }

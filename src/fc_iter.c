@@ -23,14 +23,48 @@ static void init_file_stats(fc_file_stats *stats) {
     stats->min_length = SIZE_MAX;
 }
 
-static void finalize_file_stats(fc_file_stats *stats, size_t n_valid, double avg_q) {
+static void finalize_file_stats(fc_file_stats *stats, double q_sum) {
     if (!stats) return;
-    stats->n_seqs = n_valid;
-    stats->mean_quality = (n_valid == 0) ? 0.0 : (avg_q / (double)n_valid);
-    if (n_valid == 0) {
+    if (stats->n_seqs == 0) {
         stats->min_length = 0;
         stats->max_length = 0;
+        stats->mean_quality = 0.0;
+    } else {
+        stats->mean_quality = q_sum / (double)stats->n_seqs;
+        if (stats->min_length == SIZE_MAX) {
+            stats->min_length = 0;
+        }
     }
+}
+
+static inline void fc_iter_accum_add(size_t len, float mean_q,
+        fc_file_stats *stats, double *q_sum, double *q_comp) {
+    stats->n_seqs += 1;
+    stats->n_bases += len;
+    stats->min_length = (stats->min_length < len) ? stats->min_length : len;
+    stats->max_length = (stats->max_length > len) ? stats->max_length : len;
+    kahan_sum(q_sum, mean_q, q_comp);
+}
+
+static inline bool fc_iter_filter_length(size_t len, size_t min_len, size_t max_len, fc_file_stats *stats) {
+    if (max_len != (size_t)-1 && len > max_len) {
+        stats->failures[R_TOO_LONG]++;
+        return false;
+    }
+    if (len < min_len) {
+        stats->failures[R_TOO_SHORT]++;
+        return false;
+    }
+    return true;
+}
+
+static inline bool fc_iter_filter_quality(float mean_q, float min_qscore, fc_file_stats *stats) {
+    if (min_qscore <= 0.0f) return true;
+    if (mean_q < min_qscore) {
+        stats->failures[R_LOW_QUALITY]++;
+        return false;
+    }
+    return true;
 }
 
 static float bam_iter_mean_quality(const bam1_t *b, bool force_recalc_qual) {
@@ -52,13 +86,15 @@ int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_fastq_it
     memset(iter, 0, sizeof(*iter));
     iter->fname = fname;
     init_file_stats(&iter->stats);
-    iter->min_len = SIZE_MAX;
+
+    // default: no length/quality filtering
+    iter->opts.min_length = 0;
+    iter->opts.max_length = (size_t)-1;
+    iter->opts.min_qscore = 0.0f;
 
     if (opts) {
         iter->opts = *opts;
-        iter->filter_opts.min_length = opts->min_length;
-        iter->filter_opts.max_length = opts->max_length;
-        iter->filter_opts.min_qscore = opts->min_qscore;
+        if (iter->opts.max_length == 0) iter->opts.max_length = (size_t)-1;
     }
 
     struct stat finfo;
@@ -106,20 +142,7 @@ fc_read *fc_fastq_iter_next(fc_fastq_iter *iter) {
         iter->truncated = false;
         iter->stats.failures[R_RECORD_OK]++;
 
-        fc_filter_result filter = fc_filter_length(iter->seq->seq.l, &iter->filter_opts);
-        if (filter == FC_FILTER_TOO_LONG) {
-            iter->stats.failures[R_TOO_LONG]++;
-            continue;
-        }
-        if (filter == FC_FILTER_TOO_SHORT) {
-            iter->stats.failures[R_TOO_SHORT]++;
-            continue;
-        }
-
-        float mean_q = mean_qual_naive(iter->seq->qual.s, iter->seq->qual.l);
-        filter = fc_filter_quality(mean_q, &iter->filter_opts);
-        if (filter == FC_FILTER_LOW_QUALITY) {
-            iter->stats.failures[R_LOW_QUALITY]++;
+        if (!fc_iter_filter_length(iter->seq->seq.l, iter->opts.min_length, iter->opts.max_length, &iter->stats)) {
             continue;
         }
 
@@ -132,7 +155,10 @@ fc_read *fc_fastq_iter_next(fc_fastq_iter *iter) {
         }
 
         fc_read *fr = fc_read_from_kseq(iter->seq);
-        fr->meta->mean_q = mean_q;
+        if (!fc_iter_filter_quality(fr->meta->mean_q, iter->opts.min_qscore, &iter->stats)) {
+            fc_read_destroy(fr);
+            continue;
+        }
         if (iter->opts.tag_name[0] != '\0') {
             if (!fc_filter_int_tag(fr->bam, iter->opts.tag_name, iter->opts.tag_value, false)) {
                 fc_read_destroy(fr);
@@ -146,11 +172,7 @@ fc_read *fc_fastq_iter_next(fc_fastq_iter *iter) {
             }
         }
 
-        ++iter->n_valid;
-        iter->total_bases += iter->seq->seq.l;
-        iter->min_len = (iter->min_len < iter->seq->seq.l) ? iter->min_len : iter->seq->seq.l;
-        iter->max_len = (iter->max_len > iter->seq->seq.l) ? iter->max_len : iter->seq->seq.l;
-        kahan_sum(&iter->average_q, mean_q, &iter->q_sum);
+        fc_iter_accum_add(iter->seq->seq.l, fr->meta->mean_q, &iter->stats, &iter->q_sum, &iter->q_comp);
 
         return fr;
     }
@@ -180,10 +202,7 @@ int fc_fastq_iter_finish(fc_fastq_iter *iter, fc_file_stats *out_stats) {
         FC_LOG_WARN("unknown error reading file '%s'.", iter->fname);
     }
 
-    finalize_file_stats(&iter->stats, iter->n_valid, iter->average_q);
-    iter->stats.n_bases = iter->total_bases;
-    iter->stats.min_length = (iter->n_valid == 0) ? 0 : iter->min_len;
-    iter->stats.max_length = (iter->n_valid == 0) ? 0 : iter->max_len;
+    finalize_file_stats(&iter->stats, iter->q_sum);
 
     if (out_stats) {
         *out_stats = iter->stats;
@@ -213,7 +232,11 @@ int fc_bam_iter_open(
     if (!iter || !fp || !hdr) return -1;
     memset(iter, 0, sizeof(*iter));
     init_file_stats(&iter->stats);
-    iter->min_len = SIZE_MAX;
+
+    // default: no length/quality filtering
+    iter->opts.min_length = 0;
+    iter->opts.max_length = (size_t)-1;
+    iter->opts.min_qscore = 0.0f;
 
     iter->bam = fc_bam_iter_data_create(fp, idx, hdr, chr, start, end);
     if (iter->bam == NULL) return -1;
@@ -228,17 +251,17 @@ int fc_bam_iter_open(
     if (opts) {
         iter->opts = *opts;
         iter->has_opts = true;
-        iter->filter_opts.min_length = opts->min_length;
-        iter->filter_opts.max_length = (opts->max_length == 0) ? (size_t)-1 : opts->max_length;
-        iter->filter_opts.min_qscore = opts->min_qscore;
-        iter->apply_filters =
-            opts->min_length > 0 ||
-            iter->filter_opts.max_length != (size_t)-1 ||
-            opts->min_qscore > 0.0f ||
-            opts->dust ||
-            opts->tag_name[0] != '\0' ||
-            opts->read_group != NULL;
+        if (iter->opts.max_length == 0) iter->opts.max_length = (size_t)-1;
     }
+
+    iter->apply_filters =
+        iter->has_opts &&
+        (iter->opts.min_length > 0 ||
+         iter->opts.max_length != (size_t)-1 ||
+         iter->opts.min_qscore > 0.0f ||
+         iter->opts.dust ||
+         iter->opts.tag_name[0] != '\0' ||
+         iter->opts.read_group != NULL);
 
     return 0;
 }
@@ -253,21 +276,13 @@ fc_read *fc_bam_iter_next(fc_bam_iter *iter, const sam_hdr_t *hdr) {
         bool mean_q_set = false;
 
         if (iter->apply_filters) {
-            fc_filter_result filter = fc_filter_length(len, &iter->filter_opts);
-            if (filter == FC_FILTER_TOO_LONG) {
-                iter->stats.failures[R_TOO_LONG]++;
+            if (!fc_iter_filter_length(len, iter->opts.min_length, iter->opts.max_length, &iter->stats)) {
                 continue;
             }
-            if (filter == FC_FILTER_TOO_SHORT) {
-                iter->stats.failures[R_TOO_SHORT]++;
-                continue;
-            }
-            if (iter->filter_opts.min_qscore > 0.0f) {
+            if (iter->opts.min_qscore > 0.0f) {
                 mean_q = bam_iter_mean_quality(iter->b, iter->opts.force_recalc_qual);
                 mean_q_set = true;
-                filter = fc_filter_quality(mean_q, &iter->filter_opts);
-                if (filter == FC_FILTER_LOW_QUALITY) {
-                    iter->stats.failures[R_LOW_QUALITY]++;
+                if (!fc_iter_filter_quality(mean_q, iter->opts.min_qscore, &iter->stats)) {
                     continue;
                 }
             }
@@ -298,11 +313,7 @@ fc_read *fc_bam_iter_next(fc_bam_iter *iter, const sam_hdr_t *hdr) {
             mean_q = bam_iter_mean_quality(iter->b, iter->opts.force_recalc_qual);
         }
 
-        ++iter->n_valid;
-        iter->total_bases += len;
-        iter->min_len = (iter->min_len < len) ? iter->min_len : len;
-        iter->max_len = (iter->max_len > len) ? iter->max_len : len;
-        kahan_sum(&iter->average_q, mean_q, &iter->q_sum);
+        fc_iter_accum_add(len, mean_q, &iter->stats, &iter->q_sum, &iter->q_comp);
 
         return fc_read_from_bam(iter->b, hdr, iter->has_opts ? iter->opts.force_recalc_qual : false);
     }
@@ -321,10 +332,7 @@ int fc_bam_iter_finish(fc_bam_iter *iter, fc_file_stats *out_stats) {
         iter->stats.failures[F_UNKNOWN_ERROR]++;
     }
 
-    finalize_file_stats(&iter->stats, iter->n_valid, iter->average_q);
-    iter->stats.n_bases = iter->total_bases;
-    iter->stats.min_length = (iter->n_valid == 0) ? 0 : iter->min_len;
-    iter->stats.max_length = (iter->n_valid == 0) ? 0 : iter->max_len;
+    finalize_file_stats(&iter->stats, iter->q_sum);
 
     if (out_stats) {
         *out_stats = iter->stats;

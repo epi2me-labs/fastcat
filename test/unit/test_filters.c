@@ -5,28 +5,6 @@
 #include "fc_dust.h"
 #include "fc_filter.h"
 
-static void test_filter_length(void) {
-    fc_filter_opts opts = {
-        .min_length = 5,
-        .max_length = 10,
-        .min_qscore = 0.0f
-    };
-    TEST_ASSERT_EQUAL_INT(FC_FILTER_TOO_SHORT, fc_filter_length(4, &opts));
-    TEST_ASSERT_EQUAL_INT(FC_FILTER_OK, fc_filter_length(5, &opts));
-    TEST_ASSERT_EQUAL_INT(FC_FILTER_OK, fc_filter_length(10, &opts));
-    TEST_ASSERT_EQUAL_INT(FC_FILTER_TOO_LONG, fc_filter_length(11, &opts));
-}
-
-static void test_filter_quality(void) {
-    fc_filter_opts opts = {
-        .min_length = 0,
-        .max_length = (size_t)-1,
-        .min_qscore = 7.5f
-    };
-    TEST_ASSERT_EQUAL_INT(FC_FILTER_LOW_QUALITY, fc_filter_quality(7.4f, &opts));
-    TEST_ASSERT_EQUAL_INT(FC_FILTER_OK, fc_filter_quality(7.5f, &opts));
-}
-
 static void test_filter_dust(void) {
     const uint8_t simple_seq[] =
         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -108,8 +86,6 @@ static void test_bam_rg_filter(void) {
 }
 
 void filter_suite(void) {
-    RUN_TEST(test_filter_length);
-    RUN_TEST(test_filter_quality);
     RUN_TEST(test_filter_dust);
     RUN_TEST(test_bam_primary_flags);
     RUN_TEST(test_bam_tag_int_filter);

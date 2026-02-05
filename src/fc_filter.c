@@ -5,19 +5,6 @@
 #include <errno.h>
 #include <string.h>
 
-fc_filter_result fc_filter_length(size_t length, const fc_filter_opts *opts) {
-    if (!opts) return FC_FILTER_OK;
-    if (length > opts->max_length) return FC_FILTER_TOO_LONG;
-    if (length < opts->min_length) return FC_FILTER_TOO_SHORT;
-    return FC_FILTER_OK;
-}
-
-fc_filter_result fc_filter_quality(float mean_q, const fc_filter_opts *opts) {
-    if (!opts) return FC_FILTER_OK;
-    if (mean_q < opts->min_qscore) return FC_FILTER_LOW_QUALITY;
-    return FC_FILTER_OK;
-}
-
 bool fc_filter_dust(const uint8_t *seq, size_t len, int t, int w, double max_fraction) {
     return fc_dust_fraction(seq, len, t, w) <= max_fraction;
 }
