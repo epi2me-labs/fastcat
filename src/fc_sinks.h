@@ -9,7 +9,7 @@
 #include "fc_writer.h"
 
 typedef struct {
-    const char *output_root;   // NULL => stream to stdout; non-NULL => write files under <output_root>/demux
+    const char *output_root;   // NULL => stream to stdout; non-NULL => write files under <output_root>/{unclassified,barcodeXXXX}
     size_t reads_per_file;
     bool reheader;
     bool write_bam;
@@ -23,19 +23,26 @@ typedef struct {
     const char *output_root;
     const char *sample;
     bool include_alignment;
-    bool output_unmapped;
+    bool use_barcodes;
+    size_t barcode_count;
 } fc_perread_sink_opts;
 
 fc_sink fc_perread_sink_create(const fc_perread_sink_opts *opts);
 fc_sink fc_perfile_sink_create(const char *output_root, const char *sample);
-fc_sink fc_counter_sink_create(const char *output_root, const char *sample);
+typedef struct {
+    const char *output_root;
+    const char *sample;
+    bool use_barcodes;
+    size_t barcode_count;
+} fc_counter_sink_opts;
+
+fc_sink fc_counter_sink_create(const fc_counter_sink_opts *opts);
 typedef struct {
     const char *output_root;   // top-level output directory
     bool use_barcodes;
-    bool write_unmapped;
+    bool unmapped_override;
     bool write_alignment_metrics;
     bool write_polya;
-    bool unmapped_is_primary;
     fc_stats_engine **engines;   // array sized by writer->stats_engine_count
     size_t engine_count;
 } fc_hist_sink_opts;
@@ -44,10 +51,11 @@ fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts);
 
 typedef struct {
     bool region_mode;
-    bool track_unmapped;
     const char *output_root;
     const char *sample;
     const bam_hdr_t *hdr;
+    bool use_barcodes;
+    size_t barcode_count;
 } fc_flagstats_sink_opts;
 
 fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts);
@@ -68,6 +76,8 @@ typedef struct {
     size_t n_thresholds;
     uint32_t *segments;
     size_t n_segments;
+    bool use_barcodes;
+    size_t barcode_count;
 } fc_coverage_sink_opts;
 
 fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts);

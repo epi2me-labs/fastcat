@@ -20,7 +20,6 @@ typedef struct {
     float polya_qual;
     bool polya_rev;
     bool track_alignment;
-    bool track_unmapped;
 } fc_stats_engine;
 
 typedef struct {
@@ -51,7 +50,6 @@ typedef enum {
 } fc_stats_read_kind;
 
 fc_stats_engine* fc_stats_engine_create(
-    bool track_unmapped,
     bool track_alignment,
     bool track_polya,
     float polya_cover,

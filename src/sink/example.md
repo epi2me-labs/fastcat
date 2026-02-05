@@ -26,7 +26,6 @@ made in `fc_writer` and encoded in `fc_read_ctx` for each read.
 ```c
 fc_stats_engine_config stats_cfg = {
     .track_alignment = false,
-    .track_unmapped = true,
     .track_polya = false,
     .polya_cover = 0.0f,
     .polya_qual = 0.0f,
@@ -49,7 +48,8 @@ fc_perread_sink_opts perread_opts = {
     .output_root = args.output_dir,
     .sample = args.sample,
     .include_alignment = false,
-    .output_unmapped = true
+    .use_barcodes = false,
+    .barcode_count = 1
 };
 fc_writer_add_sink(writer, fc_perread_sink_create(&perread_opts));
 ```

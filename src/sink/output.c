@@ -58,11 +58,8 @@ static int gz_fprintf_bridge(void *h, const char *fmt, ...) {
 }
 
 typedef struct {
+    fc_output_sink_opts cfg; // cached configuration
     char *output;
-    size_t reads_per_file;
-    size_t barcode_count;
-    bool reheader;
-    bool write_bam;
     gzFile *handles;
     htsFile **bam_files;
     bam_hdr_t *bam_hdr;
@@ -92,7 +89,7 @@ static void output_write_fastq(output_sink *sink, bam1_t *bam, read_meta meta, v
     seq_str[len] = '\0';
     qual_str[len] = '\0';
 
-    if (sink->reheader) {
+    if (sink->cfg.reheader) {
         if (meta->tags_str && meta->tags_str->l > 0) {
             sink_write(handle, sam_comment_fmt, qname, meta->tags_str->s, seq_str, qual_str);
         } else {
@@ -124,28 +121,34 @@ static void output_write_bam(output_sink *sink, bam1_t *bam, htsFile *handle) {
 }
 
 static void output_create_filepath(output_sink *sink, size_t barcode, char **path, char **filepath) {
-    int ex_size = (sink->reads_per_file == 0) ? 0 : 5;
+    int ex_size = (sink->cfg.reads_per_file == 0) ? 0 : 5;
     char *extra = calloc(ex_size + 1, sizeof(char));
-    if (sink->reads_per_file != 0) {
+    if (sink->cfg.reads_per_file != 0) {
         sprintf(extra, "_%04zu", sink->file_index[barcode]);
     }
 
+    char stem[32];
     if (barcode == 0) {
-        *path = (char *)calloc(strlen(sink->output) + 15, sizeof(char));
-        sprintf(*path, "%s/unclassified/", sink->output);
-        *filepath = (char *)calloc(strlen(*path) + 22 + ex_size, sizeof(char));
-        sprintf(*filepath, "%sunclassified%s.%s", *path, extra, sink->write_bam ? "bam" : "fastq.gz");
+        strcpy(stem, "unclassified");
     } else {
-        *path = (char *)calloc(strlen(sink->output) + 14, sizeof(char));
-        sprintf(*path, "%s/barcode%04lu/", sink->output, barcode);
-        *filepath = (char *)calloc(strlen(*path) + 21 + ex_size, sizeof(char));
-        sprintf(*filepath, "%sbarcode%04lu%s.%s", *path, barcode, extra, sink->write_bam ? "bam" : "fastq.gz");
+        snprintf(stem, sizeof(stem), "barcode%04zu", barcode);
     }
+    *path = fc_join_path(sink->output, stem);
+    const char *ext = sink->cfg.write_bam ? "bam" : "fastq.gz";
+    size_t fsz = strlen(*path)   // base path
+        + 1                      // '/'
+        + strlen(stem)
+        + strlen(extra)
+        + 1                      // '.'
+        + strlen(ext)
+        + 1;                     // NUL
+    *filepath = (char *)calloc(fsz, sizeof(char));
+    sprintf(*filepath, "%s/%s%s.%s", *path, stem, extra, ext);
     free(extra);
 }
 
 static void output_ensure_directory(output_sink *sink, size_t barcode, char *path) {
-    if (sink->reads_per_file == 0
+    if (sink->cfg.reads_per_file == 0
             || (sink->file_index[barcode] == 0 && sink->reads_written[barcode] == 0)) {
         int rtn = mkdir_hier(path);
         if (rtn == -1) {
@@ -162,14 +165,14 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
     (void)hdr;
 
     size_t barcode = read_ctx->barcode;
-    if (barcode >= sink->barcode_count) {
+    if (barcode >= sink->cfg.barcode_count) {
         FC_LOG_ERROR("Read's barcode number (%lu) exceeds configured barcode slots (%zu)",
-                     barcode, sink->barcode_count);
+                     barcode, sink->cfg.barcode_count);
         exit(1);
     }
 
     if (sink->output == NULL) {
-        if (sink->write_bam) {
+        if (sink->cfg.write_bam) {
             output_write_bam(sink, read->bam, sink->bam_files[0]);
         } else {
             output_write_fastq(sink, read->bam, read->meta, stdout);
@@ -177,8 +180,8 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
         return;
     }
 
-    if (sink->reads_per_file != 0 && sink->reads_written[barcode] == sink->reads_per_file) {
-        if (sink->write_bam) {
+    if (sink->cfg.reads_per_file != 0 && sink->reads_written[barcode] == sink->cfg.reads_per_file) {
+        if (sink->cfg.write_bam) {
             hts_close(sink->bam_files[barcode]);
             sink->bam_files[barcode] = NULL;
         } else {
@@ -197,7 +200,7 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
     {
         char *path = NULL;
         char *filepath = NULL;
-        if (sink->write_bam) {
+        if (sink->cfg.write_bam) {
             if (sink->bam_files[barcode] == NULL) {
                 output_create_filepath(sink, barcode, &path, &filepath);
                 output_ensure_directory(sink, barcode, path);
@@ -227,8 +230,8 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
 
 static void output_sink_destroy(void *ctx) {
     output_sink *sink = (output_sink *)ctx;
-    for (size_t i = 0; i < sink->barcode_count; ++i) {
-        if (sink->write_bam) {
+    for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
+        if (sink->cfg.write_bam) {
             if (sink->bam_files && sink->bam_files[i] != NULL) {
                 hts_close(sink->bam_files[i]);
             }
@@ -239,7 +242,7 @@ static void output_sink_destroy(void *ctx) {
             }
         }
     }
-    if (sink->write_bam) {
+    if (sink->cfg.write_bam) {
         if (sink->hts_pool.pool) {
             hts_tpool_destroy(sink->hts_pool.pool);
         }
@@ -258,20 +261,16 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
     fc_sink sink = {0};
     if (!opts) return sink;
 
-    // Convention: non-NULL output_root means demuxed file output under <output_root>/demux; NULL streams to stdout.
+    // Convention: non-NULL output_root means per-barcode output under <output_root>/{unclassified,barcodeXXXX}; NULL streams to stdout.
     output_sink *state = calloc(1, sizeof(*state));
+    state->cfg = *opts;
+    state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->output = NULL;
     if (opts->output_root) {
-        char *path = fc_sink_join_path(opts->output_root, "demux");
-        state->output = fc_sink_strip_path(path);
-        free(path);
+        state->output = fc_strip_path(opts->output_root);
     }
-    state->reads_per_file = opts->reads_per_file;
-    state->barcode_count = opts->barcode_count ? opts->barcode_count : 1;
-    state->reheader = opts->reheader;
-    state->write_bam = opts->write_bam;
-    state->reads_written = calloc(state->barcode_count, sizeof(size_t));
-    state->file_index = calloc(state->barcode_count, sizeof(size_t));
+    state->reads_written = calloc(state->cfg.barcode_count, sizeof(size_t));
+    state->file_index = calloc(state->cfg.barcode_count, sizeof(size_t));
 
     if (state->output != NULL) {
         int rtn = mkdir_hier(state->output);
@@ -283,7 +282,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
         }
     }
 
-    if (state->write_bam) {
+    if (state->cfg.write_bam) {
         FC_LOG_INFO("Using %d threads for BAM writing", opts->threads);
         state->hts_pool.pool = hts_tpool_init(opts->threads);
         state->hts_pool.qsize = 0;
@@ -294,7 +293,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
         state->bam_hdr = sam_hdr_init();
         sam_hdr_add_line(state->bam_hdr, "HD", "VN", SAM_FORMAT_VERSION, "SO", "unsorted", NULL);
         sam_hdr_add_line(state->bam_hdr, "PG", "ID", "fastcat", "PN", "fastcat", "VN", argp_program_version, NULL);
-        state->bam_files = calloc(state->barcode_count, sizeof(htsFile *));
+        state->bam_files = calloc(state->cfg.barcode_count, sizeof(htsFile *));
         if (state->output == NULL) {
             state->bam_files[0] = hts_open("-", "wb");
             hts_set_opt(state->bam_files[0], HTS_OPT_THREAD_POOL, &state->hts_pool);
@@ -304,7 +303,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
             }
         }
     } else {
-        state->handles = calloc(state->barcode_count, sizeof(gzFile));
+        state->handles = calloc(state->cfg.barcode_count, sizeof(gzFile));
     }
 
     sink.ctx = state;

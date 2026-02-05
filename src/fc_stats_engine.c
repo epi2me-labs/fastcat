@@ -61,7 +61,6 @@ static inline size_t get_query_end(bam1_t* b) {
 }
 
 fc_stats_engine* fc_stats_engine_create(
-        bool track_unmapped,
         bool track_alignment,
         bool track_polya,
         float polya_cover,
@@ -76,10 +75,8 @@ fc_stats_engine* fc_stats_engine_create(
         engine->cov_stats = create_qual_stats(COV_HIST_WIDTH);
     }
 
-    if (track_unmapped) {
-        engine->length_stats_unmapped = create_length_stats();
-        engine->qual_stats_unmapped = create_qual_stats(QUAL_HIST_WIDTH);
-    }
+    engine->length_stats_unmapped = create_length_stats();
+    engine->qual_stats_unmapped = create_qual_stats(QUAL_HIST_WIDTH);
 
     if (track_polya) {
         engine->polya_stats = create_length_stats();
@@ -89,7 +86,6 @@ fc_stats_engine* fc_stats_engine_create(
     engine->polya_qual = polya_qual;
     engine->polya_rev = polya_rev;
     engine->track_alignment = track_alignment;
-    engine->track_unmapped = track_unmapped;
     return engine;
 }
 
@@ -189,10 +185,8 @@ fc_stats_read_kind fc_stats_engine_add_read(
     if (engine == NULL || fr == NULL || fr->bam == NULL) return FC_STATS_SKIP;
 
     if (fc_is_unmapped(fr->bam)) {
-        if (engine->track_unmapped) {
-            add_length_count(engine->length_stats_unmapped, fr->bam->core.l_qseq);
-            add_qual_count(engine->qual_stats_unmapped, fr->meta->mean_q);
-        }
+        add_length_count(engine->length_stats_unmapped, fr->bam->core.l_qseq);
+        add_qual_count(engine->qual_stats_unmapped, fr->meta->mean_q);
         return FC_STATS_UNMAPPED;
     }
 

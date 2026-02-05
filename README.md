@@ -33,34 +33,19 @@ Usage: fastcat [OPTION...]
 fastcat -- concatenate and summarise .fastq(.gz) files.
 
  General options:
-  -t, --threads=THREADS      Number of threads for output compression (only
-                             with --bam_out.
-  -x, --recurse              Search directories recursively for '.fastq',
-                             '.fq', '.fastq.gz', and '.fq.gz' files.
+  -t, --threads=THREADS      Number of threads for output compression (only with --bam_out).
+  -x, --recurse              Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files.
+  -e, --force_error          Exit non-zero if any files or records contain errors.
 
  Output options:
-  -B, --bam_out              Output data as unaligned BAM.
-  -c, --reads_per_file=NUM   Split reads into files with a set number of reads
-                             (default: single file).
-  -H, --reheader             Rewrite fastq header comments as SAM tags (useful
-                             for passing through minimap2).
-  -s, --sample=SAMPLE NAME   Sample name (if given, adds a 'sample_name'
-                             column).
-  -v, --verbose              Verbose output.
-
- Output file selection:
-  -d, --demultiplex=OUT DIR  Separate barcoded samples using fastq header
-                             information. Option value is top-level output
-                             directory.
-  -f, --file=FILE SUMMARY    Per-file summary output
-      --histograms=DIRECTORY Directory for outputting histogram information.
-                             When --demultiplex is enabled histograms are
-                             written to per-sample demultiplexed output
-                             directories. (default: fastcat-histograms)
-  -i, --runids=ID SUMMARY    Run ID summary output
-  -l, --basecallers=CALLER SUMMARY
-                             Basecaller mode summary output
-  -r, --read=READ SUMMARY    Per-read summary output
+  -o, --output=DIR           Output root (default: fastcat-qc). Must not already exist.
+  -B, --bam_out              Output reads as unaligned BAM (otherwise FASTQ).
+  -c, --reads-per-file=NUM   Split reads into chunked files of NUM reads (default: single file).
+  -H, --reheader             Rewrite FASTQ header comments as SAM tags (useful for passing through minimap2).
+  -s, --sample=NAME          Sample name column for all summary outputs.
+  -p, --per-read             Emit per-read TSV (disabled by default).
+  -d, --demultiplex          Write outputs per barcode under <output>/{unclassified,barcodeXXXX}/; otherwise one set of summaries and FASTQ/BAM to stdout.
+  -v, --verbose              Verbose logging.
 
  Read filtering options:
   -a, --min_length=MIN READ LENGTH
@@ -90,6 +75,12 @@ directories as input and looks for .fastq(.gz) files in the top-level
 directory. Recurses into sub-directories when the -x option is given. The
 command will exit non-zero if any file encountered cannot be read.
 ```
+
+Outputs:
+
+- Without `--demultiplex`, FASTQ/BAM streams to stdout; summaries are written in `<output>/`:
+  - `per_file.tsv`, `runids.tsv`, `basecallers.tsv`, histogram tables under `<output>/histograms/`, and optional `per_read.tsv` when `-p/--per-read` is set.
+- With `--demultiplex`, all outputs (reads plus summaries/histograms) live beneath `<output>/{unclassified,barcodeXXXX}/`, keeping the same filenames per barcode.
 
 The program writes the input sequences to `stdout` in .fastq format to be
 recompressed with `gzip` (or more usefully `bgzip`).
@@ -222,14 +213,13 @@ bamstats -- summarise reads/alignments in and input BAM file.
                              column).
   -t, --threads=THREADS      Number of threads for BAM processing.
 
- Read filtering options:
+Read filtering options:
   -g, --read_group=RG        Only process reads from given read group.
       --haplotype=VAL        Only process reads from a given haplotype.
                              Equivalent to --tag_name HP --tag_value VAL.
       --tag_name=TN          Only process reads with a given tag (see
                              --tag_value).
       --tag_value=VAL        Only process reads with a given tag value.
-  -u, --unmapped             Include unmapped/unplaced reads in output.
 
  Coverage calculation options:
 

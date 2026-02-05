@@ -26,7 +26,6 @@ typedef struct {
 
 typedef struct {
     bool track_alignment;
-    bool track_unmapped;
     bool track_polya;
     float polya_cover;
     float polya_qual;

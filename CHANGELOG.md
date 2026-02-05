@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A memory leak when performing low-complexity read filtering with `fastlint` or `fastcat --dust`.
 - A difference in behaviour between some operating systems when parsing (perculiar and rare) fastq comment entries.
 ### Changed
+- CLI options are all now `--kebab-case` rather than `--snake_case` to match other ONT tooling.
+- Both `fastcat` and `bamstats` now take a single `--output` (default `fastcat-qc`) and refuse to run if the directory already exists.
+- Individual summary output options were removed; all outputs are produced always. Per-read details remain optional with the `--per-read` flag.
 - SAM-style FASTQ header comments are generated through a more robust method. The ordering of keys may
   not respect the ordering in the original FASTQ header, but all keys and values will be preserved.
 - The parsing of FASTQ header information is more strictly enforced. Mixtures of key=value style and
@@ -21,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MinKNOW specifications.
 - The read group (RG) tag for a read is inferred from the protocol ("run") ID, the basecaller model, and
   optionally the barcode ID, when not explicitly provided in the FASTQ header.
+- The `--unmapped` options is removed from both `bamstats`; statististics for unmapped reads are always produced.
+### Added
+- Summary outputs from `bamstats` have been harmonized with `fastcat`; running `bamstats` on strictly unaligned reads will produce the same outputs (bar fastq/bam output) as running `fastcat`.
+- All ancilliarly file outputs are consistent in the case that demultiplexing is performance, and when it is not. i.e This means that a single demultiplexed output folder contains all the same files as when processing an input without demultiplexing and a single barcode.
 
 ## [v0.25.0]
 ### Fixed

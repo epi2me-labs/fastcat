@@ -28,7 +28,6 @@ fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *sta
         // Non-demux runs use a single shared engine; create it eagerly.
         if (!writer->stats_per_barcode && writer->stats_engine_count > 0) {
             writer->stats_engines[0] = fc_stats_engine_create(
-                writer->stats_cfg.track_unmapped,
                 writer->stats_cfg.track_alignment,
                 writer->stats_cfg.track_polya,
                 writer->stats_cfg.polya_cover,
@@ -81,7 +80,6 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
             fc_stats_engine *engine = writer->stats_engines[engine_idx];
             if (engine == NULL && writer->stats_cfg_set) {
                 engine = fc_stats_engine_create(
-                    writer->stats_cfg.track_unmapped,
                     writer->stats_cfg.track_alignment,
                     writer->stats_cfg.track_polya,
                     writer->stats_cfg.polya_cover,
