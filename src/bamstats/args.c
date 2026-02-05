@@ -30,7 +30,7 @@ static struct argp_option options[] = {
     {"output", 'o', "DIRECTORY", 0,
         "Output root directory (default: fastcat-qc). Must not already exist.", 0},
     {"demultiplex", 'd', 0, 0,
-        "Separate outputs per barcode under <output>/demux/barcodeXXXX/.", 0},
+        "Separate outputs per barcode under <output>/barcodeXXXX/.", 0},
     {"sample", 's',"SAMPLE NAME",   0,
         "Sample name (if given, adds a 'sample_name' column).", 0},
     {"per-read", 'p', 0, 0,
@@ -40,8 +40,6 @@ static struct argp_option options[] = {
     
     {0, 0, 0, 0,
         "Read filtering options:", 0},
-    {"unmapped", 'u', 0, 0,
-        "Include unmapped/unplaced reads in output.", 2},
     {"read-group", 'g', "RG", 0,
         "Only process reads from given read group.", 2},
     {"tag-name", 0x100, "TN", 0,
@@ -123,9 +121,6 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 's':
             arguments->sample = arg;
-            break;
-        case 'u':
-            arguments->unmapped = true;
             break;
         case 0x100:
             if (strlen(arg) > 2) {
@@ -224,7 +219,6 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.ref = NULL;
     args.region = NULL;
     args.bed = NULL;
-    args.unmapped = false;
     args.read_group = NULL;
     args.tag_name[0] = '\0';
     args.tag_value = -1;

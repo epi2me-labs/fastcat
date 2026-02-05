@@ -75,6 +75,8 @@ TEST_TMP_BAMINDEX = $(TEST_TMP_DIR)/bamindex
 TEST_TMP_FASTLINT = $(TEST_TMP_DIR)/fastlint
 TEST_TMP_BAMCOVERAGE = $(TEST_TMP_DIR)/bamcoverage
 
+comma := ,
+
 RUN_IN_TMP = rm -rf $(1); mkdir -p $(1) && pushd $(1) > /dev/null && $(2) && popd > /dev/null && rm -rf $(1)
 COMPARE_TABLES = \
 	head -n 1 $(1) > $(3).header && \
@@ -256,7 +258,18 @@ bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamind
 # fastcat tests
 
 .PHONY:
-test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters test_fastcat_demultiplex_outputs test_fastcat_demultiplex_split test_fastcat_regression_results
+test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters test_fastcat_demultiplex_outputs test_fastcat_demultiplex_split test_fastcat_demux_single_equiv test_fastcat_regression_results
+
+.PHONY: test_fastcat_demux_single_equiv
+test_fastcat_demux_single_equiv: fastcat
+	@$(call TEST_DESC,Fastcat demux vs non-demux (single barcode))
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/demux_single, \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/bc1.fastq.gz --output plain_out --per-read > /dev/null && \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/bc1.fastq.gz --output demux_out --per-read --demultiplex > /dev/null && \
+		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/runids.tsv,demux_out/runids.tsv,demux_single_runids) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/basecallers.tsv,demux_out/basecallers.tsv,demux_single_basecallers) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/per_file.tsv,demux_out/per_file.tsv,demux_single_perfile) && \
+		test $$(tail -n +2 plain_out/per_read.tsv | wc -l) -eq $$(tail -n +2 demux_out/barcode0001/per_read.tsv | wc -l))
 
 .PHONY: mem_check_fastcat
 mem_check_fastcat: fastcat
@@ -315,22 +328,22 @@ test_fastcat_demultiplex_outputs: fastcat
 	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/demultiplex/outputs, \
 		$(RUN_FASTCAT) $(TEST_ROOT)/data/bc0.fastq.gz $(TEST_ROOT)/data/bc1.fastq.gz $(TEST_ROOT)/data/bc2.fastq.gz \
 			$(TEST_ROOT)/data/bcEmpty.fastq.gz $(TEST_ROOT)/data/bcMixed.fastq.gz --demultiplex --output out_demux > /dev/null && \
-		$(call COMPARE_FASTQ,out_demux/demux/unclassified/unclassified.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/unclassified.fastq.gz,demux_unclassified) && \
-		$(call COMPARE_FASTQ,out_demux/demux/barcode0001/barcode0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001.fastq.gz,demux_barcode0001) && \
-		$(call COMPARE_FASTQ,out_demux/demux/barcode0002/barcode0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0002.fastq.gz,demux_barcode0002) && \
-		test -f out_demux/demux/unclassified/unclassified.length.hist && \
-		test -f out_demux/demux/barcode0001/barcode0001.length.hist && \
-		test -f out_demux/demux/barcode0001/barcode0001.quality.hist)
+		$(call COMPARE_FASTQ,out_demux/unclassified/unclassified.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/unclassified.fastq.gz,demux_unclassified) && \
+		$(call COMPARE_FASTQ,out_demux/barcode0001/barcode0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001.fastq.gz,demux_barcode0001) && \
+		$(call COMPARE_FASTQ,out_demux/barcode0002/barcode0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0002.fastq.gz,demux_barcode0002) && \
+		test -f out_demux/unclassified/unclassified.length.hist && \
+		test -f out_demux/barcode0001/barcode0001.length.hist && \
+		test -f out_demux/barcode0001/barcode0001.quality.hist)
 
 .PHONY: test_fastcat_demultiplex_split
 test_fastcat_demultiplex_split: fastcat
 	@$(call TEST_DESC,Fastcat demultiplex split files)
 	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/demultiplex/split, \
 		$(RUN_FASTCAT) $(TEST_ROOT)/data/bc1.fastq.gz --demultiplex --output out_split --reads-per-file 4 > /dev/null && \
-		$(call COMPARE_FASTQ,out_split/demux/barcode0001/barcode0001_0000.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0000.fastq.gz,demux_split_0000) && \
-		$(call COMPARE_FASTQ,out_split/demux/barcode0001/barcode0001_0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0001.fastq.gz,demux_split_0001) && \
-		$(call COMPARE_FASTQ,out_split/demux/barcode0001/barcode0001_0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0002.fastq.gz,demux_split_0002) && \
-		test -f out_split/demux/barcode0001/barcode0001.length.hist)
+		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0000.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0000.fastq.gz,demux_split_0000) && \
+		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0001.fastq.gz,demux_split_0001) && \
+		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0002.fastq.gz,demux_split_0002) && \
+		test -f out_split/barcode0001/barcode0001.length.hist)
 
 .PHONY: test_fastcat_regression_results
 test_fastcat_regression_results: fastcat
@@ -355,7 +368,36 @@ test_fastcat_regression_results: fastcat
 # bamstats tests
 
 .PHONY: 
-test_bamstats: test_bamstats_NM test_bamstats_polya test_bamstats_filters test_bamstats_vs_fastcat_unaligned test_bamstats_vs_fastcat_unaligned_demux mem_check_bamstats
+test_bamstats: test_bamstats_NM test_bamstats_polya test_bamstats_filters test_bamstats_vs_fastcat_unaligned test_bamstats_vs_fastcat_unaligned_demux test_bamstats_demux_single_equiv mem_check_bamstats
+.PHONY: test_bamstats_coverage_demux_layout
+test_bamstats: test_bamstats_coverage_demux_layout
+
+.PHONY: test_bamstats_demux_single_equiv
+test_bamstats_demux_single_equiv: fastcat bamstats
+	@$(call TEST_DESC,Bamstats demux vs non-demux (single barcode))
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/demux_single, \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/bc1.fastq.gz --output tmp_fc --per-read -B > bc1.bam && \
+		$(RUN_BAMSTATS) bc1.bam --per-read --output plain_out > /dev/null && \
+		$(RUN_BAMSTATS) bc1.bam --per-read --demultiplex --output demux_out > /dev/null && \
+		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/runids.tsv,demux_out/runids.tsv,bs_demux_single_runids) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/basecallers.tsv,demux_out/basecallers.tsv,bs_demux_single_basecallers) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/per_file.tsv,demux_out/per_file.tsv,bs_demux_single_perfile) && \
+		$(call COMPARE_TABLES,plain_out/per_read.tsv,demux_out/barcode0001/per_read.tsv,bs_demux_single_perread) && \
+		diff plain_out/histograms/length.hist demux_out/barcode0001/barcode0001.length.hist && \
+		diff plain_out/histograms/quality.hist demux_out/barcode0001/barcode0001.quality.hist)
+
+.PHONY: test_bamstats_coverage_demux_layout
+test_bamstats_coverage_demux_layout: bamstats samtools
+	@$(call TEST_DESC,Bamstats coverage demux layout)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/coverage_demux, \
+		cp $(TEST_ROOT)/bamstats/coverage_demux.sam cov.sam && \
+		$(REPO_ROOT)/samtools view -bS cov.sam | $(REPO_ROOT)/samtools sort -o cov.bam && \
+		$(REPO_ROOT)/samtools index cov.bam && \
+		$(RUN_BAMSTATS) cov.bam --coverage --demultiplex --output out > /dev/null && \
+		if [ -d out/coverage ]; then echo "Unexpected top-level coverage directory"; exit 1; fi && \
+		test -f out/barcode0001/coverage/global.bed.gz && \
+		test -f out/barcode0002/coverage/global.bed.gz && \
+		test ! -d out/unclassified/coverage)
 
 .PHONY: test_bamstats_NM
 test_bamstats_NM: bamstats
@@ -390,22 +432,47 @@ test_bamstats_vs_fastcat_unaligned: fastcat bamstats
 	@$(call TEST_DESC,Bamstats vs fastcat (unaligned))
 	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/vs_fastcat, \
 		$(RUN_FASTCAT) $(TEST_ROOT)/data/bcMixed.fastq.gz --output fc_out --per-read -B > reads.bam && \
-		$(RUN_BAMSTATS) reads.bam --unmapped --per-read --output bs_out > /dev/null && \
+		$(RUN_BAMSTATS) reads.bam --per-read --output bs_out > /dev/null && \
 		$(call COMPARE_TABLES_SKIP_FIRST,fc_out/runids.tsv,bs_out/runids.tsv,runids) && \
 		$(call COMPARE_TABLES_SKIP_FIRST,fc_out/basecallers.tsv,bs_out/basecallers.tsv,basecallers) && \
 		$(call COMPARE_TABLES_SKIP_FIRST,fc_out/per_file.tsv,bs_out/per_file.tsv,per_file) && \
-		test $$(tail -n +2 fc_out/per_read.tsv | wc -l) -eq $$(tail -n +2 bs_out/per_read.tsv | wc -l))
+		cut -f1$(comma)3-8 fc_out/per_read.tsv > pr.fc && \
+		cut -f1$(comma)3-8 bs_out/per_read.tsv > pr.bs && \
+		$(call COMPARE_TABLES,pr.fc,pr.bs,per_read_non_demux) && \
+		diff fc_out/histograms/length.hist bs_out/histograms/length.unmap.hist && \
+		diff fc_out/histograms/quality.hist bs_out/histograms/quality.unmap.hist)
 
 .PHONY: test_bamstats_vs_fastcat_unaligned_demux
 test_bamstats_vs_fastcat_unaligned_demux: fastcat bamstats
 	@$(call TEST_DESC,Bamstats vs fastcat (unaligned, demux))
 	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/vs_fastcat_demux, \
-		$(RUN_FASTCAT) $(TEST_ROOT)/data/bcMixed.fastq.gz --output fc_out --per-read -B > reads.bam && \
-		$(RUN_BAMSTATS) reads.bam --demultiplex --unmapped --per-read --output bs_out > /dev/null && \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/bcMixed.fastq.gz --output fc_out --per-read --demultiplex > /dev/null && \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/bcMixed.fastq.gz --per-read -B > reads.bam && \
+		$(RUN_BAMSTATS) reads.bam --demultiplex --per-read --output bs_out > /dev/null && \
 		$(call COMPARE_TABLES_SKIP_FIRST,fc_out/runids.tsv,bs_out/runids.tsv,runids_demux) && \
 		$(call COMPARE_TABLES_SKIP_FIRST,fc_out/basecallers.tsv,bs_out/basecallers.tsv,basecallers_demux) && \
 		$(call COMPARE_TABLES_SKIP_FIRST,fc_out/per_file.tsv,bs_out/per_file.tsv,per_file_demux) && \
-		test $$(tail -n +2 fc_out/per_read.tsv | wc -l) -eq $$(tail -n +2 bs_out/per_read.tsv | wc -l))
+		for f in $$(find fc_out -name per_read.tsv); do \
+			rel=$${f#fc_out/}; \
+			g=bs_out/$$rel; \
+			if [ ! -f "$$g" ]; then echo "Missing $$g"; exit 1; fi; \
+			cut -f1$(comma)3-8 "$$f" > pr.fc; \
+			cut -f1$(comma)3-8 "$$g" > pr.bs; \
+			$(call COMPARE_TABLES,pr.fc,pr.bs,per_read_$${rel//\//_}); \
+			rm -f pr.fc pr.bs pr.header pr.expected.header pr.sorted pr.expected.sorted; \
+		done && \
+		for g in $$(find bs_out -name per_read.tsv); do \
+			rel=$${g#bs_out/}; \
+			f=fc_out/$$rel; \
+			if [ ! -f "$$f" ]; then echo "Extra per_read.tsv in bamstats: $$rel"; exit 1; fi; \
+		done && \
+		for h in $$(find fc_out -name "*length.hist" -o -name "*quality.hist"); do \
+			rel=$${h#fc_out/}; \
+			base=$${rel%.hist}; \
+			g=bs_out/$$base.unmap.hist; \
+			if [ ! -f "$$g" ]; then echo "Missing $$g"; exit 1; fi; \
+			diff "$$h" "$$g"; \
+		done)
 
 .PHONY:
 mem_check_bamstats: mem_check_bamstats_good mem_check_bamstats_bad mem_check_bamstats_qcfail mem_check_bamstats_duplex mem_check_bamstats_coverage

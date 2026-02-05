@@ -45,7 +45,7 @@ static struct argp_option options[] = {
     {"per-read", 'p', 0, 0,
         "Write per-read TSV (large). Disabled by default.", 0},
     {"demultiplex", 'd', 0, 0,
-        "Separate barcoded samples using fastq header information; outputs go under <output>/demux/.", 0},
+        "Separate barcoded samples using fastq header information; outputs go under <output>/barcodeXXXX/.", 0},
 
     {0, 0, 0, 0,
         "Read filtering options:", 0},

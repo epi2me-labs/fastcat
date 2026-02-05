@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "common.h"
 #include "fc_filter.h"
@@ -57,36 +58,58 @@ static inline void flagstats_add_counts(const bam1_t* b, size_t* counts, const i
 }
 
 typedef struct {
-    flag_stats* stats;
-    bool region_mode;
-    bool track_unmapped;
-    const bam_hdr_t *hdr;
-    FILE *fp;
-    char *sample;
+    fc_flagstats_sink_opts cfg;   // cached configuration
+    char *sample_dup;
+    flag_stats *global_stats;
+    flag_stats **bc_stats;
+    FILE *global_fp;
+    FILE **bc_fp;
+    char *output_root;
+    size_t n_refs;
 } flagstats_sink;
+
+static flag_stats *ensure_flag_stats(flagstats_sink *sink, size_t barcode) {
+    if (barcode >= sink->cfg.barcode_count) return NULL;
+    if (!sink->bc_stats[barcode]) {
+        sink->bc_stats[barcode] = create_flag_stats(sink->n_refs, true);
+    }
+    return sink->bc_stats[barcode];
+}
 
 static void flagstats_sink_add_read(void* ctx, const fc_read* fr, const fc_read_ctx* read_ctx,
         const char* fname, const sam_hdr_t* hdr) {
     flagstats_sink* sink = (flagstats_sink*)ctx;
     (void)fname;
     (void)hdr;
-    (void)read_ctx;
-    if (!sink->stats) return;
+    size_t barcode = (sink->cfg.use_barcodes && read_ctx) ? read_ctx->barcode : 0;
 
     const bam1_t* b = fr->bam;
     bool is_unmapped = fc_is_unmapped(b);
+    // update global
     if (!is_unmapped) {
-        // Protect against invalid tid values (e.g., malformed NM test cases).
         size_t tid = (size_t)b->core.tid;
-        if (!sink->region_mode && (tid >= sink->stats->n_refs)) {
-            return;
-        }
-        size_t* counts = sink->region_mode ? sink->stats->counts[0] : sink->stats->counts[tid];
+        if (!sink->cfg.region_mode && (tid >= sink->n_refs)) return;
+        size_t *counts = sink->cfg.region_mode ? sink->global_stats->counts[0] : sink->global_stats->counts[tid];
         flagstats_add_counts(b, counts, fr->meta->duplex_code);
     }
+    if (sink->global_stats->unmapped && is_unmapped) {
+        flagstats_add_counts(b, sink->global_stats->unmapped, fr->meta->duplex_code);
+    }
 
-    if (sink->track_unmapped && sink->stats->unmapped && is_unmapped) {
-        flagstats_add_counts(b, sink->stats->unmapped, fr->meta->duplex_code);
+    if (sink->cfg.use_barcodes && barcode < sink->cfg.barcode_count) {
+        flag_stats *bstats = ensure_flag_stats(sink, barcode);
+        if (bstats) {
+            if (!is_unmapped) {
+                size_t tid = (size_t)b->core.tid;
+                if (!sink->cfg.region_mode && (tid < sink->n_refs)) {
+                    size_t *counts = sink->cfg.region_mode ? bstats->counts[0] : bstats->counts[tid];
+                    flagstats_add_counts(b, counts, fr->meta->duplex_code);
+                }
+            }
+            if (bstats->unmapped && is_unmapped) {
+                flagstats_add_counts(b, bstats->unmapped, fr->meta->duplex_code);
+            }
+        }
     }
 }
 
@@ -113,32 +136,80 @@ static void flagstats_write_line(FILE* fh, const char* sample, const char* label
     }
 }
 
-static void flagstats_sink_finish(void* ctx) {
-    flagstats_sink* sink = (flagstats_sink*)ctx;
-    if (!sink || !sink->stats || !sink->fp) return;
-
-    for (size_t i = 0; i < sink->stats->n_refs; ++i) {
+static void flagstats_write_all(flagstats_sink *sink, flag_stats *stats, FILE *fp) {
+    if (!stats || !fp) return;
+    for (size_t i = 0; i < stats->n_refs; ++i) {
         const char *label = NULL;
-        if (sink->hdr && i < (size_t)sink->hdr->n_targets) {
-            label = sam_hdr_tid2name((sam_hdr_t *)sink->hdr, (int)i);
+        if (sink->cfg.hdr && i < (size_t)sink->cfg.hdr->n_targets) {
+            label = sam_hdr_tid2name((sam_hdr_t *)sink->cfg.hdr, (int)i);
         }
         char tmp[32];
         if (!label) {
             snprintf(tmp, sizeof(tmp), "%zu", i);
             label = tmp;
         }
-        flagstats_write_line(sink->fp, sink->sample, label, sink->stats->counts[i]);
+        flagstats_write_line(fp, sink->cfg.sample, label, stats->counts[i]);
     }
-    if (sink->track_unmapped && sink->stats->unmapped) {
-        flagstats_write_line(sink->fp, sink->sample, "*", sink->stats->unmapped);
+    if (stats->unmapped) {
+        flagstats_write_line(fp, sink->cfg.sample, "*", stats->unmapped);
+    }
+}
+
+static FILE *flagstats_open_file(flagstats_sink *sink, const char *path) {
+    ensure_parent_dir_exists(path);
+    FILE *fp = fopen(path, "w");
+    if (!fp) {
+        FC_LOG_ERROR("Cannot open file '%s' for writing.", path);
+        exit(EXIT_FAILURE);
+    }
+    flagstats_write_header(fp, sink->cfg.sample);
+    return fp;
+}
+
+static void flagstats_sink_finish(void *ctx) {
+    flagstats_sink *s = (flagstats_sink *)ctx;
+    if (!s) return;
+    if (s->global_fp && s->global_stats) {
+        flagstats_write_all(s, s->global_stats, s->global_fp);
+    }
+    if (s->cfg.use_barcodes) {
+        const char *leaf = "flagstats.tsv";
+        for (size_t b = 0; b < s->cfg.barcode_count; ++b) {
+            if (!s->bc_stats[b]) continue;
+            if (!s->bc_fp[b]) {
+                char *dir = fc_sink_ensure_barcode_dir(s->output_root, b);
+                if (!dir) {
+                    FC_LOG_ERROR("Failed to create barcode directory for flagstats (barcode %zu).", b);
+                    exit(EXIT_FAILURE);
+                }
+                char *path = fc_join_path(dir, leaf);
+                free(dir);
+                s->bc_fp[b] = flagstats_open_file(s, path);
+                free(path);
+            }
+            flagstats_write_all(s, s->bc_stats[b], s->bc_fp[b]);
+        }
     }
 }
 
 static void flagstats_sink_destroy(void *ctx) {
     flagstats_sink *sink = (flagstats_sink *)ctx;
-    if (sink->fp) fclose(sink->fp);
-    free(sink->sample);
-    destroy_flag_stats(sink->stats);
+    if (sink->global_fp) fclose(sink->global_fp);
+    if (sink->bc_fp) {
+        for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
+            if (sink->bc_fp[i]) fclose(sink->bc_fp[i]);
+        }
+    }
+    free(sink->sample_dup);
+    destroy_flag_stats(sink->global_stats);
+    if (sink->bc_stats) {
+        for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
+            destroy_flag_stats(sink->bc_stats[i]);
+        }
+    }
+    free(sink->bc_stats);
+    free(sink->bc_fp);
+    free(sink->output_root);
     free(sink);
 }
 
@@ -147,23 +218,20 @@ fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts) {
     if (!opts || !opts->output_root) return sink;
 
     flagstats_sink* state = calloc(1, sizeof(*state));
-    size_t n_refs = opts->region_mode ? 1 : (opts->hdr ? (size_t)opts->hdr->n_targets : 0);
-    state->stats = create_flag_stats(n_refs, opts->track_unmapped);
-    state->region_mode = opts->region_mode;
-    state->track_unmapped = opts->track_unmapped;
-    state->hdr = opts->hdr;
+    state->cfg = *opts;
+    state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
+    state->n_refs = state->cfg.region_mode ? 1 : (state->cfg.hdr ? (size_t)state->cfg.hdr->n_targets : 0);
+    state->global_stats = create_flag_stats(state->n_refs, true);
+    state->bc_stats = calloc(state->cfg.barcode_count, sizeof(flag_stats *));
+    state->bc_fp = calloc(state->cfg.barcode_count, sizeof(FILE *));
+    state->output_root = fc_strip_path(opts->output_root);
     if (opts->sample && opts->sample[0]) {
-        state->sample = strdup(opts->sample);
+        state->sample_dup = strdup(opts->sample);
+        state->cfg.sample = state->sample_dup;
     }
-    if (opts->output_root) {
-        char *path = fc_sink_join_path(opts->output_root, "flagstats.tsv");
-        ensure_parent_dir_exists(path);
-        state->fp = fopen(path, "w");
-        if (!state->fp) {
-            FC_LOG_ERROR("Cannot open file '%s' for writing.", path);
-            exit(EXIT_FAILURE);
-        }
-        flagstats_write_header(state->fp, state->sample);
+    if (state->output_root) {
+        char *path = fc_join_path(state->output_root, "flagstats.tsv");
+        state->global_fp = flagstats_open_file(state, path);
         free(path);
     }
 

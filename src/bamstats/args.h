@@ -21,7 +21,6 @@ typedef struct arguments {
     char tag_name[2];
     int tag_value;
     int threads;
-    bool unmapped;
     bool force_recalc_qual;
     bool per_read;
     // coverage calculations

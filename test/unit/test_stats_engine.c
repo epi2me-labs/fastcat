@@ -63,24 +63,10 @@ static void test_stats_engine_unmapped_tracked_in_unmapped_stats(void) {
     bam1_t* b = build_unmapped_read("r1", "ACGT", "!!!!");
     fc_read* fr = fc_read_from_bam(b, NULL, false);
 
-    fc_stats_engine* engine = fc_stats_engine_create(true, false, false, 0.0f, 0.0f, false);
+    fc_stats_engine* engine = fc_stats_engine_create(false, false, 0.0f, 0.0f, false);
     TEST_ASSERT_EQUAL_INT(FC_STATS_UNMAPPED, fc_stats_engine_add_read(engine, fr, NULL, NULL));
     TEST_ASSERT_EQUAL_UINT64(0, sum_counts(engine->length_stats));
     TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->length_stats_unmapped));
-
-    fc_stats_engine_destroy(engine);
-    fc_read_destroy(fr);
-    bam_destroy1(b);
-}
-
-static void test_stats_engine_unmapped_ignored_without_tracking(void) {
-    bam1_t* b = build_unmapped_read("r1", "ACGT", "!!!!");
-    fc_read* fr = fc_read_from_bam(b, NULL, false);
-
-    fc_stats_engine* engine = fc_stats_engine_create(false, false, false, 0.0f, 0.0f, false);
-    TEST_ASSERT_EQUAL_INT(FC_STATS_UNMAPPED, fc_stats_engine_add_read(engine, fr, NULL, NULL));
-    TEST_ASSERT_EQUAL_UINT64(0, sum_counts(engine->length_stats));
-    TEST_ASSERT_EQUAL_UINT64(0, sum_counts(engine->length_stats_unmapped));
 
     fc_stats_engine_destroy(engine);
     fc_read_destroy(fr);
@@ -95,7 +81,7 @@ static void test_stats_engine_aligned_metrics(void) {
     bam1_t* b = build_mapped_read("r1", "ACGTACGTAC", "!!!!!!!!!!", 0, 5);
     fc_read* fr = fc_read_from_bam(b, hdr, false);
 
-    fc_stats_engine* engine = fc_stats_engine_create(false, true, false, 0.0f, 0.0f, false);
+    fc_stats_engine* engine = fc_stats_engine_create(true, false, 0.0f, 0.0f, false);
     fc_stats_aligned metrics = {0};
     TEST_ASSERT_EQUAL_INT(FC_STATS_ALIGNED, fc_stats_engine_add_read(engine, fr, hdr, &metrics));
 
@@ -130,6 +116,5 @@ static void test_stats_engine_aligned_metrics(void) {
 
 void stats_engine_suite(void) {
     RUN_TEST(test_stats_engine_unmapped_tracked_in_unmapped_stats);
-    RUN_TEST(test_stats_engine_unmapped_ignored_without_tracking);
     RUN_TEST(test_stats_engine_aligned_metrics);
 }

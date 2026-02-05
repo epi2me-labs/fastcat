@@ -21,15 +21,6 @@
 const char filetypes[4][10] = {".fastq", ".fq", ".fastq.gz", ".fq.gz"};
 size_t nfiletypes = 4;
 
-static char* strip_trailing_slash(const char* input) {
-    if (input == NULL) return NULL;
-    size_t len = strlen(input);
-    if (len > 0 && input[len - 1] == '/') len--;
-    char* output = calloc(len + 1, sizeof(char));
-    memcpy(output, input, len);
-    return output;
-}
-
 // defined below -- recursion
 int process_file(char* fname, fc_writer* writer, const fc_fastq_iter_opts* iter_opts,
         uint64_t* failures, arguments_t *args, int recurse);
@@ -106,7 +97,7 @@ int process_file(char* fname, fc_writer* writer, const fc_fastq_iter_opts* iter_
 
     if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
         if (recurse != 0) {
-            char* sfname = strip_trailing_slash(fname);
+            char* sfname = fc_strip_path(fname);
             int rtn = process_dir(sfname, writer, iter_opts, failures, args, recurse - 1);
             status = max(status, rtn);
             free(sfname);
@@ -161,7 +152,6 @@ int main(int argc, char **argv) {
 
     fc_stats_engine_config stats_cfg = {
         .track_alignment = false,
-        .track_unmapped = true,
         .track_polya = false,
         .polya_cover = 0.0f,
         .polya_qual = 0.0f,
@@ -186,10 +176,9 @@ int main(int argc, char **argv) {
     fc_hist_sink_opts hist_opts = {
         .output_root = args.output_dir,
         .use_barcodes = args.demultiplex,
-        .write_unmapped = false,
+        .unmapped_override = true,
         .write_alignment_metrics = false,
         .write_polya = false,
-        .unmapped_is_primary = true,
         .engines = writer->stats_engines,
         .engine_count = writer->stats_engine_count
     };
@@ -199,12 +188,19 @@ int main(int argc, char **argv) {
             .output_root = args.output_dir,
             .sample = args.sample,
             .include_alignment = false,
-            .output_unmapped = true
+            .use_barcodes = args.demultiplex,
+            .barcode_count = writer->barcode_count
         };
         fc_writer_add_sink(writer, fc_perread_sink_create(&perread_opts));
     }
     fc_writer_add_sink(writer, fc_perfile_sink_create(args.output_dir, args.sample));
-    fc_writer_add_sink(writer, fc_counter_sink_create(args.output_dir, args.sample));
+    fc_counter_sink_opts counter_opts = {
+        .output_root = args.output_dir,
+        .sample = args.sample,
+        .use_barcodes = args.demultiplex,
+        .barcode_count = writer->barcode_count
+    };
+    fc_writer_add_sink(writer, fc_counter_sink_create(&counter_opts));
 
     fc_fastq_iter_opts iter_opts = {
         .min_length = args.min_length,

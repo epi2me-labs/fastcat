@@ -75,6 +75,10 @@ int mkdir_hier(char* path);
  */
 int ensure_parent_dir_exists(const char* path);
 
+// Path helpers shared across tools and sinks
+char *fc_strip_path(const char *input);
+char *fc_join_path(const char *dir, const char *leaf);
+
 /** Next two functions used in argument parses to handle space-separated lists of arguments.
  *
  */

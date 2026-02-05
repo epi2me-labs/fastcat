@@ -94,7 +94,6 @@ int main(int argc, char *argv[]) {
 
     fc_stats_engine_config stats_cfg = {
         .track_alignment = true,
-        .track_unmapped = args.unmapped,
         .track_polya = args.poly_a,
         .polya_cover = args.poly_a_cover,
         .polya_qual = args.poly_a_qual,
@@ -109,7 +108,8 @@ int main(int argc, char *argv[]) {
             .output_root = args.output_dir,
             .sample = args.sample,
             .include_alignment = true,
-            .output_unmapped = args.unmapped
+            .use_barcodes = args.demultiplex,
+            .barcode_count = writer->barcode_count
         };
         fc_writer_add_sink(writer, fc_perread_sink_create(&perread_opts));
     }
@@ -118,15 +118,20 @@ int main(int argc, char *argv[]) {
     fc_hist_sink_opts hist_opts = {
         .output_root = args.output_dir,
         .use_barcodes = args.demultiplex,
-        .write_unmapped = args.unmapped && !region_mode,
+        .unmapped_override = false,
         .write_alignment_metrics = true,
         .write_polya = args.poly_a,
-        .unmapped_is_primary = false,
         .engines = writer->stats_engines,
         .engine_count = writer->stats_engine_count
     };
     fc_writer_add_sink(writer, fc_hist_sink_create(&hist_opts));
-    fc_writer_add_sink(writer, fc_counter_sink_create(args.output_dir, args.sample));
+    fc_counter_sink_opts counter_opts = {
+        .output_root = args.output_dir,
+        .sample = args.sample,
+        .use_barcodes = args.demultiplex,
+        .barcode_count = writer->barcode_count
+    };
+    fc_writer_add_sink(writer, fc_counter_sink_create(&counter_opts));
     if (args.coverage) {
         fc_coverage_sink_opts cov_opts = {
             .output_root = args.output_dir,
@@ -143,16 +148,19 @@ int main(int argc, char *argv[]) {
             .thresholds = args.coverage_thresholds,
             .n_thresholds = args.n_coverage_thresholds,
             .segments = args.segments,
-            .n_segments = args.n_segments
+            .n_segments = args.n_segments,
+            .use_barcodes = args.demultiplex,
+            .barcode_count = writer->barcode_count
         };
         fc_writer_add_sink(writer, fc_coverage_sink_create(&cov_opts));
     }
     fc_flagstats_sink_opts flag_opts = {
         .region_mode = region_mode,
-        .track_unmapped = args.unmapped,
         .output_root = args.output_dir,
         .sample = args.sample,
-        .hdr = hdr
+        .hdr = hdr,
+        .use_barcodes = args.demultiplex,
+        .barcode_count = writer->barcode_count
     };
     fc_writer_add_sink(writer, fc_flagstats_sink_create(&flag_opts));
 

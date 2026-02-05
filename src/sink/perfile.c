@@ -46,7 +46,7 @@ fc_sink fc_perfile_sink_create(const char *output_root, const char *sample) {
     if (!output_root) return sink;
 
     perfile_sink *state = calloc(1, sizeof(*state));
-    char *path = fc_sink_join_path(output_root, "per_file.tsv");
+    char *path = fc_join_path(output_root, "per_file.tsv");
     ensure_parent_dir_exists(path);
     state->fp = fopen(path, "w");
     if (state->fp == NULL) {

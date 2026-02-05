@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "common.h"
 #include "kh_counter.h"
@@ -10,18 +11,72 @@
 #include "../fc_log.h"
 
 typedef struct {
-    FILE *runids;
-    FILE *basecallers;
-    char *sample;
-    kh_counter_t *run_ids;
-    kh_counter_t *basecallers_counter;
+    fc_counter_sink_opts cfg;  // cached configuration
+    FILE *runids_global;
+    FILE *basecallers_global;
+    FILE **runids_bc;
+    FILE **basecallers_bc;
+    char *sample;      // duplicated if provided
+    char *output_root; // stripped output root
+    kh_counter_t *run_ids_global_ctr;
+    kh_counter_t *basecallers_global_ctr;
+    kh_counter_t **run_ids_bc_ctr;
+    kh_counter_t **basecallers_bc_ctr;
 } counter_sink;
 
+static void destroy_counter(kh_counter_t **ctr) {
+    if (*ctr) {
+        kh_counter_destroy(*ctr);
+        *ctr = NULL;
+    }
+}
+
 static void counter_reset(counter_sink *sink) {
-    if (sink->run_ids) kh_counter_destroy(sink->run_ids);
-    if (sink->basecallers_counter) kh_counter_destroy(sink->basecallers_counter);
-    sink->run_ids = kh_counter_init();
-    sink->basecallers_counter = kh_counter_init();
+    destroy_counter(&sink->run_ids_global_ctr);
+    destroy_counter(&sink->basecallers_global_ctr);
+    if (sink->cfg.use_barcodes) {
+        for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
+            destroy_counter(&sink->run_ids_bc_ctr[i]);
+            destroy_counter(&sink->basecallers_bc_ctr[i]);
+        }
+    }
+}
+
+static kh_counter_t *ensure_counter(kh_counter_t **arr, size_t idx) {
+    if (!arr[idx]) {
+        arr[idx] = kh_counter_init();
+    }
+    return arr[idx];
+}
+
+static FILE *counter_open_file(counter_sink *sink, const char *path, const char *value_label) {
+    ensure_parent_dir_exists(path);
+    FILE *fp = fopen(path, "w");
+    if (!fp) {
+        FC_LOG_ERROR("Cannot open counter file '%s' for writing.", path);
+        exit(EXIT_FAILURE);
+    }
+    fprintf(fp, "filename\t");
+    if (sink->sample) fprintf(fp, "sample_name\t");
+    fprintf(fp, "%s\tcount\n", value_label);
+    return fp;
+}
+
+static FILE *ensure_bc_file(counter_sink *sink, FILE **files, const char *leaf, const char *value_label, size_t barcode) {
+    if (!sink->cfg.use_barcodes || barcode >= sink->cfg.barcode_count) return NULL;
+    if (files[barcode]) return files[barcode];
+
+    char *dir = fc_sink_ensure_barcode_dir(sink->output_root, barcode);
+    if (!dir) {
+        FC_LOG_ERROR("Failed to create barcode directory for %s (barcode %zu).", leaf, barcode);
+        return NULL;
+    }
+    char *path = fc_join_path(dir, leaf);
+    free(dir);
+    FILE *fp = counter_open_file(sink, path, value_label);
+    free(path);
+    files[barcode] = fp;
+    return fp;
 }
 
 static void counter_sink_begin_file(void *ctx, const char *fname) {
@@ -35,37 +90,61 @@ static void counter_sink_add_read(void *ctx, const fc_read *read, const fc_read_
     counter_sink *sink = (counter_sink *)ctx;
     (void)fname;
     (void)hdr;
-    (void)read_ctx;
-    if (!sink->runids && !sink->basecallers) return;
+    size_t barcode = (sink->cfg.use_barcodes && read_ctx) ? read_ctx->barcode : 0;
 
     const char *runid = read->meta->runid ? read->meta->runid : "";
     const char *basecaller = read->meta->basecaller ? read->meta->basecaller : "";
-    if (sink->runids) {
-        kh_counter_increment(sink->run_ids, (char *)runid);
-    }
-    if (sink->basecallers) {
-        kh_counter_increment(sink->basecallers_counter, (char *)basecaller);
+    kh_counter_increment(ensure_counter(&sink->run_ids_global_ctr, 0), (char *)runid);
+    kh_counter_increment(ensure_counter(&sink->basecallers_global_ctr, 0), (char *)basecaller);
+
+    if (sink->cfg.use_barcodes && barcode < sink->cfg.barcode_count) {
+        kh_counter_increment(ensure_counter(sink->run_ids_bc_ctr, barcode), (char *)runid);
+        kh_counter_increment(ensure_counter(sink->basecallers_bc_ctr, barcode), (char *)basecaller);
     }
 }
 
 static void counter_sink_end_file(void *ctx, const char *fname, const fc_file_stats *stats) {
     counter_sink *sink = (counter_sink *)ctx;
     (void)stats;
-    if (sink->runids) {
-        for (khiter_t k = 0; k < kh_end(sink->run_ids); ++k) {
-            if (kh_exist(sink->run_ids, k)) {
-                fprintf(sink->runids, "%s\t", fname);
-                if (sink->sample) fprintf(sink->runids, "%s\t", sink->sample);
-                fprintf(sink->runids, "%s\t%d\n", kh_key(sink->run_ids, k), kh_val(sink->run_ids, k));
+    if (sink->runids_global && sink->run_ids_global_ctr) {
+        for (khiter_t k = 0; k < kh_end(sink->run_ids_global_ctr); ++k) {
+            if (kh_exist(sink->run_ids_global_ctr, k)) {
+                fprintf(sink->runids_global, "%s\t", fname);
+                if (sink->sample) fprintf(sink->runids_global, "%s\t", sink->sample);
+                fprintf(sink->runids_global, "%s\t%d\n", kh_key(sink->run_ids_global_ctr, k), kh_val(sink->run_ids_global_ctr, k));
             }
         }
     }
-    if (sink->basecallers) {
-        for (khiter_t k = 0; k < kh_end(sink->basecallers_counter); ++k) {
-            if (kh_exist(sink->basecallers_counter, k)) {
-                fprintf(sink->basecallers, "%s\t", fname);
-                if (sink->sample) fprintf(sink->basecallers, "%s\t", sink->sample);
-                fprintf(sink->basecallers, "%s\t%d\n", kh_key(sink->basecallers_counter, k), kh_val(sink->basecallers_counter, k));
+    if (sink->basecallers_global && sink->basecallers_global_ctr) {
+        for (khiter_t k = 0; k < kh_end(sink->basecallers_global_ctr); ++k) {
+            if (kh_exist(sink->basecallers_global_ctr, k)) {
+                fprintf(sink->basecallers_global, "%s\t", fname);
+                if (sink->sample) fprintf(sink->basecallers_global, "%s\t", sink->sample);
+                fprintf(sink->basecallers_global, "%s\t%d\n", kh_key(sink->basecallers_global_ctr, k), kh_val(sink->basecallers_global_ctr, k));
+            }
+        }
+    }
+    if (sink->cfg.use_barcodes) {
+        for (size_t b = 0; b < sink->cfg.barcode_count; ++b) {
+            if (sink->run_ids_bc_ctr[b]) {
+                FILE *fp = ensure_bc_file(sink, sink->runids_bc, "runids.tsv", "run_id", b);
+                for (khiter_t k = 0; k < kh_end(sink->run_ids_bc_ctr[b]); ++k) {
+                    if (kh_exist(sink->run_ids_bc_ctr[b], k)) {
+                        fprintf(fp, "%s\t", fname);
+                        if (sink->sample) fprintf(fp, "%s\t", sink->sample);
+                        fprintf(fp, "%s\t%d\n", kh_key(sink->run_ids_bc_ctr[b], k), kh_val(sink->run_ids_bc_ctr[b], k));
+                    }
+                }
+            }
+            if (sink->basecallers_bc_ctr[b]) {
+                FILE *fp = ensure_bc_file(sink, sink->basecallers_bc, "basecallers.tsv", "basecaller", b);
+                for (khiter_t k = 0; k < kh_end(sink->basecallers_bc_ctr[b]); ++k) {
+                    if (kh_exist(sink->basecallers_bc_ctr[b], k)) {
+                        fprintf(fp, "%s\t", fname);
+                        if (sink->sample) fprintf(fp, "%s\t", sink->sample);
+                        fprintf(fp, "%s\t%d\n", kh_key(sink->basecallers_bc_ctr[b], k), kh_val(sink->basecallers_bc_ctr[b], k));
+                    }
+                }
             }
         }
     }
@@ -73,48 +152,65 @@ static void counter_sink_end_file(void *ctx, const char *fname, const fc_file_st
 
 static void counter_sink_destroy(void *ctx) {
     counter_sink *sink = (counter_sink *)ctx;
-    if (sink->runids) fclose(sink->runids);
-    if (sink->basecallers) fclose(sink->basecallers);
-    if (sink->run_ids) kh_counter_destroy(sink->run_ids);
-    if (sink->basecallers_counter) kh_counter_destroy(sink->basecallers_counter);
+    if (sink->runids_global) fclose(sink->runids_global);
+    if (sink->basecallers_global) fclose(sink->basecallers_global);
+    if (sink->runids_bc) {
+        for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
+            if (sink->runids_bc[i]) fclose(sink->runids_bc[i]);
+        }
+    }
+    if (sink->basecallers_bc) {
+        for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
+            if (sink->basecallers_bc[i]) fclose(sink->basecallers_bc[i]);
+        }
+    }
+    destroy_counter(&sink->run_ids_global_ctr);
+    destroy_counter(&sink->basecallers_global_ctr);
+    if (sink->run_ids_bc_ctr) {
+        for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
+            destroy_counter(&sink->run_ids_bc_ctr[i]);
+        }
+    }
+    if (sink->basecallers_bc_ctr) {
+        for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
+            destroy_counter(&sink->basecallers_bc_ctr[i]);
+        }
+    }
+    free(sink->runids_bc);
+    free(sink->basecallers_bc);
+    free(sink->run_ids_bc_ctr);
+    free(sink->basecallers_bc_ctr);
     free(sink->sample);
+    free(sink->output_root);
     free(sink);
 }
 
-fc_sink fc_counter_sink_create(const char *output_root, const char *sample) {
+fc_sink fc_counter_sink_create(const fc_counter_sink_opts *opts) {
     fc_sink sink = {0};
-    if (!output_root) return sink;
+    if (!opts || !opts->output_root) return sink;
 
     counter_sink *state = calloc(1, sizeof(*state));
-    if (sample && sample[0]) {
-        state->sample = strdup(sample);
+    state->cfg = *opts;
+    state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
+    state->output_root = fc_strip_path(opts->output_root);
+    if (opts->sample && opts->sample[0]) {
+        state->sample = strdup(opts->sample);
+        state->cfg.sample = state->sample;
     }
-    char *runids_path = fc_sink_join_path(output_root, "runids.tsv");
-    ensure_parent_dir_exists(runids_path);
-    state->runids = fopen(runids_path, "w");
-    if (state->runids == NULL) {
-        FC_LOG_ERROR("Error opening runids file '%s' for writing.", runids_path);
-        exit(EXIT_FAILURE);
-    }
-    fprintf(state->runids, "filename\t");
-    if (state->sample) fprintf(state->runids, "sample_name\t");
-    fprintf(state->runids, "run_id\tcount\n");
+    char *runids_path = fc_join_path(opts->output_root, "runids.tsv");
+    state->runids_global = counter_open_file(state, runids_path, "run_id");
     free(runids_path);
 
-    char *basecallers_path = fc_sink_join_path(output_root, "basecallers.tsv");
-    ensure_parent_dir_exists(basecallers_path);
-    state->basecallers = fopen(basecallers_path, "w");
-    if (state->basecallers == NULL) {
-        FC_LOG_ERROR("Error opening basecallers file '%s' for writing.", basecallers_path);
-        exit(EXIT_FAILURE);
-    }
-    fprintf(state->basecallers, "filename\t");
-    if (state->sample) fprintf(state->basecallers, "sample_name\t");
-    fprintf(state->basecallers, "basecaller\tcount\n");
+    char *basecallers_path = fc_join_path(opts->output_root, "basecallers.tsv");
+    state->basecallers_global = counter_open_file(state, basecallers_path, "basecaller");
     free(basecallers_path);
 
-    state->run_ids = kh_counter_init();
-    state->basecallers_counter = kh_counter_init();
+    state->run_ids_bc_ctr = calloc(state->cfg.barcode_count, sizeof(kh_counter_t *));
+    state->basecallers_bc_ctr = calloc(state->cfg.barcode_count, sizeof(kh_counter_t *));
+    state->runids_bc = calloc(state->cfg.barcode_count, sizeof(FILE *));
+    state->basecallers_bc = calloc(state->cfg.barcode_count, sizeof(FILE *));
+    state->run_ids_global_ctr = NULL;
+    state->basecallers_global_ctr = NULL;
 
     sink.ctx = state;
     sink.begin_file = counter_sink_begin_file;
