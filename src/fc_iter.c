@@ -100,16 +100,19 @@ int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_fastq_it
     struct stat finfo;
     if (stat(fname, &finfo) == -1) {
         FC_LOG_ERROR("could not process file %s: %s", fname, strerror(errno));
+        iter->stats.failures[F_UNKNOWN_ERROR] = 1;
         return errno;
     }
 
     if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
+        iter->stats.failures[F_UNKNOWN_ERROR] = 1;
         return EISDIR;
     }
 
     iter->fp = gzopen(fname, "r");
     if (iter->fp == NULL) {
         FC_LOG_ERROR("could not open file %s: %s", fname, strerror(errno));
+        iter->stats.failures[F_UNKNOWN_ERROR] = 1;
         return errno;
     }
 
