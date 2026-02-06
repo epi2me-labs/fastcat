@@ -258,7 +258,7 @@ bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamind
 # fastcat tests
 
 .PHONY:
-test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters test_fastcat_demultiplex_outputs test_fastcat_demultiplex_split test_fastcat_demux_single_equiv test_fastcat_regression_results
+test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters test_fastcat_demultiplex_outputs test_fastcat_demultiplex_split test_fastcat_demux_single_equiv test_fastcat_regression_results test_fastcat_perfile_all_filtered
 
 .PHONY: test_fastcat_demux_single_equiv
 test_fastcat_demux_single_equiv: fastcat
@@ -364,11 +364,21 @@ test_fastcat_regression_results: fastcat
 		$(call COMPARE_FASTQ,concat.fastq,$(TEST_EXPECTED_FASTCAT)/concat.sorted.fastq.gz,concat) && \
 		$(call COMPARE_FASTQ,concat.reheader.fastq,$(TEST_EXPECTED_FASTCAT)/concat.reheader.sorted.fastq.gz,concat.reheader))
 
+.PHONY: test_fastcat_perfile_all_filtered
+test_fastcat_perfile_all_filtered: fastcat
+	@$(call TEST_DESC,Fastcat per-file stats when all reads filtered)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/perfile_filtered, \
+		printf "@r1\nACGT\n+\n!!!!\n@r2\nACGT\n+\n!!!!\n" > short.fastq && \
+		$(RUN_FASTCAT) short.fastq --min-length 100 --sample sample --output out > /dev/null && \
+		awk 'NR==1{for(i=1;i<=NF;i++)h[$$i]=i;next} NR==2{ \
+			if($$h["n_seqs"]!=0||$$h["n_bases"]!=0||$$h["min_length"]!=0||$$h["max_length"]!=0||$$h["mean_quality"]!=0||$$h["f_file_ok"]!=1||$$h["f_unknown_error"]!=0||$$h["r_record_ok"]!=2||$$h["r_too_short"]!=2){ \
+				print "unexpected per_file.tsv: "$$0; exit 1}}' out/per_file.tsv)
+
 ###
 # bamstats tests
 
 .PHONY: 
-test_bamstats: test_bamstats_NM test_bamstats_polya test_bamstats_filters test_bamstats_vs_fastcat_unaligned test_bamstats_vs_fastcat_unaligned_demux test_bamstats_demux_single_equiv mem_check_bamstats
+test_bamstats: test_bamstats_NM test_bamstats_polya test_bamstats_filters test_bamstats_vs_fastcat_unaligned test_bamstats_vs_fastcat_unaligned_demux test_bamstats_demux_single_equiv test_bamstats_perfile_all_filtered mem_check_bamstats
 .PHONY: test_bamstats_coverage_demux_layout
 test_bamstats: test_bamstats_coverage_demux_layout
 
@@ -473,6 +483,16 @@ test_bamstats_vs_fastcat_unaligned_demux: fastcat bamstats
 			if [ ! -f "$$g" ]; then echo "Missing $$g"; exit 1; fi; \
 			diff "$$h" "$$g"; \
 		done)
+
+.PHONY: test_bamstats_perfile_all_filtered
+test_bamstats_perfile_all_filtered: bamstats
+	@$(call TEST_DESC,Bamstats per-file stats when all reads filtered)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/perfile_filtered, \
+		printf "@HD\tVN:1.6\tSO:unknown\n@SQ\tSN:chr1\tLN:1000\nr1\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\t!!!!\nr2\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\t!!!!\n" > short.sam && \
+		$(RUN_BAMSTATS) short.sam --tag-name ZZ --tag-value 1 --output out > /dev/null && \
+		awk 'NR==1{for(i=1;i<=NF;i++)h[$$i]=i;next} NR==2{ \
+			if($$h["n_seqs"]!=0||$$h["n_bases"]!=0||$$h["min_length"]!=0||$$h["max_length"]!=0||$$h["mean_quality"]!=0||$$h["f_file_ok"]!=1||$$h["f_unknown_error"]!=0||$$h["r_record_ok"]!=2||$$h["r_too_short"]!=0){ \
+				print "unexpected per_file.tsv: "$$0; exit 1}}' out/per_file.tsv)
 
 .PHONY:
 mem_check_bamstats: mem_check_bamstats_good mem_check_bamstats_bad mem_check_bamstats_qcfail mem_check_bamstats_duplex mem_check_bamstats_coverage

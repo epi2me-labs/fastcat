@@ -152,6 +152,45 @@ static void test_fastq_iter_filters_length_and_quality(void) {
     remove(fq_path);
 }
 
+static void test_fastq_iter_open_failure_sets_unknown_error(void) {
+    fc_fastq_iter iter = {0};
+    fc_fastq_iter_opts opts = fq_opts_defaults();
+
+    int rc = fc_fastq_iter_open(&iter, "/no/such/file.fastq", &opts);
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+    TEST_ASSERT_EQUAL_UINT64(1, iter.stats.failures[F_UNKNOWN_ERROR]);
+}
+
+static void test_fastq_iter_all_filtered_sets_minmax_zero(void) {
+    char fq_path[64];
+    make_temp_gz_fastq(fq_path, sizeof(fq_path));
+
+    fc_fastq_iter iter = {0};
+    fc_fastq_iter_opts opts = fq_opts_defaults();
+    opts.min_length = 100; // filter everything
+
+    TEST_ASSERT_EQUAL_INT(0, fc_fastq_iter_open(&iter, fq_path, &opts));
+
+    fc_read *r = NULL;
+    while ((r = fc_fastq_iter_next(&iter)) != NULL) {
+        fc_read_destroy(r);
+    }
+
+    fc_file_stats stats = {0};
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_fastq_iter_finish(&iter, &stats));
+
+    TEST_ASSERT_EQUAL_UINT(0, stats.n_seqs);
+    TEST_ASSERT_EQUAL_UINT(0, stats.n_bases);
+    TEST_ASSERT_EQUAL_UINT(0, stats.min_length);
+    TEST_ASSERT_EQUAL_UINT(0, stats.max_length);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6, 0.0, stats.mean_quality);
+    TEST_ASSERT_EQUAL_UINT64(1, stats.failures[F_FILE_OK]);
+    TEST_ASSERT_EQUAL_UINT64(3, stats.failures[R_RECORD_OK]);
+    TEST_ASSERT_EQUAL_UINT64(3, stats.failures[R_TOO_SHORT]);
+
+    remove(fq_path);
+}
+
 static void test_bam_iter_stats_accumulate(void) {
     htsFile *fp = hts_open("test/bamstats/400ecoli.bam", "rb");
     TEST_ASSERT_NOT_NULL(fp);
@@ -268,6 +307,8 @@ void iter_suite(void) {
     RUN_TEST(test_fastq_iter_stats_accumulate);
     RUN_TEST(test_fastq_iter_known_stats);
     RUN_TEST(test_fastq_iter_filters_length_and_quality);
+    RUN_TEST(test_fastq_iter_open_failure_sets_unknown_error);
+    RUN_TEST(test_fastq_iter_all_filtered_sets_minmax_zero);
     RUN_TEST(test_bam_iter_stats_accumulate);
     RUN_TEST(test_bam_iter_known_stats);
     RUN_TEST(test_bam_iter_filters_length_and_quality);
