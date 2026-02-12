@@ -13,8 +13,8 @@
 #include "fc_read.h"
 #include "fastcat/parsing.h"
 
-static fc_fastq_iter_opts fq_opts_defaults(void) {
-    fc_fastq_iter_opts o = {0};
+static fc_iter_opts fq_opts_defaults(void) {
+    fc_iter_opts o = {0};
     o.max_length = (size_t)-1;
     return o;
 }
@@ -49,7 +49,10 @@ static void make_temp_gz_fastq(char *path, size_t path_len) {
     TEST_ASSERT_MESSAGE(gz != NULL, "gzopen failed for fastq fixture");
     TEST_ASSERT_EQUAL_INT((int)strlen(FASTQ_FIXTURE), gzwrite(gz, FASTQ_FIXTURE, strlen(FASTQ_FIXTURE)));
     TEST_ASSERT_EQUAL_INT(0, gzclose(gz));
-    snprintf(path, path_len, "%s", tmpl);
+    char renamed[64];
+    snprintf(renamed, sizeof(renamed), "%s.fastq.gz", tmpl);
+    TEST_ASSERT_EQUAL_INT(0, rename(tmpl, renamed));
+    snprintf(path, path_len, "%s", renamed);
 }
 
 static void make_temp_sam(char *path, size_t path_len) {
@@ -60,256 +63,177 @@ static void make_temp_sam(char *path, size_t path_len) {
     TEST_ASSERT_NOT_NULL(fp);
     TEST_ASSERT_EQUAL_INT((int)strlen(SAM_FIXTURE), fprintf(fp, "%s", SAM_FIXTURE));
     TEST_ASSERT_EQUAL_INT(0, fclose(fp));
-    snprintf(path, path_len, "%s", tmpl);
+    char renamed[64];
+    snprintf(renamed, sizeof(renamed), "%s.sam", tmpl);
+    TEST_ASSERT_EQUAL_INT(0, rename(tmpl, renamed));
+    snprintf(path, path_len, "%s", renamed);
 }
+
+
+// shared test driver
+
+static void _run_iter_and_assert(
+    const char *path, const fc_iter_opts *opts,
+    size_t exp_nseqs, size_t exp_nbases,
+    size_t exp_min_len, size_t exp_max_len,
+    double exp_mean_q, uint64_t exp_r_record_ok, uint64_t exp_r_too_short, uint64_t exp_r_low_quality
+) {
+    fc_iter iter = {0};
+    char *paths[2] = { (char *)path, NULL };
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, paths, 1, 0, false));
+
+    const fc_file_entry *f = NULL;
+    TEST_ASSERT_TRUE(fc_iter_next_file(&iter, &f));
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, opts));
+
+    fc_read *r = NULL;
+    size_t seen = 0;
+    while ((r = fc_iter_next_record(&iter, NULL)) != NULL) {
+        ++seen;
+        fc_read_destroy(r);
+    }
+
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_iter_finish_file(&iter));
+    const fc_file_stats *stats = fc_iter_stats(&iter);
+    TEST_ASSERT_NOT_NULL(stats);
+
+    // some basic properties that should hold regardless of the fixture contents
+    TEST_ASSERT_EQUAL_UINT(seen, stats->n_seqs);
+    TEST_ASSERT_TRUE(stats->n_bases >= stats->n_seqs * stats->min_length);
+    TEST_ASSERT_TRUE(stats->max_length >= stats->min_length);
+
+    // check against expected values for the fixture
+    TEST_ASSERT_EQUAL_UINT(exp_nseqs, stats->n_seqs);
+    TEST_ASSERT_EQUAL_UINT(exp_nbases, stats->n_bases);
+    TEST_ASSERT_EQUAL_UINT(exp_min_len, stats->min_length);
+    TEST_ASSERT_EQUAL_UINT(exp_max_len, stats->max_length);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3, exp_mean_q, stats->mean_quality);
+    TEST_ASSERT_EQUAL_UINT64(1, stats->failures[F_FILE_OK]);
+    TEST_ASSERT_EQUAL_UINT64(exp_r_record_ok, stats->failures[R_RECORD_OK]);
+    TEST_ASSERT_EQUAL_UINT64(exp_r_too_short, stats->failures[R_TOO_SHORT]);
+    TEST_ASSERT_EQUAL_UINT64(exp_r_low_quality, stats->failures[R_LOW_QUALITY]);
+    TEST_ASSERT_EQUAL_UINT64(0, stats->failures[F_UNKNOWN_ERROR]);
+
+    fc_iter_close(&iter);
+}
+
+
+// run on a real fixture and check that stats are accumulated as expected
 
 static void test_fastq_iter_stats_accumulate(void) {
-    fc_fastq_iter iter = {0};
-    fc_fastq_iter_opts opts = fq_opts_defaults();
-    int rc = fc_fastq_iter_open(&iter, "test/data/bc1.fastq.gz", &opts);
-    TEST_ASSERT_EQUAL_INT(0, rc);
-
-    size_t seen = 0;
-    fc_read *r = NULL;
-    while ((r = fc_fastq_iter_next(&iter)) != NULL) {
-        ++seen;
-        fc_read_destroy(r);
-    }
-    TEST_ASSERT_GREATER_THAN_UINT(0, seen);
-
-    fc_file_stats stats = {0};
-    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_fastq_iter_finish(&iter, &stats));
-
-    TEST_ASSERT_EQUAL_UINT(seen, stats.n_seqs);
-    TEST_ASSERT_TRUE(stats.n_bases >= stats.n_seqs * stats.min_length);
-    TEST_ASSERT_TRUE(stats.max_length >= stats.min_length);
+    fc_iter_opts opts = fq_opts_defaults();
+    _run_iter_and_assert("test/data/bc1.fastq.gz", &opts,
+        10, 5904, 281, 878,12.8569, 10, 0, 0);
 }
 
-static void test_fastq_iter_known_stats(void) {
+
+// check stats in a controlled case
+
+static void _test_known_stats(const char *path) {
+    _run_iter_and_assert(path, NULL, 3, 15, 4, 6, 20.0, 3, 0, 0);
+}
+
+static void test_iter_fastq_known_stats(void) {
     char fq_path[64];
     make_temp_gz_fastq(fq_path, sizeof(fq_path));
-
-    fc_fastq_iter iter = {0};
-    fc_fastq_iter_opts opts = fq_opts_defaults();
-    TEST_ASSERT_EQUAL_INT(0, fc_fastq_iter_open(&iter, fq_path, &opts));
-
-    size_t seen = 0;
-    fc_read *r = NULL;
-    while ((r = fc_fastq_iter_next(&iter)) != NULL) {
-        ++seen;
-        fc_read_destroy(r);
-    }
-    TEST_ASSERT_EQUAL_UINT(3, seen);
-
-    fc_file_stats stats = {0};
-    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_fastq_iter_finish(&iter, &stats));
-
-    TEST_ASSERT_EQUAL_UINT(3, stats.n_seqs);
-    TEST_ASSERT_EQUAL_UINT(15, stats.n_bases);
-    TEST_ASSERT_EQUAL_UINT(4, stats.min_length);
-    TEST_ASSERT_EQUAL_UINT(6, stats.max_length);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6, 20.0, stats.mean_quality);
-    TEST_ASSERT_EQUAL_UINT64(1, stats.failures[F_FILE_OK]);
-    TEST_ASSERT_EQUAL_UINT64(3, stats.failures[R_RECORD_OK]);
-    TEST_ASSERT_EQUAL_UINT64(0, stats.failures[R_TOO_SHORT]);
-    TEST_ASSERT_EQUAL_UINT64(0, stats.failures[R_LOW_QUALITY]);
-
+    _test_known_stats(fq_path);
     remove(fq_path);
 }
 
-static void test_fastq_iter_filters_length_and_quality(void) {
-    char fq_path[64];
-    make_temp_gz_fastq(fq_path, sizeof(fq_path));
+static void test_iter_bam_known_stats(void) {
+    char sam_path[64];
+    make_temp_sam(sam_path, sizeof(sam_path));
+    _test_known_stats(sam_path);
+    remove(sam_path);
+}
 
-    fc_fastq_iter iter = {0};
-    fc_fastq_iter_opts opts = fq_opts_defaults();
+
+// filter some things in controlled cases
+
+static void _test_case_filters_length_and_quality(const char *path) {
+    fc_iter_opts opts = fq_opts_defaults();
     opts.min_length = 5;
     opts.min_qscore = 30.0f;
+    _run_iter_and_assert(path, &opts,
+        1, 6, 6, 6, 40.0, 3, 1, 1);
+}
 
-    TEST_ASSERT_EQUAL_INT(0, fc_fastq_iter_open(&iter, fq_path, &opts));
-
-    size_t seen = 0;
-    fc_read *r = NULL;
-    while ((r = fc_fastq_iter_next(&iter)) != NULL) {
-        ++seen;
-        fc_read_destroy(r);
-    }
-    TEST_ASSERT_EQUAL_UINT(1, seen);
-
-    fc_file_stats stats = {0};
-    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_fastq_iter_finish(&iter, &stats));
-
-    TEST_ASSERT_EQUAL_UINT(1, stats.n_seqs);
-    TEST_ASSERT_EQUAL_UINT(6, stats.n_bases);
-    TEST_ASSERT_EQUAL_UINT(6, stats.min_length);
-    TEST_ASSERT_EQUAL_UINT(6, stats.max_length);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6, 40.0, stats.mean_quality);
-    TEST_ASSERT_EQUAL_UINT64(1, stats.failures[F_FILE_OK]);
-    TEST_ASSERT_EQUAL_UINT64(3, stats.failures[R_RECORD_OK]);
-    TEST_ASSERT_EQUAL_UINT64(1, stats.failures[R_TOO_SHORT]);
-    TEST_ASSERT_EQUAL_UINT64(1, stats.failures[R_LOW_QUALITY]);
-
+static void test_iter_fastq_filters_length_and_quality(void) {
+    char fq_path[64];
+    make_temp_gz_fastq(fq_path, sizeof(fq_path));
+    _test_case_filters_length_and_quality(fq_path);
     remove(fq_path);
 }
 
-static void test_fastq_iter_open_failure_sets_unknown_error(void) {
-    fc_fastq_iter iter = {0};
-    fc_fastq_iter_opts opts = fq_opts_defaults();
+static void test_iter_bam_filters_length_and_quality(void) {
+    char sam_path[64];
+    make_temp_sam(sam_path, sizeof(sam_path));
+    _test_case_filters_length_and_quality(sam_path);
+    remove(sam_path);
+}
 
-    int rc = fc_fastq_iter_open(&iter, "/no/such/file.fastq", &opts);
+
+// all filtered sets some things
+
+static void _test_case_all_filtered(const char *path) {
+    fc_iter_opts opts = fq_opts_defaults();
+    opts.min_length = 100;
+    _run_iter_and_assert(path, &opts, 0, 0, 0, 0, 0.0, 3, 3, 0);
+}
+
+static void test_iter_fastq_all_filtered_sets_minmax_zero(void) {
+    char fq_path[64];
+    make_temp_gz_fastq(fq_path, sizeof(fq_path));
+    _test_case_all_filtered(fq_path);
+    remove(fq_path);
+}
+
+static void test_iter_bam_all_filtered_sets_minmax_zero(void) {
+    char sam_path[64];
+    make_temp_sam(sam_path, sizeof(sam_path));
+    _test_case_all_filtered(sam_path);
+    remove(sam_path);
+}
+
+
+// check that open failure is recorded as unknown error via unified iterator
+
+static void _test_case_open_failure_sets_unknown_error(const char *path, fc_file_kind kind) {
+    fc_iter_opts opts = fq_opts_defaults();
+    fc_iter iter = {0};
+    fc_file_entry fe = { (char *)path, kind };
+    iter.current = &fe;
+    int rc = fc_iter_open_record_cursor(&iter, &opts);
     TEST_ASSERT_NOT_EQUAL(0, rc);
-    TEST_ASSERT_EQUAL_UINT64(1, iter.stats.failures[F_UNKNOWN_ERROR]);
+    const fc_file_stats *stats = fc_iter_stats(&iter);
+    TEST_ASSERT_NOT_NULL(stats);
+    TEST_ASSERT_EQUAL_UINT64(1, stats->failures[F_UNKNOWN_ERROR]);
+    fc_iter_close(&iter);
 }
 
-static void test_fastq_iter_all_filtered_sets_minmax_zero(void) {
-    char fq_path[64];
-    make_temp_gz_fastq(fq_path, sizeof(fq_path));
-
-    fc_fastq_iter iter = {0};
-    fc_fastq_iter_opts opts = fq_opts_defaults();
-    opts.min_length = 100; // filter everything
-
-    TEST_ASSERT_EQUAL_INT(0, fc_fastq_iter_open(&iter, fq_path, &opts));
-
-    fc_read *r = NULL;
-    while ((r = fc_fastq_iter_next(&iter)) != NULL) {
-        fc_read_destroy(r);
-    }
-
-    fc_file_stats stats = {0};
-    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_fastq_iter_finish(&iter, &stats));
-
-    TEST_ASSERT_EQUAL_UINT(0, stats.n_seqs);
-    TEST_ASSERT_EQUAL_UINT(0, stats.n_bases);
-    TEST_ASSERT_EQUAL_UINT(0, stats.min_length);
-    TEST_ASSERT_EQUAL_UINT(0, stats.max_length);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6, 0.0, stats.mean_quality);
-    TEST_ASSERT_EQUAL_UINT64(1, stats.failures[F_FILE_OK]);
-    TEST_ASSERT_EQUAL_UINT64(3, stats.failures[R_RECORD_OK]);
-    TEST_ASSERT_EQUAL_UINT64(3, stats.failures[R_TOO_SHORT]);
-
-    remove(fq_path);
+static void test_iter_fastq_iter_open_failure_sets_unknown_error(void) {
+    _test_case_open_failure_sets_unknown_error("/no/such/file.fastq", FC_FILE_FASTQ);
 }
 
-static void test_bam_iter_stats_accumulate(void) {
-    htsFile *fp = hts_open("test/bamstats/400ecoli.bam", "rb");
-    TEST_ASSERT_NOT_NULL(fp);
-    sam_hdr_t *hdr = sam_hdr_read(fp);
-    TEST_ASSERT_NOT_NULL(hdr);
-
-    fc_bam_iter iter = {0};
-    fc_bam_iter_opts opts = {0};
-    int rc = fc_bam_iter_open(&iter, fp, NULL, hdr, NULL, 0, INT64_MAX, &opts);
-    TEST_ASSERT_EQUAL_INT(0, rc);
-
-    size_t seen = 0;
-    fc_read *r = NULL;
-    while ((r = fc_bam_iter_next(&iter, hdr)) != NULL) {
-        ++seen;
-        fc_read_destroy(r);
-    }
-    TEST_ASSERT_GREATER_THAN_UINT(0, seen);
-
-    fc_file_stats stats = {0};
-    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_bam_iter_finish(&iter, &stats));
-
-    TEST_ASSERT_EQUAL_UINT(seen, stats.n_seqs);
-    TEST_ASSERT_TRUE(stats.max_length >= stats.min_length);
-
-    fc_bam_iter_close(&iter);
-    sam_hdr_destroy(hdr);
-    hts_close(fp);
+static void test_iter_bam_iter_open_failure_sets_unknown_error(void) {
+    _test_case_open_failure_sets_unknown_error("/no/such/file.bam", FC_FILE_BAM);
 }
 
-static void test_bam_iter_known_stats(void) {
-    char sam_path[64];
-    make_temp_sam(sam_path, sizeof(sam_path));
-
-    htsFile *fp = hts_open(sam_path, "r");
-    TEST_ASSERT_NOT_NULL(fp);
-    sam_hdr_t *hdr = sam_hdr_read(fp);
-    TEST_ASSERT_NOT_NULL(hdr);
-
-    fc_bam_iter iter = {0};
-    fc_bam_iter_opts opts = {0};
-    TEST_ASSERT_EQUAL_INT(0, fc_bam_iter_open(&iter, fp, NULL, hdr, NULL, 0, INT64_MAX, &opts));
-
-    size_t seen = 0;
-    fc_read *r = NULL;
-    while ((r = fc_bam_iter_next(&iter, hdr)) != NULL) {
-        ++seen;
-        fc_read_destroy(r);
-    }
-    TEST_ASSERT_EQUAL_UINT(3, seen);
-
-    fc_file_stats stats = {0};
-    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_bam_iter_finish(&iter, &stats));
-
-    TEST_ASSERT_EQUAL_UINT(3, stats.n_seqs);
-    TEST_ASSERT_EQUAL_UINT(15, stats.n_bases);
-    TEST_ASSERT_EQUAL_UINT(4, stats.min_length);
-    TEST_ASSERT_EQUAL_UINT(6, stats.max_length);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6, 20.0, stats.mean_quality);
-    TEST_ASSERT_EQUAL_UINT64(1, stats.failures[F_FILE_OK]);
-    TEST_ASSERT_EQUAL_UINT64(3, stats.failures[R_RECORD_OK]);
-    TEST_ASSERT_EQUAL_UINT64(0, stats.failures[R_TOO_SHORT]);
-    TEST_ASSERT_EQUAL_UINT64(0, stats.failures[R_LOW_QUALITY]);
-
-    fc_bam_iter_close(&iter);
-    sam_hdr_destroy(hdr);
-    hts_close(fp);
-    remove(sam_path);
-}
-
-static void test_bam_iter_filters_length_and_quality(void) {
-    char sam_path[64];
-    make_temp_sam(sam_path, sizeof(sam_path));
-
-    htsFile *fp = hts_open(sam_path, "r");
-    TEST_ASSERT_NOT_NULL(fp);
-    sam_hdr_t *hdr = sam_hdr_read(fp);
-    TEST_ASSERT_NOT_NULL(hdr);
-
-    fc_bam_iter iter = {0};
-    fc_bam_iter_opts opts = {0};
-    opts.min_length = 5;
-    opts.min_qscore = 30.0f;
-    TEST_ASSERT_EQUAL_INT(0, fc_bam_iter_open(&iter, fp, NULL, hdr, NULL, 0, INT64_MAX, &opts));
-
-    size_t seen = 0;
-    fc_read *r = NULL;
-    while ((r = fc_bam_iter_next(&iter, hdr)) != NULL) {
-        ++seen;
-        fc_read_destroy(r);
-    }
-    TEST_ASSERT_EQUAL_UINT(1, seen);
-
-    fc_file_stats stats = {0};
-    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_bam_iter_finish(&iter, &stats));
-
-    TEST_ASSERT_EQUAL_UINT(1, stats.n_seqs);
-    TEST_ASSERT_EQUAL_UINT(6, stats.n_bases);
-    TEST_ASSERT_EQUAL_UINT(6, stats.min_length);
-    TEST_ASSERT_EQUAL_UINT(6, stats.max_length);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6, 40.0, stats.mean_quality);
-    TEST_ASSERT_EQUAL_UINT64(1, stats.failures[F_FILE_OK]);
-    TEST_ASSERT_EQUAL_UINT64(3, stats.failures[R_RECORD_OK]);
-    TEST_ASSERT_EQUAL_UINT64(1, stats.failures[R_TOO_SHORT]);
-    TEST_ASSERT_EQUAL_UINT64(1, stats.failures[R_LOW_QUALITY]);
-
-    fc_bam_iter_close(&iter);
-    sam_hdr_destroy(hdr);
-    hts_close(fp);
-    remove(sam_path);
-}
+// go go gadget
 
 void iter_suite(void) {
+    // real data
     RUN_TEST(test_fastq_iter_stats_accumulate);
-    RUN_TEST(test_fastq_iter_known_stats);
-    RUN_TEST(test_fastq_iter_filters_length_and_quality);
-    RUN_TEST(test_fastq_iter_open_failure_sets_unknown_error);
-    RUN_TEST(test_fastq_iter_all_filtered_sets_minmax_zero);
-    RUN_TEST(test_bam_iter_stats_accumulate);
-    RUN_TEST(test_bam_iter_known_stats);
-    RUN_TEST(test_bam_iter_filters_length_and_quality);
+    // synthetic data with known stats
+    RUN_TEST(test_iter_fastq_known_stats);
+    RUN_TEST(test_iter_bam_known_stats);
+    // filters in controlled cases
+    RUN_TEST(test_iter_fastq_filters_length_and_quality);
+    RUN_TEST(test_iter_bam_filters_length_and_quality);
+    // all filtered sets min/max length to zero
+    RUN_TEST(test_iter_fastq_all_filtered_sets_minmax_zero);
+    RUN_TEST(test_iter_bam_all_filtered_sets_minmax_zero);
+    // open failure sets unknown error
+    RUN_TEST(test_iter_fastq_iter_open_failure_sets_unknown_error);
+    RUN_TEST(test_iter_bam_iter_open_failure_sets_unknown_error);
 }

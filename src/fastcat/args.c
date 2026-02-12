@@ -1,10 +1,11 @@
 #include <stdlib.h>
-#include <strings.h>
+#include <string.h>
 #include <argp.h>
 
 #include "args.h"
 #include "../version.h"
 #include "../fc_log.h"
+#include "../fc_input_list.h"
 
 const char *argp_program_bug_address = "support@nanoporetech.com";
 static char doc[] = 
@@ -194,6 +195,28 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.log_level = FC_LOG_INFO;
     args.log_file = NULL;
     args.log_mono = false;
+    args.verbose = false;
+    args.files_from_stdin = false;
+    args.n_files = 0;
     argp_parse(&argp, argc, argv, 0, 0, &args);
+
+    // If files are provided via stdin ("-"), read them now.
+    if (args.files && args.files[0] && strcmp(args.files[0], "-") == 0) {
+        size_t n = 0;
+        char **paths = fc_read_paths_from_stdin(&n);
+        args.files_from_stdin = true;
+        args.n_files = n;
+        args.files = paths;
+    } else if (args.files) {
+        while (args.files[args.n_files]) args.n_files++;
+    }
     return args;
+}
+
+void destroy_args(arguments_t *args) {
+    if (!args) return;
+    if (args->files_from_stdin && args->files) {
+        fc_free_path_list(args->files, args->n_files);
+        args->files = NULL;
+    }
 }

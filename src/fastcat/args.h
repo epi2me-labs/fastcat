@@ -28,8 +28,12 @@ typedef struct arguments {
     fc_log_level log_level;
     char *log_file;
     bool log_mono;
+    // ownership for stdin-provided paths
+    bool files_from_stdin;
+    size_t n_files;
 } arguments_t;
 
 arguments_t parse_arguments(int argc, char** argv);
+void destroy_args(arguments_t *args);
 
 #endif
