@@ -20,34 +20,6 @@
 #include "../fc_sinks.h"
 #include "../fc_writer.h"
 
-static void init_bam_file_stats(fc_file_stats *stats) {
-    if (!stats) return;
-    memset(stats, 0, sizeof(*stats));
-    stats->min_length = SIZE_MAX;
-}
-
-static void merge_bam_file_stats(fc_file_stats *dst, const fc_file_stats *src,
-        double *qsum_total, size_t *n_total) {
-    if (!dst || !src) return;
-    dst->n_seqs += src->n_seqs;
-    dst->n_bases += src->n_bases;
-    if (src->n_seqs > 0) {
-        if (dst->min_length == SIZE_MAX) {
-            dst->min_length = src->min_length;
-        } else {
-            dst->min_length = min(dst->min_length, src->min_length);
-        }
-        dst->max_length = max(dst->max_length, src->max_length);
-    }
-    for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
-        dst->failures[i] += src->failures[i];
-    }
-    if (qsum_total && n_total && src->n_seqs > 0) {
-        *qsum_total += src->mean_quality * (double)src->n_seqs;
-        *n_total += src->n_seqs;
-    }
-}
-
 int main(int argc, char *argv[]) {
     clock_t begin = clock();
     arguments_t args = parse_arguments(argc, argv);
@@ -164,7 +136,7 @@ int main(int argc, char *argv[]) {
     };
     fc_writer_add_sink(writer, fc_flagstats_sink_create(&flag_opts));
 
-    fc_bam_iter_opts iter_opts = {
+    fc_iter_opts iter_opts = {
         .read_group = args.read_group,
         .tag_name = { args.tag_name[0], args.tag_name[1] },
         .tag_value = args.tag_value,
@@ -175,108 +147,71 @@ int main(int argc, char *argv[]) {
         .dust = false,
         .dust_t = 0,
         .dust_w = 0,
-        .max_dust = 0.0f
+        .max_dust = 0.0f,
+        .region = region_mode ? args.region : NULL,
+        .bed = region_mode ? args.bed : NULL
     };
 
-    fc_file_stats file_stats = {0};
-    init_bam_file_stats(&file_stats);
-    double qsum_total = 0.0;
-    size_t n_total = 0;
-    bool saw_stream_error = false;
-    bool saw_unknown_error = false;
-
-    fc_writer_begin_file(writer, args.bam);
-
-    if (!region_mode) {
-        fc_bam_iter iter = {0};
-        if (fc_bam_iter_open(&iter, fp, NULL, hdr, NULL, 0, INT64_MAX, &iter_opts) == 0) {
-            fc_read *fr = NULL;
-            while ((fr = fc_bam_iter_next(&iter, hdr)) != NULL) {
-                fc_writer_add_read(writer, fr, args.bam, hdr);
-                fc_read_destroy(fr);
-            }
-            fc_file_stats iter_stats = {0};
-            fc_bam_iter_finish(&iter, &iter_stats);
-            saw_stream_error |= (iter_stats.failures[F_STREAM_ERROR] > 0);
-            saw_unknown_error |= (iter_stats.failures[F_UNKNOWN_ERROR] > 0);
-            iter_stats.failures[F_FILE_OK] = 0;
-            iter_stats.failures[F_STREAM_ERROR] = 0;
-            iter_stats.failures[F_UNKNOWN_ERROR] = 0;
-            merge_bam_file_stats(&file_stats, &iter_stats, &qsum_total, &n_total);
-            fc_bam_iter_close(&iter);
-        } else {
-            saw_unknown_error = true;
-        }
-
-    } else {
-        // proces given region / BED
-        hts_idx_t *idx = sam_index_load(fp, args.bam);
-        if (idx == 0){
-            FC_LOG_ERROR("Cannot find index file for '%s', which is required for processing by region.", args.bam);
-            exit(EXIT_FAILURE);
-        }
-
-        regiter rit = init_region_iterator(args.bed, args.region, hdr);
-        int check = 0;
-        while ((check = next_region(&rit)) != -1) {
-            if (check == -2 && args.bed == NULL) {
-                // we were given only a region, not a bed, and that region was garbage
-                // => user error, should stop immediately
-                exit(EXIT_FAILURE);
-            }
-            if (check != 0) continue;  // skip other errors
-
-            fc_bam_iter iter = {0};
-            if (fc_bam_iter_open(&iter, fp, idx, hdr, rit.chr, rit.start, rit.end, &iter_opts) == 0) {
-                fc_read *fr = NULL;
-                while ((fr = fc_bam_iter_next(&iter, hdr)) != NULL) {
-                    fc_writer_add_read(writer, fr, args.bam, hdr);
-                    fc_read_destroy(fr);
-                }
-                fc_file_stats iter_stats = {0};
-                fc_bam_iter_finish(&iter, &iter_stats);
-                saw_stream_error |= (iter_stats.failures[F_STREAM_ERROR] > 0);
-                saw_unknown_error |= (iter_stats.failures[F_UNKNOWN_ERROR] > 0);
-                iter_stats.failures[F_FILE_OK] = 0;
-                iter_stats.failures[F_STREAM_ERROR] = 0;
-                iter_stats.failures[F_UNKNOWN_ERROR] = 0;
-                merge_bam_file_stats(&file_stats, &iter_stats, &qsum_total, &n_total);
-                fc_bam_iter_close(&iter);
-            } else {
-                saw_unknown_error = true;
-            }
-        }
-        FC_LOG_INFO("Processed %d regions", rit.n_regions);
-
-        destroy_region_iterator(&rit);
-        hts_idx_destroy(idx);
+    // collect inputs via unified iterator, but enforce single BAM
+    char *paths[2] = { (char *)args.bam, NULL };
+    fc_iter file_iter = {0};
+    if (fc_iter_init(&file_iter, paths, 1, 0, false) != 0 || file_iter.n_files == 0) {
+        FC_LOG_ERROR("No BAM inputs found.");
+        exit(EXIT_FAILURE);
+    }
+    if (file_iter.n_files != 1) {
+        FC_LOG_ERROR("bamstats supports a single BAM input; found %zu inputs.", file_iter.n_files);
+        exit(EXIT_FAILURE);
+    }
+    if (file_iter.files[0].kind != FC_FILE_BAM) {
+        FC_LOG_ERROR("Input '%s' is not a BAM/SAM file.", file_iter.files[0].path);
+        exit(EXIT_FAILURE);
     }
 
-    if (n_total > 0) {
-        file_stats.mean_quality = qsum_total / (double)n_total;
-    } else {
-        file_stats.mean_quality = 0.0;
-    }
-    if (file_stats.min_length == SIZE_MAX) {
-        file_stats.min_length = 0;
-    }
-    file_stats.failures[F_STREAM_ERROR] = saw_stream_error ? 1 : 0;
-    file_stats.failures[F_UNKNOWN_ERROR] = saw_unknown_error ? 1 : 0;
-    file_stats.failures[F_FILE_OK] = (!saw_stream_error && !saw_unknown_error) ? 1 : 0;
+    fc_file_stats global_stats = {0};
+    fc_file_stats_init(&global_stats);
+    int status = EXIT_SUCCESS;
 
-    fc_writer_end_file(writer, args.bam, &file_stats);
+    const fc_file_entry *f = NULL;
+    while (fc_iter_next_file(&file_iter, &f)) {
+        fc_writer_begin_file(writer, f->path);
+
+        if (fc_iter_open_record_cursor(&file_iter, &iter_opts) != 0) {
+            status = EXIT_FAILURE;
+            fc_iter_merge_file_stats(&file_iter, &global_stats);
+            fc_writer_end_file(writer, f->path, fc_iter_stats(&file_iter));
+            continue;
+        }
+
+        fc_read *fr = NULL;
+        while ((fr = fc_iter_next_record(&file_iter, NULL)) != NULL) {
+            fc_writer_add_read(writer, fr, f->path, file_iter.bam_hdr);
+            fc_read_destroy(fr);
+        }
+
+        int fin_rc = fc_iter_finish_file(&file_iter);
+        if (fin_rc != 0) status = EXIT_FAILURE;
+        fc_iter_merge_file_stats(&file_iter, &global_stats);
+        fc_writer_end_file(writer, f->path, fc_iter_stats(&file_iter));
+    }
+
+    fc_iter_close(&file_iter);
+
     fc_writer_finish(writer);
 
     uint64_t total_records =
-        file_stats.failures[R_RECORD_OK]
-        + file_stats.failures[R_TOO_LONG]
-        + file_stats.failures[R_TOO_SHORT]
-        + file_stats.failures[R_LOW_QUALITY]
-        + file_stats.failures[R_DUST_MASKED];
+        global_stats.failures[R_RECORD_OK]
+        + global_stats.failures[R_TOO_LONG]
+        + global_stats.failures[R_TOO_SHORT]
+        + global_stats.failures[R_LOW_QUALITY]
+        + global_stats.failures[R_DUST_MASKED];
     FC_LOG_INFO("Processed %" PRIu64 " records in 1 files.", total_records);
+    if (status != EXIT_SUCCESS) {
+        FC_LOG_WARN("Error processing files.");
+    }
     FC_LOG_INFO("Parsing/filtering summary:");
     for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
-        FC_LOG_INFO("%s\t%" PRIu64, failure_type[i], file_stats.failures[i]);
+        FC_LOG_INFO("%s\t%" PRIu64, failure_type[i], global_stats.failures[i]);
     }
 
     fc_writer_destroy(writer);
@@ -291,5 +226,5 @@ int main(int argc, char *argv[]) {
     clock_t end = clock();
     FC_LOG_INFO("Total CPU time: %fs", (double)(end - begin) / CLOCKS_PER_SEC);
     fc_log_destroy();
-    exit(EXIT_SUCCESS);
+    exit(status);
 }
