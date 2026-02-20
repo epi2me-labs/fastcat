@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - CLI options are all now `--kebab-case` rather than `--snake_case` to match other ONT tooling.
 - Both `fastcat` and `bamstats` now take a single `--output` (default `fastcat-qc`) and refuse to run if the directory already exists.
+- Both tools now assume that input on stdin comprises sequencing data. The previous behaviour of `fastcat` treating stdin as a list of file paths to read can be restored with the `--lofn` flag.
 - Individual summary output options were removed; all outputs are produced always. Per-read details remain optional with the `--per-read` flag.
 - SAM-style FASTQ header comments are generated through a more robust method. The ordering of keys may
   not respect the ordering in the original FASTQ header, but all keys and values will be preserved.

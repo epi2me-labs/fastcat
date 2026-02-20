@@ -80,15 +80,19 @@ static void _run_iter_and_assert(
 ) {
     fc_iter iter = {0};
     char *paths[2] = { (char *)path, NULL };
-    TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, paths, 1, 0, false));
+    fc_path_list input_paths = {.paths = paths, .n_paths = 1};
+    fc_file_kind expected_kind = strstr(path, ".sam") || strstr(path, ".bam")
+        ? FC_FILE_BAM
+        : FC_FILE_FASTQ;
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, &input_paths, 0, false, expected_kind, false));
 
-    const fc_file_entry *f = NULL;
+    const char *f = NULL;
     TEST_ASSERT_TRUE(fc_iter_next_file(&iter, &f));
     TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, opts));
 
     fc_read *r = NULL;
     size_t seen = 0;
-    while ((r = fc_iter_next_record(&iter, NULL)) != NULL) {
+    while ((r = fc_iter_next_record(&iter)) != NULL) {
         ++seen;
         fc_read_destroy(r);
     }
@@ -201,8 +205,8 @@ static void test_iter_bam_all_filtered_sets_minmax_zero(void) {
 static void _test_case_open_failure_sets_unknown_error(const char *path, fc_file_kind kind) {
     fc_iter_opts opts = fq_opts_defaults();
     fc_iter iter = {0};
-    fc_file_entry fe = { (char *)path, kind };
-    iter.current = &fe;
+    iter.expected_kind = kind;
+    iter.current = path;
     int rc = fc_iter_open_record_cursor(&iter, &opts);
     TEST_ASSERT_NOT_EQUAL(0, rc);
     const fc_file_stats *stats = fc_iter_stats(&iter);

@@ -2,6 +2,7 @@
 #define FASTCAT_ARGS_H
 #include <stdbool.h>
 #include "../fc_log.h"
+#include "../fc_iter.h"
 
 
 typedef struct arguments {
@@ -18,19 +19,17 @@ typedef struct arguments {
     size_t reheader;
     size_t write_bam;
     bool demultiplex;
-    char **files;
+    fc_path_list input_paths;
     size_t reads_per_file;
     int threads;
     bool verbose;
     bool force_error;
     bool per_read;
+    bool lofn;
     // logging
     fc_log_level log_level;
     char *log_file;
     bool log_mono;
-    // ownership for stdin-provided paths
-    bool files_from_stdin;
-    size_t n_files;
 } arguments_t;
 
 arguments_t parse_arguments(int argc, char** argv);

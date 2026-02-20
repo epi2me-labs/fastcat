@@ -258,7 +258,7 @@ bamindex: src/version.o src/bamindex/main.o src/bamindex/build_main.o src/bamind
 # fastcat tests
 
 .PHONY:
-test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters test_fastcat_demultiplex_outputs test_fastcat_demultiplex_split test_fastcat_demux_single_equiv test_fastcat_regression_results test_fastcat_perfile_all_filtered
+test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters test_fastcat_demultiplex_outputs test_fastcat_demultiplex_split test_fastcat_demux_single_equiv test_fastcat_regression_results test_fastcat_perfile_all_filtered test_fastcat_stdin_data_equiv test_fastcat_lofn_equiv
 
 .PHONY: test_fastcat_demux_single_equiv
 test_fastcat_demux_single_equiv: fastcat
@@ -374,6 +374,31 @@ test_fastcat_perfile_all_filtered: fastcat
 			if($$h["n_seqs"]!=0||$$h["n_bases"]!=0||$$h["min_length"]!=0||$$h["max_length"]!=0||$$h["mean_quality"]!=0||$$h["f_file_ok"]!=1||$$h["f_unknown_error"]!=0||$$h["r_record_ok"]!=2||$$h["r_too_short"]!=2){ \
 				print "unexpected per_file.tsv: "$$0; exit 1}}' out/per_file.tsv)
 
+.PHONY: test_fastcat_stdin_data_equiv
+test_fastcat_stdin_data_equiv: fastcat
+	@$(call TEST_DESC,Fastcat stdin data matches file input)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/stdin_data_equiv, \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/bc1.fastq.gz --output out_file > out_file.fastq && \
+		cat $(TEST_ROOT)/data/bc1.fastq.gz | $(RUN_FASTCAT) --output out_stdin > out_stdin.fastq && \
+		$(call COMPARE_FASTQ,out_file.fastq,out_stdin.fastq,fc_stdin_concat) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/runids.tsv,out_stdin/runids.tsv,fc_stdin_runids) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/basecallers.tsv,out_stdin/basecallers.tsv,fc_stdin_basecallers) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/per_file.tsv,out_stdin/per_file.tsv,fc_stdin_perfile) && \
+		diff -r out_file/histograms out_stdin/histograms)
+
+.PHONY: test_fastcat_lofn_equiv
+test_fastcat_lofn_equiv: fastcat
+	@$(call TEST_DESC,Fastcat --lofn matches explicit file arguments)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/lofn_equiv, \
+		printf "%s\n%s\n" $(TEST_ROOT)/data/bc1.fastq.gz $(TEST_ROOT)/data/bc2.fastq.gz > paths.txt && \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/bc1.fastq.gz $(TEST_ROOT)/data/bc2.fastq.gz --output out_file > out_file.fastq && \
+		cat paths.txt | $(RUN_FASTCAT) --lofn --output out_lofn > out_lofn.fastq && \
+		$(call COMPARE_FASTQ,out_file.fastq,out_lofn.fastq,fc_lofn_concat) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/runids.tsv,out_lofn/runids.tsv,fc_lofn_runids) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/basecallers.tsv,out_lofn/basecallers.tsv,fc_lofn_basecallers) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/per_file.tsv,out_lofn/per_file.tsv,fc_lofn_perfile) && \
+		diff -r out_file/histograms out_lofn/histograms)
+
 ###
 # bamstats tests
 
@@ -381,6 +406,8 @@ test_fastcat_perfile_all_filtered: fastcat
 test_bamstats: test_bamstats_NM test_bamstats_polya test_bamstats_filters test_bamstats_vs_fastcat_unaligned test_bamstats_vs_fastcat_unaligned_demux test_bamstats_demux_single_equiv test_bamstats_perfile_all_filtered mem_check_bamstats
 .PHONY: test_bamstats_coverage_demux_layout
 test_bamstats: test_bamstats_coverage_demux_layout
+.PHONY: test_bamstats_stdin_equiv test_bamstats_stdin_bed_equiv
+test_bamstats: test_bamstats_stdin_equiv test_bamstats_stdin_bed_equiv
 
 .PHONY: test_bamstats_demux_single_equiv
 test_bamstats_demux_single_equiv: fastcat bamstats
@@ -408,6 +435,35 @@ test_bamstats_coverage_demux_layout: bamstats samtools
 		test -f out/barcode0001/coverage/global.bed.gz && \
 		test -f out/barcode0002/coverage/global.bed.gz && \
 		test ! -d out/unclassified/coverage)
+
+.PHONY: test_bamstats_stdin_equiv
+test_bamstats_stdin_equiv: bamstats samtools
+	@$(call TEST_DESC,Bamstats stdin BAM matches file input)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/stdin_equiv, \
+		cp $(TEST_ROOT)/bamstats/coverage_demux.sam cov.sam && \
+		$(REPO_ROOT)/samtools view -bS cov.sam | $(REPO_ROOT)/samtools sort -o cov.bam && \
+		$(REPO_ROOT)/samtools index cov.bam && \
+		$(RUN_BAMSTATS) cov.bam --output out_file > /dev/null && \
+		cat cov.bam | $(RUN_BAMSTATS) - --output out_stdin > /dev/null && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/runids.tsv,out_stdin/runids.tsv,bs_stdin_runids) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/basecallers.tsv,out_stdin/basecallers.tsv,bs_stdin_basecallers) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/per_file.tsv,out_stdin/per_file.tsv,bs_stdin_perfile) && \
+		diff -r out_file/histograms out_stdin/histograms)
+
+.PHONY: test_bamstats_stdin_bed_equiv
+test_bamstats_stdin_bed_equiv: bamstats samtools
+	@$(call TEST_DESC,Bamstats stdin with BED filter matches file input)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/stdin_bed_equiv, \
+		cp $(TEST_ROOT)/bamstats/coverage_demux.sam cov.sam && \
+		printf "chr1\t0\t75\n" > regions.bed && \
+		$(REPO_ROOT)/samtools view -bS cov.sam | $(REPO_ROOT)/samtools sort -o cov.bam && \
+		$(REPO_ROOT)/samtools index cov.bam && \
+		$(RUN_BAMSTATS) cov.bam --bed regions.bed --output out_file > /dev/null && \
+		cat cov.bam | $(RUN_BAMSTATS) - --bed regions.bed --output out_stdin > /dev/null && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/runids.tsv,out_stdin/runids.tsv,bs_stdin_bed_runids) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/basecallers.tsv,out_stdin/basecallers.tsv,bs_stdin_bed_basecallers) && \
+		$(call COMPARE_TABLES_SKIP_FIRST,out_file/per_file.tsv,out_stdin/per_file.tsv,bs_stdin_bed_perfile) && \
+		diff -r out_file/histograms out_stdin/histograms)
 
 .PHONY: test_bamstats_NM
 test_bamstats_NM: bamstats

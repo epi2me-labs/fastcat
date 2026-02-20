@@ -36,6 +36,7 @@ fastcat -- concatenate and summarise .fastq(.gz) files.
   -t, --threads=THREADS      Number of threads for output compression (only with --bam_out).
   -x, --recurse              Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files.
   -e, --force_error          Exit non-zero if any files or records contain errors.
+      --lofn                 Read list of input filenames from stdin (one path per line).
 
  Output options:
   -o, --output=DIR           Output root (default: fastcat-qc). Must not already exist.
@@ -70,10 +71,12 @@ fastcat -- concatenate and summarise .fastq(.gz) files.
       --usage                Give a short usage message
   -V, --version              Print program version
 
-Input files may be given on stdin by specifing the input as '-'. Also accepts
-directories as input and looks for .fastq(.gz) files in the top-level
-directory. Recurses into sub-directories when the -x option is given. The
-command will exit non-zero if any file encountered cannot be read.
+FASTQ data is read from stdin by default when no input paths are provided (or
+when '-' is given). Use `--lofn` to interpret stdin as a list of input paths
+instead (one path per line). Also accepts directories as input and looks for
+.fastq(.gz) files in the top-level directory. Recurses into sub-directories
+when the -x option is given. The command will exit non-zero if any file
+encountered cannot be read.
 ```
 
 Outputs:
