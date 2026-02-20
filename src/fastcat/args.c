@@ -5,12 +5,12 @@
 #include "args.h"
 #include "../version.h"
 #include "../fc_log.h"
-#include "../fc_input_list.h"
 
 const char *argp_program_bug_address = "support@nanoporetech.com";
 static char doc[] = 
 "fastcat -- concatenate and summarise .fastq(.gz) files.\
-\vInput files may be given on stdin by specifing the input as '-'. \
+\vReads FASTQ data from stdin by default when no inputs are provided (or when '-' is used). \
+Use --lofn to read a list of input file paths from stdin instead. \
 Also accepts directories as input and looks for .fastq(.gz) files in \
 the top-level directory. Recurses into sub-directories when the \
 -x option is given. The command \
@@ -25,6 +25,8 @@ static struct argp_option options[] = {
         "Number of threads for output compression (only with --bam_out.", 0},
     {"force_error", 'e', 0, 0,
         "Exit with non-zero status if any files, or records, contained errors.", 0},
+    {"lofn", 0x903, 0, 0,
+        "Read list of input filenames from stdin (one path per line).", 0},
 
     {0, 0, 0, 0,
         "Output options:", 0},
@@ -158,10 +160,12 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             arguments->force_error = 1;
             break; 
         case ARGP_KEY_NO_ARGS:
-            argp_usage (state);
+            break;
+        case 0x903:
+            arguments->lofn = true;
             break;
         case ARGP_KEY_ARG:
-            arguments->files = &state->argv[state->next - 1];
+            arguments->input_paths.paths = &state->argv[state->next - 1];
             state->next = state->argc;
             break;
         default:
@@ -192,31 +196,34 @@ arguments_t parse_arguments(int argc, char** argv) {
     args.threads = 1;
     args.reads_per_file = 0;
     args.force_error = 0;
+    args.input_paths.paths = NULL;
+    args.input_paths.n_paths = 0;
     args.log_level = FC_LOG_INFO;
     args.log_file = NULL;
     args.log_mono = false;
     args.verbose = false;
-    args.files_from_stdin = false;
-    args.n_files = 0;
+    args.lofn = false;
     argp_parse(&argp, argc, argv, 0, 0, &args);
 
-    // If files are provided via stdin ("-"), read them now.
-    if (args.files && args.files[0] && strcmp(args.files[0], "-") == 0) {
-        size_t n = 0;
-        char **paths = fc_read_paths_from_stdin(&n);
-        args.files_from_stdin = true;
-        args.n_files = n;
-        args.files = paths;
-    } else if (args.files) {
-        while (args.files[args.n_files]) args.n_files++;
+    if (args.lofn) {
+        if (args.input_paths.paths) {
+            FC_LOG_ERROR("--lofn does not accept positional inputs.");
+            exit(EXIT_FAILURE);
+        }
+        args.input_paths.n_paths = 0;
+    } else if (args.input_paths.paths) {
+        while (args.input_paths.paths[args.input_paths.n_paths]) {
+            args.input_paths.n_paths++;
+        }
+    } else {
+        static char *stdin_data[] = {"-", NULL};
+        args.input_paths.paths = stdin_data;
+        args.input_paths.n_paths = 1;
     }
     return args;
 }
 
 void destroy_args(arguments_t *args) {
     if (!args) return;
-    if (args->files_from_stdin && args->files) {
-        fc_free_path_list(args->files, args->n_files);
-        args->files = NULL;
-    }
+    (void)args;
 }

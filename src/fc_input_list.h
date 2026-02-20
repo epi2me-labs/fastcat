@@ -3,11 +3,12 @@
 
 #include <stddef.h>
 
-// Read newline-delimited paths from stdin. Returns a heap array of strings and
-// sets out_n to the count. Caller must free with fc_free_path_list.
-char **fc_read_paths_from_stdin(size_t *out_n);
+#include "fc_iter.h"
 
-// Free a path list allocated by fc_read_paths_from_stdin.
-void fc_free_path_list(char **paths, size_t n);
+// Read newline-delimited file paths from stdin in --lofn mode.
+// Validates each path as an existing file of expected_kind (no directories,
+// no "-" entries). Returns 0 on success and fills out_paths.
+// Caller must free out_paths with fc_path_list_free.
+int fc_read_paths_from_stdin(fc_file_kind expected_kind, fc_path_list *out_paths);
 
 #endif

@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <sys/resource.h>
 #include <time.h>
+#include <unistd.h>
 #include "htslib/faidx.h"
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
@@ -50,18 +51,52 @@ int main(int argc, char *argv[]) {
     }
 
 
-    htsFile *fp = hts_open(args.bam, "rb");
-    sam_hdr_t *hdr = sam_hdr_read(fp);
-    if (hdr == 0 || fp == 0) {
-        FC_LOG_ERROR("Failed to read .bam file '%s'.", args.bam);
-        exit(EXIT_FAILURE);
-    }
-
     htsThreadPool p = {NULL, 0};
     if (args.threads > 1) {
         FC_LOG_INFO("Using %d threads", args.threads);
         p.pool = hts_tpool_init(args.threads);
-        hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
+    }
+
+    bool region_mode = (args.region != NULL) || (args.bed != NULL);
+
+    fc_iter_opts iter_opts = {
+        .read_group = args.read_group,
+        .tag_name = { args.tag_name[0], args.tag_name[1] },
+        .tag_value = args.tag_value,
+        .force_recalc_qual = args.force_recalc_qual,
+        .min_length = 0,
+        .max_length = (size_t)-1,
+        .min_qscore = 0.0f,
+        .dust = false,
+        .dust_t = 0,
+        .dust_w = 0,
+        .max_dust = 0.0f,
+        .region = region_mode ? args.region : NULL,
+        .bed = region_mode ? args.bed : NULL,
+        .thread_pool = p.pool ? &p : NULL
+    };
+
+    // single BAM input (or stdin)
+    fc_iter file_iter = {0};
+    char *bam_path_storage[] = {(char *)args.bam};
+    fc_path_list input_paths = {
+        .paths = bam_path_storage,
+        .n_paths = 1
+    };
+    if (fc_iter_init(&file_iter, &input_paths, 0, false, FC_FILE_BAM, false) != 0 || file_iter.n_files == 0) {
+        FC_LOG_ERROR("No BAM inputs found.");
+        exit(EXIT_FAILURE);
+    }
+
+    // open the file so we can read the header and pass it to sinks that need it
+    const char *path = NULL;
+    if (!fc_iter_next_file(&file_iter, &path)) {
+        FC_LOG_ERROR("No BAM inputs found.");
+        exit(EXIT_FAILURE);
+    }
+    if (fc_iter_open_record_cursor(&file_iter, &iter_opts) != 0) {
+        FC_LOG_ERROR("Failed to open BAM '%s'.", path);
+        exit(EXIT_FAILURE);
     }
 
     fc_stats_engine_config stats_cfg = {
@@ -74,7 +109,6 @@ int main(int argc, char *argv[]) {
     fc_writer *writer = fc_writer_create(args.demultiplex, &stats_cfg);
     if (writer == NULL) exit(EXIT_FAILURE);
 
-    bool region_mode = (args.region != NULL) || (args.bed != NULL);
     if (args.per_read) {
         fc_perread_sink_opts perread_opts = {
             .output_root = args.output_dir,
@@ -85,7 +119,6 @@ int main(int argc, char *argv[]) {
         };
         fc_writer_add_sink(writer, fc_perread_sink_create(&perread_opts));
     }
-    // per-file summary (single entry for bamstats)
     fc_writer_add_sink(writer, fc_perfile_sink_create(args.output_dir, args.sample));
     fc_hist_sink_opts hist_opts = {
         .output_root = args.output_dir,
@@ -112,7 +145,7 @@ int main(int argc, char *argv[]) {
             .exclude_flags = -1,
             .include_flags = -1,
             .by_strand = true,
-            .hdr = hdr,
+            .hdr = file_iter.bmi.hdr,
             .pool = &p,
             .bed_files = args.coverage_beds,
             .bed_names = args.coverage_names,
@@ -130,72 +163,25 @@ int main(int argc, char *argv[]) {
         .region_mode = region_mode,
         .output_root = args.output_dir,
         .sample = args.sample,
-        .hdr = hdr,
+        .hdr = file_iter.bmi.hdr,
         .use_barcodes = args.demultiplex,
         .barcode_count = writer->barcode_count
     };
     fc_writer_add_sink(writer, fc_flagstats_sink_create(&flag_opts));
 
-    fc_iter_opts iter_opts = {
-        .read_group = args.read_group,
-        .tag_name = { args.tag_name[0], args.tag_name[1] },
-        .tag_value = args.tag_value,
-        .force_recalc_qual = args.force_recalc_qual,
-        .min_length = 0,
-        .max_length = (size_t)-1,
-        .min_qscore = 0.0f,
-        .dust = false,
-        .dust_t = 0,
-        .dust_w = 0,
-        .max_dust = 0.0f,
-        .region = region_mode ? args.region : NULL,
-        .bed = region_mode ? args.bed : NULL
-    };
-
-    // collect inputs via unified iterator, but enforce single BAM
-    char *paths[2] = { (char *)args.bam, NULL };
-    fc_iter file_iter = {0};
-    if (fc_iter_init(&file_iter, paths, 1, 0, false) != 0 || file_iter.n_files == 0) {
-        FC_LOG_ERROR("No BAM inputs found.");
-        exit(EXIT_FAILURE);
-    }
-    if (file_iter.n_files != 1) {
-        FC_LOG_ERROR("bamstats supports a single BAM input; found %zu inputs.", file_iter.n_files);
-        exit(EXIT_FAILURE);
-    }
-    if (file_iter.files[0].kind != FC_FILE_BAM) {
-        FC_LOG_ERROR("Input '%s' is not a BAM/SAM file.", file_iter.files[0].path);
-        exit(EXIT_FAILURE);
-    }
-
     fc_file_stats global_stats = {0};
     fc_file_stats_init(&global_stats);
     int status = EXIT_SUCCESS;
 
-    const fc_file_entry *f = NULL;
-    while (fc_iter_next_file(&file_iter, &f)) {
-        fc_writer_begin_file(writer, f->path);
-
-        if (fc_iter_open_record_cursor(&file_iter, &iter_opts) != 0) {
-            status = EXIT_FAILURE;
-            fc_iter_merge_file_stats(&file_iter, &global_stats);
-            fc_writer_end_file(writer, f->path, fc_iter_stats(&file_iter));
-            continue;
-        }
-
-        fc_read *fr = NULL;
-        while ((fr = fc_iter_next_record(&file_iter, NULL)) != NULL) {
-            fc_writer_add_read(writer, fr, f->path, file_iter.bam_hdr);
+    fc_writer_begin_file(writer, path);
+    fc_read *fr = NULL;
+        while ((fr = fc_iter_next_record(&file_iter)) != NULL) {
+            fc_writer_add_read(writer, fr, path, file_iter.bmi.hdr);
             fc_read_destroy(fr);
         }
-
-        int fin_rc = fc_iter_finish_file(&file_iter);
-        if (fin_rc != 0) status = EXIT_FAILURE;
-        fc_iter_merge_file_stats(&file_iter, &global_stats);
-        fc_writer_end_file(writer, f->path, fc_iter_stats(&file_iter));
-    }
-
-    fc_iter_close(&file_iter);
+    if (fc_iter_finish_file(&file_iter) != 0) status = EXIT_FAILURE;
+    fc_iter_merge_file_stats(&file_iter, &global_stats);
+    fc_writer_end_file(writer, path, fc_iter_stats(&file_iter));
 
     fc_writer_finish(writer);
 
@@ -214,9 +200,8 @@ int main(int argc, char *argv[]) {
         FC_LOG_INFO("%s\t%" PRIu64, failure_type[i], global_stats.failures[i]);
     }
 
-    fc_writer_destroy(writer);
-    sam_hdr_destroy(hdr);
-    hts_close(fp);
+    if (writer) fc_writer_destroy(writer);
+    fc_iter_close(&file_iter);
     if (p.pool) { // must be after fp
         hts_tpool_destroy(p.pool);
     }

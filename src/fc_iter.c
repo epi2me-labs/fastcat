@@ -13,16 +13,20 @@ KSEQ_INIT2(, gzFile, gzread)
 #include <string.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <unistd.h>
 
 #include "fc_log.h"
 #include "fc_bam_utils.h"
 #include "fc_filter.h"
+#include "fc_input_list.h"
+
 
 void fc_file_stats_init(fc_file_stats *stats) {
     if (!stats) return;
     memset(stats, 0, sizeof(*stats));
     stats->min_length = SIZE_MAX;
 }
+
 
 static void finalize_file_stats(fc_file_stats *stats, double q_sum) {
     if (!stats) return;
@@ -38,6 +42,7 @@ static void finalize_file_stats(fc_file_stats *stats, double q_sum) {
     }
 }
 
+
 static inline void fc_iter_accum_add(size_t len, float mean_q,
         fc_file_stats *stats, double *q_sum, double *q_comp) {
     stats->n_seqs += 1;
@@ -46,6 +51,7 @@ static inline void fc_iter_accum_add(size_t len, float mean_q,
     stats->max_length = (stats->max_length > len) ? stats->max_length : len;
     kahan_sum(q_sum, mean_q, q_comp);
 }
+
 
 static inline bool fc_iter_filter_length(size_t len, size_t min_len, size_t max_len, fc_file_stats *stats) {
     if (max_len != (size_t)-1 && len > max_len) {
@@ -59,6 +65,7 @@ static inline bool fc_iter_filter_length(size_t len, size_t min_len, size_t max_
     return true;
 }
 
+
 static inline bool fc_iter_filter_quality(float mean_q, float min_qscore, fc_file_stats *stats) {
     if (min_qscore <= 0.0f) return true;
     if (mean_q < min_qscore) {
@@ -67,6 +74,7 @@ static inline bool fc_iter_filter_quality(float mean_q, float min_qscore, fc_fil
     }
     return true;
 }
+
 
 static float bam_iter_mean_quality(const bam1_t *b, bool force_recalc_qual) {
     if (!force_recalc_qual) {
@@ -82,7 +90,32 @@ static float bam_iter_mean_quality(const bam1_t *b, bool force_recalc_qual) {
     return mean_qual_from_bam_naive(bam_get_qual(b), b->core.l_qseq);
 }
 
+static void fastq_iter_close_resources(fc_fastq_iter *iter) {
+    if (!iter) return;
+    if (iter->seq) {
+        kseq_destroy(iter->seq);
+        iter->seq = NULL;
+    }
+    if (iter->fp) {
+        gzclose(iter->fp);
+        iter->fp = NULL;
+    }
+}
+
+static bool iter_opts_enable_filters(const fc_iter_opts *opts) {
+    if (!opts) return false;
+    return (
+        opts->min_length > 0 ||
+        opts->max_length != (size_t)-1 ||
+        opts->min_qscore > 0.0f ||
+        opts->dust ||
+        opts->tag_name[0] != '\0' ||
+        opts->read_group != NULL
+    );
+}
+
 static int fc_bam_iter_set_region(fc_bam_iter *iter, const char *chr, hts_pos_t start, hts_pos_t end);
+
 
 int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_iter_opts *opts) {
     if (!iter || !fname || fname[0] == '\0') return EINVAL;
@@ -100,19 +133,32 @@ int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_iter_opt
         if (iter->opts.max_length == 0) iter->opts.max_length = (size_t)-1;
     }
 
-    struct stat finfo;
-    if (stat(fname, &finfo) == -1) {
-        FC_LOG_ERROR("could not process file %s: %s", fname, strerror(errno));
-        iter->stats.failures[F_UNKNOWN_ERROR] = 1;
-        return errno;
-    }
+    if (strcmp(fname, "-") == 0) {
+        int fd = dup(fileno(stdin));
+        if (fd < 0) {
+            FC_LOG_ERROR("could not duplicate stdin: %s", strerror(errno));
+            iter->stats.failures[F_UNKNOWN_ERROR] = 1;
+            return errno;
+        }
+        iter->fp = gzdopen(fd, "r");
+        if (!iter->fp) {
+            close(fd);
+        }
+    } else {
+        struct stat finfo;
+        if (stat(fname, &finfo) == -1) {
+            FC_LOG_ERROR("could not process file %s: %s", fname, strerror(errno));
+            iter->stats.failures[F_UNKNOWN_ERROR] = 1;
+            return errno;
+        }
 
-    if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
-        iter->stats.failures[F_UNKNOWN_ERROR] = 1;
-        return EISDIR;
-    }
+        if ((finfo.st_mode & S_IFMT) == S_IFDIR) {
+            iter->stats.failures[F_UNKNOWN_ERROR] = 1;
+            return EISDIR;
+        }
 
-    iter->fp = gzopen(fname, "r");
+        iter->fp = gzopen(fname, "r");
+    }
     if (iter->fp == NULL) {
         FC_LOG_ERROR("could not open file %s: %s", fname, strerror(errno));
         iter->stats.failures[F_UNKNOWN_ERROR] = 1;
@@ -122,6 +168,7 @@ int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_iter_opt
     iter->seq = kseq_init(iter->fp);
     return 0;
 }
+
 
 fc_read *fc_fastq_iter_next(fc_fastq_iter *iter) {
     if (!iter || !iter->seq) return NULL;
@@ -193,6 +240,7 @@ fc_read *fc_fastq_iter_next(fc_fastq_iter *iter) {
     return NULL;
 }
 
+
 int fc_fastq_iter_finish(fc_fastq_iter *iter, fc_file_stats *out_stats) {
     if (!iter) return EINVAL;
 
@@ -214,17 +262,11 @@ int fc_fastq_iter_finish(fc_fastq_iter *iter, fc_file_stats *out_stats) {
         *out_stats = iter->stats;
     }
 
-    if (iter->seq) {
-        kseq_destroy(iter->seq);
-        iter->seq = NULL;
-    }
-    if (iter->fp) {
-        gzclose(iter->fp);
-        iter->fp = NULL;
-    }
+    fastq_iter_close_resources(iter);
 
     return (iter->status == -1 || iter->status == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
+
 
 int fc_bam_iter_open(
     fc_bam_iter *iter,
@@ -252,25 +294,21 @@ int fc_bam_iter_open(
         if (iter->opts.max_length == 0) iter->opts.max_length = (size_t)-1;
     }
 
-    iter->apply_filters =
-        iter->has_opts &&
-        (iter->opts.min_length > 0 ||
-         iter->opts.max_length != (size_t)-1 ||
-         iter->opts.min_qscore > 0.0f ||
-         iter->opts.dust ||
-         iter->opts.tag_name[0] != '\0' ||
-         iter->opts.read_group != NULL);
-
     const char *bed_path = opts ? opts->bed : NULL;
     const char *region_string = opts ? opts->region : NULL;
     iter->use_regions = (bed_path != NULL) || (region_string != NULL);
+    iter->apply_filters = iter_opts_enable_filters(opts);
+    if (iter->use_regions && iter->idx == NULL) {
+        // When streaming regions without an index we must apply overlap filtering in fc_bam_iter_next().
+        iter->apply_filters = true;
+    }
 
     if (iter->use_regions) {
-        if (iter->idx == NULL && fp->fn != NULL) {
+        if (iter->idx == NULL && fp->fn != NULL && strcmp(fp->fn, "-") != 0) {
             iter->idx = sam_index_load(fp, fp->fn);
             iter->own_idx = (iter->idx != NULL);
         }
-        if (iter->idx == NULL) {
+        if (iter->idx == NULL && fp->fn != NULL && strcmp(fp->fn, "-") != 0) {
             FC_LOG_ERROR("Cannot find index for BAM when regions are requested.");
             return -1;
         }
@@ -298,10 +336,14 @@ int fc_bam_iter_open(
             if (check == -1) break;
         }
         iter->reg_active = (check == 0);
-        if (iter->reg_active) {
+        if (iter->reg_active && iter->idx != NULL) {
             if (fc_bam_iter_set_region(iter, iter->reg.chr, iter->reg.start, iter->reg.end) != 0) {
                 iter->reg_active = false;
             }
+        }
+        if (iter->idx == NULL) {
+            iter->bam = fc_bam_iter_data_create(fp, idx, hdr, NULL, 0, INT64_MAX);
+            if (iter->bam == NULL) return -1;
         }
         return 0;
     }
@@ -319,6 +361,7 @@ int fc_bam_iter_open(
     return 0;
 }
 
+
 static int fc_bam_iter_set_region(fc_bam_iter *iter, const char *chr, hts_pos_t start, hts_pos_t end) {
     if (iter->bam) {
         fc_bam_iter_data_destroy(iter->bam);
@@ -329,7 +372,7 @@ static int fc_bam_iter_set_region(fc_bam_iter *iter, const char *chr, hts_pos_t 
 }
 
 
-fc_read *fc_bam_iter_next(fc_bam_iter *iter, const sam_hdr_t *hdr) {
+fc_read *fc_bam_iter_next(fc_bam_iter *iter) {
     if (!iter || !iter->b) return NULL;
 
     for (;;) {
@@ -385,6 +428,30 @@ fc_read *fc_bam_iter_next(fc_bam_iter *iter, const sam_hdr_t *hdr) {
         float mean_q = 0.0f;
         bool mean_q_set = false;
 
+        if (iter->use_regions && iter->idx == NULL) {
+            int tid = iter->b->core.tid;
+            hts_pos_t pos = iter->b->core.pos;
+            hts_pos_t rend = bam_endpos(iter->b);
+            while (iter->reg_active &&
+                   (tid > iter->reg.tid || (tid == iter->reg.tid && pos >= iter->reg.end))) {
+                int check = next_region(&iter->reg);
+                if (check != 0) {
+                    iter->reg_active = false;
+                    break;
+                }
+            }
+            if (!iter->reg_active) {
+                iter->stats.failures[R_RECORD_OK]--;
+                iter->status = -1;
+                return NULL;
+            }
+            bool overlap = (tid == iter->reg.tid) && (pos < iter->reg.end) && (rend > iter->reg.start);
+            if (!overlap) {
+                iter->stats.failures[R_RECORD_OK]--;
+                continue;
+            }
+        }
+
         if (iter->apply_filters) {
             if (!fc_iter_filter_length(len, iter->opts.min_length, iter->opts.max_length, &iter->stats)) {
                 continue;
@@ -425,7 +492,7 @@ fc_read *fc_bam_iter_next(fc_bam_iter *iter, const sam_hdr_t *hdr) {
 
         fc_iter_accum_add(len, mean_q, &iter->stats, &iter->q_sum, &iter->q_comp);
 
-        return fc_read_from_bam(iter->b, hdr, iter->has_opts ? iter->opts.force_recalc_qual : false);
+        return fc_read_from_bam(iter->b, iter->hdr, iter->has_opts ? iter->opts.force_recalc_qual : false);
     }
 
     return NULL;
@@ -457,6 +524,14 @@ void fc_bam_iter_close(fc_bam_iter *iter) {
         fc_bam_iter_data_destroy(iter->bam);
         iter->bam = NULL;
     }
+    if (iter->hdr) {
+        sam_hdr_destroy(iter->hdr);
+        iter->hdr = NULL;
+    }
+    if (iter->fp) {
+        hts_close(iter->fp);
+        iter->fp = NULL;
+    }
     if (iter->b) {
         bam_destroy1(iter->b);
         iter->b = NULL;
@@ -470,7 +545,41 @@ void fc_bam_iter_close(fc_bam_iter *iter) {
     }
 }
 
-// ---- Unified file iterator (FASTQ + BAM) ----
+static int fc_bam_iter_open_path(fc_bam_iter *bmi, const char *path, const fc_iter_opts *opts) {
+    if (!bmi || !path || path[0] == '\0') return EINVAL;
+    fc_file_stats_init(&bmi->stats);
+
+    htsFile *bam_fp = hts_open(path, "rb");
+    if (!bam_fp && strcmp(path, "-") == 0) {
+        bam_fp = hts_open(path, "r");
+    }
+    if (!bam_fp) {
+        bmi->stats.failures[F_UNKNOWN_ERROR] = 1;
+        return errno ? errno : EIO;
+    }
+
+    // attach caller-provided thread pool, if any
+    if (opts && opts->thread_pool) {
+        hts_set_opt(bam_fp, HTS_OPT_THREAD_POOL, opts->thread_pool);
+    }
+
+    sam_hdr_t *bam_hdr = sam_hdr_read(bam_fp);
+    if (!bam_hdr) {
+        hts_close(bam_fp);
+        bmi->stats.failures[F_UNKNOWN_ERROR] = 1;
+        return EINVAL;
+    }
+
+    int rc = fc_bam_iter_open(bmi, bam_fp, NULL, bam_hdr, opts);
+    if (rc != 0) {
+        sam_hdr_destroy(bam_hdr);
+        hts_close(bam_fp);
+        bmi->stats.failures[F_UNKNOWN_ERROR] = 1;
+        return rc;
+    }
+    return 0;
+}
+
 
 static bool has_suffix(const char *path, const char *suffix) {
     size_t lp = strlen(path);
@@ -479,65 +588,54 @@ static bool has_suffix(const char *path, const char *suffix) {
     return strcmp(path + (lp - ls), suffix) == 0;
 }
 
-static bool is_fastq_ext(const char *path) {
-    return has_suffix(path, ".fastq") ||
-           has_suffix(path, ".fastq.gz") ||
-           has_suffix(path, ".fq") ||
-           has_suffix(path, ".fq.gz");
-}
 
-static bool is_bam_ext(const char *path) {
+bool fc_path_matches_kind(const char *path, fc_file_kind expected_kind) {
+    if (!path) return false;
+    if (expected_kind == FC_FILE_FASTQ) {
+        return has_suffix(path, ".fastq") ||
+               has_suffix(path, ".fastq.gz") ||
+               has_suffix(path, ".fq") ||
+               has_suffix(path, ".fq.gz");
+    }
     return has_suffix(path, ".bam") || has_suffix(path, ".sam");
 }
 
-static bool classify_kind(const char *path, fc_file_kind *out_kind) {
-    if (is_bam_ext(path)) {
-        if (out_kind) *out_kind = FC_FILE_BAM;
-        return true;
-    }
-    if (is_fastq_ext(path)) {
-        if (out_kind) *out_kind = FC_FILE_FASTQ;
-        return true;
-    }
-    return false;
-}
 
-static int append_file(fc_iter *it, const char *path, fc_file_kind kind) {
+static int append_file(fc_iter *it, const char *path) {
     size_t new_count = it->n_files + 1;
-    fc_file_entry *tmp = realloc(it->files, new_count * sizeof(*tmp));
+    char **tmp = realloc(it->files, new_count * sizeof(*tmp));
     if (!tmp) return -1;
     it->files = tmp;
-    it->files[it->n_files].path = strdup(path);
-    if (!it->files[it->n_files].path) return -1;
-    it->files[it->n_files].kind = kind;
+    it->files[it->n_files] = strdup(path);
+    if (!it->files[it->n_files]) return -1;
     it->n_files = new_count;
     return 0;
 }
+
 
 typedef struct {
     char *path;
     int depth;
 } pending_path;
 
-int fc_iter_collect_paths(
-    char **paths,
-    size_t n_paths,
+static int collect_files_from_roots(
+    const fc_path_list *input_paths,
     int recurse,
-    bool verbose,
-    fc_file_entry **out_files,
-    size_t *out_n_files) {
-    if (!paths || n_paths == 0 || !out_files || !out_n_files) return EINVAL;
-    (void)verbose; // logging occurs when iterating, not during collection
-
+    fc_file_kind expected_kind,
+    fc_path_list *out_paths) {
     int status = 0;
-    fc_file_entry *files = NULL;
+    char **files = NULL;
     size_t n_files = 0;
 
     pending_path *queue = NULL;
     size_t qlen = 0, qcap = 0, qhead = 0;
 
+    if (!input_paths || !input_paths->paths || input_paths->n_paths == 0) {
+        return EINVAL;
+    }
+
     // seed queue
-    for (size_t i = 0; i < n_paths; ++i) {
+    for (size_t i = 0; i < input_paths->n_paths; ++i) {
         if (qlen == qcap) {
             size_t newcap = qcap ? qcap * 2 : 8;
             pending_path *tmp = realloc(queue, newcap * sizeof(*tmp));
@@ -545,7 +643,7 @@ int fc_iter_collect_paths(
             queue = tmp;
             qcap = newcap;
         }
-        queue[qlen].path = strdup(paths[i]);
+        queue[qlen].path = strdup(input_paths->paths[i]);
         queue[qlen].depth = recurse;
         if (!queue[qlen].path) { status = ENOMEM; goto done; }
         qlen++;
@@ -553,6 +651,18 @@ int fc_iter_collect_paths(
 
     while (qhead < qlen) {
         pending_path cur = queue[qhead++];
+        if (strcmp(cur.path, "-") == 0) {
+            fc_iter tmp = {.files = files, .n_files = n_files};
+            if (append_file(&tmp, cur.path) != 0) {
+                status = (status == 0) ? ENOMEM : status;
+                free(cur.path);
+                break;
+            }
+            files = tmp.files;
+            n_files = tmp.n_files;
+            free(cur.path);
+            continue;
+        }
         struct stat st = {0};
         if (stat(cur.path, &st) != 0) {
             FC_LOG_ERROR("could not stat '%s': %s", cur.path, strerror(errno));
@@ -595,19 +705,27 @@ int fc_iter_collect_paths(
             continue;
         }
 
-        fc_file_kind kind;
-        if (!classify_kind(cur.path, &kind)) {
-            free(cur.path);
-            continue; // skip unrecognised file
-        }
-        fc_iter tmp = {.files = files, .n_files = n_files};
-        if (append_file(&tmp, cur.path, kind) != 0) {
-            status = (status == 0) ? ENOMEM : status;
+        bool matches_expected = fc_path_matches_kind(cur.path, expected_kind);
+        bool matches_other = fc_path_matches_kind(
+            cur.path, expected_kind == FC_FILE_BAM ? FC_FILE_FASTQ : FC_FILE_BAM);
+
+        if (matches_expected) {
+            fc_iter tmp = {.files = files, .n_files = n_files};
+            if (append_file(&tmp, cur.path) != 0) {
+                status = (status == 0) ? ENOMEM : status;
+                free(cur.path);
+                break;
+            }
+            files = tmp.files;
+            n_files = tmp.n_files;
             free(cur.path);
             continue;
         }
-        files = tmp.files;
-        n_files = tmp.n_files;
+        if (matches_other) {
+            FC_LOG_ERROR("Input '%s' does not match required input type for this command.", cur.path);
+            status = (status == 0) ? EINVAL : status;
+        }
+        // Unknown extension: ignore
         free(cur.path);
     }
 
@@ -617,126 +735,140 @@ done:
     }
     free(queue);
     if (status != 0) {
-        for (size_t i = 0; i < n_files; ++i) free(files[i].path);
+        for (size_t i = 0; i < n_files; ++i) free(files[i]);
         free(files);
         files = NULL;
         n_files = 0;
     }
-    *out_files = files;
-    *out_n_files = n_files;
+    out_paths->paths = files;
+    out_paths->n_paths = n_files;
     return status;
 }
 
-int fc_iter_init(fc_iter *it, char **paths, size_t n_paths, int recurse, bool verbose) {
-    if (!it || !paths || n_paths == 0) return EINVAL;
+
+int fc_iter_collect_paths(
+    const fc_path_list *input_paths,
+    int recurse,
+    fc_file_kind expected_kind,
+    bool stdin_is_path_list,
+    fc_path_list *out_paths) {
+    if (!out_paths) return EINVAL;
+    out_paths->paths = NULL;
+    out_paths->n_paths = 0;
+
+    if (stdin_is_path_list) {
+        return fc_read_paths_from_stdin(expected_kind, out_paths);
+    }
+    if (input_paths && input_paths->n_paths == 1 && input_paths->paths &&
+        strcmp(input_paths->paths[0], "-") == 0) {
+        // stdin carries data stream (FASTQ/BAM), not a path list
+        char **files = calloc(1, sizeof(*files));
+        if (!files) return ENOMEM;
+        files[0] = strdup("-");
+        if (!files[0]) {
+            free(files);
+            return ENOMEM;
+        }
+        out_paths->paths = files;
+        out_paths->n_paths = 1;
+        return 0;
+    }
+    return collect_files_from_roots(input_paths, recurse, expected_kind, out_paths);
+}
+
+
+int fc_iter_init(
+    fc_iter *it,
+    const fc_path_list *input_paths,
+    int recurse,
+    bool verbose,
+    fc_file_kind expected_kind,
+    bool stdin_is_path_list) {
+    if (!it) return EINVAL;
+    if (!stdin_is_path_list &&
+        (!input_paths || !input_paths->paths || input_paths->n_paths == 0)) return EINVAL;
     memset(it, 0, sizeof(*it));
     it->recurse = recurse;
     it->verbose = verbose;
-
-    return fc_iter_collect_paths(paths, n_paths, recurse, verbose, &it->files, &it->n_files);
+    it->expected_kind = expected_kind;
+    fc_path_list collected = {0};
+    int rc = fc_iter_collect_paths(
+        input_paths, recurse, expected_kind, stdin_is_path_list, &collected);
+    if (rc != 0) return rc;
+    it->files = collected.paths;
+    it->n_files = collected.n_paths;
+    return 0;
 }
 
-bool fc_iter_next_file(fc_iter *it, const fc_file_entry **out_file) {
+
+bool fc_iter_next_file(fc_iter *it, const char **out_file) {
     if (!it || it->idx >= it->n_files) return false;
-    it->current = &it->files[it->idx++];
+    it->current = it->files[it->idx++];
     if (it->verbose) {
-        FC_LOG_INFO("Processing %s", it->current->path);
+        FC_LOG_INFO("Processing %s", it->current);
     }
     if (out_file) *out_file = it->current;
     return true;
 }
+
 
 int fc_iter_open_record_cursor(
     fc_iter *it,
     const fc_iter_opts *opts) {
     if (!it || !it->current) return EINVAL;
     it->cursor_open = false;
-    if (it->current->kind == FC_FILE_FASTQ) {
+    if (it->expected_kind == FC_FILE_FASTQ) {
         fc_file_stats_init(&it->fqi.stats);
-        int rc = fc_fastq_iter_open(&it->fqi, it->current->path, opts);
-        if (rc != 0) {
-            it->fqi.stats.failures[F_UNKNOWN_ERROR] = 1;
-        }
+        int rc = fc_fastq_iter_open(&it->fqi, it->current, opts);
         it->cursor_open = (rc == 0);
         return rc;
     }
     // BAM path
     fc_file_stats_init(&it->bmi.stats);
-    it->bam_fp = hts_open(it->current->path, "rb");
-    if (!it->bam_fp) {
-        it->bmi.stats.failures[F_UNKNOWN_ERROR] = 1;
-        return errno;
-    }
-    it->bam_hdr = sam_hdr_read(it->bam_fp);
-    if (!it->bam_hdr) {
-        hts_close(it->bam_fp);
-        it->bam_fp = NULL;
-        it->bmi.stats.failures[F_UNKNOWN_ERROR] = 1;
-        return EINVAL;
-    }
-    int rc = fc_bam_iter_open(&it->bmi, it->bam_fp, NULL, it->bam_hdr, opts);
-    if (rc != 0) {
-        sam_hdr_destroy(it->bam_hdr);
-        it->bam_hdr = NULL;
-        hts_close(it->bam_fp);
-        it->bam_fp = NULL;
-        it->bmi.stats.failures[F_UNKNOWN_ERROR] = 1;
-        return rc;
-    }
-    it->cursor_open = true;
-    return 0;
+    int rc = fc_bam_iter_open_path(&it->bmi, it->current, opts);
+    it->cursor_open = (rc == 0);
+    return rc;
 }
 
-fc_read *fc_iter_next_record(fc_iter *it, const sam_hdr_t *hdr) {
+
+fc_read *fc_iter_next_record(fc_iter *it) {
     if (!it || !it->current) return NULL;
-    if (it->current->kind == FC_FILE_FASTQ) {
+    if (it->expected_kind == FC_FILE_FASTQ) {
         return fc_fastq_iter_next(&it->fqi);
     }
-    const sam_hdr_t *use_hdr = hdr ? hdr : it->bam_hdr;
-    return fc_bam_iter_next(&it->bmi, use_hdr);
+    return fc_bam_iter_next(&it->bmi);
 }
+
 
 int fc_iter_finish_file(fc_iter *it) {
     if (!it || !it->current) return EINVAL;
     int rc = 0;
-    if (it->current->kind == FC_FILE_FASTQ) {
+    if (it->expected_kind == FC_FILE_FASTQ) {
         rc = fc_fastq_iter_finish(&it->fqi, NULL);
     } else {
         rc = fc_bam_iter_finish(&it->bmi, NULL);
-        fc_bam_iter_close(&it->bmi);
-        if (it->bam_hdr) {
-            sam_hdr_destroy(it->bam_hdr);
-            it->bam_hdr = NULL;
-        }
-        if (it->bam_fp) {
-            hts_close(it->bam_fp);
-            it->bam_fp = NULL;
-        }
     }
     it->cursor_open = false;
     return rc;
 }
 
+
 void fc_iter_close(fc_iter *it) {
     if (!it) return;
-    if (it->cursor_open && it->current) {
-        if (it->current->kind == FC_FILE_BAM) {
-            fc_bam_iter_close(&it->bmi);
-            if (it->bam_hdr) sam_hdr_destroy(it->bam_hdr);
-            if (it->bam_fp) hts_close(it->bam_fp);
-        } else {
-            fc_fastq_iter_finish(&it->fqi, NULL);
-        }
+    if (it->bmi.fp || it->bmi.hdr || it->bmi.bam || it->bmi.b || it->bmi.idx || it->bmi.use_regions) {
+        fc_bam_iter_close(&it->bmi);
     }
-    for (size_t i = 0; i < it->n_files; ++i) {
-        free(it->files[i].path);
+    if (it->fqi.seq || it->fqi.fp) {
+        fastq_iter_close_resources(&it->fqi);
     }
-    free(it->files);
-    it->files = NULL;
-    it->n_files = 0;
+    fc_path_list paths = {.paths = it->files, .n_paths = it->n_files};
+    fc_path_list_free(&paths);
+    it->files = paths.paths;
+    it->n_files = paths.n_paths;
     it->idx = 0;
     it->current = NULL;
 }
+
 
 void fc_iter_merge_file_stats(const fc_iter *it, fc_file_stats *dst) {
     if (!it || !dst) return;
@@ -759,10 +891,21 @@ void fc_iter_merge_file_stats(const fc_iter *it, fc_file_stats *dst) {
     }
 }
 
+
 const fc_file_stats *fc_iter_stats(const fc_iter *it) {
     if (!it || !it->current) return NULL;
-    if (it->current->kind == FC_FILE_FASTQ) {
+    if (it->expected_kind == FC_FILE_FASTQ) {
         return &it->fqi.stats;
     }
     return &it->bmi.stats;
+}
+
+void fc_path_list_free(fc_path_list *paths) {
+    if (!paths || !paths->paths) return;
+    for (size_t i = 0; i < paths->n_paths; ++i) {
+        free(paths->paths[i]);
+    }
+    free(paths->paths);
+    paths->paths = NULL;
+    paths->n_paths = 0;
 }

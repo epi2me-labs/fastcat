@@ -13,6 +13,7 @@
 #include "fc_filter.h"
 #include "fc_read.h"
 #include "htslib/sam.h"
+#include "htslib/thread_pool.h"
 #include "regiter.h"
 
 typedef enum {
@@ -20,10 +21,12 @@ typedef enum {
     FC_FILE_BAM
 } fc_file_kind;
 
+bool fc_path_matches_kind(const char *path, fc_file_kind expected_kind);
+
 typedef struct {
-    char *path;
-    fc_file_kind kind;
-} fc_file_entry;
+    char **paths;
+    size_t n_paths;
+} fc_path_list;
 
 typedef struct {
     size_t n_seqs;
@@ -50,6 +53,7 @@ typedef struct {
     bool force_recalc_qual;
     const char *region;      /* "chr:start-end" */
     const char *bed;         /* BED filepath */
+    htsThreadPool *thread_pool; /* optional: attach thread pool to BAM handle */
 } fc_iter_opts;
 
 typedef struct {
@@ -93,42 +97,47 @@ int fc_bam_iter_open(
     hts_idx_t *idx,
     sam_hdr_t *hdr,
     const fc_iter_opts *opts);
-fc_read *fc_bam_iter_next(fc_bam_iter *iter, const sam_hdr_t *hdr);
+fc_read *fc_bam_iter_next(fc_bam_iter *iter);
 int fc_bam_iter_finish(fc_bam_iter *iter, fc_file_stats *out_stats);
 void fc_bam_iter_close(fc_bam_iter *iter);
 
 typedef struct {
-    fc_file_entry *files;
+    char **files;
     size_t n_files;
     size_t idx;
     int recurse;
+    fc_file_kind expected_kind;
     fc_fastq_iter fqi;
     fc_bam_iter bmi;
-    fc_file_entry *current;
+    const char *current;
     bool cursor_open;
-    htsFile *bam_fp;
-    sam_hdr_t *bam_hdr;
     bool verbose;
 } fc_iter;
 
 void fc_file_stats_init(fc_file_stats *stats);
 int fc_iter_collect_paths(
-    char **paths,
-    size_t n_paths,
+    const fc_path_list *input_paths,
+    int recurse,
+    fc_file_kind expected_kind,
+    bool stdin_is_path_list,
+    fc_path_list *out_paths);
+int fc_iter_init(
+    fc_iter *it,
+    const fc_path_list *input_paths,
     int recurse,
     bool verbose,
-    fc_file_entry **out_files,
-    size_t *out_n_files);
-int fc_iter_init(fc_iter *it, char **paths, size_t n_paths, int recurse, bool verbose);
-bool fc_iter_next_file(fc_iter *it, const fc_file_entry **out_file);
+    fc_file_kind expected_kind,
+    bool stdin_is_path_list);
+bool fc_iter_next_file(fc_iter *it, const char **out_file);
 int fc_iter_open_record_cursor(
     fc_iter *it,
     const fc_iter_opts *opts);
-fc_read *fc_iter_next_record(fc_iter *it, const sam_hdr_t *hdr);
+fc_read *fc_iter_next_record(fc_iter *it);
 int fc_iter_finish_file(fc_iter *it);
 void fc_iter_close(fc_iter *it);
 
 void fc_iter_merge_file_stats(const fc_iter *it, fc_file_stats *dst);
 const fc_file_stats *fc_iter_stats(const fc_iter *it);
+void fc_path_list_free(fc_path_list *paths);
 
 #endif

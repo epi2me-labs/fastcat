@@ -112,40 +112,40 @@ int main(int argc, char **argv) {
     fc_file_stats global_stats = {0};
     fc_file_stats_init(&global_stats);
 
-    // inputs prepared by parse_arguments (stdin handled there when "-" is given)
-    char **input_paths = args.files;
-    size_t n_inputs = args.n_files;
+    // inputs prepared by parse_arguments (stdin data default, --lofn for list-of-filenames mode)
+    fc_path_list *input_paths = &args.input_paths;
     size_t nfile = 0;
 
     int status = 0;
     fc_iter file_iter = {0};
-    if (fc_iter_init(&file_iter, input_paths, n_inputs, args.recurse, args.verbose) != 0) {
+    if (fc_iter_init(
+            &file_iter, input_paths, args.recurse, args.verbose, FC_FILE_FASTQ, args.lofn) != 0) {
         FC_LOG_ERROR("Failed to initialise file iterator.");
         exit(EXIT_FAILURE);
     }
     nfile = file_iter.n_files;
 
-    const fc_file_entry *f = NULL;
-    while (fc_iter_next_file(&file_iter, &f)) {
-        fc_writer_begin_file(writer, f->path);
+    const char *path = NULL;
+    while (fc_iter_next_file(&file_iter, &path)) {
+        fc_writer_begin_file(writer, path);
 
         if (fc_iter_open_record_cursor(&file_iter, &iter_opts) != 0) {
             status = EXIT_FAILURE;
             fc_iter_merge_file_stats(&file_iter, &global_stats);
-            fc_writer_end_file(writer, f->path, fc_iter_stats(&file_iter));
+            fc_writer_end_file(writer, path, fc_iter_stats(&file_iter));
             continue;
         }
 
         fc_read *fr = NULL;
-        while ((fr = fc_iter_next_record(&file_iter, NULL)) != NULL) {
-            fc_writer_add_read(writer, fr, f->path, NULL);
+        while ((fr = fc_iter_next_record(&file_iter)) != NULL) {
+            fc_writer_add_read(writer, fr, path, NULL);
             fc_read_destroy(fr);
         }
 
         int fin_rc = fc_iter_finish_file(&file_iter);
         if (fin_rc != 0) status = EXIT_FAILURE;
         fc_iter_merge_file_stats(&file_iter, &global_stats);
-        fc_writer_end_file(writer, f->path, fc_iter_stats(&file_iter));
+        fc_writer_end_file(writer, path, fc_iter_stats(&file_iter));
     }
 
     fc_iter_close(&file_iter);
