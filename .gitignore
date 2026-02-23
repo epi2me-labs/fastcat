@@ -19,6 +19,7 @@ samtools-*/
 /samtools
 /test/unit/unit_tests
 # gumpf
+/fastcat-qc
 /fastcat-histograms
 /demultiplex
 .vscode/

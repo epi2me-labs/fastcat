@@ -31,6 +31,30 @@ NOTHREADS ?=
 ifeq ($(NOTHREADS), 1)
     CFLAGS += -DNOTHREADS
 endif
+FORTIFY_CFLAG ?= -D_FORTIFY_SOURCE=2
+
+SANITIZE ?=
+ifeq ($(SANITIZE),ubsan)
+    CFLAGS := $(filter-out -O%,$(CFLAGS))
+    CFLAGS += -O1 -g -fno-omit-frame-pointer
+ifeq ($(OS),Darwin)
+    SAN_FLAGS := -fsanitize=address,undefined
+else
+    SAN_FLAGS := -fsanitize=address,undefined,leak
+endif
+    EXTRA_CFLAGS += $(SAN_FLAGS) -fno-sanitize-recover=undefined
+    EXTRA_LDFLAGS += $(SAN_FLAGS)
+    FORTIFY_CFLAG :=
+ifeq ($(OS),Darwin)
+    # Apple's ASan runtime does not support LeakSanitizer.
+    ASAN_OPTIONS ?= halt_on_error=1
+else
+    ASAN_OPTIONS ?= detect_leaks=1:halt_on_error=1
+endif
+    UBSAN_OPTIONS ?= print_stacktrace=1:halt_on_error=1
+    export ASAN_OPTIONS
+    export UBSAN_OPTIONS
+endif
 
 LIBDEF=$(abspath libdeflate-$(DEFLATEVER))
 LIBDEF_LIB=$(abspath libdeflate-$(DEFLATEVER)/build)
@@ -53,6 +77,10 @@ endif
 
 GRIND = $(VALGRIND) --error-exitcode=1 --tool=memcheck --leak-check=full --show-leak-kinds=all -s
 ifeq ($(OS), Darwin)
+	GRIND =
+endif
+# Sanitizer-instrumented binaries are incompatible with valgrind preloading.
+ifneq ($(SANITIZE),)
 	GRIND =
 endif
 # optionally run all tests under valgrind
@@ -114,7 +142,9 @@ test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_f
 
 .PHONY:
 clean:
-	rm -rf fastcat bamstats bamindex fastlint bamcoverage libfastcatcore.a src/fastcat/*.o src/fastlint/*.o src/bamstats/*.o src/bamindex/*.o src/*.o src/sink/*.o
+	rm -rf fastcat bamstats bamindex fastlint bamcoverage libfastcatcore.a $(HTSLIB_PATCH_STAMP) \
+		src/fastcat/*.o src/fastlint/*.o src/bamstats/*.o src/bamindex/*.o src/*.o src/sink/*.o \
+		test/unit/*.o test/unity/*.o test/unit/unit_tests
 
 .PHONY: clean_htslib
 clean_htslib:
@@ -131,15 +161,16 @@ UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
 
 test/unit/%.o: test/unit/%.c
-	$(CC) -Isrc -Ihtslib -Izlib-ng -Itest/unity $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	$(CC) -Isrc -Ihtslib -Izlib-ng -Itest/unity $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
+test/unit/%.o: | $(HTSLIB_PATCH_STAMP)
 
 test/unity/%.o: test/unity/%.c
-	$(CC) -Itest/unity $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	$(CC) -Itest/unity $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
 
 test/unit/unit_tests: $(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB)
-	$(CC) -Isrc -Ihtslib -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	$(CC) -Isrc -Ihtslib -Izlib-ng $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
@@ -149,6 +180,7 @@ test/unit/unit_tests: $(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB)
 test_unit: test/unit/unit_tests
 	@$(call TEST_DESC,Unit tests)
 	$(PEPPER) ./test/unit/unit_tests
+test_unit: | $(HTSLIB_PATCH_STAMP)
 
 
 ###
@@ -170,7 +202,7 @@ htslib/libhts.a: $(STATIC_LIBDEFLATE) | $(HTSLIB_PATCH_STAMP)
 		&& autoconf \
 		&& autoreconf --install \
 		&& $(HTS_BUILD_FLAGS)  CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" ./configure $(HTS_CONF_ARGS) \
-		&& make -j 4
+		&& make -j 4 libhts.a
 
 
 libdeflate-$(DEFLATEVER)/build/libdeflate.a:
@@ -205,7 +237,7 @@ zlib-ng/libz.a: zlib-ng/zlib.h
 		&& make -j 4 libz.a
 
 src/%.o: src/%.c zlib-ng/zlib.h
-	$(CC) -Isrc -Ihtslib -Izlib-ng -c -pthread $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	$(CC) -Isrc -Ihtslib -Izlib-ng -c -pthread $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $< -o $@
 
 src/fastqcomments.o: | $(HTSLIB_PATCH_STAMP)
@@ -221,7 +253,7 @@ $(CORE_LIB): $(CORE_OBJS) Makefile
 -include $(wildcard test/unity/*.d)
 
 fastcat: src/version.o src/fastcat/main.o $(FASTCAT_SUBCOMMAND_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) zlib-ng/libz.a
-	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	$(CC) -Isrc -Izlib-ng $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$^ $(ARGP) \
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \

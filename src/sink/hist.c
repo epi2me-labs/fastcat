@@ -21,8 +21,13 @@ static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t 
     const char *suff = "hist";
 
     if (plex_dir == NULL) {
-        filepath = calloc(strlen(hist_dir) + strlen(type) + strlen(suff) + 3, sizeof(char));
-        sprintf(filepath, "%s/%s.%s", hist_dir, type, suff);
+        size_t flen = strlen(hist_dir) + 1 + strlen(type) + 1 + strlen(suff) + 1;
+        filepath = xalloc(flen, sizeof(char), "histogram output path");
+        int n = snprintf(filepath, flen, "%s/%s.%s", hist_dir, type, suff);
+        if (n < 0 || (size_t)n >= flen) {
+            FC_LOG_ERROR("Could not format histogram output path.");
+            exit(EXIT_FAILURE);
+        }
     } else {
         const char *stem = (barcode == 0) ? "unclassified" : NULL;
         char barc[32];
@@ -36,8 +41,12 @@ static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t 
             exit(EXIT_FAILURE);
         }
         size_t flen = strlen(dir) + 1 + strlen(stem) + 1 + strlen(type) + 1 + strlen(suff) + 1;
-        filepath = calloc(flen, sizeof(char));
-        sprintf(filepath, "%s/%s.%s.%s", dir, stem, type, suff);
+        filepath = xalloc(flen, sizeof(char), "histogram output path");
+        int n = snprintf(filepath, flen, "%s/%s.%s.%s", dir, stem, type, suff);
+        if (n < 0 || (size_t)n >= flen) {
+            FC_LOG_ERROR("Could not format histogram output path.");
+            exit(EXIT_FAILURE);
+        }
         free(dir);
     }
 

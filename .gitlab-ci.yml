@@ -22,7 +22,7 @@ stages:
     - prerelease
     - release
 
-build:
+.fastcat-test-base:
     stage: test
     before_script:
         - *prep-image
@@ -31,11 +31,23 @@ build:
       paths:
         - test/*
     script:
-        - make
         - ./fastcat fastq --help
         - ./fastcat bam --help
         - ./fastcat index --help
+
+build:
+    extends: .fastcat-test-base
+    script:
+        - make
+        - !reference [.fastcat-test-base, script]
         - PEPPER=1 make test
+
+sanitize:
+    extends: .fastcat-test-base
+    script:
+        - SANITIZE=ubsan make
+        - !reference [.fastcat-test-base, script]
+        - SANITIZE=ubsan make test
 
 deploy-checks:
     stage: prerelease

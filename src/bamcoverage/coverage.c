@@ -329,8 +329,13 @@ cov_writer_region init_coverage_writer_region(
 
         int k = by_strand ? 0 : 2;  // only need last is not by_strand
         for (int i = k; i < 3; ++i) {
-            *fn[i] = (char*)calloc(strlen(out_dir) + 1 + strlen(name) + strlen(suffixes[i]) + 1, 1);
-            sprintf(*fn[i], "%s/%s%s", out_dir, name, suffixes[i]);
+            size_t flen = strlen(out_dir) + 1 + strlen(name) + strlen(suffixes[i]) + 1;
+            *fn[i] = xalloc(flen, sizeof(char), "bedgraph output path");
+            int n = snprintf(*fn[i], flen, "%s/%s%s", out_dir, name, suffixes[i]);
+            if (n < 0 || (size_t)n >= flen) {
+                FC_LOG_ERROR("Cannot format bedgraph output path.");
+                exit(EXIT_FAILURE);
+            }
             *fh[i] = bgzf_open(*fn[i], "w1");
             if (NULL == *fh[i]) {
                 FC_LOG_ERROR("Cannot open bedgraph output '%s'", *fn[i]);
@@ -346,8 +351,13 @@ cov_writer_region init_coverage_writer_region(
     // summary file {name}.mosdepth.summary.txt
     {
         char* suffix = ".summary.txt";
-        char* fname = (char*)calloc(strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1, 1);
-        sprintf(fname, "%s/%s%s", out_dir, name, suffix);
+        size_t flen = strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1;
+        char* fname = xalloc(flen, sizeof(char), "summary output path");
+        int n = snprintf(fname, flen, "%s/%s%s", out_dir, name, suffix);
+        if (n < 0 || (size_t)n >= flen) {
+            FC_LOG_ERROR("Cannot format summary output path.");
+            exit(EXIT_FAILURE);
+        }
         w->fh_summary = fopen(fname, "w");
         if (NULL == w->fh_summary) {
             FC_LOG_ERROR("Cannot open summary output '%s'", fname);
@@ -365,8 +375,13 @@ cov_writer_region init_coverage_writer_region(
     // distribution of coverage {name}.mosdepth.dist.txt
     {
         char* suffix = ".dist.txt";
-        char* fname = (char*)calloc(strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1, 1);
-        sprintf(fname, "%s/%s%s", out_dir, name, suffix);
+        size_t flen = strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1;
+        char* fname = xalloc(flen, sizeof(char), "distribution output path");
+        int n = snprintf(fname, flen, "%s/%s%s", out_dir, name, suffix);
+        if (n < 0 || (size_t)n >= flen) {
+            FC_LOG_ERROR("Cannot format distribution output path.");
+            exit(EXIT_FAILURE);
+        }
         w->fh_dist = fopen(fname, "w");
         if (NULL == w->fh_dist) {
             FC_LOG_ERROR("Cannot open summary output '%s'", fname);
@@ -489,9 +504,18 @@ cov_writer init_coverage_writer(
     // fixed length segments
     for (size_t i = 0; i < n_segments; ++i) {
         char seg_name[32];  // largest uint32 is 10 digits
-        sprintf(seg_name, "segments_%u", segments[i]);
-        char* seg_out_dir = (char*)calloc(strlen(out_dir) + 1 + strlen(seg_name), 1);
-        sprintf(seg_out_dir, "%s/%s", out_dir, seg_name);
+        int seg_len = snprintf(seg_name, sizeof(seg_name), "segments_%u", segments[i]);
+        if (seg_len < 0 || (size_t)seg_len >= sizeof(seg_name)) {
+            FC_LOG_ERROR("Cannot format segment name.");
+            exit(EXIT_FAILURE);
+        }
+        size_t dir_len = strlen(out_dir) + 1 + strlen(seg_name) + 1;
+        char* seg_out_dir = xalloc(dir_len, sizeof(char), "segment output directory path");
+        int n = snprintf(seg_out_dir, dir_len, "%s/%s", out_dir, seg_name);
+        if (n < 0 || (size_t)n >= dir_len) {
+            FC_LOG_ERROR("Cannot format segment output directory path.");
+            exit(EXIT_FAILURE);
+        }
         w->writers[1 + i] = init_coverage_writer_region(
             seg_out_dir, seg_name, per_base, by_strand, NULL,
             thresholds, n_thresholds, segments[i],
@@ -502,8 +526,13 @@ cov_writer init_coverage_writer(
     for (size_t i = 0; i < n_beds; ++i) {
         if (NULL != bed_files[i]) {
             const char* bed_name = bed_names[i];
-            char* bed_out_dir = (char*)calloc(strlen(out_dir) + 1 + strlen(bed_name), 1);
-            sprintf(bed_out_dir, "%s/%s", out_dir, bed_name);
+            size_t dir_len = strlen(out_dir) + 1 + strlen(bed_name) + 1;
+            char* bed_out_dir = xalloc(dir_len, sizeof(char), "bed output directory path");
+            int n = snprintf(bed_out_dir, dir_len, "%s/%s", out_dir, bed_name);
+            if (n < 0 || (size_t)n >= dir_len) {
+                FC_LOG_ERROR("Cannot format BED output directory path.");
+                exit(EXIT_FAILURE);
+            }
             w->writers[1 + n_segments + i] = init_coverage_writer_region(
                 bed_out_dir, bed_name, per_base, by_strand, bed_files[i],
                 thresholds, n_thresholds, 0,
