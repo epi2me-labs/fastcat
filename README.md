@@ -39,12 +39,11 @@ Try './fastcat <subcommand> --help' for subcommand options.
 
 ## fastcat fastq
 
-Concatenate and optionally filter FASTQ, optionally demultiplex by barcode, and write summary outputs.
+Concatenate and optionally filter FASTQ (or unaligned BAM via `--input-fmt bam`), optionally demultiplex by barcode, and write summary outputs.
 
 ```bash
 $ ./fastcat fastq --help
-Usage: fastq [OPTION...]
-            reads1.fastq(.gz) reads2.fastq(.gz) dir-with-fastq ...
+Usage: fastq [OPTION...] dir-with-reads ...
 fastcat -- concatenate and summarise .fastq(.gz) files.
 
  Output options:
@@ -60,6 +59,9 @@ fastcat -- concatenate and summarise .fastq(.gz) files.
                              records, contained errors.
       --fofn                 Treat each input as a file-of-filenames source
                              (use '-' to read that list from stdin).
+      --input-fmt=fastq|bam
+                             Input format for fastq mode (default: fastq). Use
+                             'bam' for unaligned BAM input.
   -o, --output=DIRECTORY     Output root directory (default: fastcat-qc). Must
                              not already exist.
   -p, --per-read             Write per-read TSV (large). Disabled by default.
@@ -68,8 +70,8 @@ fastcat -- concatenate and summarise .fastq(.gz) files.
   -t, --threads=THREADS      Number of threads for output compression (only
                              with --bam-out).
   -v, --verbose              Verbose output.
-  -x, --recurse              Search directories recursively for '.fastq',
-                             '.fq', '.fastq.gz', and '.fq.gz' files.
+  -x, --recurse              Search directories recursively for files matching
+                             the selected input format.
 
  Read filtering options:
   -a, --min-length=MIN READ LENGTH
@@ -107,7 +109,6 @@ fastcat -- concatenate and summarise .fastq(.gz) files.
       --usage                Give a short usage message
   -V, --version              Print program version
 ```
-
 
 The program writes the input sequences to `stdout` by default in .fastq format, which can be recompressed with `gzip`
 (or more usefully `bgzip`).
@@ -188,7 +189,8 @@ Recalculation of the mean quality can be forced with the `--recalc-qual`.
 
 ## fastcat bam
 
-Compute BAM-derived summaries, filtering, optional coverage, and optional per-read tables.
+Compute BAM-derived summaries, filtering, optional reference coverage, and optional per-read tables.
+The outputs are largely the same as for the `fastcat fastq` command.
 
 
 ```bash
@@ -274,7 +276,49 @@ bamstats -- summarise reads/alignments in an input BAM file.
   -V, --version              Print program version
 ```
 
----
+The outputs are arranged as for the `fastcat fastq` sub-command.
+Additional outputs are provided expressing quantities concerned with the alignments of reads to reference sequences.
+
+### Histogram outputs
+
+Four histogram outputs are provided (two in common with `fastcat fastq`):
+
+* `length.hist` - read length histogram,
+* `quality.hist` - read mean base-quality score histogram,
+* `accuracy.hist` - read alignment accuracy histogram, and
+* `coverage.hist` - read alignment coverage histogram (the proportion of each read spanned by the alignment and not clipped).
+
+### Alignment flag outputs
+
+The file `flagstats.tsv` provides similar output to `samtools flagstats`, enumerating counts for different SAM flags for each reference sequence:
+
+```text
+ref     sample_name     total   primary secondary       supplementary   unmapped        qcfail  duplicate       duplex  duplex_forming
+cneofor_1       0       0       0       0       0       0       0       0       0
+cneofor_2       0       0       0       0       0       0       0       0       0
+cneofor_3       1       0       0       1       0       0       0       0       0
+ecoli1          373     347     5       21      0       0       0       0       0
+ecoli2          0       0       0       0       0       0       0       0       0
+```
+
+### Alignment coverage outputs
+
+The program can optionally output coverage information (provided the input BAM is coordinate sorted).
+The outputs are inspired by those from [mosdepth](https://github.com/brentp/mosdepth) but have been adapted to be more readily interpretable in line with user expectations.
+A set of files is produced for each user-provided BED file, as well as for the whole genome. The files are:
+
+* `{name}.bed.gz` - a bgzip-compressed BED file with position-level accuracy.
+* `{name}.fwd.bed.gz` - as above but only for forward strand alignments.
+* `{name}.rev.bed.gz` - as above but only for reverse strand alignments.
+* `{name}.summary.txt` - a tab-separated summary of coverage for each region in
+  the BED file. And a final total line for all regions in the BED.
+* `{name}.dist.txt` - a tab-separated file listing the cumulative distribution function
+  of coverage across all regions in the BED file (i.e. "what proportion of positions
+  are covered at at least X depth?").
+
+The summary file contains user-configurable entries enumerating a sparse coverage CDF:
+the default is to output the proportion of positions covered at 1x, 5x, 10x, 20x, 30x, 40x, and 50x.
+This is done independently for all regions in the BED, as well as the final total line.
 
 ## fastcat lint
 
@@ -297,8 +341,6 @@ fastlint -- apply sdust algorithm to input files.
   -V, --version              Print program version
 ```
 
----
-
 ## fastcat cover
 
 Standalone BAM coverage summaries.
@@ -318,8 +360,6 @@ bamcoverage -- summarise coverage statistics from a BAM file.
       --usage                Give a short usage message
   -V, --version              Print program version
 ```
-
----
 
 ## fastcat index
 
