@@ -55,8 +55,8 @@ int fastlint_main(int argc, char *argv[]) {
                 // for reasons unknown, we care about preserving the separator
                 // between the name and the comment, but we don't have that. If
                 // there are tabs in the comment, there's a good chance the
-                // separator was a tab, particular if data went through fastcat
-                // with the --reheader option.
+                // separator was a tab, particularly if data went through
+                // fastcat, which emits SAM-style header tags.
                 if (ks->comment.l > 0) {
                     char sep = ' ';
                     if (strchr(ks->comment.s, '\t') != NULL) {

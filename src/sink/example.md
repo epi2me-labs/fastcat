@@ -14,7 +14,7 @@ made in `fc_writer` and encoded in `fc_read_ctx` for each read.
 
 ## Included sinks
 
-- `output`: writes FASTQ or BAM, supports demultiplexed output and reheadering.
+- `output`: writes FASTQ or BAM and supports demultiplexed output.
 - `perread`: writes per-read TSV; can include alignment columns when enabled.
 - `perfile`: writes per-file TSV summary of read stats and failure counts.
 - `counter`: writes run-id/basecaller counts per input file.
@@ -37,7 +37,6 @@ fc_writer *writer = fc_writer_create(/*use_barcodes=*/false, &stats_cfg);
 fc_output_sink_opts out_opts = {
     .output_root = args.output_dir,   // NULL to stream FASTQ/BAM to stdout
     .reads_per_file = args.reads_per_file,
-    .reheader = args.reheader,
     .write_bam = args.write_bam,
     .threads = args.threads,
     .barcode_count = writer->barcode_count

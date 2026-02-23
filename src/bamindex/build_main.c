@@ -36,7 +36,7 @@ static struct argp_option options[] = {
         "General options:", 0},
     {"threads", 't', "THREADS", 0,
         "Number of threads for BAM processing.", 0},
-    {"chunk_size", 'c', "SIZE", 0,
+    {"chunk-size", 'c', "SIZE", 0,
         "Number of records in a chunk.", 0},
     { 0 }
 };

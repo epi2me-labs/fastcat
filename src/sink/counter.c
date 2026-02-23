@@ -193,7 +193,7 @@ fc_sink fc_counter_sink_create(const fc_counter_sink_opts *opts) {
     state->cfg = *opts;
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->output_root = fc_strip_path(opts->output_root);
-    if (opts->sample && opts->sample[0]) {
+    if (opts->sample) {
         state->sample = strdup(opts->sample);
         state->cfg.sample = state->sample;
     }

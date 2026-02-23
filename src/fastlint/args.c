@@ -16,7 +16,7 @@ static struct argp_option options[] = {
         "Threshold for repetition (default: 20).", 0},
     {"window", 'w', "WINDOW", 0,
         "Window size (default: 64).", 0},
-    {"max_proportion", 'p', "PROPORTION", 0,
+    {"max-proportion", 'p', "PROPORTION", 0,
         "Maximum allowable proportion of masked bases in a read to keep the read (default: 0.95).", 0},
     { 0 }
 };

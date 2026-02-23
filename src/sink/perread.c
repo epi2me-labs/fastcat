@@ -138,7 +138,7 @@ fc_sink fc_perread_sink_create(const fc_perread_sink_opts *opts) {
     state->output_root = fc_strip_path(opts->output_root);
     state->fp = calloc(state->cfg.barcode_count, sizeof(FILE *));
     state->header_written = calloc(state->cfg.barcode_count, sizeof(bool));
-    if (opts->sample && opts->sample[0]) {
+    if (opts->sample) {
         state->sample = strdup(opts->sample);
     }
 

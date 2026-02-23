@@ -50,25 +50,23 @@ fastcat -- concatenate and summarise .fastq(.gz) files.
  Output options:
 
  General options:
-  -B, --bam_out              Output data as unaligned BAM.
+  -B, --bam-out              Output data as unaligned BAM.
   -c, --reads-per-file=NUM   Split reads into files with a set number of reads
                              (default: single file).
   -d, --demultiplex          Separate barcoded samples using fastq header
                              information; outputs go under
                              <output>/barcodeXXXX/.
-  -e, --force_error          Exit with non-zero status if any files, or
+  -e, --force-error          Exit with non-zero status if any files, or
                              records, contained errors.
       --fofn                 Treat each input as a file-of-filenames source
                              (use '-' to read that list from stdin).
-  -H, --reheader             Rewrite fastq header comments as SAM tags (useful
-                             for passing through minimap2).
   -o, --output=DIRECTORY     Output root directory (default: fastcat-qc). Must
                              not already exist.
   -p, --per-read             Write per-read TSV (large). Disabled by default.
   -s, --sample=SAMPLE NAME   Sample name (if given, adds a 'sample_name'
                              column).
   -t, --threads=THREADS      Number of threads for output compression (only
-                             with --bam_out).
+                             with --bam-out).
   -v, --verbose              Verbose output.
   -x, --recurse              Search directories recursively for '.fastq',
                              '.fq', '.fastq.gz', and '.fq.gz' files.
@@ -204,7 +202,7 @@ bamstats -- summarise reads/alignments in an input BAM file.
   -b, --bed=BEDFILE          BED file for regions to process.
   -d, --demultiplex          Separate outputs per barcode under
                              <output>/barcodeXXXX/.
-  -e, --force_error          Exit with non-zero status if parsing/filtering
+  -e, --force-error          Exit with non-zero status if parsing/filtering
                              errors occur.
   -o, --output=DIRECTORY     Output root directory (default: fastcat-qc). Must
                              not already exist.
@@ -288,7 +286,7 @@ Usage: lint [OPTION...] <reads.fastq>
 fastlint -- apply sdust algorithm to input files.
 
  General options:
-  -p, --max_proportion=PROPORTION
+  -p, --max-proportion=PROPORTION
                              Maximum allowable proportion of masked bases in a
                              read to keep the read (default: 0.95).
   -t, --threshold=THRESHOLD  Threshold for repetition (default: 20).
@@ -343,7 +341,7 @@ Usage: build [OPTION...] <reads.bam>
 bamindex build -- create a BAM index corresponding to batches of records.
 
  General options:
-  -c, --chunk_size=SIZE      Number of records in a chunk.
+  -c, --chunk-size=SIZE      Number of records in a chunk.
   -t, --threads=THREADS      Number of threads for BAM processing.
 
   -?, --help                 Give this help list

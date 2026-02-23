@@ -60,6 +60,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
     // initialised below if we successfully create outputs
     htsThreadPool pool = {NULL, 0};
     fc_writer* writer = NULL;
+    fc_iter file_iter = {0};
 
 #ifdef NOTHREADS
     if (args->threads != 1) {
@@ -105,7 +106,6 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
         .bed = region_mode ? args->bed : NULL,
         .thread_pool = (program == FC_PROGRAM_BAMSTATS && pool.pool) ? &pool : NULL
     };
-    fc_iter file_iter = {0};
     const char *bam_first_path = NULL;
     if (program == FC_PROGRAM_FASTCAT) {
         if (fc_iter_init(
@@ -227,7 +227,6 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
         fc_output_sink_opts output_opts = {
             .output_root = args->demultiplex ? args->output_dir : NULL,
             .reads_per_file = args->reads_per_file,
-            .reheader = args->reheader,
             .write_bam = args->write_bam,
             .threads = args->threads,
             .barcode_count = writer->barcode_count
