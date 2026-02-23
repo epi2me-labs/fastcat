@@ -10,6 +10,7 @@
 #include "fc_log.h"
 #include "fc_sinks.h"
 #include "fc_writer.h"
+#include "fc_filter.h"
 #include "htslib/thread_pool.h"
 
 static int process_current_file(
@@ -19,6 +20,8 @@ static int process_current_file(
     const sam_hdr_t *hdr_for_records,
     const fc_iter_opts *iter_opts,
     bool cursor_already_open,
+    bool enforce_unmapped,
+    bool *hard_error,
     fc_file_stats *global_stats) {
     int status = EXIT_SUCCESS;
 
@@ -33,6 +36,16 @@ static int process_current_file(
 
     fc_read *fr = NULL;
     while ((fr = fc_iter_next_record(file_iter)) != NULL) {
+        if (enforce_unmapped && !fc_is_unmapped(fr->bam)) {
+            FC_LOG_ERROR(
+                "Input BAM contains mapped reads (e.g. '%s'). "
+                "fastcat fastq with --input-fmt bam only accepts unaligned BAM input.",
+                bam_get_qname(fr->bam));
+            if (hard_error) *hard_error = true;
+            status = EXIT_FAILURE;
+            fc_read_destroy(fr);
+            break;
+        }
         fc_writer_add_read(writer, fr, path, hdr_for_records);
         fc_read_destroy(fr);
     }
@@ -61,6 +74,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
     htsThreadPool pool = {NULL, 0};
     fc_writer* writer = NULL;
     fc_iter file_iter = {0};
+    bool hard_error = false;
 
 #ifdef NOTHREADS
     if (args->threads != 1) {
@@ -113,7 +127,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
                 &args->input_paths,
                 args->recurse,
                 args->verbose,
-                FC_FILE_FASTQ,
+                args->input_kind,
                 args->fofn) != 0) {
             FC_LOG_ERROR("Failed to initialise file iterator.");
             status = EXIT_FAILURE;
@@ -255,14 +269,19 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
     // go go gadget read iterator
     if (program == FC_PROGRAM_BAMSTATS) {
         status = process_current_file(
-            &file_iter, writer, bam_first_path, file_iter.bmi.hdr, &iter_opts, true, &global_stats);
+            &file_iter, writer, bam_first_path, file_iter.bmi.hdr, &iter_opts, true, false, &hard_error,
+            &global_stats);
     } else {
         const char *path = NULL;
         while (fc_iter_next_file(&file_iter, &path)) {
             int file_status = process_current_file(
-                &file_iter, writer, path, NULL, &iter_opts, false, &global_stats);
+                &file_iter, writer, path, NULL, &iter_opts, false,
+                (args->input_kind == FC_FILE_BAM), &hard_error, &global_stats);
             if (file_status != EXIT_SUCCESS) {
                 status = EXIT_FAILURE;
+            }
+            if (hard_error) {
+                break;
             }
         }
     }
@@ -279,7 +298,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
     if (status != EXIT_SUCCESS) {
         FC_LOG_WARN("Error processing files.");
     }
-    if (!args->force_error) {
+    if (!args->force_error && !hard_error) {
         status = EXIT_SUCCESS;
     }
 

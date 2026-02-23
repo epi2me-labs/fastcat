@@ -18,6 +18,7 @@ enum {
     KEY_DUST_W,
     KEY_DUST_T,
     KEY_FOFN,
+    KEY_INPUT_FORMAT,
     KEY_RECALC_QUAL,
     KEY_TAG_NAME,
     KEY_TAG_VALUE,
@@ -46,26 +47,29 @@ typedef struct {
 } parse_context;
 
 static char fastcat_doc[] =
-"fastcat -- concatenate and summarise .fastq(.gz) files.\
-\vReads FASTQ data from stdin when '-' is provided as an input path. \
+"fastcat -- concatenate and summarise FASTQ or unaligned BAM reads.\
+\vReads input data from stdin when '-' is provided as an input path. \
+Use --input-fmt to choose FASTQ (default) or unaligned BAM input. \
 Use --fofn to interpret each input path as a file-of-filenames source. \
-Also accepts directories as input and looks for .fastq(.gz) files in \
-the top-level directory. Recurses into sub-directories when the \
+Also accepts directories as input and looks for files matching the selected \
+input format in the top-level directory. Recurses into sub-directories when the \
 -x option is given. The command \
 will exit non-zero if any file encountered cannot be read.";
 
-static char fastcat_args_doc[] = "reads1.fastq(.gz) reads2.fastq(.gz) dir-with-fastq ...";
+static char fastcat_args_doc[] = "reads1 reads2 dir-with-reads ...";
 
 static struct argp_option fastcat_options[] = {
     {0, 0, 0, 0, "General options:", 0},
     {"recurse", 'x', 0, 0,
-        "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files.", 0},
+        "Search directories recursively for files matching the selected input format.", 0},
     {"threads", 't', "THREADS", 0,
         "Number of threads for output compression (only with --bam-out).", 0},
     {"force-error", 'e', 0, 0,
         "Exit with non-zero status if any files, or records, contained errors.", 0},
     {"fofn", KEY_FOFN, 0, 0,
         "Treat each input as a file-of-filenames source (use '-' to read that list from stdin).", 0},
+    {"input-fmt", KEY_INPUT_FORMAT, "fastq|bam", 0,
+        "Input format for fastq mode (default: fastq). Use 'bam' for unaligned BAM input.", 0},
     {"verbose", 'v', 0, 0, "Verbose output.", 0},
 
     {0, 0, 0, 0, "Output options:", 1},
@@ -208,6 +212,7 @@ static fc_catstats_args default_args(void) {
     args.recurse = 1;
     args.write_bam = 0;
     args.fofn = false;
+    args.input_kind = FC_FILE_FASTQ;
     args.reads_per_file = 0;
     args.input_paths.paths = NULL;
     args.input_paths.n_paths = 0;
@@ -319,6 +324,15 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             break;
         case KEY_FOFN:
             arguments->fofn = true;
+            break;
+        case KEY_INPUT_FORMAT:
+            if (strcasecmp(arg, "fastq") == 0) {
+                arguments->input_kind = FC_FILE_FASTQ;
+            } else if (strcasecmp(arg, "bam") == 0) {
+                arguments->input_kind = FC_FILE_BAM;
+            } else {
+                argp_error(state, "Unsupported --input-fmt '%s' (expected fastq or bam).", arg);
+            }
             break;
         case KEY_RECALC_QUAL:
             arguments->force_recalc_qual = true;

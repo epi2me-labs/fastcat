@@ -823,6 +823,12 @@ int fc_iter_open_record_cursor(
         return rc;
     }
     // BAM path
+    // When iterating multiple BAM inputs (fastcat fastq --input-fmt bam),
+    // release any previous BAM cursor before opening the next file.
+    if (it->bmi.fp || it->bmi.hdr || it->bmi.bam || it->bmi.b || it->bmi.idx || it->bmi.use_regions) {
+        fc_bam_iter_close(&it->bmi);
+        memset(&it->bmi, 0, sizeof(it->bmi));
+    }
     fc_file_stats_init(&it->bmi.stats);
     int rc = fc_bam_iter_open_path(&it->bmi, it->current, opts);
     it->cursor_open = (rc == 0);

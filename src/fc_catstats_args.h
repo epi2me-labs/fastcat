@@ -39,6 +39,7 @@ typedef struct {
     int recurse;
     size_t write_bam;
     bool fofn;
+    fc_file_kind input_kind;
     size_t reads_per_file;
     fc_path_list input_paths;
 
