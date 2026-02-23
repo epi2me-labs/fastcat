@@ -102,20 +102,30 @@ static void output_write_fastq(output_sink *sink, bam1_t *bam, read_meta meta, v
 static void output_write_bam(output_sink *sink, bam1_t *bam, htsFile *handle) {
     if (bam == NULL) {
         FC_LOG_ERROR("Internal error: BAM record missing for output.");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     if (sam_write1(handle, sink->bam_hdr, bam) < 0) {
         FC_LOG_ERROR("Error writing read to BAM file.");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 }
 
 static void output_create_filepath(output_sink *sink, size_t barcode, char **path, char **filepath) {
-    int ex_size = (sink->cfg.reads_per_file == 0) ? 0 : 5;
-    char *extra = calloc(ex_size + 1, sizeof(char));
+    char *extra = NULL;
     if (sink->cfg.reads_per_file != 0) {
-        sprintf(extra, "_%04zu", sink->file_index[barcode]);
+        int need = snprintf(NULL, 0, "_%04zu", sink->file_index[barcode]);
+        if (need < 0) {
+            FC_LOG_ERROR("Failed to format output filename suffix.");
+            exit(EXIT_FAILURE);
+        }
+        extra = xalloc((size_t)need + 1, sizeof(char), "output filename suffix");
+        if (snprintf(extra, (size_t)need + 1, "_%04zu", sink->file_index[barcode]) != need) {
+            FC_LOG_ERROR("Failed to write output filename suffix.");
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        extra = xalloc(1, sizeof(char), "output filename suffix");
     }
 
     char stem[32];
@@ -133,8 +143,12 @@ static void output_create_filepath(output_sink *sink, size_t barcode, char **pat
         + 1                      // '.'
         + strlen(ext)
         + 1;                     // NUL
-    *filepath = (char *)calloc(fsz, sizeof(char));
-    sprintf(*filepath, "%s/%s%s.%s", *path, stem, extra, ext);
+    *filepath = xalloc(fsz, sizeof(char), "output filepath");
+    int n = snprintf(*filepath, fsz, "%s/%s%s.%s", *path, stem, extra, ext);
+    if (n < 0 || (size_t)n >= fsz) {
+        FC_LOG_ERROR("Failed to create output filepath.");
+        exit(EXIT_FAILURE);
+    }
     free(extra);
 }
 
@@ -144,7 +158,7 @@ static void output_ensure_directory(output_sink *sink, size_t barcode, char *pat
         int rtn = mkdir_hier(path);
         if (rtn == -1) {
             FC_LOG_ERROR("Failed to create barcode directory '%s'.", path);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
     }
 }
@@ -159,7 +173,7 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
     if (barcode >= sink->cfg.barcode_count) {
         FC_LOG_ERROR("Read's barcode number (%lu) exceeds configured barcode slots (%zu)",
                      barcode, sink->cfg.barcode_count);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     if (sink->output == NULL) {
@@ -178,7 +192,7 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
         } else {
             if (sink->handles[barcode] == NULL) {
                 FC_LOG_ERROR("Unexpected output file status encountered.");
-                exit(1);
+                exit(EXIT_FAILURE);
             }
             gzflush(sink->handles[barcode], Z_FINISH);
             gzclose(sink->handles[barcode]);
@@ -199,7 +213,7 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
                 hts_set_opt(sink->bam_files[barcode], HTS_OPT_THREAD_POOL, &sink->hts_pool);
                 if (sam_hdr_write(sink->bam_files[barcode], sink->bam_hdr)) {
                     FC_LOG_ERROR("Error writing header to BAM file");
-                    exit(1);
+                    exit(EXIT_FAILURE);
                 }
             }
             output_write_bam(sink, read->bam, sink->bam_files[barcode]);
@@ -279,7 +293,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
         state->hts_pool.qsize = 0;
         if (state->hts_pool.pool == NULL) {
             FC_LOG_ERROR("Error creating thread pool");
-            exit(1);
+            exit(EXIT_FAILURE);
         }
         state->bam_hdr = sam_hdr_init();
         sam_hdr_add_line(state->bam_hdr, "HD", "VN", SAM_FORMAT_VERSION, "SO", "unsorted", NULL);
@@ -290,7 +304,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
             hts_set_opt(state->bam_files[0], HTS_OPT_THREAD_POOL, &state->hts_pool);
             if (sam_hdr_write(state->bam_files[0], state->bam_hdr)) {
                 FC_LOG_ERROR("Error writing header to BAM on stdout");
-                exit(1);
+                exit(EXIT_FAILURE);
             }
         }
     } else {
