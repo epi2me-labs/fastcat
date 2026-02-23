@@ -1,4 +1,4 @@
-#include "fastcat/parsing.h"
+#include "fc_failures.h"
 
 const char *failure_type[NUM_FAILURE_CODES] = {
 #define X(code) #code,

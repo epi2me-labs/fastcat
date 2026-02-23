@@ -7,7 +7,7 @@
 #include <string.h>
 
 #include "common.h"
-#include "fastcat/parsing.h"
+#include "fc_failures.h"
 #include "sink/common.h"
 #include "../fc_log.h"
 

@@ -32,9 +32,9 @@ build:
         - test/*
     script:
         - make
-        - ./fastcat --help
-        - ./bamstats --help
-        - ./bamindex build --help
+        - ./fastcat fastq --help
+        - ./fastcat bam --help
+        - ./fastcat index --help
         - PEPPER=1 make test
 
 deploy-checks:

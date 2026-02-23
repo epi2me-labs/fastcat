@@ -5,26 +5,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [unreleased]
+
+This major release of the `fastcat` suite of programs includes a number of breaking changes to the command-line interface, and some changes to the output formats.
+
+The command-line interface has been reorganised under a single `fastcat` program with subcommands for different modes of operation.
+The previous `fastcat` program is now `fastcat fastq`, and the `bamstats` program is now `fastcat bam`.
+(Similarly for the ancilliary programs `fastlint` and `bamindex` which are now `fastcat lint` and `fastcat bamindex` respectively).
+All options have been switched to `--kebab-case` to match other ONT tooling.
+The `fastcat fastq` program now requires explicit `-` input to read sequencing data from stdin, and the `--fofn` option can be used to treat positional inputs as file-of-filenames sources (including `-` for stdin lists).
+
+In addition to changes to the CLI, the parsing of FASTQ header information has been overhauled to be more robust and to align with the expectations of the MinKNOW specifications.
+This has led to some changes in behaviour, particularly in the handling of SAM-style tags in FASTQ headers, and the inference of read groups and run identifiers.
+
+
 ### Fixed
 - The `pi` tag was being incorrectly parsed as an integer tag, leading to failure to read the data.
   This gave rise to a failure to exclude reads based on having a parent (notably in poly-A tail analysis).
 - A memory leak when performing low-complexity read filtering with `fastlint` or `fastcat --dust`.
 - A difference in behaviour between some operating systems when parsing (perculiar and rare) fastq comment entries.
 ### Changed
+- Reorganised command-line interface under a unified single `fastcat` program with subcommands for different modes of operation. 
 - CLI options are all now `--kebab-case` rather than `--snake_case` to match other ONT tooling.
-- Both `fastcat` and `bamstats` now take a single `--output` (default `fastcat-qc`) and refuse to run if the directory already exists.
-- Both tools now assume that input on stdin comprises sequencing data. The previous behaviour of `fastcat` treating stdin as a list of file paths to read can be restored with the `--lofn` flag.
+- Both `fastcat fastq` and `fastcat bam` (previous `fastcat` and `bmastats`) now take a single `--output` (default `fastcat-qc`) and refuse to run if the directory already exists.
+- `fastcat` now requires explicit `-` input to read sequencing data from stdin. Use `--fofn` to treat positional inputs as file-of-filenames sources (including `-` for stdin lists).
 - Individual summary output options were removed; all outputs are produced always. Per-read details remain optional with the `--per-read` flag.
-- SAM-style FASTQ header comments are generated through a more robust method. The ordering of keys may
-  not respect the ordering in the original FASTQ header, but all keys and values will be preserved.
-- The parsing of FASTQ header information is more strictly enforced. Mixtures of key=value style and
-  SAM-style meta data (in a single read) is no longer supported, with SAM-style tags being preferred.
-  The behaviour aligns with the expectations of the 
+- SAM-style FASTQ header comments are generated through a more robust method. The ordering of keys may not respect the ordering in the original FASTQ header, but all keys and values will be preserved.
+- The parsing of FASTQ header information is more strictly enforced. Mixtures of key=value style and SAM-style meta data (in a single read) is no longer supported, with SAM-style tags being preferred. The behaviour aligns with the expectations of the 
   [older](https://software-docs.nanoporetech.com/output-specifications/25.09/read_formats/fastq/) (25.09) and
   [contemporary](https://software-docs.nanoporetech.com/output-specifications/26.01/read_formats/fastq/) (26.01)
   MinKNOW specifications.
-- The read group (RG) tag for a read is inferred from the protocol ("run") ID, the basecaller model, and
-  optionally the barcode ID, when not explicitly provided in the FASTQ header.
+- The read group (RG) tag for a read is inferred from the protocol ("run") ID, the basecaller model, and optionally the barcode ID, when not explicitly provided in the FASTQ header.
 - The `--unmapped` options is removed from both `bamstats`; statististics for unmapped reads are always produced.
 - The `fastcat` program will now respect the `qs` mean quality score tag in fastq headers rather than recomputing mean quality from the base qualities. This can be overridden with the `--recalc-qual` flag.
 ### Added

@@ -13,6 +13,6 @@ typedef struct arguments {
     int threads;
 } arguments_t;
 
-arguments_t parse_arguments(int argc, char** argv);
+arguments_t bamcoverage_parse_arguments(int argc, char** argv);
 
 #endif

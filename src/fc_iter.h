@@ -8,7 +8,7 @@
 #include <zlib.h>
 
 #include "common.h"
-#include "fastcat/parsing.h"
+#include "fc_failures.h"
 #include "fc_bam_utils.h"
 #include "fc_filter.h"
 #include "fc_read.h"
