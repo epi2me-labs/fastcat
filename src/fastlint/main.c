@@ -7,9 +7,10 @@ KSEQ_INIT(gzFile, gzread)
 
 #include "../sdust/sdust.h"
 #include "args.h"
+#include "main.h"
 #include "../fc_log.h"
 
-int main(int argc, char *argv[]) {
+int fastlint_main(int argc, char *argv[]) {
     gzFile fp;
     kseq_t *ks;
 
@@ -21,7 +22,7 @@ int main(int argc, char *argv[]) {
     };
     fc_log_init(&log_cfg);
 
-    arguments_t args = parse_arguments(argc, argv);
+    arguments_t args = fastlint_parse_arguments(argc, argv);
 
     for (size_t i=0; i<args.nfiles; ++i) { 
         if ((strcmp(args.fastq[i], "-") == 0) && (strlen(args.fastq[i]) == 1)) {

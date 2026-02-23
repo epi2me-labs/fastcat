@@ -13,6 +13,6 @@ typedef struct arguments {
     size_t nfiles;
 } arguments_t;
 
-arguments_t parse_arguments(int argc, char** argv);
+arguments_t fastlint_parse_arguments(int argc, char** argv);
 
 #endif

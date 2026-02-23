@@ -4,9 +4,10 @@
 #include "htslib/thread_pool.h"
 #include "coverage.h"
 #include "args.h"
+#include "main.h"
 #include "../fc_log.h"
 
-int main(int argc, char** argv) {
+int bamcoverage_main(int argc, char** argv) {
     fc_log_config log_cfg = {
         .level = FC_LOG_INFO,
         .module = "BAMCOVER",
@@ -15,7 +16,7 @@ int main(int argc, char** argv) {
     };
     fc_log_init(&log_cfg);
 
-    arguments_t args = parse_arguments(argc, argv);
+    arguments_t args = bamcoverage_parse_arguments(argc, argv);
 
     htsThreadPool p = {NULL, 0};
     p.pool = hts_tpool_init(args.threads);

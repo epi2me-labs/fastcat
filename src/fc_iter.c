@@ -757,7 +757,7 @@ int fc_iter_collect_paths(
     out_paths->n_paths = 0;
 
     if (stdin_is_path_list) {
-        return fc_read_paths_from_stdin(expected_kind, out_paths);
+        return fc_read_paths_from_fofn_sources(input_paths, expected_kind, out_paths);
     }
     if (input_paths && input_paths->n_paths == 1 && input_paths->paths &&
         strcmp(input_paths->paths[0], "-") == 0) {
@@ -785,8 +785,7 @@ int fc_iter_init(
     fc_file_kind expected_kind,
     bool stdin_is_path_list) {
     if (!it) return EINVAL;
-    if (!stdin_is_path_list &&
-        (!input_paths || !input_paths->paths || input_paths->n_paths == 0)) return EINVAL;
+    if (!input_paths || !input_paths->paths || input_paths->n_paths == 0) return EINVAL;
     memset(it, 0, sizeof(*it));
     it->recurse = recurse;
     it->verbose = verbose;

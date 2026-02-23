@@ -1,5 +1,5 @@
-#ifndef _FASTCAT_PARSING_H
-#define _FASTCAT_PARSING_H
+#ifndef FASTCAT_FC_FAILURES_H
+#define FASTCAT_FC_FAILURES_H
 
 // F_ - file error
 // R_ - record error
@@ -24,6 +24,5 @@ typedef enum {
 } failure_code;
 
 extern const char *failure_type[NUM_FAILURE_CODES];
-
 
 #endif

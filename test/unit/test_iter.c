@@ -11,7 +11,7 @@
 
 #include "fc_iter.h"
 #include "fc_read.h"
-#include "fastcat/parsing.h"
+#include "fc_failures.h"
 
 static fc_iter_opts fq_opts_defaults(void) {
     fc_iter_opts o = {0};

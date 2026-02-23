@@ -5,7 +5,6 @@
 #include "args.h"
 #include "../version.h"
 
-const char *argp_program_bug_address = "support@nanoporetech.com";
 static char doc[] = 
 "fastlint -- apply sdust algorithm to input files.\
 \vThe program removes low-complexity reads from the input stream.\n";
@@ -61,7 +60,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 
 static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
 
-arguments_t parse_arguments(int argc, char** argv) {
+arguments_t fastlint_parse_arguments(int argc, char** argv) {
     arguments_t args;
     memset(&args, 0, sizeof(arguments_t)); // initialize fastqs
     args.t = 20;

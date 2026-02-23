@@ -7,8 +7,6 @@
 #include "common.h"
 #include "../version.h"
 
-const char *argp_program_bug_address = "support@nanoporetech.com";
-
 static char doc[] =
 "bamcoverage -- summarise coverage statistics from a BAM file.\n"
 "\vThe program creates coverage traces in BED files, and various summary files.";
@@ -69,7 +67,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 static struct argp argp = { options, parse_opt, args_doc, doc, 0, 0, 0 };
 
 
-arguments_t parse_arguments(int argc, char **argv) {
+arguments_t bamcoverage_parse_arguments(int argc, char **argv) {
     arguments_t a = {
         .bam = NULL,
         .beds = NULL, .n_beds = 0,
