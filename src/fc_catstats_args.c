@@ -61,8 +61,8 @@ static struct argp_option fastcat_options[] = {
     {"recurse", 'x', 0, 0,
         "Search directories recursively for '.fastq', '.fq', '.fastq.gz', and '.fq.gz' files.", 0},
     {"threads", 't', "THREADS", 0,
-        "Number of threads for output compression (only with --bam_out).", 0},
-    {"force_error", 'e', 0, 0,
+        "Number of threads for output compression (only with --bam-out).", 0},
+    {"force-error", 'e', 0, 0,
         "Exit with non-zero status if any files, or records, contained errors.", 0},
     {"fofn", KEY_FOFN, 0, 0,
         "Treat each input as a file-of-filenames source (use '-' to read that list from stdin).", 0},
@@ -75,9 +75,7 @@ static struct argp_option fastcat_options[] = {
         "Sample name (if given, adds a 'sample_name' column).", 1},
     {"reads-per-file", 'c', "NUM", 0,
         "Split reads into files with a set number of reads (default: single file).", 1},
-    {"reheader", 'H', 0, 0,
-        "Rewrite fastq header comments as SAM tags (useful for passing through minimap2).", 1},
-    {"bam_out", 'B', 0, 0, "Output data as unaligned BAM.", 1},
+    {"bam-out", 'B', 0, 0, "Output data as unaligned BAM.", 1},
     {"per-read", 'p', 0, 0, "Write per-read TSV (large). Disabled by default.", 1},
     {"demultiplex", 'd', 0, 0,
         "Separate barcoded samples using fastq header information; outputs go under <output>/barcodeXXXX/.", 1},
@@ -101,7 +99,6 @@ static struct argp_option fastcat_options[] = {
         "Only process reads from a given haplotype. Equivalent to --tag-name HP --tag-value VAL.", 2},
     {"recalc-qual", KEY_RECALC_QUAL, 0, 0,
         "Force recomputing mean quality, else use 'qs' tag if present.", 2},
-    {"recalc_qual", KEY_RECALC_QUAL, 0, OPTION_HIDDEN, 0, 2},
 
     {0, 0, 0, 0, "Logging options:", 3},
     {"log-level", KEY_LOG_LEVEL, "LEVEL", 0,
@@ -124,7 +121,7 @@ static struct argp_option bamstats_options[] = {
     {"bed", 'b', "BEDFILE", 0, "BED file for regions to process.", 0},
     {"threads", 't', "THREADS", 0,
         "Number of threads (for BAM decompression and BED output compression).", 0},
-    {"force_error", 'e', 0, 0, "Exit with non-zero status if parsing/filtering errors occur.", 0},
+    {"force-error", 'e', 0, 0, "Exit with non-zero status if parsing/filtering errors occur.", 0},
     {"verbose", 'v', 0, 0, "Verbose output.", 0},
 
     {0, 0, 0, 0, "Output options:", 1},
@@ -153,7 +150,6 @@ static struct argp_option bamstats_options[] = {
         "Only process reads from a given haplotype. Equivalent to --tag-name HP --tag-value VAL.", 2},
     {"recalc-qual", KEY_RECALC_QUAL, 0, 0,
         "Force recomputing mean quality, else use 'qs' tag in BAM if present.", 2},
-    {"recalc_qual", KEY_RECALC_QUAL, 0, OPTION_HIDDEN, 0, 2},
 
     {0, 0, 0, 0, "Coverage calculation options:", 3},
     {"coverage", KEY_COVERAGE, 0, 0, "Enable coverage calculations.", 3},
@@ -186,7 +182,7 @@ static struct argp_option bamstats_options[] = {
 static fc_catstats_args default_args(void) {
     fc_catstats_args args = {0};
     args.output_dir = "fastcat-qc";
-    args.sample = "";
+    args.sample = NULL;
     args.demultiplex = false;
     args.per_read = false;
     args.threads = 1;
@@ -210,7 +206,6 @@ static fc_catstats_args default_args(void) {
     args.force_recalc_qual = false;
 
     args.recurse = 1;
-    args.reheader = 0;
     args.write_bam = 0;
     args.fofn = false;
     args.reads_per_file = 0;
@@ -309,9 +304,6 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             break;
         case 'x':
             arguments->recurse = -1;  // 0 stops recursion
-            break;
-        case 'H':
-            arguments->reheader = 1;
             break;
         case 'B':
             arguments->write_bam = 1;

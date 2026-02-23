@@ -54,7 +54,7 @@ fc_sink fc_perfile_sink_create(const char *output_root, const char *sample) {
         exit(EXIT_FAILURE);
     }
     free(path);
-    if (sample && sample[0]) {
+    if (sample) {
         state->sample = strdup(sample);
     }
 

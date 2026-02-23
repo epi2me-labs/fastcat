@@ -272,7 +272,7 @@ mem_check_fastcat_demultiplex_bam: fastcat
 test_fastcat_bam_equivalent: fastcat samtools
 	@$(call TEST_DESC,Fastcat BAM equivalence)
 	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/bam_equiv, \
-		$(RUN_FASTCAT) $(TEST_ROOT)/data/*.fastq.gz --output out_reheader --reheader -B | $(REPO_ROOT)/samtools view | $(TEST_ROOT)/sort-sam.py > reheader.sam && \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/*.fastq.gz --output out_reheader -B | $(REPO_ROOT)/samtools view | $(TEST_ROOT)/sort-sam.py > reheader.sam && \
 		$(RUN_FASTCAT) $(TEST_ROOT)/data/*.fastq.gz --output out_bam -B | $(REPO_ROOT)/samtools view | $(TEST_ROOT)/sort-sam.py > bam.sam && \
 		diff reheader.sam bam.sam)
 
@@ -280,7 +280,7 @@ test_fastcat_bam_equivalent: fastcat samtools
 test_fastcat_reheader_roundtrip: fastcat samtools
 	@$(call TEST_DESC,Fastcat reheader roundtrip)
 	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/reheader, \
-		$(RUN_FASTCAT) $(TEST_ROOT)/reheader/kv.fastq --output out_hist --reheader > out.fastq && \
+		$(RUN_FASTCAT) $(TEST_ROOT)/reheader/kv.fastq --output out_hist > out.fastq && \
 		$(RUN_FASTCAT) $(TEST_ROOT)/reheader/kv.fastq --output out_orig -B | $(REPO_ROOT)/samtools view > orig.sam && \
 		$(RUN_FASTCAT) out.fastq --output out_reheader -B | $(REPO_ROOT)/samtools view > reheader.sam && \
 		diff orig.sam reheader.sam)
@@ -328,7 +328,7 @@ test_fastcat_regression_results: fastcat
 			--output $(TEST_TMP_FASTCAT)/regression/out1 \
 			--per-read \
 			> $(TEST_TMP_FASTCAT)/regression/concat.fastq && \
-		$(RUN_FASTCAT) ../data/*.fastq.gz --reheader \
+		$(RUN_FASTCAT) ../data/*.fastq.gz \
 			--output $(TEST_TMP_FASTCAT)/regression/out2 \
 			> $(TEST_TMP_FASTCAT)/regression/concat.reheader.fastq && \
 		popd > /dev/null && \
@@ -389,7 +389,7 @@ test_fastcat_stdin_requires_dash: fastcat
 # bamstats tests
 
 .PHONY: 
-test_bamstats: test_bamstats_NM test_bamstats_polya test_bamstats_filters test_bamstats_vs_fastcat_unaligned test_bamstats_vs_fastcat_unaligned_demux test_bamstats_demux_single_equiv test_bamstats_perfile_all_filtered mem_check_bamstats
+test_bamstats: test_bamstats_NM test_bamstats_polya test_bamstats_filters test_bamstats_vs_fastcat_unaligned test_bamstats_vs_fastcat_unaligned_demux test_bamstats_demux_single_equiv test_bamstats_perfile_all_filtered test_bamstats_sample_column mem_check_bamstats
 .PHONY: test_bamstats_coverage_demux_layout
 test_bamstats: test_bamstats_coverage_demux_layout
 .PHONY: test_bamstats_stdin_equiv test_bamstats_stdin_bed_equiv
@@ -408,6 +408,17 @@ test_bamstats_demux_single_equiv: fastcat
 		$(call COMPARE_TABLES,plain_out/per_read.tsv,demux_out/barcode0001/per_read.tsv,bs_demux_single_perread) && \
 		diff plain_out/histograms/length.hist demux_out/barcode0001/barcode0001.length.hist && \
 		diff plain_out/histograms/quality.hist demux_out/barcode0001/barcode0001.quality.hist)
+
+.PHONY: test_bamstats_sample_column
+test_bamstats_sample_column: fastcat
+	@$(call TEST_DESC,Bamstats sample_name column only when --sample set)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/sample_column, \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats/400ecoli.bam --output out_nosample > /dev/null && \
+		! head -n 1 out_nosample/flagstats.tsv | grep -q "sample_name" && \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats/400ecoli.bam --sample "" --output out_empty > /dev/null && \
+		head -n 1 out_empty/flagstats.tsv | grep -q "sample_name" && \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats/400ecoli.bam --sample foo --output out_sample > /dev/null && \
+		head -n 1 out_sample/flagstats.tsv | grep -q "sample_name")
 
 .PHONY: test_bamstats_coverage_demux_layout
 test_bamstats_coverage_demux_layout: fastcat samtools

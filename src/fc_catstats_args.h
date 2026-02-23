@@ -37,7 +37,6 @@ typedef struct {
 
     // fastcat-specific
     int recurse;
-    size_t reheader;
     size_t write_bam;
     bool fofn;
     size_t reads_per_file;

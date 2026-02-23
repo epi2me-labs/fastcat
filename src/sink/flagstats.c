@@ -219,13 +219,14 @@ fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts) {
 
     flagstats_sink* state = calloc(1, sizeof(*state));
     state->cfg = *opts;
+    state->cfg.sample = NULL;
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->n_refs = state->cfg.region_mode ? 1 : (state->cfg.hdr ? (size_t)state->cfg.hdr->n_targets : 0);
     state->global_stats = create_flag_stats(state->n_refs, true);
     state->bc_stats = calloc(state->cfg.barcode_count, sizeof(flag_stats *));
     state->bc_fp = calloc(state->cfg.barcode_count, sizeof(FILE *));
     state->output_root = fc_strip_path(opts->output_root);
-    if (opts->sample && opts->sample[0]) {
+    if (opts->sample) {
         state->sample_dup = strdup(opts->sample);
         state->cfg.sample = state->sample_dup;
     }

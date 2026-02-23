@@ -11,7 +11,6 @@
 typedef struct {
     const char *output_root;   // NULL => stream to stdout; non-NULL => write files under <output_root>/{unclassified,barcodeXXXX}
     size_t reads_per_file;
-    bool reheader;
     bool write_bam;
     int threads;
     size_t barcode_count;      // size of per-barcode buffers

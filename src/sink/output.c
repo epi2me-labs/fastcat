@@ -69,9 +69,9 @@ typedef struct {
 } output_sink;
 
 static void output_write_fastq(output_sink *sink, bam1_t *bam, read_meta meta, void *handle) {
+    (void)sink;
     sink_write_fn sink_write = handle == stdout ? fprintf_bridge : gz_fprintf_bridge;
 
-    static const char *fq_comment_fmt = "@%s %s\n%s\n+\n%s\n";
     static const char *sam_comment_fmt = "@%s\t%s\n%s\n+\n%s\n";
     static const char *no_comment_fmt = "@%s\n%s\n+\n%s\n";
 
@@ -89,19 +89,10 @@ static void output_write_fastq(output_sink *sink, bam1_t *bam, read_meta meta, v
     seq_str[len] = '\0';
     qual_str[len] = '\0';
 
-    if (sink->cfg.reheader) {
-        if (meta->tags_str && meta->tags_str->l > 0) {
-            sink_write(handle, sam_comment_fmt, qname, meta->tags_str->s, seq_str, qual_str);
-        } else {
-            sink_write(handle, no_comment_fmt, qname, seq_str, qual_str);
-        }
+    if (meta->tags_str && meta->tags_str->l > 0) {
+        sink_write(handle, sam_comment_fmt, qname, meta->tags_str->s, seq_str, qual_str);
     } else {
-        const char *comment = (meta->orig_comment && meta->orig_comment[0]) ? meta->orig_comment : NULL;
-        if (comment && comment[0]) {
-            sink_write(handle, fq_comment_fmt, qname, comment, seq_str, qual_str);
-        } else {
-            sink_write(handle, no_comment_fmt, qname, seq_str, qual_str);
-        }
+        sink_write(handle, no_comment_fmt, qname, seq_str, qual_str);
     }
 
     free(seq_str);
