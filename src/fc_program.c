@@ -133,6 +133,11 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
             status = EXIT_FAILURE;
             goto cleanup;
         }
+        if (file_iter.n_files == 0) {
+            FC_LOG_ERROR("No usable input files found.");
+            status = EXIT_FAILURE;
+            goto cleanup;
+        }
     } else {
         // BAMSTATS only takes a single BAM input, so we create a synthetic path list with just the one BAM
         // then bootstrap the iterator on that. This allows us to reuse the same iteration logic for both programs.

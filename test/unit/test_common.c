@@ -45,10 +45,46 @@ static void test_kahan_sum(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.05, sum, 10000.0);
 }
 
+static void test_parse_int_strict(void) {
+    int v = 0;
+    TEST_ASSERT_TRUE(fc_parse_int_strict("42", &v));
+    TEST_ASSERT_EQUAL_INT(42, v);
+    TEST_ASSERT_FALSE(fc_parse_int_strict("42x", &v));
+    TEST_ASSERT_FALSE(fc_parse_int_strict("", &v));
+}
+
+static void test_parse_size_strict(void) {
+    size_t v = 0;
+    TEST_ASSERT_TRUE(fc_parse_size_strict("123", &v));
+    TEST_ASSERT_EQUAL_UINT64(123, (uint64_t)v);
+    TEST_ASSERT_FALSE(fc_parse_size_strict("-1", &v));
+    TEST_ASSERT_FALSE(fc_parse_size_strict("1.5", &v));
+}
+
+static void test_parse_u32_strict_overflow(void) {
+    uint32_t v = 0;
+    TEST_ASSERT_TRUE(fc_parse_u32_strict("4294967295", &v));
+    TEST_ASSERT_EQUAL_UINT32(4294967295u, v);
+    TEST_ASSERT_FALSE(fc_parse_u32_strict("4294967296", &v));
+}
+
+static void test_parse_float_strict(void) {
+    float v = 0.0f;
+    TEST_ASSERT_TRUE(fc_parse_float_strict("3.5", &v));
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 3.5f, v);
+    TEST_ASSERT_FALSE(fc_parse_float_strict("nan", &v));
+    TEST_ASSERT_FALSE(fc_parse_float_strict("inf", &v));
+    TEST_ASSERT_FALSE(fc_parse_float_strict("3.5x", &v));
+}
+
 void common_suite(void) {
     RUN_TEST(test_min_max);
     RUN_TEST(test_replace_char);
     RUN_TEST(test_substring);
     RUN_TEST(test_create_rg_info);
     RUN_TEST(test_kahan_sum);
+    RUN_TEST(test_parse_int_strict);
+    RUN_TEST(test_parse_size_strict);
+    RUN_TEST(test_parse_u32_strict_overflow);
+    RUN_TEST(test_parse_float_strict);
 }

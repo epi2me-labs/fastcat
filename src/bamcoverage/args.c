@@ -33,7 +33,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             slurp_args(&a->bed_names, &a->n_bed_names, arg, state);
             break;
         case 't':
-            a->threads = atoi(arg);
+            if (!fc_parse_int_strict(arg, &a->threads)) {
+                argp_error(state, "Invalid --threads value: '%s'.", arg);
+            }
             if (a->threads <= 0) argp_error(state, "THREADS must be > 0");
             break;
 

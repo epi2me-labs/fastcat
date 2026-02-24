@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <libgen.h>
+#include <limits.h>
 #include <math.h>
 #include <regex.h>
 #include <string.h>
@@ -208,6 +209,65 @@ static void push_str(const char ***arr, size_t *n, const char *s) {
     (*arr)[(*n)++] = s;
 }
 
+bool fc_parse_int_strict(const char *text, int *out) {
+    if (!text || !*text || !out) return false;
+    errno = 0;
+    char *endp = NULL;
+    long val = strtol(text, &endp, 10);
+    if (errno == ERANGE || endp == text || *endp != '\0') return false;
+    if (val < INT_MIN || val > INT_MAX) return false;
+    *out = (int)val;
+    return true;
+}
+
+bool fc_parse_size_strict(const char *text, size_t *out) {
+    if (!text || !*text || !out) return false;
+    if (text[0] == '-') return false;
+
+    errno = 0;
+    char *endp = NULL;
+    unsigned long long val = strtoull(text, &endp, 10);
+    if (errno == ERANGE || endp == text || *endp != '\0') return false;
+    if (val > SIZE_MAX) return false;
+    *out = (size_t)val;
+    return true;
+}
+
+bool fc_parse_u32_strict(const char *text, uint32_t *out) {
+    if (!text || !*text || !out) return false;
+    if (text[0] == '-') return false;
+
+    errno = 0;
+    char *endp = NULL;
+    unsigned long long val = strtoull(text, &endp, 10);
+    if (errno == ERANGE || endp == text || *endp != '\0') return false;
+    if (val > UINT32_MAX) return false;
+    *out = (uint32_t)val;
+    return true;
+}
+
+bool fc_parse_float_strict(const char *text, float *out) {
+    if (!text || !*text || !out) return false;
+    errno = 0;
+    char *endp = NULL;
+    float val = strtof(text, &endp);
+    if (errno == ERANGE || endp == text || *endp != '\0') return false;
+    if (!isfinite(val)) return false;
+    *out = val;
+    return true;
+}
+
+bool fc_parse_double_strict(const char *text, double *out) {
+    if (!text || !*text || !out) return false;
+    errno = 0;
+    char *endp = NULL;
+    double val = strtod(text, &endp);
+    if (errno == ERANGE || endp == text || *endp != '\0') return false;
+    if (!isfinite(val)) return false;
+    *out = val;
+    return true;
+}
+
 char *fc_strip_path(const char *input) {
     if (input == NULL) return NULL;
     size_t len = strlen(input);
@@ -245,25 +305,23 @@ void slurp_args(const char ***arr, size_t *n, const char *first, struct argp_sta
 }
 
 void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state) {
-    char *endp;
-    long val = strtol(first, &endp, 10);
-    if (*endp != '\0' || val < 0) {
+    uint32_t val = 0;
+    if (!fc_parse_u32_strict(first, &val)) {
         argp_error(state, "Invalid integer threshold: '%s'", first);
     }
     *arr = realloc(*arr, (*n + 1) * sizeof(**arr));
     if (!*arr) argp_failure(state, 1, 0, "out of memory");
-    (*arr)[(*n)++] = (uint32_t)val;
+    (*arr)[(*n)++] = val;
 
     while (state->next < state->argc) {
         char *next = state->argv[state->next];
         if (next[0] == '-') break;
-        val = strtol(next, &endp, 10);
-        if (*endp != '\0' || val < 0) {
+        if (!fc_parse_u32_strict(next, &val)) {
             argp_error(state, "Invalid integer threshold: '%s'", next);
         }
         *arr = realloc(*arr, (*n + 1) * sizeof(**arr));
         if (!*arr) argp_failure(state, 1, 0, "out of memory");
-        (*arr)[(*n)++] = (uint32_t)val;
+        (*arr)[(*n)++] = val;
         state->next++;
     }
 }

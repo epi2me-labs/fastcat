@@ -3,6 +3,7 @@
 #include <argp.h>
 
 #include "args.h"
+#include "../common.h"
 #include "../version.h"
 
 static char doc[] = 
@@ -24,15 +25,32 @@ static struct argp_option options[] = {
 
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     arguments_t *arguments = state->input;
+    int int_value = 0;
+    double dbl_value = 0.0;
     switch (key) {
         case 't':
-            arguments->t = atoi(arg);
+            if (!fc_parse_int_strict(arg, &int_value)) {
+                argp_error(state, "Invalid --threshold value: '%s'.", arg);
+            }
+            if (int_value <= 0) {
+                argp_error(state, "--threshold must be > 0.");
+            }
+            arguments->t = int_value;
             break;
         case 'w':
-            arguments->w = atoi(arg);
+            if (!fc_parse_int_strict(arg, &int_value)) {
+                argp_error(state, "Invalid --window value: '%s'.", arg);
+            }
+            if (int_value <= 0) {
+                argp_error(state, "--window must be > 0.");
+            }
+            arguments->w = int_value;
             break;
         case 'p':
-            arguments->max_proportion = atof(arg);
+            if (!fc_parse_double_strict(arg, &dbl_value)) {
+                argp_error(state, "Invalid --max-proportion value: '%s'.", arg);
+            }
+            arguments->max_proportion = dbl_value;
             if (arguments->max_proportion < 0.0 || arguments->max_proportion > 1.0) {
                 argp_error(state, "Proportion must be between 0.0 and 1.0.");
             }

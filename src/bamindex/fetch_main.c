@@ -13,6 +13,7 @@
 
 #include "index.h"
 #include "../fc_log.h"
+#include "../common.h"
 
 #include <argp.h>
 
@@ -41,12 +42,25 @@ typedef struct arguments {
 
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     arguments_t *arguments = state->input;
+    int int_value = 0;
     switch (key) {
         case 't':
-            arguments->threads = atoi(arg);
+            if (!fc_parse_int_strict(arg, &int_value)) {
+                argp_error(state, "Invalid --threads value: '%s'.", arg);
+            }
+            if (int_value <= 0) {
+                argp_error(state, "--threads must be > 0.");
+            }
+            arguments->threads = int_value;
             break;
         case 'c':
-            arguments->chunk_idx = atoi(arg);
+            if (!fc_parse_int_strict(arg, &int_value)) {
+                argp_error(state, "Invalid --chunk value: '%s'.", arg);
+            }
+            if (int_value < 0) {
+                argp_error(state, "--chunk must be >= 0.");
+            }
+            arguments->chunk_idx = int_value;
             break;
         case ARGP_KEY_NO_ARGS:
             argp_usage (state);
