@@ -85,6 +85,13 @@ char *fc_join_path(const char *dir, const char *leaf);
 void slurp_args(const char ***arr, size_t *n, const char *first, struct argp_state *state);
 void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state);
 
+// Strict parsers for user-facing numeric CLI arguments.
+bool fc_parse_int_strict(const char *text, int *out);
+bool fc_parse_size_strict(const char *text, size_t *out);
+bool fc_parse_u32_strict(const char *text, uint32_t *out);
+bool fc_parse_float_strict(const char *text, float *out);
+bool fc_parse_double_strict(const char *text, double *out);
+
 /** Allocates zero-initialised memory with a message on failure.
  *
  *  @param num number of elements to allocate.

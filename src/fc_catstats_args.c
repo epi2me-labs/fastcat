@@ -241,6 +241,10 @@ static fc_catstats_args default_args(void) {
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     parse_context *ctx = (parse_context *)state->input;
     fc_catstats_args *arguments = ctx->args;
+    size_t size_value = 0;
+    int int_value = 0;
+    float float_value = 0.0f;
+    double double_value = 0.0;
 
     switch (key) {
         case 's':
@@ -253,20 +257,32 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             arguments->per_read = true;
             break;
         case 'a':
-            arguments->min_length = (size_t)atoi(arg);
+            if (!fc_parse_size_strict(arg, &size_value)) {
+                argp_error(state, "Invalid --min-length value: '%s'.", arg);
+            }
+            arguments->min_length = size_value;
             break;
         case 'b':
             if (ctx->program == FC_PROGRAM_FASTCAT) {
-                arguments->max_length = (size_t)atoi(arg);
+                if (!fc_parse_size_strict(arg, &size_value)) {
+                    argp_error(state, "Invalid --max-length value: '%s'.", arg);
+                }
+                arguments->max_length = size_value;
             } else {
                 arguments->bed = arg;
             }
             break;
         case KEY_MAX_LENGTH_LONG:
-            arguments->max_length = (size_t)atoi(arg);
+            if (!fc_parse_size_strict(arg, &size_value)) {
+                argp_error(state, "Invalid --max-length value: '%s'.", arg);
+            }
+            arguments->max_length = size_value;
             break;
         case 'c':
-            arguments->reads_per_file = (size_t)atoi(arg);
+            if (!fc_parse_size_strict(arg, &size_value)) {
+                argp_error(state, "Invalid --reads-per-file value: '%s'.", arg);
+            }
+            arguments->reads_per_file = size_value;
             break;
         case 'd':
             arguments->demultiplex = true;
@@ -275,19 +291,28 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             arguments->dust = true;
             break;
         case KEY_MAX_DUST:
-            arguments->max_dust = atof(arg);
+            if (!fc_parse_double_strict(arg, &double_value)) {
+                argp_error(state, "Invalid --max-dust value: '%s'.", arg);
+            }
+            arguments->max_dust = double_value;
             if (arguments->max_dust < 0.0 || arguments->max_dust > 1.0) {
                 argp_error(state, "max_dust must be between 0 and 1.");
             }
             break;
         case KEY_DUST_W:
-            arguments->dust_w = (size_t)atoi(arg);
+            if (!fc_parse_size_strict(arg, &size_value)) {
+                argp_error(state, "Invalid --dust-w value: '%s'.", arg);
+            }
+            arguments->dust_w = size_value;
             if (arguments->dust_w == 0) {
                 argp_error(state, "dust_w must be a positive integer.");
             }
             break;
         case KEY_DUST_T:
-            arguments->dust_t = (size_t)atoi(arg);
+            if (!fc_parse_size_strict(arg, &size_value)) {
+                argp_error(state, "Invalid --dust-t value: '%s'.", arg);
+            }
+            arguments->dust_t = size_value;
             if (arguments->dust_t == 0) {
                 argp_error(state, "dust_t must be a positive integer.");
             }
@@ -305,7 +330,10 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             arguments->log_mono = true;
             break;
         case 'q':
-            arguments->min_qscore = (float)atof(arg);
+            if (!fc_parse_float_strict(arg, &float_value)) {
+                argp_error(state, "Invalid --min-qscore value: '%s'.", arg);
+            }
+            arguments->min_qscore = float_value;
             break;
         case 'x':
             arguments->recurse = -1;  // 0 stops recursion
@@ -317,7 +345,13 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             arguments->verbose = true;
             break;
         case 't':
-            arguments->threads = atoi(arg);
+            if (!fc_parse_int_strict(arg, &int_value)) {
+                argp_error(state, "Invalid --threads value: '%s'.", arg);
+            }
+            if (int_value <= 0) {
+                argp_error(state, "--threads must be > 0.");
+            }
+            arguments->threads = int_value;
             break;
         case 'e':
             arguments->force_error = true;
@@ -341,7 +375,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             arguments->read_group = arg;
             break;
         case KEY_TAG_NAME:
-            if (strlen(arg) > 2) {
+            if (strlen(arg) != 2) {
                 argp_error(state, "Tag name should be a two-letter code, received: '%s'.", arg);
             }
             memcpy(arguments->tag_name, arg, 2 * sizeof(char));
@@ -349,13 +383,19 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             ctx->tag_given = true;
             break;
         case KEY_TAG_VALUE:
-            arguments->tag_value = atoi(arg);
+            if (!fc_parse_int_strict(arg, &int_value)) {
+                argp_error(state, "Invalid --tag-value value: '%s'.", arg);
+            }
+            arguments->tag_value = int_value;
             ctx->tag_items += 1;
             ctx->tag_given = true;
             break;
         case KEY_HAPLOTYPE:
             memcpy(arguments->tag_name, "HP", 2 * sizeof(char));
-            arguments->tag_value = atoi(arg);
+            if (!fc_parse_int_strict(arg, &int_value)) {
+                argp_error(state, "Invalid --haplotype value: '%s'.", arg);
+            }
+            arguments->tag_value = int_value;
             ctx->tag_items += 2;
             ctx->hp_given = true;
             break;
@@ -381,10 +421,16 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
             arguments->poly_a = true;
             break;
         case KEY_POLYA_COVER:
-            arguments->poly_a_cover = (float)atof(arg);
+            if (!fc_parse_float_strict(arg, &float_value)) {
+                argp_error(state, "Invalid --poly-a-cover value: '%s'.", arg);
+            }
+            arguments->poly_a_cover = float_value;
             break;
         case KEY_POLYA_QUAL:
-            arguments->poly_a_qual = (float)atof(arg);
+            if (!fc_parse_float_strict(arg, &float_value)) {
+                argp_error(state, "Invalid --poly-a-qual value: '%s'.", arg);
+            }
+            arguments->poly_a_qual = float_value;
             break;
         case KEY_POLYA_REV:
             arguments->poly_a_rev = true;

@@ -671,7 +671,11 @@ static int collect_files_from_roots(
             continue;
         }
         if (S_ISDIR(st.st_mode)) {
-            if (cur.depth <= 0) {
+            // depth semantics:
+            //   0  => do not descend
+            //   N>0 => descend up to N levels (decrement each level)
+            //   N<0 => unbounded recursion
+            if (cur.depth == 0) {
                 free(cur.path);
                 continue;
             }
@@ -697,7 +701,7 @@ static int collect_files_from_roots(
                     qcap = newcap;
                 }
                 queue[qlen].path = child;
-                queue[qlen].depth = cur.depth - 1;
+                queue[qlen].depth = (cur.depth < 0) ? -1 : (cur.depth - 1);
                 qlen++;
             }
             closedir(dir);

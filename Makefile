@@ -143,8 +143,15 @@ test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_f
 .PHONY:
 clean:
 	rm -rf fastcat bamstats bamindex fastlint bamcoverage libfastcatcore.a $(HTSLIB_PATCH_STAMP) \
-		src/fastcat/*.o src/fastlint/*.o src/bamstats/*.o src/bamindex/*.o src/*.o src/sink/*.o \
-		test/unit/*.o test/unity/*.o test/unit/unit_tests
+		src/fastcat/*.o src/fastcat/*.d \
+		src/fastlint/*.o src/fastlint/*.d \
+		src/bamstats/*.o src/bamstats/*.d \
+		src/bamindex/*.o src/bamindex/*.d \
+		src/bamcoverage/*.o src/bamcoverage/*.d \
+		src/sdust/*.o src/sdust/*.d \
+		src/*.o src/*.d src/sink/*.o src/sink/*.d \
+		test/unit/*.o test/unit/*.d test/unity/*.o test/unity/*.d \
+		test/unit/unit_tests
 
 .PHONY: clean_htslib
 clean_htslib:
@@ -249,6 +256,12 @@ $(CORE_LIB): $(CORE_OBJS) Makefile
 
 -include $(wildcard src/*.d)
 -include $(wildcard src/sink/*.d)
+-include $(wildcard src/fastcat/*.d)
+-include $(wildcard src/fastlint/*.d)
+-include $(wildcard src/bamstats/*.d)
+-include $(wildcard src/bamindex/*.d)
+-include $(wildcard src/bamcoverage/*.d)
+-include $(wildcard src/sdust/*.d)
 -include $(wildcard test/unit/*.d)
 -include $(wildcard test/unity/*.d)
 

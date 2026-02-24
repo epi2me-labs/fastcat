@@ -8,6 +8,7 @@
 
 #include "fc_iter.h"
 #include "common.h"  // fc_join_path
+#include "test_fs_utils.h"
 
 static void make_file(const char *path, const char *content) {
     FILE *fp = fopen(path, "w");
@@ -76,14 +77,7 @@ static void test_collect_paths_filters_and_recurses_bfs(void) {
 
     fc_path_list_free(&files);
 
-    // cleanup files and dirs like a good citizen
-    unlink(f1); unlink(f1b); unlink(f2); unlink(f2b); unlink(f3);
-    unlink(junkfile); unlink(junkfile_sub); unlink(nestedjunk);
-    rmdir(nestedjunkdir);
-    rmdir(junkdir);
-    rmdir(sub1);
-    rmdir(sub2);
-    rmdir(tmpdir);
+    TEST_ASSERT_EQUAL_INT(0, fc_test_remove_tree(tmpdir));
     free(f1); free(f1b); free(f2); free(f2b); free(f3);
     free(junkfile); free(junkfile_sub); free(nestedjunk); free(nestedjunkdir);
     free(sub1); free(sub2); free(junkdir);
@@ -106,14 +100,92 @@ static void test_collect_paths_rejects_mixed_file_types(void) {
     TEST_ASSERT_NULL(files.paths);
     TEST_ASSERT_EQUAL_UINT(0, files.n_paths);
 
-    unlink(f1);
-    unlink(f2);
-    rmdir(tmpdir);
+    TEST_ASSERT_EQUAL_INT(0, fc_test_remove_tree(tmpdir));
     free(f1);
     free(f2);
+}
+
+static void test_collect_paths_default_nonrecursive_depth(void) {
+    char tmpdir[] = "/tmp/fc_iter_collect_depth1XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
+
+    char *sub1 = fc_join_path(tmpdir, "sub1");
+    char *sub2 = fc_join_path(sub1, "sub2");
+    TEST_ASSERT_NOT_NULL(sub1);
+    TEST_ASSERT_NOT_NULL(sub2);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(sub1, 0700));
+    TEST_ASSERT_EQUAL_INT(0, mkdir(sub2, 0700));
+
+    char *top = fc_join_path(tmpdir, "top.fastq");
+    char *inner = fc_join_path(sub1, "inner.fastq");
+    char *deep = fc_join_path(sub2, "deep.fastq");
+    make_file(top, "x");
+    make_file(inner, "x");
+    make_file(deep, "x");
+
+    char *roots[2] = { tmpdir, NULL };
+    fc_path_list input_paths = {.paths = roots, .n_paths = 1};
+    fc_path_list files = {0};
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_collect_paths(&input_paths, 1, FC_FILE_FASTQ, false, &files));
+
+    TEST_ASSERT_EQUAL_UINT(1, files.n_paths);
+    TEST_ASSERT_NOT_NULL(strstr(files.paths[0], "top.fastq"));
+    fc_path_list_free(&files);
+
+    TEST_ASSERT_EQUAL_INT(0, fc_test_remove_tree(tmpdir));
+    free(top);
+    free(inner);
+    free(deep);
+    free(sub2);
+    free(sub1);
+}
+
+static void test_collect_paths_recurse_unbounded_with_negative_depth(void) {
+    char tmpdir[] = "/tmp/fc_iter_collect_recurseXXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
+
+    char *sub1 = fc_join_path(tmpdir, "sub1");
+    char *sub2 = fc_join_path(sub1, "sub2");
+    TEST_ASSERT_NOT_NULL(sub1);
+    TEST_ASSERT_NOT_NULL(sub2);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(sub1, 0700));
+    TEST_ASSERT_EQUAL_INT(0, mkdir(sub2, 0700));
+
+    char *top = fc_join_path(tmpdir, "top.fastq");
+    char *inner = fc_join_path(sub1, "inner.fastq");
+    char *deep = fc_join_path(sub2, "deep.fastq");
+    make_file(top, "x");
+    make_file(inner, "x");
+    make_file(deep, "x");
+
+    char *roots[2] = { tmpdir, NULL };
+    fc_path_list input_paths = {.paths = roots, .n_paths = 1};
+    fc_path_list files = {0};
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_collect_paths(&input_paths, -1, FC_FILE_FASTQ, false, &files));
+
+    TEST_ASSERT_EQUAL_UINT(3, files.n_paths);
+    int seen_top = 0, seen_inner = 0, seen_deep = 0;
+    for (size_t i = 0; i < files.n_paths; ++i) {
+        if (strstr(files.paths[i], "top.fastq")) seen_top++;
+        if (strstr(files.paths[i], "inner.fastq")) seen_inner++;
+        if (strstr(files.paths[i], "deep.fastq")) seen_deep++;
+    }
+    TEST_ASSERT_EQUAL_INT(1, seen_top);
+    TEST_ASSERT_EQUAL_INT(1, seen_inner);
+    TEST_ASSERT_EQUAL_INT(1, seen_deep);
+    fc_path_list_free(&files);
+
+    TEST_ASSERT_EQUAL_INT(0, fc_test_remove_tree(tmpdir));
+    free(top);
+    free(inner);
+    free(deep);
+    free(sub2);
+    free(sub1);
 }
 
 void iter_collect_suite(void) {
     RUN_TEST(test_collect_paths_filters_and_recurses_bfs);
     RUN_TEST(test_collect_paths_rejects_mixed_file_types);
+    RUN_TEST(test_collect_paths_default_nonrecursive_depth);
+    RUN_TEST(test_collect_paths_recurse_unbounded_with_negative_depth);
 }
