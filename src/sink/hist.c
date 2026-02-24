@@ -29,11 +29,11 @@ static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t 
             exit(EXIT_FAILURE);
         }
     } else {
-        const char *stem = (barcode == 0) ? "unclassified" : NULL;
-        char barc[32];
+        char stem_buf[32] = {0};
+        const char *stem = fc_sink_barcode_stem(barcode, stem_buf, sizeof(stem_buf));
         if (!stem) {
-            snprintf(barc, sizeof(barc), "barcode%04zu", barcode);
-            stem = barc;
+            FC_LOG_ERROR("Could not format barcode stem for histogram output.");
+            exit(EXIT_FAILURE);
         }
         char *dir = fc_sink_ensure_barcode_dir(plex_dir, barcode);
         if (!dir) {

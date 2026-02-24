@@ -56,10 +56,52 @@ static void test_length_stats_layout(void) {
     destroy_length_stats(stats);
 }
 
+static void test_print_stats_tsv_output(void) {
+    read_stats *stats = create_qual_stats(0.5f);
+    add_qual_count(stats, 10.0f);
+    add_qual_count(stats, 10.4f);
+
+    FILE *fp = tmpfile();
+    TEST_ASSERT_NOT_NULL(fp);
+    print_stats(stats, false, true, fp);
+    TEST_ASSERT_EQUAL_INT(0, fflush(fp));
+    rewind(fp);
+
+    char line[128] = {0};
+    TEST_ASSERT_NOT_NULL(fgets(line, sizeof(line), fp));
+    TEST_ASSERT_EQUAL_STRING("10.0\t10.5\t2\n", line);
+    TEST_ASSERT_NULL(fgets(line, sizeof(line), fp));
+
+    fclose(fp);
+    destroy_qual_stats(stats);
+}
+
+static void test_print_stats_pretty_output(void) {
+    read_stats *stats = create_qual_stats(0.5f);
+    add_qual_count(stats, 10.0f);
+    add_qual_count(stats, 10.4f);
+
+    FILE *fp = tmpfile();
+    TEST_ASSERT_NOT_NULL(fp);
+    print_stats(stats, false, false, fp);
+    TEST_ASSERT_EQUAL_INT(0, fflush(fp));
+    rewind(fp);
+
+    char line[128] = {0};
+    TEST_ASSERT_NOT_NULL(fgets(line, sizeof(line), fp));
+    TEST_ASSERT_EQUAL_STRING("[10.0, 10.5)\t2\n", line);
+    TEST_ASSERT_NULL(fgets(line, sizeof(line), fp));
+
+    fclose(fp);
+    destroy_qual_stats(stats);
+}
+
 void stats_suite(void) {
     RUN_TEST(test_length_bins);
     RUN_TEST(test_qual_binning);
     RUN_TEST(test_leading_decimals);
     RUN_TEST(test_mean_qual_naive);
     RUN_TEST(test_length_stats_layout);
+    RUN_TEST(test_print_stats_tsv_output);
+    RUN_TEST(test_print_stats_pretty_output);
 }

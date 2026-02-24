@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "unity.h"
 #include "regiter.h"
@@ -12,6 +13,17 @@ static sam_hdr_t* make_header(void) {
     sam_hdr_add_line(hdr, "SQ", "SN", "chr1", "LN", "100", NULL);
     sam_hdr_add_line(hdr, "SQ", "SN", "chr2", "LN", "50", NULL);
     return hdr;
+}
+
+static char *write_temp_bed(const char *contents) {
+    char tmpl[] = "/tmp/fc_regiter_bedXXXXXX";
+    int fd = mkstemp(tmpl);
+    TEST_ASSERT_TRUE(fd >= 0);
+    FILE *fp = fdopen(fd, "w");
+    TEST_ASSERT_NOT_NULL(fp);
+    TEST_ASSERT_TRUE(fputs(contents, fp) >= 0);
+    TEST_ASSERT_EQUAL_INT(0, fclose(fp));
+    return strdup(tmpl);
 }
 
 static void test_region_from_string_valid(void) {
@@ -110,6 +122,55 @@ static void test_next_region_and_truncation(void) {
     sam_hdr_destroy(hdr);
 }
 
+static void test_next_region_unknown_reference(void) {
+    sam_hdr_t *hdr = make_header();
+    regiter it = init_region_iterator(NULL, "chrX:1-10", hdr);
+    TEST_ASSERT_EQUAL_INT(-3, next_region(&it));
+    TEST_ASSERT_EQUAL_INT(0, it.n_regions);
+    destroy_region_iterator(&it);
+    sam_hdr_destroy(hdr);
+}
+
+static void test_init_bed_sorts_unordered_input(void) {
+    sam_hdr_t *hdr = make_header();
+    const char *bed_text =
+        "chr2\t10\t20\n"
+        "chr1\t30\t40\n"
+        "chr1\t5\t10\n"
+        "chr2\t0\t5\n";
+    char *bed_path = write_temp_bed(bed_text);
+    TEST_ASSERT_NOT_NULL(bed_path);
+
+    bed_regions br = init_bed(bed_path, hdr);
+    TEST_ASSERT_NOT_NULL(br);
+    TEST_ASSERT_EQUAL_size_t(4, br->n_regions);
+
+    TEST_ASSERT_EQUAL_STRING("chr1", br->regions[0].chr);
+    TEST_ASSERT_EQUAL_INT(0, br->regions[0].tid);
+    TEST_ASSERT_EQUAL_INT(5, br->regions[0].start);
+    TEST_ASSERT_EQUAL_INT(10, br->regions[0].end);
+
+    TEST_ASSERT_EQUAL_STRING("chr1", br->regions[1].chr);
+    TEST_ASSERT_EQUAL_INT(0, br->regions[1].tid);
+    TEST_ASSERT_EQUAL_INT(30, br->regions[1].start);
+    TEST_ASSERT_EQUAL_INT(40, br->regions[1].end);
+
+    TEST_ASSERT_EQUAL_STRING("chr2", br->regions[2].chr);
+    TEST_ASSERT_EQUAL_INT(1, br->regions[2].tid);
+    TEST_ASSERT_EQUAL_INT(0, br->regions[2].start);
+    TEST_ASSERT_EQUAL_INT(5, br->regions[2].end);
+
+    TEST_ASSERT_EQUAL_STRING("chr2", br->regions[3].chr);
+    TEST_ASSERT_EQUAL_INT(1, br->regions[3].tid);
+    TEST_ASSERT_EQUAL_INT(10, br->regions[3].start);
+    TEST_ASSERT_EQUAL_INT(20, br->regions[3].end);
+
+    destroy_bed(br);
+    sam_hdr_destroy(hdr);
+    TEST_ASSERT_EQUAL_INT(0, unlink(bed_path));
+    free(bed_path);
+}
+
 static void test_init_bed_from_sam_segments(void) {
     sam_hdr_t* hdr = make_header();
     bed_regions br = init_bed_from_sam(hdr, 50);
@@ -139,5 +200,7 @@ void regiter_suite(void) {
     RUN_TEST(test_region_from_bed_errors);
     RUN_TEST(test_region_from_bed_valid);
     RUN_TEST(test_next_region_and_truncation);
+    RUN_TEST(test_next_region_unknown_reference);
     RUN_TEST(test_init_bed_from_sam_segments);
+    RUN_TEST(test_init_bed_sorts_unordered_input);
 }
