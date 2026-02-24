@@ -113,6 +113,26 @@ static void test_barcode_unclassified(void) {
     fc_read_destroy(read);
 }
 
+static void test_barcode_empty_value_fallback(void) {
+    const char *runid = "12345678-1234-1234-1234-123456789012";
+    const char *model = "sup@v1";
+    char comment[256];
+    snprintf(comment, sizeof(comment),
+        "runid=%s basecall_model_version_id=%s barcode=", runid, model);
+
+    fc_read *read = read_from_comment(comment);
+    read_meta meta = read->meta;
+    TEST_ASSERT_EQUAL_STRING("", meta->barcode);
+    TEST_ASSERT_EQUAL_INT(0, meta->ibarcode);
+    TEST_ASSERT_NOT_NULL(strstr(meta->tags_str->s, "RG:Z:12345678-1234-1234-1234-123456789012_sup@v1"));
+    TEST_ASSERT_NOT_NULL(strstr(meta->tags_str->s, "SM:Z:"));
+
+    uint8_t *sm_aux = bam_aux_get(read->bam, "SM");
+    TEST_ASSERT_NOT_NULL(sm_aux);
+    TEST_ASSERT_EQUAL_STRING("", bam_aux2Z(sm_aux));
+    fc_read_destroy(read);
+}
+
 static void test_rg_populates_runid_and_basecaller(void) {
     const char* rg = "12345678-1234-1234-1234-123456789012_sup@v1";
     char buf[256];
@@ -193,6 +213,7 @@ void fastqcomments_suite(void) {
     RUN_TEST(test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open);
     RUN_TEST(test_sam_style_tabs);
     RUN_TEST(test_barcode_unclassified);
+    RUN_TEST(test_barcode_empty_value_fallback);
     RUN_TEST(test_rg_populates_runid_and_basecaller);
     RUN_TEST(test_rg_fallback);
     RUN_TEST(test_mixed_sam_and_key_value_prefers_sam);

@@ -29,9 +29,18 @@ static void test_mean_qual_empty_bam(void) {
     TEST_ASSERT_TRUE(isnan(v));
 }
 
+static void test_mean_qual_from_bam_high_phred_bound(void) {
+    uint8_t q[] = {99, 99, 99, 99};
+    float fast = mean_qual_from_bam(q, 4);
+    float naive = mean_qual_from_bam_naive(q, 4);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5, naive, fast);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3, 99.0f, fast);
+}
+
 void quality_suite(void) {
     RUN_TEST(test_mean_qual_from_bam_matches_naive);
     RUN_TEST(test_mean_qual_from_bam_sentinel_nan);
     RUN_TEST(test_mean_qual_empty_ascii);
     RUN_TEST(test_mean_qual_empty_bam);
+    RUN_TEST(test_mean_qual_from_bam_high_phred_bound);
 }

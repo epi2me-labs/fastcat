@@ -128,11 +128,11 @@ static void output_create_filepath(output_sink *sink, size_t barcode, char **pat
         extra = xalloc(1, sizeof(char), "output filename suffix");
     }
 
-    char stem[32];
-    if (barcode == 0) {
-        strcpy(stem, "unclassified");
-    } else {
-        snprintf(stem, sizeof(stem), "barcode%04zu", barcode);
+    char stem_buf[32] = {0};
+    const char *stem = fc_sink_barcode_stem(barcode, stem_buf, sizeof(stem_buf));
+    if (!stem) {
+        FC_LOG_ERROR("Failed to format barcode stem for output path.");
+        exit(EXIT_FAILURE);
     }
     *path = fc_join_path(sink->output, stem);
     const char *ext = sink->cfg.write_bam ? "bam" : "fastq.gz";
