@@ -144,11 +144,15 @@ void destroy_region_iterator(regiter *it) {
 //     -2 if error parsing region string
 //     -3 if reference not found in BAM header
 int next_region(regiter *it) {
+    if (it == NULL) return -1;
     int rtn = 0;
     if (it->mode == 0) {
+        if (it->bed_fp == NULL) {
+            return -1;
+        }
         rtn = region_from_bed(it->bed_fp, &it->chr, &it->start, &it->end);
     } else if (it->mode == 1) {
-        it->mode = 0;
+        it->mode = (it->bed_fp != NULL) ? 0 : 2;
         if (it->single_region) {
             rtn = region_from_string(it->single_region, &it->chr, &it->start, &it->end);
             if (rtn == -1) {
@@ -156,7 +160,11 @@ int next_region(regiter *it) {
                 it->error |= 2;
                 rtn = -2;
             }
+        } else {
+            rtn = -1;
         }
+    } else {
+        return -1;
     }
 
     if (rtn == 0) {

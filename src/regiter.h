@@ -12,7 +12,7 @@ typedef struct {
     char *single_region;
     int n_regions;
     const sam_hdr_t *hdr;
-    int mode; // 0: BED file, 1: single region
+    int mode; // 0: BED file, 1: single region, 2: exhausted
     int error;  // &1: couldn't open BED,
                 // &2: couldn't parse single_region
 } regiter;
