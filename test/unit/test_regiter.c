@@ -118,6 +118,7 @@ static void test_next_region_and_truncation(void) {
     TEST_ASSERT_EQUAL_STRING("chr1", it.chr);
     TEST_ASSERT_EQUAL_INT(89, it.start); // truncated to ref length 100
     TEST_ASSERT_EQUAL_INT(100, it.end);
+    TEST_ASSERT_EQUAL_INT(-1, next_region(&it)); // exhausted single-region iterator
     destroy_region_iterator(&it);
     sam_hdr_destroy(hdr);
 }
