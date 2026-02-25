@@ -1,69 +1,113 @@
 #include <ctype.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "fc_read.h"
-#include "fastqcomments.h"
 #include "common.h"
 #include "fc_filter.h"
 #include "fc_log.h"
+#include "fastqcomments.h"
 
-// these two are tucked away at the bottom of this file
-static bam1_t* kseq_to_bam(kseq_t* seq);
-static void build_tags_string_from_bam(const bam1_t *b, read_meta meta);
+// these are tucked away at the bottom of this file
+static void build_tags_string_from_bam(const bam1_t *b, read_meta *meta);
+static read_meta *read_meta_create_empty(void);
+static void read_meta_destroy(read_meta *meta);
+static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_comment);
+static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment);
+static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr);
 
-
-fc_read* fc_read_from_kseq(kseq_t* seq) {
-    fc_read* r = xalloc(1, sizeof(fc_read), "fc_read");
-    bam1_t* bam = kseq_to_bam(seq);
-    read_meta meta = fc_read_meta_create(bam, NULL, &seq->comment);
-
-    r->bam = bam;
-    r->meta = meta;
-    meta->mean_q = resolve_mean_quality(bam, meta, false);
-    r->owns_bam = true;
-    return r;
-}
-
-
-fc_read* fc_read_from_bam(bam1_t* bam, const bam_hdr_t* hdr, bool force_recalc_qual) {
-    fc_read* r = xalloc(1, sizeof(fc_read), "fc_read");
-    r->bam = bam;
-    r->owns_bam = false;
-
-    read_meta meta = fc_read_meta_create(bam, hdr, NULL);
-    meta->mean_q = resolve_mean_quality(bam, meta, force_recalc_qual);
-
-    r->meta = meta;
-    return r;
-}
-
-
-void fc_read_destroy(fc_read* r) {
-    if (!r) return;
-    if (r->owns_bam && r->bam) {
-        bam_destroy1(r->bam);
+fc_read *fc_read_init(void) {
+    fc_read *read = calloc(1, sizeof(*read));
+    if (!read) return NULL;
+    read->bam = bam_init1();
+    if (!read->bam) {
+        free(read);
+        return NULL;
     }
-    if (r->meta) fc_read_meta_destroy(r->meta);
-    free(r);
+    return read;
+}
+
+void fc_read_destroy(fc_read *read) {
+    if (!read) return;
+    if (read->meta) {
+        read_meta_destroy(read->meta);
+    }
+    read->meta = NULL;
+    if (read->bam) {
+        bam_destroy1(read->bam);
+    }
+    read->bam = NULL;
+    free(read);
 }
 
 
-read_meta fc_read_meta_create(const bam1_t *b, const bam_hdr_t *hdr, const kstring_t *orig_comment) {
+void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const kstring_t *orig_comment) {
+    if (!read) return;
+    if (!read->bam) return;
+    if (!read->meta) {
+        read->meta = read_meta_create_empty();
+    }
+    read_meta_reset(read->meta, orig_comment);
+    read_meta_populate_from_bam(read->meta, read->bam, hdr);
+}
+
+
+const kstring_t *fc_read_get_tags_str(const fc_read *read) {
+    if (!read || !read->meta) return NULL;
+    if (!read->meta->tags_ready) {
+        build_tags_string_from_bam(read->bam, read->meta);
+    }
+    return read->meta->tags_str;
+}
+
+
+static void read_meta_destroy(read_meta *meta) {
+    if (!meta) return;
+    free(meta->orig_comment);
+    destroy_rg_info(meta->rg_info);
+    free(meta->tags_str->s);
+    free(meta->tags_str);
+    free(meta);
+}
+
+
+static read_meta *read_meta_create_empty(void) {
+    read_meta *meta = xalloc(1, sizeof(read_meta), "meta");
+    meta->orig_comment = xalloc(1, sizeof(char), "meta->orig_comment");
+    meta->orig_comment[0] = '\0';
+    meta->tags_str = xalloc(1, sizeof(kstring_t), "meta->tags_str");
+    ks_initialize(meta->tags_str);
+    meta->tags_ready = false;
+    return meta;
+}
+
+
+static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_comment) {
+    if (!meta) return;
     size_t len = 0;
-    const char* src = NULL;
+    const char *src = NULL;
     if (orig_comment && orig_comment->s && orig_comment->l > 0) {
         len = orig_comment->l;
         src = orig_comment->s;
     }
-
-    read_meta meta = xalloc(1, sizeof(_read_meta), "meta");
-    meta->orig_comment = xalloc(len + 1, sizeof(char), "meta->orig_comment");
+    if (!meta->orig_comment || len > 0) {
+        size_t need = len + 1;
+        char *tmp = xrealloc(meta->orig_comment, need, "meta->orig_comment");
+        meta->orig_comment = tmp;
+    }
     if (len > 0) {
         memcpy(meta->orig_comment, src, len);
     }
     meta->orig_comment[len] = '\0';
+}
+
+
+static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment) {
+    read_meta_set_orig_comment(meta, orig_comment);
+
+    destroy_rg_info(meta->rg_info);
     meta->rg = "";
     meta->rg_info = NULL;
     meta->runid = "";
@@ -80,9 +124,15 @@ read_meta fc_read_meta_create(const bam1_t *b, const bam_hdr_t *hdr, const kstri
     meta->mean_q = -1.0f;
     meta->read_number = 0;
     meta->channel = 0;
-    meta->tags_str = xalloc(1, sizeof(kstring_t), "meta->tags_str");
-    ks_initialize(meta->tags_str);
+    if (meta->tags_str) {
+        ks_clear(meta->tags_str);
+    }
+    meta->tags_ready = false;
+}
 
+
+static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr) {
+    if (!meta || !b) return;
     uint8_t *aux = bam_aux_first(b);
     while (aux != NULL) {
         const char *t = bam_aux_tag(aux);
@@ -132,10 +182,10 @@ read_meta fc_read_meta_create(const bam1_t *b, const bam_hdr_t *hdr, const kstri
             meta->poly_tail_length = ival;
         } else if (strcmp(tag, "DX") == 0 && !ierr) {
             meta->duplex_code = ival;
-        } else if (strcmp(tag, "QS") == 0 && (type == 'f' || type == 'd')) {
+        } else if (strcmp(tag, "QS") == 0) {
             errno = 0;
-            float qs = bam_aux2f(aux);
-            if (!(qs == 0 && errno == EINVAL)) {
+            float qs = (float)bam_aux2f(aux);
+            if (!(qs == 0.0f && errno == EINVAL)) {
                 meta->mean_q = qs;
             }
         }
@@ -160,31 +210,24 @@ read_meta fc_read_meta_create(const bam1_t *b, const bam_hdr_t *hdr, const kstri
         if (meta->rg_info->runid) meta->runid = meta->rg_info->runid;
         if (meta->rg_info->basecaller) meta->basecaller = meta->rg_info->basecaller;
     }
-    build_tags_string_from_bam(b, meta);
-    return meta;
 }
 
 
-void fc_read_meta_destroy(read_meta meta) {
-    free(meta->orig_comment);
-    destroy_rg_info(meta->rg_info);
-    free(meta->tags_str->s);
-    free(meta->tags_str);
-    free(meta);
-}
+int kseq_to_bam(bam1_t *b, kseq_t *seq) {
+    if (!b || !seq) return -1;
 
-
-static bam1_t* kseq_to_bam(kseq_t* seq) {
-    bam1_t* b = bam_init1();
-    bam_set1(
+    if (bam_set1(
         b,
-        seq->name.l, seq->name.s,
+        seq->name.l + 1, seq->name.s,
         BAM_FUNMAP, -1, -1, 0,
         0, NULL,
         -1, -1, 0,
         seq->seq.l, seq->seq.s, seq->qual.s,
         0
-    );
+    ) < 0) {
+        return -1;
+    }
+
     // bam_set1 uses raw numeric qualities; convert from ASCII
     uint8_t* qual = bam_get_qual(b);
     for (int i = 0; i < b->core.l_qseq; ++i) {
@@ -193,16 +236,15 @@ static bam1_t* kseq_to_bam(kseq_t* seq) {
 
     if (seq->comment.l > 0) {
         if (fastq_comment_to_bam(&seq->comment, b) < 0) {
-            FC_LOG_ERROR("Error parsing auxiliary tags for read '%s'", seq->name.s);
-            exit(1);
+            return -1;
         }
     }
 
-    return b;
+    return 0;
 }
 
 
-static void build_tags_string_from_bam(const bam1_t *b, read_meta meta) {
+static void build_tags_string_from_bam(const bam1_t *b, read_meta *meta) {
     if (!meta->tags_str) {
         meta->tags_str = xalloc(1, sizeof(kstring_t), "meta->tags_str");
         ks_initialize(meta->tags_str);
@@ -210,8 +252,8 @@ static void build_tags_string_from_bam(const bam1_t *b, read_meta meta) {
         ks_clear(meta->tags_str);
     }
 
-    if (!b) return;
-    if (sam_format_aux(b, meta->tags_str) < 0) {
+    if (!b || sam_format_aux(b, meta->tags_str) < 0) {
         ks_clear(meta->tags_str);
     }
+    meta->tags_ready = true;
 }

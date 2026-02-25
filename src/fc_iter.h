@@ -21,6 +21,12 @@ typedef enum {
     FC_FILE_BAM
 } fc_file_kind;
 
+typedef enum {
+    FC_ITER_RECORD = 0,
+    FC_ITER_EOF = -1,
+    FC_ITER_ERROR = -2
+} fc_iter_next_status;
+
 bool fc_path_matches_kind(const char *path, fc_file_kind expected_kind);
 
 typedef struct {
@@ -61,6 +67,7 @@ typedef struct {
     gzFile fp;
     kseq_t *seq;
     fc_iter_opts opts;
+    bool apply_filters;
     fc_file_stats stats;
     bool truncated;
     int status;
@@ -68,38 +75,22 @@ typedef struct {
     double q_comp;
 } fc_fastq_iter;
 
-int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_iter_opts *opts);
-fc_read *fc_fastq_iter_next(fc_fastq_iter *iter);
-int fc_fastq_iter_finish(fc_fastq_iter *iter, fc_file_stats *out_stats);
-
 typedef struct {
     htsFile *fp;
     sam_hdr_t *hdr;
     mplp_data *bam;
-    bam1_t *b;
     hts_idx_t *idx;
     fc_iter_opts opts;
     bool apply_filters;
     fc_file_stats stats;
     double q_sum;
     double q_comp;
-    bool has_opts;
     bool use_regions;
     regiter reg;
     bool reg_active;
     bool own_idx;
     int status;
 } fc_bam_iter;
-
-int fc_bam_iter_open(
-    fc_bam_iter *iter,
-    htsFile *fp,
-    hts_idx_t *idx,
-    sam_hdr_t *hdr,
-    const fc_iter_opts *opts);
-fc_read *fc_bam_iter_next(fc_bam_iter *iter);
-int fc_bam_iter_finish(fc_bam_iter *iter, fc_file_stats *out_stats);
-void fc_bam_iter_close(fc_bam_iter *iter);
 
 typedef struct {
     char **files;
@@ -132,7 +123,7 @@ bool fc_iter_next_file(fc_iter *it, const char **out_file);
 int fc_iter_open_record_cursor(
     fc_iter *it,
     const fc_iter_opts *opts);
-fc_read *fc_iter_next_record(fc_iter *it);
+fc_iter_next_status fc_iter_next_record(fc_iter *it, fc_read *out);
 int fc_iter_finish_file(fc_iter *it);
 void fc_iter_close(fc_iter *it);
 

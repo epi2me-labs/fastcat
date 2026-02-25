@@ -5,6 +5,7 @@
 #include "htslib/sam.h"
 
 #include "fc_stats_engine.h"
+#include "fc_bam_utils.h"
 
 static size_t sum_counts(const read_stats* stats) {
     size_t total = 0;
@@ -61,7 +62,13 @@ static bam1_t* build_mapped_read(const char* qname, const char* seq, const char*
 
 static void test_stats_engine_unmapped_tracked_in_unmapped_stats(void) {
     bam1_t* b = build_unmapped_read("r1", "ACGT", "!!!!");
-    fc_read* fr = fc_read_from_bam(b, NULL, false);
+    fc_read *fr = fc_read_init();
+    TEST_ASSERT_NOT_NULL(fr);
+    bam_destroy1(fr->bam);
+    fr->bam = b;
+    fc_bam_ensure_mean_quality(b, false);
+    fc_read_reset_from_bam(fr, NULL, NULL);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3, 0.0f, fr->meta->mean_q);
 
     fc_stats_engine* engine = fc_stats_engine_create(false, false, 0.0f, 0.0f, false);
     TEST_ASSERT_EQUAL_INT(FC_STATS_UNMAPPED, fc_stats_engine_add_read(engine, fr, NULL, NULL));
@@ -70,7 +77,6 @@ static void test_stats_engine_unmapped_tracked_in_unmapped_stats(void) {
 
     fc_stats_engine_destroy(engine);
     fc_read_destroy(fr);
-    bam_destroy1(b);
 }
 
 static void test_stats_engine_aligned_metrics(void) {
@@ -79,7 +85,13 @@ static void test_stats_engine_aligned_metrics(void) {
     sam_hdr_add_line(hdr, "SQ", "SN", "chr1", "LN", "100", NULL);
 
     bam1_t* b = build_mapped_read("r1", "ACGTACGTAC", "!!!!!!!!!!", 0, 5);
-    fc_read* fr = fc_read_from_bam(b, hdr, false);
+    fc_read *fr = fc_read_init();
+    TEST_ASSERT_NOT_NULL(fr);
+    bam_destroy1(fr->bam);
+    fr->bam = b;
+    fc_bam_ensure_mean_quality(b, false);
+    fc_read_reset_from_bam(fr, hdr, NULL);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3, 0.0f, fr->meta->mean_q);
 
     fc_stats_engine* engine = fc_stats_engine_create(true, false, 0.0f, 0.0f, false);
     fc_stats_aligned metrics = {0};
@@ -110,7 +122,6 @@ static void test_stats_engine_aligned_metrics(void) {
 
     fc_stats_engine_destroy(engine);
     fc_read_destroy(fr);
-    bam_destroy1(b);
     sam_hdr_destroy(hdr);
 }
 

@@ -40,6 +40,11 @@ static const char *SAM_FIXTURE =
     "r2\t4\t*\t0\t0\t*\t*\t0\t0\tACGTAC\tIIIIII\n"
     "r3\t4\t*\t0\t0\t*\t*\t0\t0\tACGTA\t55555\n";
 
+static const char *SAM_LOWER_QS_FIXTURE =
+    "@HD\tVN:1.6\tSO:unknown\n"
+    "@SQ\tSN:chr1\tLN:1000\n"
+    "r1\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\tIIII\tqs:f:5.0\n";
+
 static void make_temp_gz_fastq(char *path, size_t path_len) {
     char tmpl[] = "/tmp/fastcat_iter_fastqXXXXXX";
     int fd = mkstemp(tmpl);
@@ -55,18 +60,22 @@ static void make_temp_gz_fastq(char *path, size_t path_len) {
     snprintf(path, path_len, "%s", renamed);
 }
 
-static void make_temp_sam(char *path, size_t path_len) {
+static void make_temp_sam_contents(const char *sam_contents, char *path, size_t path_len) {
     char tmpl[] = "/tmp/fastcat_iter_samXXXXXX";
     int fd = mkstemp(tmpl);
     TEST_ASSERT_MESSAGE(fd != -1, "mkstemp failed for sam fixture");
     FILE *fp = fdopen(fd, "w");
     TEST_ASSERT_NOT_NULL(fp);
-    TEST_ASSERT_EQUAL_INT((int)strlen(SAM_FIXTURE), fprintf(fp, "%s", SAM_FIXTURE));
+    TEST_ASSERT_EQUAL_INT((int)strlen(sam_contents), fprintf(fp, "%s", sam_contents));
     TEST_ASSERT_EQUAL_INT(0, fclose(fp));
     char renamed[64];
     snprintf(renamed, sizeof(renamed), "%s.sam", tmpl);
     TEST_ASSERT_EQUAL_INT(0, rename(tmpl, renamed));
     snprintf(path, path_len, "%s", renamed);
+}
+
+static void make_temp_sam(char *path, size_t path_len) {
+    make_temp_sam_contents(SAM_FIXTURE, path, path_len);
 }
 
 
@@ -90,12 +99,15 @@ static void _run_iter_and_assert(
     TEST_ASSERT_TRUE(fc_iter_next_file(&iter, &f));
     TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, opts));
 
-    fc_read *r = NULL;
     size_t seen = 0;
-    while ((r = fc_iter_next_record(&iter)) != NULL) {
+    fc_read *r = fc_read_init();
+    TEST_ASSERT_NOT_NULL(r);
+    fc_iter_next_status next_rc = FC_ITER_RECORD;
+    while ((next_rc = fc_iter_next_record(&iter, r)) == FC_ITER_RECORD) {
         ++seen;
-        fc_read_destroy(r);
     }
+    TEST_ASSERT_EQUAL_INT(FC_ITER_EOF, next_rc);
+    fc_read_destroy(r);
 
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_iter_finish_file(&iter));
     const fc_file_stats *stats = fc_iter_stats(&iter);
@@ -176,6 +188,15 @@ static void test_iter_bam_filters_length_and_quality(void) {
     remove(sam_path);
 }
 
+static void test_iter_bam_lowercase_qs_used_for_quality_filtering(void) {
+    char sam_path[64];
+    make_temp_sam_contents(SAM_LOWER_QS_FIXTURE, sam_path, sizeof(sam_path));
+    fc_iter_opts opts = fq_opts_defaults();
+    opts.min_qscore = 30.0f;
+    _run_iter_and_assert(sam_path, &opts, 0, 0, 0, 0, 0.0, 1, 0, 1);
+    remove(sam_path);
+}
+
 
 // all filtered sets some things
 
@@ -234,6 +255,7 @@ void iter_suite(void) {
     // filters in controlled cases
     RUN_TEST(test_iter_fastq_filters_length_and_quality);
     RUN_TEST(test_iter_bam_filters_length_and_quality);
+    RUN_TEST(test_iter_bam_lowercase_qs_used_for_quality_filtering);
     // all filtered sets min/max length to zero
     RUN_TEST(test_iter_fastq_all_filtered_sets_minmax_zero);
     RUN_TEST(test_iter_bam_all_filtered_sets_minmax_zero);
