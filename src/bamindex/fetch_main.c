@@ -1,89 +1,90 @@
 // bamindex fetch program
 
+#include <argp.h>
 #include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <time.h>
 
+#include "htslib/bgzf.h"
 #include "htslib/faidx.h"
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
-#include "htslib/bgzf.h"
 
-#include "index.h"
-#include "../fc_log.h"
 #include "../common.h"
+#include "../fc_log.h"
+#include "index.h"
 
-#include <argp.h>
-
-static char doc[] = 
-"bamindex fetch -- fetch records from a BAM according to an index.\
-\vThe program simply will fetch a batch of records from a BAM file" \
-"using and index and a chunk ID. Output is written as uncompressed "\
-"BAM to stdout.";
+static char doc[] = "bamindex fetch -- fetch records from a BAM according to an index.\
+\vThe program simply will fetch a batch of records from a BAM file"
+                    "using and index and a chunk ID. Output is written as uncompressed "
+                    "BAM to stdout.";
 static char args_doc[] = "<reads.bam.bci>";
 static struct argp_option options[] = {
-    {0, 0, 0, 0,
-        "General options:", 0},
-    {"threads", 't', "THREADS", 0,
-        "Number of threads for BAM processing.", 0},
-    {"chunk", 'c', "SIZE", 0,
-        "Chunk index to retrieve.", 0},
+    { 0, 0, 0, 0,
+        "General options:", 0 },
+    { "threads", 't', "THREADS", 0,
+        "Number of threads for BAM processing.", 0 },
+    { "chunk", 'c', "SIZE", 0,
+        "Chunk index to retrieve.", 0 },
     { 0 }
 };
 
 typedef struct arguments {
-    const char* bam;
-    const char* index;
+    const char *bam;
+    const char *index;
     int chunk_idx;
     int threads;
 } arguments_t;
 
-static error_t parse_opt (int key, char *arg, struct argp_state *state) {
+static error_t parse_opt(int key, char *arg, struct argp_state *state)
+{
     arguments_t *arguments = state->input;
     int int_value = 0;
     switch (key) {
-        case 't':
-            if (!fc_parse_int_strict(arg, &int_value)) {
-                argp_error(state, "Invalid --threads value: '%s'.", arg);
-            }
-            if (int_value <= 0) {
-                argp_error(state, "--threads must be > 0.");
-            }
-            arguments->threads = int_value;
+    case 't':
+        if (!fc_parse_int_strict(arg, &int_value)) {
+            argp_error(state, "Invalid --threads value: '%s'.", arg);
+        }
+        if (int_value <= 0) {
+            argp_error(state, "--threads must be > 0.");
+        }
+        arguments->threads = int_value;
+        break;
+    case 'c':
+        if (!fc_parse_int_strict(arg, &int_value)) {
+            argp_error(state, "Invalid --chunk value: '%s'.", arg);
+        }
+        if (int_value < 0) {
+            argp_error(state, "--chunk must be >= 0.");
+        }
+        arguments->chunk_idx = int_value;
+        break;
+    case ARGP_KEY_NO_ARGS:
+        argp_usage(state);
+        break;
+    case ARGP_KEY_ARG:
+        if (state->arg_num == 0) {
+            arguments->bam = arg;
             break;
-        case 'c':
-            if (!fc_parse_int_strict(arg, &int_value)) {
-                argp_error(state, "Invalid --chunk value: '%s'.", arg);
-            }
-            if (int_value < 0) {
-                argp_error(state, "--chunk must be >= 0.");
-            }
-            arguments->chunk_idx = int_value;
-            break;
-        case ARGP_KEY_NO_ARGS:
-            argp_usage (state);
-            break;
-        case ARGP_KEY_ARG:
-            if (state->arg_num == 0) {
-                arguments->bam = arg;
-                break;
-            }
-            break;
-        case ARGP_KEY_END:
-            if (state->arg_num != 1)
-                argp_usage (state);
-            break;
-        default:
-            return ARGP_ERR_UNKNOWN;
+        }
+        break;
+    case ARGP_KEY_END:
+        if (state->arg_num != 1) {
+            argp_usage(state);
+        }
+        break;
+    default:
+        return ARGP_ERR_UNKNOWN;
     }
     return 0;
 }
 
-static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
+static struct argp argp = { options, parse_opt, args_doc, doc, 0, 0, 0 };
 
-static arguments_t parse_arguments(int argc, char** argv) {
+static arguments_t parse_arguments(int argc, char **argv)
+{
     arguments_t args;
     args.bam = NULL;
     args.index = NULL;
@@ -94,16 +95,16 @@ static arguments_t parse_arguments(int argc, char** argv) {
     return args;
 }
 
-
-void index_fetch(const char* bam_fname, const char* index_fname, int chunk, int threads) {
+void index_fetch(const char *bam_fname, const char *index_fname, int chunk, int threads)
+{
     htsFile *fp = hts_open(bam_fname, "r");
     bam_hdr_t *h = sam_hdr_read(fp);
-    if(fp == NULL || h == NULL) {
+    if (fp == NULL || h == NULL) {
         FC_LOG_ERROR("Could not open %s", bam_fname);
         exit(EXIT_FAILURE);
     }
-    htsThreadPool p = {NULL, 0};
-    if (threads > 1 ) {
+    htsThreadPool p = { NULL, 0 };
+    if (threads > 1) {
         p.pool = hts_tpool_init(threads);
         hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
     }
@@ -113,9 +114,9 @@ void index_fetch(const char* bam_fname, const char* index_fname, int chunk, int 
         errx(1, "Cannot open index file %s\n", index_fname);
         exit(EXIT_FAILURE);
     }
-    FILE* idx_fp = fopen(index_fname, "rb");
+    FILE *idx_fp = fopen(index_fname, "rb");
     bc_idx_t *idx;
-    if((idx = bc_idx_read(idx_fp)) == NULL) {
+    if ((idx = bc_idx_read(idx_fp)) == NULL) {
         FC_LOG_ERROR("Couldn't read index file: %s.", index_fname);
         exit(EXIT_FAILURE);
     }
@@ -125,31 +126,30 @@ void index_fetch(const char* bam_fname, const char* index_fname, int chunk, int 
     FC_LOG_INFO("Starting from: %zu %s", rec.file_offset, rec.qname);
     FC_LOG_INFO("Reading %zu records from bam.", idx->chunk_size);
 
-
-    if(bgzf_seek(fp->fp.bgzf, rec.file_offset, SEEK_SET) != 0) {
+    if (bgzf_seek(fp->fp.bgzf, rec.file_offset, SEEK_SET) != 0) {
         FC_LOG_ERROR("Failed to seek to first record.");
         exit(EXIT_FAILURE);
     }
 
     size_t written = 0;
-    bam1_t* b = bam_init1();
-    htsFile * out_fp;
+    bam1_t *b = bam_init1();
+    htsFile *out_fp;
     if ((out_fp = hts_open("-", "wb0")) == 0) {
         FC_LOG_ERROR("Failed to open standard output for writing.");
         exit(EXIT_FAILURE);
     }
 
     // TODO: fill in the NULLs here
-    if(sam_hdr_add_pg(h, "bamindex.fetch", "VN", argp_program_version, NULL, NULL, NULL) != 0){
+    if (sam_hdr_add_pg(h, "bamindex.fetch", "VN", argp_program_version, NULL, NULL, NULL) != 0) {
         FC_LOG_ERROR("Failed to add PG line to the header.");
         exit(EXIT_FAILURE);
     }
-    if(sam_hdr_write(out_fp, h) != 0) {
+    if (sam_hdr_write(out_fp, h) != 0) {
         FC_LOG_ERROR("Failed to write the SAM header.");
         exit(EXIT_FAILURE);
     }
     while ((sam_read1(fp, h, b) >= 0) && (written < (idx->chunk_size))) {
-        if((sam_write1(out_fp, h, b) < 0)) {
+        if ((sam_write1(out_fp, h, b) < 0)) {
             FC_LOG_ERROR("Failed to write output record.");
             exit(EXIT_FAILURE);
         }
@@ -168,8 +168,8 @@ void index_fetch(const char* bam_fname, const char* index_fname, int chunk, int 
     FC_LOG_INFO("Written %zu records to output.", written);
 }
 
-
-int main_fetch(int argc, char *argv[]) {
+int main_fetch(int argc, char *argv[])
+{
     clock_t begin = clock();
     fc_log_config log_cfg = {
         .level = FC_LOG_INFO,
@@ -181,7 +181,7 @@ int main_fetch(int argc, char *argv[]) {
 
     arguments_t args = parse_arguments(argc, argv);
     index_fetch(args.bam, args.index, args.chunk_idx, args.threads);
-    free((char*)args.index);
+    free((char *)args.index);
     clock_t end = clock();
     FC_LOG_INFO("Total CPU time: %fs", (double)(end - begin) / CLOCKS_PER_SEC);
     fc_log_destroy();

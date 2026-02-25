@@ -2,17 +2,18 @@
 #define _FASTLINT_ARGS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #define MAX_INPUT_FILES 1024
 
 typedef struct arguments {
-    const char* fastq[MAX_INPUT_FILES + 1];
+    const char *fastq[MAX_INPUT_FILES + 1];
     int w;
     int t;
     double max_proportion;
     size_t nfiles;
 } arguments_t;
 
-arguments_t fastlint_parse_arguments(int argc, char** argv);
+arguments_t fastlint_parse_arguments(int argc, char **argv);
 
 #endif

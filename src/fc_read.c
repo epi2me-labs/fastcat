@@ -1,14 +1,15 @@
+#include "fc_read.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "fc_read.h"
 #include "common.h"
+#include "fastqcomments.h"
 #include "fc_filter.h"
 #include "fc_log.h"
-#include "fastqcomments.h"
 
 // these are tucked away at the bottom of this file
 static void build_tags_string_from_bam(const bam1_t *b, read_meta *meta);
@@ -18,9 +19,12 @@ static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_co
 static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment);
 static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr);
 
-fc_read *fc_read_init(void) {
+fc_read *fc_read_init(void)
+{
     fc_read *read = calloc(1, sizeof(*read));
-    if (!read) return NULL;
+    if (!read) {
+        return NULL;
+    }
     read->bam = bam_init1();
     if (!read->bam) {
         free(read);
@@ -29,8 +33,11 @@ fc_read *fc_read_init(void) {
     return read;
 }
 
-void fc_read_destroy(fc_read *read) {
-    if (!read) return;
+void fc_read_destroy(fc_read *read)
+{
+    if (!read) {
+        return;
+    }
     if (read->meta) {
         read_meta_destroy(read->meta);
     }
@@ -42,10 +49,14 @@ void fc_read_destroy(fc_read *read) {
     free(read);
 }
 
-
-void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const kstring_t *orig_comment) {
-    if (!read) return;
-    if (!read->bam) return;
+void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const kstring_t *orig_comment)
+{
+    if (!read) {
+        return;
+    }
+    if (!read->bam) {
+        return;
+    }
     if (!read->meta) {
         read->meta = read_meta_create_empty();
     }
@@ -53,18 +64,22 @@ void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const kstring_t
     read_meta_populate_from_bam(read->meta, read->bam, hdr);
 }
 
-
-const kstring_t *fc_read_get_tags_str(const fc_read *read) {
-    if (!read || !read->meta) return NULL;
+const kstring_t *fc_read_get_tags_str(const fc_read *read)
+{
+    if (!read || !read->meta) {
+        return NULL;
+    }
     if (!read->meta->tags_ready) {
         build_tags_string_from_bam(read->bam, read->meta);
     }
     return read->meta->tags_str;
 }
 
-
-static void read_meta_destroy(read_meta *meta) {
-    if (!meta) return;
+static void read_meta_destroy(read_meta *meta)
+{
+    if (!meta) {
+        return;
+    }
     free(meta->orig_comment);
     destroy_rg_info(meta->rg_info);
     free(meta->tags_str->s);
@@ -72,8 +87,8 @@ static void read_meta_destroy(read_meta *meta) {
     free(meta);
 }
 
-
-static read_meta *read_meta_create_empty(void) {
+static read_meta *read_meta_create_empty(void)
+{
     read_meta *meta = xalloc(1, sizeof(read_meta), "meta");
     meta->orig_comment = xalloc(1, sizeof(char), "meta->orig_comment");
     meta->orig_comment[0] = '\0';
@@ -83,9 +98,11 @@ static read_meta *read_meta_create_empty(void) {
     return meta;
 }
 
-
-static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_comment) {
-    if (!meta) return;
+static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_comment)
+{
+    if (!meta) {
+        return;
+    }
     size_t len = 0;
     const char *src = NULL;
     if (orig_comment && orig_comment->s && orig_comment->l > 0) {
@@ -103,8 +120,8 @@ static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_co
     meta->orig_comment[len] = '\0';
 }
 
-
-static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment) {
+static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment)
+{
     read_meta_set_orig_comment(meta, orig_comment);
 
     destroy_rg_info(meta->rg_info);
@@ -130,9 +147,11 @@ static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment) {
     meta->tags_ready = false;
 }
 
-
-static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr) {
-    if (!meta || !b) return;
+static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr)
+{
+    if (!meta || !b) {
+        return;
+    }
     uint8_t *aux = bam_aux_first(b);
     while (aux != NULL) {
         const char *t = bam_aux_tag(aux);
@@ -195,7 +214,7 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
     bool good_align = fc_is_primary_qc_pass(b);
     if (good_align && (meta->edit_distance == -1)) {
         FC_LOG_WARN("Read '%s' does not contain an integer 'NM' tag.", bam_get_qname(b));
-        kstring_t rec = {0, 0, NULL};
+        kstring_t rec = { 0, 0, NULL };
         if (sam_format1(hdr, b, &rec) < 0) {
             FC_LOG_ERROR("Failed to format record for error message.");
         } else {
@@ -207,29 +226,35 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
 
     if (meta->rg && strlen(meta->rg)) {
         meta->rg_info = create_rg_info(meta->rg);
-        if (meta->rg_info->runid) meta->runid = meta->rg_info->runid;
-        if (meta->rg_info->basecaller) meta->basecaller = meta->rg_info->basecaller;
+        if (meta->rg_info->runid) {
+            meta->runid = meta->rg_info->runid;
+        }
+        if (meta->rg_info->basecaller) {
+            meta->basecaller = meta->rg_info->basecaller;
+        }
     }
 }
 
-
-int kseq_to_bam(bam1_t *b, kseq_t *seq) {
-    if (!b || !seq) return -1;
+int kseq_to_bam(bam1_t *b, kseq_t *seq)
+{
+    if (!b || !seq) {
+        return -1;
+    }
 
     if (bam_set1(
-        b,
-        seq->name.l + 1, seq->name.s,
-        BAM_FUNMAP, -1, -1, 0,
-        0, NULL,
-        -1, -1, 0,
-        seq->seq.l, seq->seq.s, seq->qual.s,
-        0
-    ) < 0) {
+            b,
+            seq->name.l + 1, seq->name.s,
+            BAM_FUNMAP, -1, -1, 0,
+            0, NULL,
+            -1, -1, 0,
+            seq->seq.l, seq->seq.s, seq->qual.s,
+            0)
+        < 0) {
         return -1;
     }
 
     // bam_set1 uses raw numeric qualities; convert from ASCII
-    uint8_t* qual = bam_get_qual(b);
+    uint8_t *qual = bam_get_qual(b);
     for (int i = 0; i < b->core.l_qseq; ++i) {
         qual[i] -= 33;
     }
@@ -243,8 +268,8 @@ int kseq_to_bam(bam1_t *b, kseq_t *seq) {
     return 0;
 }
 
-
-static void build_tags_string_from_bam(const bam1_t *b, read_meta *meta) {
+static void build_tags_string_from_bam(const bam1_t *b, read_meta *meta)
+{
     if (!meta->tags_str) {
         meta->tags_str = xalloc(1, sizeof(kstring_t), "meta->tags_str");
         ks_initialize(meta->tags_str);

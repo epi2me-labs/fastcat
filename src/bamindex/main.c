@@ -1,35 +1,50 @@
 // bamstats program
 
+#include "main.h"
+
 #include <err.h>
-#include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/resource.h>
-
-#include "main.h"
 
 enum command_mode {
     MODE_HELP = 0,
     MODE_BUILD,
     MODE_FETCH,
     MODE_DUMP,
-    MODE_INVALID };
+    MODE_INVALID
+};
 static const enum command_mode ncommand = MODE_INVALID;
 
-enum command_mode get_mode(const char *modestr) {
-    if (0 == strcmp(modestr, "help")) {return MODE_HELP;}
-    if (0 == strcmp(modestr, "-h")) {return MODE_HELP;}
-    if (0 == strcmp(modestr, "--help")) {return MODE_HELP;}
-    if (0 == strcmp(modestr, "build")) {return MODE_BUILD;}
-    if (0 == strcmp(modestr, "fetch")) {return MODE_FETCH;}
-    if (0 == strcmp(modestr, "dump")) {return MODE_DUMP;}
+enum command_mode get_mode(const char *modestr)
+{
+    if (0 == strcmp(modestr, "help")) {
+        return MODE_HELP;
+    }
+    if (0 == strcmp(modestr, "-h")) {
+        return MODE_HELP;
+    }
+    if (0 == strcmp(modestr, "--help")) {
+        return MODE_HELP;
+    }
+    if (0 == strcmp(modestr, "build")) {
+        return MODE_BUILD;
+    }
+    if (0 == strcmp(modestr, "fetch")) {
+        return MODE_FETCH;
+    }
+    if (0 == strcmp(modestr, "dump")) {
+        return MODE_DUMP;
+    }
     return MODE_INVALID;
 }
 
 void fprint_commands(void);
 
-const char *mode_string(const enum command_mode mode) {
+const char *mode_string(const enum command_mode mode)
+{
     switch (mode) {
     case MODE_HELP:
         return "help";
@@ -49,7 +64,8 @@ const char *mode_string(const enum command_mode mode) {
     return NULL;
 }
 
-const char *mode_description(const enum command_mode mode) {
+const char *mode_description(const enum command_mode mode)
+{
     switch (mode) {
     case MODE_HELP:
         return "Print general help or help about a subcommand.";
@@ -69,7 +85,8 @@ const char *mode_description(const enum command_mode mode) {
     return NULL;
 }
 
-void fprint_commands(void) {
+void fprint_commands(void)
+{
     for (enum command_mode i = 0; i < ncommand; i++) {
         fprintf(
             stderr, "* bamindex %-14s%s\n", mode_string(i), mode_description(i));
@@ -79,7 +96,8 @@ int main_build(int argc, char *argv[]);
 int main_fetch(int argc, char *argv[]);
 int main_dump(int argc, char *argv[]);
 
-int bamindex_main(int argc, char *argv[]) {
+int bamindex_main(int argc, char *argv[])
+{
 
     if (argc == 1) {
         // Called as program name on it's own

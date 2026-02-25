@@ -1,16 +1,14 @@
+#include "main.h"
 
-#include <zlib.h>
 #include <stdio.h>
-#include "htslib/kseq.h"
-KSEQ_INIT(gzFile, gzread)
-#define KSEQ_DECLARED
 
+#include "../fc_log.h"
+#include "../kseq_gz.h"
 #include "../sdust/sdust.h"
 #include "args.h"
-#include "main.h"
-#include "../fc_log.h"
 
-int fastlint_main(int argc, char *argv[]) {
+int fastlint_main(int argc, char *argv[])
+{
     gzFile fp;
     kseq_t *ks;
 
@@ -24,11 +22,10 @@ int fastlint_main(int argc, char *argv[]) {
 
     arguments_t args = fastlint_parse_arguments(argc, argv);
 
-    for (size_t i=0; i<args.nfiles; ++i) { 
+    for (size_t i = 0; i < args.nfiles; ++i) {
         if ((strcmp(args.fastq[i], "-") == 0) && (strlen(args.fastq[i]) == 1)) {
             fp = gzdopen(fileno(stdin), "r");
-        }
-        else {
+        } else {
             fp = gzopen(args.fastq[i], "r");
         }
         ks = kseq_init(fp);
@@ -36,8 +33,8 @@ int fastlint_main(int argc, char *argv[]) {
         while (kseq_read(ks) >= 0) {
             uint64_t *r;
             int n;
-            r = sdust(0, (uint8_t*)ks->seq.s, -1, args.t, args.w, &n);
-            
+            r = sdust(0, (uint8_t *)ks->seq.s, -1, args.t, args.w, &n);
+
             // Calculate total masked length
             int masked_bases = 0;
             for (int i = 0; i < n; ++i) {
@@ -49,9 +46,8 @@ int fastlint_main(int argc, char *argv[]) {
             double masked_fraction = (double)masked_bases / read_length;
             if (masked_fraction > args.max_proportion) {
                 FC_LOG_WARN("Read %s masked fraction %.2f exceeds threshold %.2f, skipping.",
-                            ks->name.s, masked_fraction, args.max_proportion);
-            }
-            else {
+                    ks->name.s, masked_fraction, args.max_proportion);
+            } else {
                 // for reasons unknown, we care about preserving the separator
                 // between the name and the comment, but we don't have that. If
                 // there are tabs in the comment, there's a good chance the
@@ -73,5 +69,5 @@ int fastlint_main(int argc, char *argv[]) {
         gzclose(fp);
     }
     fc_log_destroy();
-	return 0;
+    return 0;
 }

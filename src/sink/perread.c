@@ -1,26 +1,31 @@
-#include "fc_sinks.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "common.h"
-#include "sink/common.h"
 #include "htslib/sam.h"
+
 #include "../fc_log.h"
+#include "common.h"
+#include "fc_sinks.h"
+#include "sink/common.h"
 
 typedef struct {
-    fc_perread_sink_opts cfg;  // cached configuration
-    FILE **fp;                 // one per barcode slot
+    fc_perread_sink_opts cfg; // cached configuration
+    FILE **fp; // one per barcode slot
     bool *header_written;
-    char *sample;              // duplicated if provided
-    char *output_root;         // top-level output root (stripped)
+    char *sample; // duplicated if provided
+    char *output_root; // top-level output root (stripped)
 } perread_sink;
 
-static void perread_sink_write_header(FILE *fp, const char *sample, bool include_alignment) {
-    if (!fp) return;
+static void perread_sink_write_header(FILE *fp, const char *sample, bool include_alignment)
+{
+    if (!fp) {
+        return;
+    }
     fprintf(fp, "read_id\tfilename\trunid\t");
-    if (sample) fprintf(fp, "sample_name\t");
+    if (sample) {
+        fprintf(fp, "sample_name\t");
+    }
     fprintf(fp, "read_length\tmean_quality\tchannel\tread_number\tstart_time");
     if (include_alignment) {
         fprintf(fp,
@@ -31,9 +36,14 @@ static void perread_sink_write_header(FILE *fp, const char *sample, bool include
     fprintf(fp, "\n");
 }
 
-static FILE *perread_sink_ensure_fp(perread_sink *sink, size_t barcode) {
-    if (barcode >= sink->cfg.barcode_count) return NULL;
-    if (sink->fp[barcode]) return sink->fp[barcode];
+static FILE *perread_sink_ensure_fp(perread_sink *sink, size_t barcode)
+{
+    if (barcode >= sink->cfg.barcode_count) {
+        return NULL;
+    }
+    if (sink->fp[barcode]) {
+        return sink->fp[barcode];
+    }
 
     const char *leaf = "per_read.tsv";
     char *dir = sink->cfg.use_barcodes
@@ -59,13 +69,18 @@ static FILE *perread_sink_ensure_fp(perread_sink *sink, size_t barcode) {
 }
 
 static void perread_sink_add_read(void *ctx, const fc_read *read, const fc_read_ctx *read_ctx,
-        const char *fname, const sam_hdr_t *hdr) {
+    const char *fname, const sam_hdr_t *hdr)
+{
     perread_sink *sink = (perread_sink *)ctx;
     size_t barcode = sink->cfg.use_barcodes && read_ctx ? read_ctx->barcode : 0;
     FILE *out = perread_sink_ensure_fp(sink, barcode);
-    if (!out) return;
+    if (!out) {
+        return;
+    }
     if (sink->cfg.include_alignment) {
-        if (!read_ctx) return;
+        if (!read_ctx) {
+            return;
+        }
         if (read_ctx->stats_kind != FC_STATS_ALIGNED && read_ctx->stats_kind != FC_STATS_UNMAPPED) {
             return;
         }
@@ -114,11 +129,14 @@ static void perread_sink_add_read(void *ctx, const fc_read *read, const fc_read_
         read->meta->duplex_code);
 }
 
-static void perread_sink_destroy(void *ctx) {
+static void perread_sink_destroy(void *ctx)
+{
     perread_sink *sink = (perread_sink *)ctx;
     if (sink->fp) {
         for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
-            if (sink->fp[i]) fclose(sink->fp[i]);
+            if (sink->fp[i]) {
+                fclose(sink->fp[i]);
+            }
         }
         free(sink->fp);
     }
@@ -128,9 +146,12 @@ static void perread_sink_destroy(void *ctx) {
     free(sink);
 }
 
-fc_sink fc_perread_sink_create(const fc_perread_sink_opts *opts) {
-    fc_sink sink = {0};
-    if (!opts || !opts->output_root) return sink;
+fc_sink fc_perread_sink_create(const fc_perread_sink_opts *opts)
+{
+    fc_sink sink = { 0 };
+    if (!opts || !opts->output_root) {
+        return sink;
+    }
 
     perread_sink *state = calloc(1, sizeof(*state));
     state->cfg = *opts;

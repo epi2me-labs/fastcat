@@ -1,25 +1,26 @@
-#include "fc_sinks.h"
-
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+
 #include "../fc_log.h"
+#include "fc_sinks.h"
 #include "sink/common.h"
 
 // Coverage is a thin adapter: cov_writer owns most lifecycle and file I/O concerns that would
 // otherwise live in the sink/dispatcher layer. Future cleanup could lift output setup/teardown
 // (paths, headers, file rotation) into a sink and keep cov_writer focused on per-read updates.
 typedef struct {
-    fc_coverage_sink_opts cfg;   // cached configuration
+    fc_coverage_sink_opts cfg; // cached configuration
     cov_writer global_writer;
     cov_writer *barcode_writers;
-    char *output_root;           // stripped output root
+    char *output_root; // stripped output root
 } coverage_sink;
 
-static cov_writer coverage_create_writer(const coverage_sink *sink, size_t barcode) {
+static cov_writer coverage_create_writer(const coverage_sink *sink, size_t barcode)
+{
     char *dir = fc_sink_ensure_barcode_dir(sink->output_root, barcode);
     if (!dir) {
         FC_LOG_ERROR("Failed to create barcode directory under '%s' (barcode %zu).",
-                     sink->output_root, barcode);
+            sink->output_root, barcode);
         exit(EXIT_FAILURE);
     }
     char *out_dir = fc_join_path(dir, "coverage");
@@ -45,7 +46,8 @@ static cov_writer coverage_create_writer(const coverage_sink *sink, size_t barco
 }
 
 static void coverage_sink_add_read(void *ctx, const fc_read *read, const fc_read_ctx *read_ctx,
-        const char *fname, const sam_hdr_t *hdr) {
+    const char *fname, const sam_hdr_t *hdr)
+{
     coverage_sink *sink = (coverage_sink *)ctx;
     (void)fname;
     (void)hdr;
@@ -65,12 +67,17 @@ static void coverage_sink_add_read(void *ctx, const fc_read *read, const fc_read
     }
 }
 
-static void coverage_sink_destroy(void *ctx) {
+static void coverage_sink_destroy(void *ctx)
+{
     coverage_sink *sink = (coverage_sink *)ctx;
-    if (sink->global_writer) destroy_coverage_writer(sink->global_writer);
+    if (sink->global_writer) {
+        destroy_coverage_writer(sink->global_writer);
+    }
     if (sink->barcode_writers) {
         for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
-            if (sink->barcode_writers[i]) destroy_coverage_writer(sink->barcode_writers[i]);
+            if (sink->barcode_writers[i]) {
+                destroy_coverage_writer(sink->barcode_writers[i]);
+            }
         }
         free(sink->barcode_writers);
     }
@@ -78,12 +85,17 @@ static void coverage_sink_destroy(void *ctx) {
     free(sink);
 }
 
-fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts) {
-    fc_sink sink = {0};
-    if (!opts || !opts->output_root) return sink;
+fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts)
+{
+    fc_sink sink = { 0 };
+    if (!opts || !opts->output_root) {
+        return sink;
+    }
 
     coverage_sink *state = calloc(1, sizeof(*state));
-    if (!state) exit(EXIT_FAILURE);
+    if (!state) {
+        exit(EXIT_FAILURE);
+    }
     state->cfg = *opts;
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->output_root = fc_strip_path(opts->output_root);
@@ -119,7 +131,9 @@ fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts) {
     }
     state->barcode_writers = calloc(state->cfg.barcode_count, sizeof(cov_writer));
     if (!state->barcode_writers) {
-        if (state->global_writer) destroy_coverage_writer(state->global_writer);
+        if (state->global_writer) {
+            destroy_coverage_writer(state->global_writer);
+        }
         free(state->output_root);
         free(state);
         return sink;

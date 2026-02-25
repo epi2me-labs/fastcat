@@ -1,14 +1,16 @@
-#include "fc_catstats_args.h"
-#include "fc_program.h"
-#include "fc_program_kind.h"
 #include "bamcoverage/main.h"
-#include "bamindex/main.h"
-#include "fastlint/main.h"
 
 #include <stdio.h>
 #include <string.h>
 
-static void print_usage(const char *prog) {
+#include "bamindex/main.h"
+#include "fastlint/main.h"
+#include "fc_catstats_args.h"
+#include "fc_program.h"
+#include "fc_program_kind.h"
+
+static void print_usage(const char *prog)
+{
     fprintf(stderr, "Usage: %s <subcommand> [options]\n", prog);
     fprintf(stderr, "Subcommands:\n");
     fprintf(stderr, "  fastq   FASTQ concatenation/statistics/filtering mode (fastcat)\n");
@@ -19,7 +21,8 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "Try '%s <subcommand> --help' for subcommand options.\n", prog);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     if (argc < 2 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
         print_usage(argv[0]);
         return (argc < 2) ? 1 : 0;

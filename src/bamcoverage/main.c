@@ -1,13 +1,16 @@
+#include "main.h"
+
 #include <stdio.h>
 
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
-#include "coverage.h"
-#include "args.h"
-#include "main.h"
-#include "../fc_log.h"
 
-int bamcoverage_main(int argc, char** argv) {
+#include "../fc_log.h"
+#include "args.h"
+#include "coverage.h"
+
+int bamcoverage_main(int argc, char **argv)
+{
     fc_log_config log_cfg = {
         .level = FC_LOG_INFO,
         .module = "BAMCOVER",
@@ -18,14 +21,14 @@ int bamcoverage_main(int argc, char** argv) {
 
     arguments_t args = bamcoverage_parse_arguments(argc, argv);
 
-    htsThreadPool p = {NULL, 0};
+    htsThreadPool p = { NULL, 0 };
     p.pool = hts_tpool_init(args.threads);
-    
-    htsFile* in = sam_open(args.bam, "r");
-    bam_hdr_t* hdr = sam_hdr_read(in);
+
+    htsFile *in = sam_open(args.bam, "r");
+    bam_hdr_t *hdr = sam_hdr_read(in);
     hts_set_opt(in, HTS_OPT_THREAD_POOL, &p);
 
-    uint32_t thresholds[] = {1, 5, 10, 20};
+    uint32_t thresholds[] = { 1, 5, 10, 20 };
     size_t n_thresholds = sizeof(thresholds) / sizeof(thresholds[0]);
 
     cov_writer writer = init_coverage_writer(
@@ -35,7 +38,7 @@ int bamcoverage_main(int argc, char** argv) {
         args.beds, args.bed_names, args.n_beds,
         thresholds, n_thresholds,
         NULL, 0);
-    bam1_t* rec = bam_init1();
+    bam1_t *rec = bam_init1();
     while (sam_read1(in, hdr, rec) >= 0) {
         coverage_process(writer, rec);
     }

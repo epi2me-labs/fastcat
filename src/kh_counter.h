@@ -3,14 +3,13 @@
 
 #include "htslib/khash.h"
 
-
 KHASH_MAP_INIT_STR(KH_COUNTER, int)
 #define kh_counter_t khash_t(KH_COUNTER)
 
 // create a counter
 kh_counter_t *kh_counter_init(void);
 
-// Get a value from a counter 
+// Get a value from a counter
 int kh_counter_val(kh_counter_t *hash, char *key);
 
 // Clean up a counter

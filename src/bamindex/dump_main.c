@@ -1,18 +1,16 @@
 // bamindex dump program
 
+#include <argp.h>
 #include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <time.h>
 
-#include "index.h"
 #include "../fc_log.h"
+#include "index.h"
 
-#include <argp.h>
-
-static char doc[] = 
-"bamindex dump -- dump a BAM chunk index to stdout as text.\
+static char doc[] = "bamindex dump -- dump a BAM chunk index to stdout as text.\
 \vThe program simply writes the contents of an index to stdout for human \
 inspection. It has no other purpose.";
 static char args_doc[] = "<reads.bam.bci>";
@@ -21,42 +19,45 @@ static struct argp_option options[] = {
 };
 
 typedef struct arguments {
-    const char* index;
+    const char *index;
 } arguments_t;
 
-static error_t parse_opt (int key, char *arg, struct argp_state *state) {
+static error_t parse_opt(int key, char *arg, struct argp_state *state)
+{
     arguments_t *arguments = state->input;
     switch (key) {
-        case ARGP_KEY_NO_ARGS:
-            argp_usage (state);
+    case ARGP_KEY_NO_ARGS:
+        argp_usage(state);
+        break;
+    case ARGP_KEY_ARG:
+        if (state->arg_num == 0) {
+            arguments->index = arg;
             break;
-        case ARGP_KEY_ARG:
-            if (state->arg_num == 0) {
-                arguments->index = arg;
-                break;
-            }
-            break;
-        case ARGP_KEY_END:
-            if (state->arg_num != 1)
-                argp_usage (state);
-            break;
-        default:
-            return ARGP_ERR_UNKNOWN;
+        }
+        break;
+    case ARGP_KEY_END:
+        if (state->arg_num != 1) {
+            argp_usage(state);
+        }
+        break;
+    default:
+        return ARGP_ERR_UNKNOWN;
     }
     return 0;
 }
 
-static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
+static struct argp argp = { options, parse_opt, args_doc, doc, 0, 0, 0 };
 
-static arguments_t parse_arguments(int argc, char** argv) {
+static arguments_t parse_arguments(int argc, char **argv)
+{
     arguments_t args;
     args.index = NULL;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     return args;
 }
 
-
-void index_dump(const char* filename) {
+void index_dump(const char *filename)
+{
     struct stat st;
     if (stat(filename, &st) != 0) {
         errx(1, "Cannot open index file %s\n", filename);
@@ -65,20 +66,20 @@ void index_dump(const char* filename) {
 
     FILE *fp = fopen(filename, "rb");
     bc_idx_t *idx;
-    if((idx = bc_idx_read(fp)) == NULL) {
+    if ((idx = bc_idx_read(fp)) == NULL) {
         FC_LOG_ERROR("Couldn't read index file: %s.", filename);
         exit(EXIT_FAILURE);
     }
     fprintf(stdout, "Index contains %zu chunks of size %zu.\n", idx->n_chunks, idx->chunk_size);
-    for (size_t i=0; i<idx->n_chunks; ++i){
+    for (size_t i = 0; i < idx->n_chunks; ++i) {
         fprintf(stdout, "%zu %s\n", (idx->recs[i]).file_offset, (idx->recs[i]).qname);
     }
     bc_idx_destroy(idx);
     fclose(fp);
 }
 
-
-int main_dump(int argc, char *argv[]) {
+int main_dump(int argc, char *argv[])
+{
     clock_t begin = clock();
     fc_log_config log_cfg = {
         .level = FC_LOG_INFO,

@@ -1,22 +1,21 @@
-#include "fc_sinks.h"
-
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
+#include "../fc_log.h"
 #include "common.h"
+#include "fc_sinks.h"
 #include "kh_counter.h"
 #include "sink/common.h"
-#include "../fc_log.h"
 
 typedef struct {
-    fc_counter_sink_opts cfg;  // cached configuration
+    fc_counter_sink_opts cfg; // cached configuration
     FILE *runids_global;
     FILE *basecallers_global;
     FILE **runids_bc;
     FILE **basecallers_bc;
-    char *sample;      // duplicated if provided
+    char *sample; // duplicated if provided
     char *output_root; // stripped output root
     kh_counter_t *run_ids_global_ctr;
     kh_counter_t *basecallers_global_ctr;
@@ -24,14 +23,16 @@ typedef struct {
     kh_counter_t **basecallers_bc_ctr;
 } counter_sink;
 
-static void destroy_counter(kh_counter_t **ctr) {
+static void destroy_counter(kh_counter_t **ctr)
+{
     if (*ctr) {
         kh_counter_destroy(*ctr);
         *ctr = NULL;
     }
 }
 
-static void counter_reset(counter_sink *sink) {
+static void counter_reset(counter_sink *sink)
+{
     destroy_counter(&sink->run_ids_global_ctr);
     destroy_counter(&sink->basecallers_global_ctr);
     if (sink->cfg.use_barcodes) {
@@ -42,14 +43,16 @@ static void counter_reset(counter_sink *sink) {
     }
 }
 
-static kh_counter_t *ensure_counter(kh_counter_t **arr, size_t idx) {
+static kh_counter_t *ensure_counter(kh_counter_t **arr, size_t idx)
+{
     if (!arr[idx]) {
         arr[idx] = kh_counter_init();
     }
     return arr[idx];
 }
 
-static FILE *counter_open_file(counter_sink *sink, const char *path, const char *value_label) {
+static FILE *counter_open_file(counter_sink *sink, const char *path, const char *value_label)
+{
     ensure_parent_dir_exists(path);
     FILE *fp = fopen(path, "w");
     if (!fp) {
@@ -57,14 +60,21 @@ static FILE *counter_open_file(counter_sink *sink, const char *path, const char 
         exit(EXIT_FAILURE);
     }
     fprintf(fp, "filename\t");
-    if (sink->sample) fprintf(fp, "sample_name\t");
+    if (sink->sample) {
+        fprintf(fp, "sample_name\t");
+    }
     fprintf(fp, "%s\tcount\n", value_label);
     return fp;
 }
 
-static FILE *ensure_bc_file(counter_sink *sink, FILE **files, const char *leaf, const char *value_label, size_t barcode) {
-    if (!sink->cfg.use_barcodes || barcode >= sink->cfg.barcode_count) return NULL;
-    if (files[barcode]) return files[barcode];
+static FILE *ensure_bc_file(counter_sink *sink, FILE **files, const char *leaf, const char *value_label, size_t barcode)
+{
+    if (!sink->cfg.use_barcodes || barcode >= sink->cfg.barcode_count) {
+        return NULL;
+    }
+    if (files[barcode]) {
+        return files[barcode];
+    }
 
     char *dir = fc_sink_ensure_barcode_dir(sink->output_root, barcode);
     if (!dir) {
@@ -79,14 +89,16 @@ static FILE *ensure_bc_file(counter_sink *sink, FILE **files, const char *leaf, 
     return fp;
 }
 
-static void counter_sink_begin_file(void *ctx, const char *fname) {
+static void counter_sink_begin_file(void *ctx, const char *fname)
+{
     counter_sink *sink = (counter_sink *)ctx;
     (void)fname;
     counter_reset(sink);
 }
 
 static void counter_sink_add_read(void *ctx, const fc_read *read, const fc_read_ctx *read_ctx,
-        const char *fname, const sam_hdr_t *hdr) {
+    const char *fname, const sam_hdr_t *hdr)
+{
     counter_sink *sink = (counter_sink *)ctx;
     (void)fname;
     (void)hdr;
@@ -103,14 +115,17 @@ static void counter_sink_add_read(void *ctx, const fc_read *read, const fc_read_
     }
 }
 
-static void counter_sink_end_file(void *ctx, const char *fname, const fc_file_stats *stats) {
+static void counter_sink_end_file(void *ctx, const char *fname, const fc_file_stats *stats)
+{
     counter_sink *sink = (counter_sink *)ctx;
     (void)stats;
     if (sink->runids_global && sink->run_ids_global_ctr) {
         for (khiter_t k = 0; k < kh_end(sink->run_ids_global_ctr); ++k) {
             if (kh_exist(sink->run_ids_global_ctr, k)) {
                 fprintf(sink->runids_global, "%s\t", fname);
-                if (sink->sample) fprintf(sink->runids_global, "%s\t", sink->sample);
+                if (sink->sample) {
+                    fprintf(sink->runids_global, "%s\t", sink->sample);
+                }
                 fprintf(sink->runids_global, "%s\t%d\n", kh_key(sink->run_ids_global_ctr, k), kh_val(sink->run_ids_global_ctr, k));
             }
         }
@@ -119,7 +134,9 @@ static void counter_sink_end_file(void *ctx, const char *fname, const fc_file_st
         for (khiter_t k = 0; k < kh_end(sink->basecallers_global_ctr); ++k) {
             if (kh_exist(sink->basecallers_global_ctr, k)) {
                 fprintf(sink->basecallers_global, "%s\t", fname);
-                if (sink->sample) fprintf(sink->basecallers_global, "%s\t", sink->sample);
+                if (sink->sample) {
+                    fprintf(sink->basecallers_global, "%s\t", sink->sample);
+                }
                 fprintf(sink->basecallers_global, "%s\t%d\n", kh_key(sink->basecallers_global_ctr, k), kh_val(sink->basecallers_global_ctr, k));
             }
         }
@@ -131,7 +148,9 @@ static void counter_sink_end_file(void *ctx, const char *fname, const fc_file_st
                 for (khiter_t k = 0; k < kh_end(sink->run_ids_bc_ctr[b]); ++k) {
                     if (kh_exist(sink->run_ids_bc_ctr[b], k)) {
                         fprintf(fp, "%s\t", fname);
-                        if (sink->sample) fprintf(fp, "%s\t", sink->sample);
+                        if (sink->sample) {
+                            fprintf(fp, "%s\t", sink->sample);
+                        }
                         fprintf(fp, "%s\t%d\n", kh_key(sink->run_ids_bc_ctr[b], k), kh_val(sink->run_ids_bc_ctr[b], k));
                     }
                 }
@@ -141,7 +160,9 @@ static void counter_sink_end_file(void *ctx, const char *fname, const fc_file_st
                 for (khiter_t k = 0; k < kh_end(sink->basecallers_bc_ctr[b]); ++k) {
                     if (kh_exist(sink->basecallers_bc_ctr[b], k)) {
                         fprintf(fp, "%s\t", fname);
-                        if (sink->sample) fprintf(fp, "%s\t", sink->sample);
+                        if (sink->sample) {
+                            fprintf(fp, "%s\t", sink->sample);
+                        }
                         fprintf(fp, "%s\t%d\n", kh_key(sink->basecallers_bc_ctr[b], k), kh_val(sink->basecallers_bc_ctr[b], k));
                     }
                 }
@@ -150,18 +171,27 @@ static void counter_sink_end_file(void *ctx, const char *fname, const fc_file_st
     }
 }
 
-static void counter_sink_destroy(void *ctx) {
+static void counter_sink_destroy(void *ctx)
+{
     counter_sink *sink = (counter_sink *)ctx;
-    if (sink->runids_global) fclose(sink->runids_global);
-    if (sink->basecallers_global) fclose(sink->basecallers_global);
+    if (sink->runids_global) {
+        fclose(sink->runids_global);
+    }
+    if (sink->basecallers_global) {
+        fclose(sink->basecallers_global);
+    }
     if (sink->runids_bc) {
         for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
-            if (sink->runids_bc[i]) fclose(sink->runids_bc[i]);
+            if (sink->runids_bc[i]) {
+                fclose(sink->runids_bc[i]);
+            }
         }
     }
     if (sink->basecallers_bc) {
         for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
-            if (sink->basecallers_bc[i]) fclose(sink->basecallers_bc[i]);
+            if (sink->basecallers_bc[i]) {
+                fclose(sink->basecallers_bc[i]);
+            }
         }
     }
     destroy_counter(&sink->run_ids_global_ctr);
@@ -185,9 +215,12 @@ static void counter_sink_destroy(void *ctx) {
     free(sink);
 }
 
-fc_sink fc_counter_sink_create(const fc_counter_sink_opts *opts) {
-    fc_sink sink = {0};
-    if (!opts || !opts->output_root) return sink;
+fc_sink fc_counter_sink_create(const fc_counter_sink_opts *opts)
+{
+    fc_sink sink = { 0 };
+    if (!opts || !opts->output_root) {
+        return sink;
+    }
 
     counter_sink *state = calloc(1, sizeof(*state));
     state->cfg = *opts;

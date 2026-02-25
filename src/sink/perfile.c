@@ -1,27 +1,31 @@
-#include "fc_sinks.h"
-
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "../fc_log.h"
 #include "common.h"
 #include "fc_failures.h"
+#include "fc_sinks.h"
 #include "sink/common.h"
-#include "../fc_log.h"
 
 typedef struct {
     FILE *fp;
     char *sample;
 } perfile_sink;
 
-static void perfile_sink_end_file(void *ctx, const char *fname, const fc_file_stats *stats) {
+static void perfile_sink_end_file(void *ctx, const char *fname, const fc_file_stats *stats)
+{
     perfile_sink *sink = (perfile_sink *)ctx;
-    if (!sink->fp || !stats) return;
+    if (!sink->fp || !stats) {
+        return;
+    }
 
     fprintf(sink->fp, "%s\t", fname);
-    if (sink->sample) fprintf(sink->fp, "%s\t", sink->sample);
+    if (sink->sample) {
+        fprintf(sink->fp, "%s\t", sink->sample);
+    }
     if (stats->n_seqs == 0) {
         fprintf(sink->fp, "0\t0\t0\t0\t0.00");
     } else {
@@ -34,16 +38,22 @@ static void perfile_sink_end_file(void *ctx, const char *fname, const fc_file_st
     fprintf(sink->fp, "\n");
 }
 
-static void perfile_sink_destroy(void *ctx) {
+static void perfile_sink_destroy(void *ctx)
+{
     perfile_sink *sink = (perfile_sink *)ctx;
-    if (sink->fp) fclose(sink->fp);
+    if (sink->fp) {
+        fclose(sink->fp);
+    }
     free(sink->sample);
     free(sink);
 }
 
-fc_sink fc_perfile_sink_create(const char *output_root, const char *sample) {
-    fc_sink sink = {0};
-    if (!output_root) return sink;
+fc_sink fc_perfile_sink_create(const char *output_root, const char *sample)
+{
+    fc_sink sink = { 0 };
+    if (!output_root) {
+        return sink;
+    }
 
     perfile_sink *state = calloc(1, sizeof(*state));
     char *path = fc_join_path(output_root, "per_file.tsv");
@@ -59,7 +69,9 @@ fc_sink fc_perfile_sink_create(const char *output_root, const char *sample) {
     }
 
     fprintf(state->fp, "filename\t");
-    if (state->sample) fprintf(state->fp, "sample_name\t");
+    if (state->sample) {
+        fprintf(state->fp, "sample_name\t");
+    }
     fprintf(state->fp, "n_seqs\tn_bases\tmin_length\tmax_length\tmean_quality");
     for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
         const char *src = failure_type[i];

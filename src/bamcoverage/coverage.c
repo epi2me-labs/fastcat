@@ -1,73 +1,82 @@
+#include "coverage.h"
+
+#include <assert.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
-#include <inttypes.h>
 
-#include "htslib/sam.h"
 #include "htslib/bgzf.h"
 #include "htslib/kstring.h"
+#include "htslib/sam.h"
 #include "htslib/thread_pool.h"
 
-#include "common.h"
 #include "../fc_log.h"
-#include "coverage.h"
+#include "common.h"
 #include "regiter.h"
 
-
-static inline int is_ref_and_query(const uint32_t op) {
+static inline int is_ref_and_query(const uint32_t op)
+{
     // TODO: add BAM_CDEL is we want deletions to cover?
     const int code = bam_cigar_op(op);
     return code == BAM_CMATCH || code == BAM_CEQUAL || code == BAM_CDIFF;
 }
 
-
-static inline int consumes_ref_only(const uint32_t op) {
+static inline int consumes_ref_only(const uint32_t op)
+{
     const int code = bam_cigar_op(op);
     return code == BAM_CDEL || code == BAM_CREF_SKIP;
 }
 
-
 static inline void _write_bedgraph_line(
-        BGZF* fp, const char* chrom, int64_t s, int64_t e, uint32_t cov) {
-    if (NULL == fp) return;
+    BGZF *fp, const char *chrom, int64_t s, int64_t e, uint32_t cov)
+{
+    if (NULL == fp) {
+        return;
+    }
     //  (chrom + tabs + ints) easily fits in <128 bytes
     char buf[160];
     int n = snprintf(buf, sizeof(buf), "%s\t%" PRId64 "\t%" PRId64 "\t%u\n",
-                     chrom, s, e, cov);
+        chrom, s, e, cov);
     if (n < 0 || bgzf_write_small(fp, buf, n) != n) {
         FC_LOG_ERROR("bgzf_write failed");
         exit(1);
     }
 }
 
-
-static inline void _write_summary(FILE* fh_dist, FILE* fh_summary, const bed_region reg, const int64_t* stats, const int64_t* dist, size_t max_cover, uint32_t* thresholds, size_t n_thresholds) {
-    if (fh_dist == NULL && fh_summary == NULL) return; // nothing to write
+static inline void _write_summary(
+    FILE *fh_dist, FILE *fh_summary, const bed_region reg, const int64_t *stats, const int64_t *dist, size_t max_cover, uint32_t *thresholds, size_t n_thresholds)
+{
+    if (fh_dist == NULL && fh_summary == NULL) {
+        return; // nothing to write
+    }
 
     // write all distribution file entries and collect threshold values
     // for summary file.
-    int64_t* thresh_counts = (int64_t*)xalloc(n_thresholds, sizeof(int64_t), "threshold counts");
+    int64_t *thresh_counts = (int64_t *)xalloc(n_thresholds, sizeof(int64_t), "threshold counts");
     ssize_t cur_thresh = n_thresholds - 1;
     double cum = 0.0;
     double positions = (double)stats[3];
-    for (ssize_t cover = max_cover-1; cover >= 0; --cover) {
+    for (ssize_t cover = max_cover - 1; cover >= 0; --cover) {
         cum += (double)dist[cover];
-        
+
         // dense CDF - mosdepth calls this "distribution"
         if (fh_dist) {
             double frac = cum / positions;
-            if (frac < 1e-3) continue; // mosdepth uses 8e-5 \:D/
-            fprintf(fh_dist, "%s\t%zu\t%.3f\n", reg->chr, cover, frac);  // fh_dist only written for totals
+            if (frac < 1e-3) {
+                continue; // mosdepth uses 8e-5 \:D/
+            }
+            fprintf(fh_dist, "%s\t%zu\t%.3f\n", reg->chr, cover, frac); // fh_dist only written for totals
         }
 
         // sparse CDF - mosdepth calls this "thresholds"
         // NOTE: we do this in long format not wide like mosdepth
         if (cover == thresholds[cur_thresh]) {
             thresh_counts[cur_thresh] = (int64_t)cum;
-            if (cur_thresh > 0) --cur_thresh;
+            if (cur_thresh > 0) {
+                --cur_thresh;
+            }
         }
-        
     }
 
     // write summary file
@@ -85,25 +94,28 @@ static inline void _write_summary(FILE* fh_dist, FILE* fh_summary, const bed_reg
     free(thresh_counts);
 }
 
-static void _fill_skipped_regions(cov_writer w) {
-    if (w == NULL || w->tid < 0) return;
-    
+static void _fill_skipped_regions(cov_writer w)
+{
+    if (w == NULL || w->tid < 0) {
+        return;
+    }
+
     // We want to enforce explicit zeros for all regions in the input
-    // BED files. The BED files are sorted (see regiter.c) so we can 
+    // BED files. The BED files are sorted (see regiter.c) so we can
     // detect anything we'd otherwise skip over.
     for (size_t i = 0; i < w->n_beds; ++i) {
         cov_writer_region wr = w->writers[i];
         for (size_t j = wr->cur_region; j < wr->bed->n_regions; ++j) {
             bed_region reg = &wr->bed->regions[j];
-            char* region_name = wr->whole_chrom ? reg->chr : region_to_string(reg);
+            char *region_name = wr->whole_chrom ? reg->chr : region_to_string(reg);
             if (reg->tid >= w->tid) {
                 break;
             }
-            int64_t stats[4] = {0, 0, 0, reg->end - reg->start};
-            int64_t* dist = (int64_t*)calloc(wr->max_cover, sizeof(int64_t));
+            int64_t stats[4] = { 0, 0, 0, reg->end - reg->start };
+            int64_t *dist = (int64_t *)calloc(wr->max_cover, sizeof(int64_t));
             _write_summary(wr->fh_dist, wr->fh_summary, reg, stats,
                 dist, wr->max_cover, wr->thresholds, wr->n_thresholds);
-            _write_bedgraph_line(wr->fh_fwd, reg->chr, reg->start, reg->end, 0); 
+            _write_bedgraph_line(wr->fh_fwd, reg->chr, reg->start, reg->end, 0);
             _write_bedgraph_line(wr->fh_rev, reg->chr, reg->start, reg->end, 0);
             _write_bedgraph_line(wr->fh_tot, reg->chr, reg->start, reg->end, 0);
             wr->cur_region++;
@@ -119,9 +131,11 @@ static void _fill_skipped_regions(cov_writer w) {
     }
 }
 
-
-static void _flush_contig(cov_writer w) {
-    if (w == NULL || w->tid < 0) return;
+static void _flush_contig(cov_writer w)
+{
+    if (w == NULL || w->tid < 0) {
+        return;
+    }
 
     // flush any regions in BED that won't otherwise get picked up
     _fill_skipped_regions(w);
@@ -133,11 +147,11 @@ static void _flush_contig(cov_writer w) {
     }
 
     // for each BED file (or whole genome)
-    for (size_t i=0; i<w->n_beds; ++i) {
+    for (size_t i = 0; i < w->n_beds; ++i) {
         cov_writer_region wr = w->writers[i];
 
         // for each region in BED file
-        for (size_t j=wr->cur_region; j<wr->bed->n_regions; ++j) {
+        for (size_t j = wr->cur_region; j < wr->bed->n_regions; ++j) {
             bed_region reg = &wr->bed->regions[j];
 
             if (reg->tid != w->tid) {
@@ -149,26 +163,28 @@ static void _flush_contig(cov_writer w) {
                 wr->cur_region = j + 1;
                 continue;
             }
-            char* region_name = wr->whole_chrom ? reg->chr : region_to_string(reg);
+            char *region_name = wr->whole_chrom ? reg->chr : region_to_string(reg);
 
             // chromosome summary
-            int64_t stats[4] = {INT64_MAX, 0, 0, reg->end - reg->start}; // min, max, total, positions
-            size_t max_cover = wr->max_cover;  // which goes up to all thresholds
-            int64_t* dist = (int64_t*)calloc(max_cover, sizeof(int64_t));
+            int64_t stats[4] = { INT64_MAX, 0, 0, reg->end - reg->start }; // min, max, total, positions
+            size_t max_cover = wr->max_cover; // which goes up to all thresholds
+            int64_t *dist = (int64_t *)calloc(max_cover, sizeof(int64_t));
             for (int64_t pos = reg->start; pos < reg->end; ++pos) {
                 int64_t cov = w->diff_fwd[pos] + w->diff_rev[pos];
                 stats[0] = min(stats[0], cov);
                 stats[1] = max(stats[1], cov);
                 stats[2] += cov;
-                if ((size_t)cov >= max_cover) {  // resize buffer
+                if ((size_t)cov >= max_cover) { // resize buffer
                     size_t new_cap = max_cover;
-                    while ((size_t)cov >= new_cap) new_cap *= 2;
+                    while ((size_t)cov >= new_cap) {
+                        new_cap *= 2;
+                    }
                     dist = xrecalloc(dist, max_cover, new_cap, sizeof(int64_t), "coverage distribution");
                     max_cover = new_cap;
                 }
                 dist[cov] += 1;
             }
-            
+
             // summary stats including sparse (user-defined) coverage distribution
             _write_summary(NULL, wr->fh_summary, reg, stats,
                 dist, wr->max_cover, wr->thresholds, wr->n_thresholds);
@@ -208,16 +224,16 @@ static void _flush_contig(cov_writer w) {
                     cov_fwd = (uint32_t)w->diff_fwd[pos];
                     cov_rev = (uint32_t)w->diff_rev[pos];
                     cov_tot = cov_fwd + cov_rev;
-                    
-                    if ((cov_fwd != prev_f)) {  // forward strand
+
+                    if ((cov_fwd != prev_f)) { // forward strand
                         _write_bedgraph_line(wr->fh_fwd, w->chrom, seg_start_fwd, pos, prev_f);
                         seg_start_fwd = pos;
                     }
-                    if (cov_rev != prev_r) {  // reverse strand
+                    if (cov_rev != prev_r) { // reverse strand
                         _write_bedgraph_line(wr->fh_rev, w->chrom, seg_start_rev, pos, prev_r);
                         seg_start_rev = pos;
                     }
-                    if (cov_tot != prev_tot) {  // total coverage
+                    if (cov_tot != prev_tot) { // total coverage
                         _write_bedgraph_line(wr->fh_tot, w->chrom, seg_start_tot, pos, prev_tot);
                         seg_start_tot = pos;
                     }
@@ -244,8 +260,8 @@ static void _flush_contig(cov_writer w) {
     } // for each BED file
 }
 
-
-static void _reset_contig(cov_writer w, const int32_t tid) {
+static void _reset_contig(cov_writer w, const int32_t tid)
+{
     if (tid >= 0) {
         w->tid = tid;
         w->contig_len = w->hdr->target_len[tid];
@@ -264,20 +280,20 @@ static void _reset_contig(cov_writer w, const int32_t tid) {
     }
 }
 
-
 cov_writer_region init_coverage_writer_region(
-        const char* out_dir, const char* name, bool per_base, bool by_strand, const char* bed_fname,
-        uint32_t* thresholds, size_t n_thresholds, uint32_t segment_length,
-        const bam_hdr_t* hdr, const htsThreadPool* pool) {
+    const char *out_dir, const char *name, bool per_base, bool by_strand, const char *bed_fname,
+    uint32_t *thresholds, size_t n_thresholds, uint32_t segment_length,
+    const bam_hdr_t *hdr, const htsThreadPool *pool)
+{
 
-    if (mkdir_hier((char*)out_dir) == -1) {
+    if (mkdir_hier((char *)out_dir) == -1) {
         FC_LOG_ERROR(
             "Cannot create output directory '%s'. Check location is writeable and directory does not exist.",
             out_dir);
         exit(EXIT_FAILURE);
     }
 
-    _cov_writer_region* w = (_cov_writer_region*)calloc(1, sizeof(_cov_writer_region));
+    _cov_writer_region *w = (_cov_writer_region *)calloc(1, sizeof(_cov_writer_region));
     w->name = strdup(name);
     w->per_base = per_base;
     if (bed_fname != NULL) {
@@ -288,8 +304,7 @@ cov_writer_region init_coverage_writer_region(
         if (segment_length != 0) {
             w->whole_chrom = false;
             w->bed = init_bed_from_sam(hdr, segment_length);
-        }
-        else {
+        } else {
             w->whole_chrom = true;
             w->bed = init_bed_from_sam(hdr, 0);
         }
@@ -305,8 +320,8 @@ cov_writer_region init_coverage_writer_region(
     } else {
         // use default
         w->n_thresholds = 6;
-        w->thresholds = (uint32_t*)xalloc(w->n_thresholds, sizeof *w->thresholds, "default thresholds");
-        uint32_t tmp[] = {1, 5, 10, 20, 30, 40};
+        w->thresholds = (uint32_t *)xalloc(w->n_thresholds, sizeof *w->thresholds, "default thresholds");
+        uint32_t tmp[] = { 1, 5, 10, 20, 30, 40 };
         for (size_t i = 0; i < w->n_thresholds; ++i) {
             w->thresholds[i] = tmp[i];
         }
@@ -319,15 +334,15 @@ cov_writer_region init_coverage_writer_region(
     w->stats[3] = 0;
     // dist needs to be large enough to hold all thresholds, start with at least 256 to avoid reallocating
     w->max_cover = max(1u << 8, w->thresholds ? 1 + w->thresholds[w->n_thresholds - 1] : 0);
-    w->dist = (int64_t*)xalloc(w->max_cover, sizeof(int64_t), "coverage distribution");
+    w->dist = (int64_t *)xalloc(w->max_cover, sizeof(int64_t), "coverage distribution");
 
     // per_base outputs are the main event, the full coverage traces.
     if (w->per_base) {
-        const char* suffixes[3] = { ".fwd.bed.gz", ".rev.bed.gz", ".bed.gz" };
-        char** fn[3] = { &w->fn_fwd, &w->fn_rev, &w->fn_tot };
-        BGZF** fh[3] = { &w->fh_fwd, &w->fh_rev, &w->fh_tot };
+        const char *suffixes[3] = { ".fwd.bed.gz", ".rev.bed.gz", ".bed.gz" };
+        char **fn[3] = { &w->fn_fwd, &w->fn_rev, &w->fn_tot };
+        BGZF **fh[3] = { &w->fh_fwd, &w->fh_rev, &w->fh_tot };
 
-        int k = by_strand ? 0 : 2;  // only need last is not by_strand
+        int k = by_strand ? 0 : 2; // only need last is not by_strand
         for (int i = k; i < 3; ++i) {
             size_t flen = strlen(out_dir) + 1 + strlen(name) + strlen(suffixes[i]) + 1;
             *fn[i] = xalloc(flen, sizeof(char), "bedgraph output path");
@@ -350,9 +365,9 @@ cov_writer_region init_coverage_writer_region(
 
     // summary file {name}.mosdepth.summary.txt
     {
-        char* suffix = ".summary.txt";
+        char *suffix = ".summary.txt";
         size_t flen = strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1;
-        char* fname = xalloc(flen, sizeof(char), "summary output path");
+        char *fname = xalloc(flen, sizeof(char), "summary output path");
         int n = snprintf(fname, flen, "%s/%s%s", out_dir, name, suffix);
         if (n < 0 || (size_t)n >= flen) {
             FC_LOG_ERROR("Cannot format summary output path.");
@@ -363,7 +378,7 @@ cov_writer_region init_coverage_writer_region(
             FC_LOG_ERROR("Cannot open summary output '%s'", fname);
             exit(EXIT_FAILURE);
         }
-        //TODO: mosdepth allows mean to be changed to median
+        // TODO: mosdepth allows mean to be changed to median
         fprintf(w->fh_summary, "chrom\tstart\tend\tlength\tbases\tmean\tmin\tmax");
         for (size_t i = 0; i < w->n_thresholds; ++i) {
             fprintf(w->fh_summary, "\t%dx", w->thresholds[i]);
@@ -374,9 +389,9 @@ cov_writer_region init_coverage_writer_region(
 
     // distribution of coverage {name}.mosdepth.dist.txt
     {
-        char* suffix = ".dist.txt";
+        char *suffix = ".dist.txt";
         size_t flen = strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1;
-        char* fname = xalloc(flen, sizeof(char), "distribution output path");
+        char *fname = xalloc(flen, sizeof(char), "distribution output path");
         int n = snprintf(fname, flen, "%s/%s%s", out_dir, name, suffix);
         if (n < 0 || (size_t)n >= flen) {
             FC_LOG_ERROR("Cannot format distribution output path.");
@@ -406,34 +421,38 @@ cov_writer_region init_coverage_writer_region(
     return w;
 }
 
+void destroy_coverage_writer_region(cov_writer_region w)
+{
+    if (NULL == w) {
+        return;
+    }
 
-void destroy_coverage_writer_region(cov_writer_region w) {
-    if (NULL == w) return;
-
-    // data structures associated with BED regions 
+    // data structures associated with BED regions
     if (NULL != w->bed) {
         destroy_bed(w->bed);
     }
 
     // summary file
     //_write_summary(w->fh_summary, "total", w->stats);
-    //fclose(w->fh_summary);
+    // fclose(w->fh_summary);
 
     // distribution and thresholds files
     // make a region corresponding to the whole BED for writing distribution
-    _bed_region reg = {w->name, 0, 0, w->stats[3]};
+    _bed_region reg = { w->name, 0, 0, w->stats[3] };
     _write_summary(w->fh_dist, w->fh_summary, &reg, w->stats,
         w->dist, w->max_cover, w->thresholds, w->n_thresholds);
     fclose(w->fh_dist);
-    //fclose(w->fh_thresh);
+    // fclose(w->fh_thresh);
     fclose(w->fh_summary);
 
     // create BED index files if we wrote per-base coverage
     if (w->per_base) {
-        BGZF* fhs[3] = { w->fh_fwd, w->fh_rev, w->fh_tot };
-        char** fns[3] = { &w->fn_fwd, &w->fn_rev, &w->fn_tot };
+        BGZF *fhs[3] = { w->fh_fwd, w->fh_rev, w->fh_tot };
+        char **fns[3] = { &w->fn_fwd, &w->fn_rev, &w->fn_tot };
         for (int i = 0; i < 3; ++i) {
-            if (fhs[i] == NULL) continue; // from by_strand == false
+            if (fhs[i] == NULL) {
+                continue; // from by_strand == false
+            }
             if (bgzf_index_dump(fhs[i], *fns[i], ".csi") < 0) {
                 FC_LOG_ERROR("Cannot write index for '%s'", *fns[i]);
                 exit(EXIT_FAILURE);
@@ -445,7 +464,7 @@ void destroy_coverage_writer_region(cov_writer_region w) {
             free(*fns[i]);
         }
     }
-    
+
     free(w->name);
     free(w->thresholds);
     free(w->dist);
@@ -453,14 +472,14 @@ void destroy_coverage_writer_region(cov_writer_region w) {
     free(w);
 }
 
-
 cov_writer init_coverage_writer(
-        const char* out_dir, bool per_base, bool use_cigar,
-        int exclude_flags, int include_flags, bool by_strand,
-        const bam_hdr_t* hdr, const htsThreadPool* pool,
-        const char** bed_files, const char** bed_names, size_t n_beds,
-        uint32_t* thresholds, size_t n_thresholds,
-        uint32_t* segments, size_t n_segments) {
+    const char *out_dir, bool per_base, bool use_cigar,
+    int exclude_flags, int include_flags, bool by_strand,
+    const bam_hdr_t *hdr, const htsThreadPool *pool,
+    const char **bed_files, const char **bed_names, size_t n_beds,
+    uint32_t *thresholds, size_t n_thresholds,
+    uint32_t *segments, size_t n_segments)
+{
 
     // check outputs are writeable, we don't use mkdir_hier here because otherwise
     // the global coverage writer would fail to make the TLD.
@@ -472,7 +491,7 @@ cov_writer init_coverage_writer(
     }
 
     kstring_t ks = KS_INITIALIZE;
-    if (sam_hdr_find_tag_hd((bam_hdr_t*)hdr, "SO", &ks) >= 0) {
+    if (sam_hdr_find_tag_hd((bam_hdr_t *)hdr, "SO", &ks) >= 0) {
         if (strcmp(ks.s, "coordinate") != 0) {
             FC_LOG_ERROR("BAM sort order is '%s', must be 'coordinate'. Cannot calculate coverage data.", ks.s);
             exit(EXIT_FAILURE);
@@ -495,7 +514,7 @@ cov_writer init_coverage_writer(
     _reset_contig(w, -1);
 
     w->n_beds = 1 + n_segments + n_beds;
-    w->writers = (cov_writer_region*) xalloc(w->n_beds, sizeof(*w->writers), "coverage writers");
+    w->writers = (cov_writer_region *)xalloc(w->n_beds, sizeof(*w->writers), "coverage writers");
     // first entry is complete genome
     w->writers[0] = init_coverage_writer_region(
         out_dir, "global", per_base, by_strand, NULL,
@@ -503,14 +522,14 @@ cov_writer init_coverage_writer(
         hdr, pool);
     // fixed length segments
     for (size_t i = 0; i < n_segments; ++i) {
-        char seg_name[32];  // largest uint32 is 10 digits
+        char seg_name[32]; // largest uint32 is 10 digits
         int seg_len = snprintf(seg_name, sizeof(seg_name), "segments_%u", segments[i]);
         if (seg_len < 0 || (size_t)seg_len >= sizeof(seg_name)) {
             FC_LOG_ERROR("Cannot format segment name.");
             exit(EXIT_FAILURE);
         }
         size_t dir_len = strlen(out_dir) + 1 + strlen(seg_name) + 1;
-        char* seg_out_dir = xalloc(dir_len, sizeof(char), "segment output directory path");
+        char *seg_out_dir = xalloc(dir_len, sizeof(char), "segment output directory path");
         int n = snprintf(seg_out_dir, dir_len, "%s/%s", out_dir, seg_name);
         if (n < 0 || (size_t)n >= dir_len) {
             FC_LOG_ERROR("Cannot format segment output directory path.");
@@ -525,9 +544,9 @@ cov_writer init_coverage_writer(
     // followed by the BED files
     for (size_t i = 0; i < n_beds; ++i) {
         if (NULL != bed_files[i]) {
-            const char* bed_name = bed_names[i];
+            const char *bed_name = bed_names[i];
             size_t dir_len = strlen(out_dir) + 1 + strlen(bed_name) + 1;
-            char* bed_out_dir = xalloc(dir_len, sizeof(char), "bed output directory path");
+            char *bed_out_dir = xalloc(dir_len, sizeof(char), "bed output directory path");
             int n = snprintf(bed_out_dir, dir_len, "%s/%s", out_dir, bed_name);
             if (n < 0 || (size_t)n >= dir_len) {
                 FC_LOG_ERROR("Cannot format BED output directory path.");
@@ -543,9 +562,11 @@ cov_writer init_coverage_writer(
     return w;
 }
 
-
-void destroy_coverage_writer(cov_writer w) {
-    if (NULL == w) return;
+void destroy_coverage_writer(cov_writer w)
+{
+    if (NULL == w) {
+        return;
+    }
 
     // emit remaining coverage
     if (w->tid >= 0) {
@@ -557,7 +578,9 @@ void destroy_coverage_writer(cov_writer w) {
     _fill_skipped_regions(w);
 
     for (size_t i = 0; i < w->n_beds; ++i) {
-        if(w->writers[i] == NULL) continue;
+        if (w->writers[i] == NULL) {
+            continue;
+        }
         destroy_coverage_writer_region(w->writers[i]);
     }
     free(w->writers);
@@ -567,8 +590,8 @@ void destroy_coverage_writer(cov_writer w) {
     free(w);
 }
 
-
-void coverage_process(cov_writer w, const bam1_t* b) {
+void coverage_process(cov_writer w, const bam1_t *b)
+{
     if (b->core.tid < 0 || (b->core.flag & BAM_FUNMAP)) {
         return;
     }
@@ -588,7 +611,7 @@ void coverage_process(cov_writer w, const bam1_t* b) {
 
     // select array to update
     const int is_rev = (b->core.flag & BAM_FREVERSE) ? 1 : 0;
-    int32_t* diff = is_rev ? w->diff_rev : w->diff_fwd;
+    int32_t *diff = is_rev ? w->diff_rev : w->diff_fwd;
 
     // either use rstart/rend or studiously examine cigar
     if (!w->use_cigar) {
@@ -597,7 +620,7 @@ void coverage_process(cov_writer w, const bam1_t* b) {
         diff[rstart] += 1;
         diff[rend] -= 1;
     } else {
-        const uint32_t* cigar = bam_get_cigar(b);
+        const uint32_t *cigar = bam_get_cigar(b);
         int32_t rstart = (int32_t)b->core.pos;
         for (uint32_t i = 0; i < b->core.n_cigar; ++i) {
             const uint32_t op = cigar[i];

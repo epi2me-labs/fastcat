@@ -9,11 +9,11 @@
 #include "fc_writer.h"
 
 typedef struct {
-    const char *output_root;   // NULL => stream to stdout; non-NULL => write files under <output_root>/{unclassified,barcodeXXXX}
+    const char *output_root; // NULL => stream to stdout; non-NULL => write files under <output_root>/{unclassified,barcodeXXXX}
     size_t reads_per_file;
     bool write_bam;
     int threads;
-    size_t barcode_count;      // size of per-barcode buffers
+    size_t barcode_count; // size of per-barcode buffers
 } fc_output_sink_opts;
 
 fc_sink fc_output_sink_create(const fc_output_sink_opts *opts);
@@ -37,12 +37,12 @@ typedef struct {
 
 fc_sink fc_counter_sink_create(const fc_counter_sink_opts *opts);
 typedef struct {
-    const char *output_root;   // top-level output directory
+    const char *output_root; // top-level output directory
     bool use_barcodes;
     bool unmapped_override;
     bool write_alignment_metrics;
     bool write_polya;
-    fc_stats_engine **engines;   // array sized by writer->stats_engine_count
+    fc_stats_engine **engines; // array sized by writer->stats_engine_count
     size_t engine_count;
 } fc_hist_sink_opts;
 

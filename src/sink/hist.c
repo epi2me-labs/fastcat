@@ -1,22 +1,22 @@
-#include "fc_sinks.h"
-
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
+#include "../fc_log.h"
 #include "common.h"
+#include "fc_sinks.h"
 #include "sink/common.h"
 #include "stats.h"
-#include "../fc_log.h"
 
 typedef struct {
-    fc_hist_sink_opts cfg;  // cached configuration
+    fc_hist_sink_opts cfg; // cached configuration
     char *hist_dir;
     char *output_dir;
 } hist_sink;
 
-static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t barcode, read_stats *stats, const char *type) {
+static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t barcode, read_stats *stats, const char *type)
+{
     char *filepath;
     const char *suff = "hist";
 
@@ -29,7 +29,7 @@ static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t 
             exit(EXIT_FAILURE);
         }
     } else {
-        char stem_buf[32] = {0};
+        char stem_buf[32] = { 0 };
         const char *stem = fc_sink_barcode_stem(barcode, stem_buf, sizeof(stem_buf));
         if (!stem) {
             FC_LOG_ERROR("Could not format barcode stem for histogram output.");
@@ -61,7 +61,8 @@ static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t 
     free(filepath);
 }
 
-static void hist_write_engine(hist_sink *sink, size_t barcode, fc_stats_engine *engine) {
+static void hist_write_engine(hist_sink *sink, size_t barcode, fc_stats_engine *engine)
+{
 
     if (sink->cfg.unmapped_override) {
         if (engine->length_stats_unmapped) {
@@ -104,7 +105,8 @@ static void hist_write_engine(hist_sink *sink, size_t barcode, fc_stats_engine *
     }
 }
 
-static void hist_sink_finish(void *ctx) {
+static void hist_sink_finish(void *ctx)
+{
     hist_sink *sink = (hist_sink *)ctx;
     for (size_t i = 0; i < sink->cfg.engine_count; ++i) {
         if (sink->cfg.engines[i] != NULL) {
@@ -113,16 +115,20 @@ static void hist_sink_finish(void *ctx) {
     }
 }
 
-static void hist_sink_destroy(void *ctx) {
+static void hist_sink_destroy(void *ctx)
+{
     hist_sink *sink = (hist_sink *)ctx;
     free(sink->hist_dir);
     free(sink->output_dir);
     free(sink);
 }
 
-fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts) {
-    fc_sink sink = {0};
-    if (!opts || !opts->output_root || !opts->engines || opts->engine_count == 0) return sink;
+fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts)
+{
+    fc_sink sink = { 0 };
+    if (!opts || !opts->output_root || !opts->engines || opts->engine_count == 0) {
+        return sink;
+    }
 
     hist_sink *state = calloc(1, sizeof(*state));
 

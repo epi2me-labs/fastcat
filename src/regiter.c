@@ -1,21 +1,22 @@
+#include "regiter.h"
+
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
-#include "regiter.h"
 #include "common.h"
 #include "fc_log.h"
 
-
-int region_from_string(char* input, char** chr, int* start, int* end) {
+int region_from_string(char *input, char **chr, int *start, int *end)
+{
     int rtn = 0;
-    char* tmp = strdup(input);
+    char *tmp = strdup(input);
     if (tmp == NULL) {
         return -1;
     }
-    char *reg_chr = (char *) hts_parse_reg(tmp, start, end);
+    char *reg_chr = (char *)hts_parse_reg(tmp, start, end);
     if (reg_chr) {
-        *reg_chr = '\0';  // terminate at region separator
+        *reg_chr = '\0'; // terminate at region separator
         *chr = xalloc(strlen(tmp) + 1, sizeof(char), "chr");
         strcpy(*chr, tmp);
     } else {
@@ -25,22 +26,26 @@ int region_from_string(char* input, char** chr, int* start, int* end) {
     return rtn;
 }
 
-
-char* region_to_string(bed_region r) {
+char *region_to_string(bed_region r)
+{
     int len = snprintf(NULL, 0, "%s:%" PRId64 "-%" PRId64, r->chr, r->start, r->end);
-    if (len < 0) return NULL;
+    if (len < 0) {
+        return NULL;
+    }
 
     char *s = malloc(len + 1);
-    if (!s) return NULL;
+    if (!s) {
+        return NULL;
+    }
 
     snprintf(s, len + 1, "%s:%" PRId64 "-%" PRId64, r->chr, r->start, r->end);
     return s;
 }
 
-
-int region_from_bed(FILE* bed_fp, char** chr, int* start, int* end) {
-    char* line = NULL;
-    char* line_copy = NULL;
+int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end)
+{
+    char *line = NULL;
+    char *line_copy = NULL;
     size_t len = 0;
     ssize_t read;
     int rtn = 0;
@@ -51,12 +56,12 @@ int region_from_bed(FILE* bed_fp, char** chr, int* start, int* end) {
     if ((read = getline(&line, &len, bed_fp)) != -1) {
         char *newline_pos = strchr(line, '\n');
         if (newline_pos != NULL) {
-            *newline_pos = '\0';  // Null-terminate the string at the newline
+            *newline_pos = '\0'; // Null-terminate the string at the newline
         }
-        line_copy = strdup(line);  // Copy line for error reporting
+        line_copy = strdup(line); // Copy line for error reporting
 
         // get chromosome
-        char* tok = strtok(line, "\t");
+        char *tok = strtok(line, "\t");
         if (tok == NULL) {
             FC_LOG_ERROR("Missing chromosome field in BED file line: '%s'.", line_copy);
             rtn = -2;
@@ -72,7 +77,7 @@ int region_from_bed(FILE* bed_fp, char** chr, int* start, int* end) {
             rtn = -2;
             goto cleanup;
         }
-        char* endptr;
+        char *endptr;
         *start = strtol(tok, &endptr, 10);
         if (*endptr != '\0') {
             FC_LOG_ERROR("Invalid start field in BED file line: '%s'.", line_copy);
@@ -101,7 +106,7 @@ int region_from_bed(FILE* bed_fp, char** chr, int* start, int* end) {
             goto cleanup;
         }
     } else {
-        rtn = -1;  // EOF
+        rtn = -1; // EOF
     }
 
 cleanup:
@@ -110,10 +115,10 @@ cleanup:
     return rtn;
 }
 
-
 // Initialize the region iterator
-regiter init_region_iterator(const char *bed_file, const char *single_region, const sam_hdr_t *hdr) {
-    regiter it = {0};
+regiter init_region_iterator(const char *bed_file, const char *single_region, const sam_hdr_t *hdr)
+{
+    regiter it = { 0 };
     it.hdr = hdr;
     if (bed_file != NULL) {
         it.bed_fp = fopen(bed_file, "r");
@@ -128,14 +133,19 @@ regiter init_region_iterator(const char *bed_file, const char *single_region, co
     return it;
 }
 
-
 // Clean up the iterator
-void destroy_region_iterator(regiter *it) {
-    if (it->chr != NULL) free(it->chr);
-    if (it->single_region != NULL) free(it->single_region);
-    if (it->bed_fp != NULL) fclose(it->bed_fp);
+void destroy_region_iterator(regiter *it)
+{
+    if (it->chr != NULL) {
+        free(it->chr);
+    }
+    if (it->single_region != NULL) {
+        free(it->single_region);
+    }
+    if (it->bed_fp != NULL) {
+        fclose(it->bed_fp);
+    }
 }
-
 
 // Get the next region
 // returns:
@@ -143,8 +153,11 @@ void destroy_region_iterator(regiter *it) {
 //     -1 if no more regions
 //     -2 if error parsing region string
 //     -3 if reference not found in BAM header
-int next_region(regiter *it) {
-    if (it == NULL) return -1;
+int next_region(regiter *it)
+{
+    if (it == NULL) {
+        return -1;
+    }
     int rtn = 0;
     if (it->mode == 0) {
         if (it->bed_fp == NULL) {
@@ -169,12 +182,11 @@ int next_region(regiter *it) {
 
     if (rtn == 0) {
         // check reference exists and tidy up length
-        int tid = sam_hdr_name2tid((sam_hdr_t*)it->hdr, it->chr);
+        int tid = sam_hdr_name2tid((sam_hdr_t *)it->hdr, it->chr);
         if (tid < 0) {
             FC_LOG_WARN("Failed to find reference '%s' in BAM header.", it->chr);
             rtn = -3;
-        }
-        else {
+        } else {
             it->tid = tid;
             size_t ref_length = (size_t)sam_hdr_tid2len(it->hdr, tid);
             int ns = min(it->start, (int)ref_length);
@@ -182,8 +194,7 @@ int next_region(regiter *it) {
             if (ns >= ne) {
                 FC_LOG_WARN("Zero-length region created after truncating to reference length (%ld) '%s:%d-%d'.", ref_length, it->chr, it->start, it->end);
                 rtn = -2;
-            }
-            else {
+            } else {
                 it->start = ns;
                 it->end = ne;
             }
@@ -194,34 +205,46 @@ int next_region(regiter *it) {
 }
 
 // Sorting regions
-static int bed_region_cmp(const void *pa, const void *pb) {
+static int bed_region_cmp(const void *pa, const void *pb)
+{
     const _bed_region *a = (const _bed_region *)pa;
     const _bed_region *b = (const _bed_region *)pb;
 
-    if (a->tid != b->tid) return (a->tid < b->tid) ? -1 : 1;
-    if (a->start != b->start) return (a->start < b->start) ? -1 : 1;
-    if (a->end != b->end) return (a->end < b->end)   ? -1 : 1;
+    if (a->tid != b->tid) {
+        return (a->tid < b->tid) ? -1 : 1;
+    }
+    if (a->start != b->start) {
+        return (a->start < b->start) ? -1 : 1;
+    }
+    if (a->end != b->end) {
+        return (a->end < b->end) ? -1 : 1;
+    }
     return 0;
 }
 
-void bed_regions_sort_by_header(bed_regions br) {
-    if (!br || br->n_regions <= 1) return;
+void bed_regions_sort_by_header(bed_regions br)
+{
+    if (!br || br->n_regions <= 1) {
+        return;
+    }
     qsort(br->regions, br->n_regions,
-          sizeof(br->regions[0]), bed_region_cmp);
+        sizeof(br->regions[0]), bed_region_cmp);
 }
-
 
 // Parse a complete BED file into memory.
 // Skips invalid/unknown regions (next_region already warns).
-bed_regions init_bed(const char* bed_path, const sam_hdr_t* hdr) {
-    if (NULL == bed_path || NULL == hdr) return NULL;
+bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr)
+{
+    if (NULL == bed_path || NULL == hdr) {
+        return NULL;
+    }
 
     regiter it = init_region_iterator(bed_path, NULL, hdr);
     if (it.bed_fp == NULL) {
         exit(EXIT_FAILURE);
     }
 
-    _bed_regions* out = (_bed_regions*) xalloc(1, sizeof(_bed_regions), "bed_regions");
+    _bed_regions *out = (_bed_regions *)xalloc(1, sizeof(_bed_regions), "bed_regions");
     out->_capacity = 1024;
     out->regions = xalloc(out->_capacity, sizeof(*out->regions), "bed_region[]");
     out->n_regions = 0;
@@ -248,7 +271,7 @@ bed_regions init_bed(const char* bed_path, const sam_hdr_t* hdr) {
             out->n_regions++;
             continue;
         }
-        if (rc == -1) {  // EOF
+        if (rc == -1) { // EOF
             break;
         }
         // rc == -2 or -3: already warned by next_region(); skip.
@@ -267,24 +290,26 @@ bed_regions init_bed(const char* bed_path, const sam_hdr_t* hdr) {
     return out;
 }
 
-
-bed_regions init_bed_from_sam(const sam_hdr_t* hdr, uint32_t segment_length) {
-    if (hdr == NULL) return NULL;
+bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length)
+{
+    if (hdr == NULL) {
+        return NULL;
+    }
 
     // Create a bed_regions structure
-    _bed_regions* regions = (_bed_regions*) xalloc(1, sizeof(_bed_regions), "bed_regions");
+    _bed_regions *regions = (_bed_regions *)xalloc(1, sizeof(_bed_regions), "bed_regions");
     regions->_capacity = 1024;
-    regions->regions = (bed_region) xalloc(regions->_capacity, sizeof(*regions->regions), "bed_region[]");
+    regions->regions = (bed_region)xalloc(regions->_capacity, sizeof(*regions->regions), "bed_region[]");
     regions->n_regions = 0;
 
     // Iterate through the header lines
     for (int i = 0; i < hdr->n_targets; ++i) {
         uint32_t span = segment_length == 0 ? hdr->target_len[i] : segment_length;
-        
+
         for (uint32_t start = 0; start < hdr->target_len[i]; start += span) {
             if (regions->n_regions == regions->_capacity) {
                 size_t new_cap = regions->_capacity * 2;
-                regions->regions = (bed_region) xrealloc(
+                regions->regions = (bed_region)xrealloc(
                     regions->regions, new_cap * sizeof(*regions->regions), "bed_region[]");
                 regions->_capacity = new_cap;
             }
@@ -302,10 +327,10 @@ bed_regions init_bed_from_sam(const sam_hdr_t* hdr, uint32_t segment_length) {
             regions->n_regions++;
         }
     }
-    
+
     // shrink-to-fit
     if (regions->n_regions < regions->_capacity) {
-        regions->regions = (bed_region) xrealloc(
+        regions->regions = (bed_region)xrealloc(
             regions->regions, regions->n_regions * sizeof(*regions->regions), "bed_region[]");
         regions->_capacity = regions->n_regions;
     }
@@ -313,9 +338,11 @@ bed_regions init_bed_from_sam(const sam_hdr_t* hdr, uint32_t segment_length) {
     return regions;
 }
 
-
-void destroy_bed(bed_regions regions) {
-    if (regions == NULL) return;
+void destroy_bed(bed_regions regions)
+{
+    if (regions == NULL) {
+        return;
+    }
     if (NULL != regions->regions) {
         for (size_t i = 0; i < regions->n_regions; ++i) {
             free(regions->regions[i].chr);

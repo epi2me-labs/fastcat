@@ -3,14 +3,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "fc_log.h"
 #include "fc_filter.h"
+#include "fc_log.h"
 
-#define MAX_BARCODES 1025  // barcode 0 is reserved for "unclassified"
+#define MAX_BARCODES 1025 // barcode 0 is reserved for "unclassified"
 
-fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *stats_cfg) {
+fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *stats_cfg)
+{
     fc_writer *writer = calloc(1, sizeof(*writer));
-    if (!writer) return NULL;
+    if (!writer) {
+        return NULL;
+    }
 
     writer->use_barcodes = use_barcodes;
     writer->barcode_count = use_barcodes ? MAX_BARCODES : 1;
@@ -38,8 +41,11 @@ fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *sta
     return writer;
 }
 
-void fc_writer_add_sink(fc_writer *writer, fc_sink sink) {
-    if (!writer) return;
+void fc_writer_add_sink(fc_writer *writer, fc_sink sink)
+{
+    if (!writer) {
+        return;
+    }
     if (writer->sink_count == writer->sink_capacity) {
         size_t new_cap = writer->sink_capacity == 0 ? 4 : writer->sink_capacity * 2;
         fc_sink *new_sinks = realloc(writer->sinks, new_cap * sizeof(*new_sinks));
@@ -52,8 +58,11 @@ void fc_writer_add_sink(fc_writer *writer, fc_sink sink) {
     writer->sinks[writer->sink_count++] = sink;
 }
 
-void fc_writer_begin_file(fc_writer *writer, const char *fname) {
-    if (!writer) return;
+void fc_writer_begin_file(fc_writer *writer, const char *fname)
+{
+    if (!writer) {
+        return;
+    }
     for (size_t i = 0; i < writer->sink_count; i++) {
         if (writer->sinks[i].begin_file) {
             writer->sinks[i].begin_file(writer->sinks[i].ctx, fname);
@@ -61,9 +70,12 @@ void fc_writer_begin_file(fc_writer *writer, const char *fname) {
     }
 }
 
-void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, const sam_hdr_t *hdr) {
-    if (!writer) return;
-    fc_read_ctx ctx = {0};
+void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, const sam_hdr_t *hdr)
+{
+    if (!writer) {
+        return;
+    }
+    fc_read_ctx ctx = { 0 };
     ctx.barcode = writer->use_barcodes ? read->meta->ibarcode : 0;
     if (writer->barcode_count > 0 && ctx.barcode >= writer->barcode_count) {
         FC_LOG_ERROR("read barcode (%zu) exceeds configured count (%zu)",
@@ -100,8 +112,11 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
     }
 }
 
-void fc_writer_end_file(fc_writer *writer, const char *fname, const fc_file_stats *stats) {
-    if (!writer) return;
+void fc_writer_end_file(fc_writer *writer, const char *fname, const fc_file_stats *stats)
+{
+    if (!writer) {
+        return;
+    }
     for (size_t i = 0; i < writer->sink_count; i++) {
         if (writer->sinks[i].end_file) {
             writer->sinks[i].end_file(writer->sinks[i].ctx, fname, stats);
@@ -109,8 +124,11 @@ void fc_writer_end_file(fc_writer *writer, const char *fname, const fc_file_stat
     }
 }
 
-void fc_writer_finish(fc_writer *writer) {
-    if (!writer) return;
+void fc_writer_finish(fc_writer *writer)
+{
+    if (!writer) {
+        return;
+    }
     for (size_t i = 0; i < writer->sink_count; i++) {
         if (writer->sinks[i].finish) {
             writer->sinks[i].finish(writer->sinks[i].ctx);
@@ -118,8 +136,11 @@ void fc_writer_finish(fc_writer *writer) {
     }
 }
 
-void fc_writer_destroy(fc_writer *writer) {
-    if (!writer) return;
+void fc_writer_destroy(fc_writer *writer)
+{
+    if (!writer) {
+        return;
+    }
     for (size_t i = 0; i < writer->sink_count; i++) {
         if (writer->sinks[i].destroy) {
             writer->sinks[i].destroy(writer->sinks[i].ctx);
