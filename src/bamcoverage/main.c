@@ -39,8 +39,13 @@ int bamcoverage_main(int argc, char **argv)
         thresholds, n_thresholds,
         NULL, 0);
     bam1_t *rec = bam_init1();
-    while (sam_read1(in, hdr, rec) >= 0) {
+    int ret;
+    while ((ret = sam_read1(in, hdr, rec)) >= 0) {
         coverage_process(writer, rec);
+    }
+    if (ret < -1) {
+        FC_LOG_ERROR("Error reading BAM file (sam_read1 returned %d)", ret);
+        exit(EXIT_FAILURE);
     }
     bam_destroy1(rec);
     destroy_coverage_writer(writer);

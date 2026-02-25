@@ -229,6 +229,7 @@ static void push_str(const char ***arr, size_t *n, const char *s)
     const char **tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
     if (!tmp) {
         argp_failure(NULL, 1, 0, "out of memory");
+        exit(EXIT_FAILURE); // help static analyzer understand control flow
     }
     *arr = tmp;
     (*arr)[(*n)++] = s;
@@ -346,6 +347,7 @@ char *fc_strip_path(const char *input)
         return NULL;
     }
     memcpy(output, input, len);
+    output[len] = '\0'; // explicit null termination
     return output;
 }
 
@@ -368,11 +370,13 @@ char *fc_join_path(const char *dir, const char *leaf)
     if (!out) {
         return NULL;
     }
-    strcpy(out, dir);
+    char *p = out;
+    memcpy(p, dir, len);
+    p += len;
     if (need_sep) {
-        strcat(out, "/");
+        *p++ = '/';
     }
-    strcat(out, leaf);
+    memcpy(p, leaf, llen + 1); // includes null terminator
     return out;
 }
 
@@ -396,10 +400,12 @@ void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state
     if (!fc_parse_u32_strict(first, &val)) {
         argp_error(state, "Invalid integer threshold: '%s'", first);
     }
-    *arr = realloc(*arr, (*n + 1) * sizeof(**arr));
-    if (!*arr) {
+    uint32_t *tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
+    if (!tmp) {
         argp_failure(state, 1, 0, "out of memory");
+        exit(EXIT_FAILURE); // help static analyzer understand control flow
     }
+    *arr = tmp;
     (*arr)[(*n)++] = val;
 
     while (state->next < state->argc) {
@@ -410,10 +416,12 @@ void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state
         if (!fc_parse_u32_strict(next, &val)) {
             argp_error(state, "Invalid integer threshold: '%s'", next);
         }
-        *arr = realloc(*arr, (*n + 1) * sizeof(**arr));
-        if (!*arr) {
+        tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
+        if (!tmp) {
             argp_failure(state, 1, 0, "out of memory");
+            exit(EXIT_FAILURE); // help static analyzer understand control flow
         }
+        *arr = tmp;
         (*arr)[(*n)++] = val;
         state->next++;
     }

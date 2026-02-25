@@ -300,10 +300,7 @@ static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
             iter->stats.failures[F_QUAL_TRUNCATED]++;
             iter->truncated = true;
             continue;
-        } else if (iter->status == -3) {
-            iter->status = -3;
-            return FC_ITER_ERROR;
-        } else if (iter->status < 0) {
+        } else if (iter->status < 0) { // -3 or other error
             iter->status = -3;
             return FC_ITER_ERROR;
         }

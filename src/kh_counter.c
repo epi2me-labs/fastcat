@@ -82,7 +82,7 @@ void kh_counter_destroy(kh_counter_t *hash)
 {
     for (khiter_t k = 0; k < kh_end(hash); k++) {
         if (kh_exist(hash, k)) {
-            free((char *)kh_key(hash, k));
+            free((void *)kh_key(hash, k));
         }
     }
     kh_destroy(KH_COUNTER, hash);

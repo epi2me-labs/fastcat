@@ -24,7 +24,7 @@ fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *sta
     if (writer->stats_cfg_set) {
         writer->stats_cfg = *stats_cfg;
         writer->stats_engine_count = writer->stats_per_barcode ? writer->barcode_count : 1;
-        writer->stats_engines = calloc(writer->stats_engine_count, sizeof(*writer->stats_engines));
+        writer->stats_engines = calloc(writer->stats_engine_count, sizeof(fc_stats_engine *));
         if (!writer->stats_engines) {
             free(writer);
             return NULL;

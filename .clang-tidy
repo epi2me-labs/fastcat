@@ -1,0 +1,28 @@
+---
+# Clang-tidy configuration for fastcat2
+# Run with: make clang_tidy
+#
+# Philosophy: Focus on finding actual bugs and performance issues.
+# Avoid style enforcement and C idioms that are intentional.
+
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-reserved-identifier,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-suspicious-realloc-usage,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -clang-analyzer-optin.performance.Padding,
+  performance-*,
+  portability-*
+
+CheckOptions: []
+
+WarningsAsErrors: ''
+HeaderFilterRegex: 'src/.*\.h$'
+FormatStyle: none

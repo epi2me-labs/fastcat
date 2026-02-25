@@ -33,7 +33,7 @@ static int fprintf_bridge(void *h, const char *fmt, ...)
 static int gz_fprintf_bridge(void *h, const char *fmt, ...)
 {
     size_t bufsize = GZBUFSIZE;
-    char *buf = (char *)xalloc(bufsize, sizeof(char), "gzbuffer");
+    char *buf = xalloc(bufsize, sizeof(char), "gzbuffer");
 
     va_list ap;
     va_start(ap, fmt);
@@ -47,7 +47,7 @@ static int gz_fprintf_bridge(void *h, const char *fmt, ...)
 
     if ((size_t)need >= bufsize) {
         bufsize = (size_t)need + 1;
-        buf = (char *)xrealloc(buf, bufsize, "gzbuffer");
+        buf = xrealloc(buf, bufsize, "gzbuffer");
         va_start(ap, fmt);
         need = vsnprintf(buf, bufsize, fmt, ap);
         va_end(ap);

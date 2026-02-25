@@ -10,12 +10,12 @@
 
 read_stats *create_length_stats(void)
 {
-    read_stats *stats = (read_stats *)xalloc(1, sizeof(read_stats), "length_stats");
+    read_stats *stats = xalloc(1, sizeof(read_stats), "length_stats");
 
-    bin_groups *bins = (bin_groups *)xalloc(1, sizeof(bin_groups), "bin_groups");
+    bin_groups *bins = xalloc(1, sizeof(bin_groups), "bin_groups");
     stats->buckets = bins;
     bins->n = 1;
-    bins->groups = (size_t *)xalloc(1, 3 * bins->n * sizeof(size_t), "groups");
+    bins->groups = xalloc(1, 3 * bins->n * sizeof(size_t), "groups");
     size_t *grps = bins->groups;
     // - end exclusive upper edges
     // - 0 is first lower edge
@@ -93,7 +93,7 @@ void add_length_count(read_stats *stats, size_t x)
 
 read_stats *create_qual_stats(float width)
 {
-    read_stats *stats = (read_stats *)xalloc(1, sizeof(read_stats), "quality stats");
+    read_stats *stats = xalloc(1, sizeof(read_stats), "quality stats");
     stats->width = width;
     // this fixes the range to [0, 100], good for both QUAL and %age acc
     stats->n = (size_t)(100.0 / stats->width) + 1;

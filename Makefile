@@ -6,11 +6,22 @@ ifeq ($(OS), Darwin)
     ARGP_INC ?= -I$(shell brew --prefix argp-standalone)/include
     CFLAGS ?= -fpic -O3 ${ARGP_INC}
     ZCAT = "gzcat"
+    # Try to find clang-tidy and scan-build from brew's LLVM
+    LLVM_PREFIX := $(shell brew --prefix llvm 2>/dev/null)
+    ifneq ($(LLVM_PREFIX),)
+        CLANG_TIDY ?= $(LLVM_PREFIX)/bin/clang-tidy
+        SCAN_BUILD ?= $(LLVM_PREFIX)/bin/scan-build
+    else
+        CLANG_TIDY ?= clang-tidy
+        SCAN_BUILD ?= scan-build
+    endif
 else
     ARGP ?=
     ARGP_INC ?=
     CFLAGS ?= -fpic -msse3 -O3 ${ARGP_INC}
     ZCAT = "zcat"
+    CLANG_TIDY ?= clang-tidy
+    SCAN_BUILD ?= scan-build
 endif
 CFLAGS += -MMD -MP
 
@@ -142,18 +153,18 @@ test: test_unit test_fastcat test_bamstats test_meta test_bamindex test_fastlint
 .PHONY:
 test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_fastlint mem_check_bamcoverage
 
-.PHONY: tidy tidy_check tidy_staged install_hooks
-tidy:
+.PHONY: format format_check format_staged install_hooks
+format:
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
 	@find src -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 $(CLANG_FORMAT) -i \
 		-style='$(CLANG_FORMAT_STYLE)'
 
-tidy_check:
+format_check:
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
 	@find src -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 $(CLANG_FORMAT) --dry-run -Werror \
 		-style='$(CLANG_FORMAT_STYLE)'
 
-tidy_staged:
+format_staged:
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
 	@tmp=$$(mktemp); \
 	trap 'rm -f "$$tmp"' EXIT; \
@@ -164,6 +175,45 @@ tidy_staged:
 	xargs -0 $(CLANG_FORMAT) -i -style='$(CLANG_FORMAT_STYLE)' < "$$tmp"; \
 	xargs -0 git add -- < "$$tmp"
 
+.PHONY:
+clang_tidy: $(HTSLIB_PATCH_STAMP)
+	@command -v $(CLANG_TIDY) >/dev/null 2>&1 || { echo "$(CLANG_TIDY) not found. Install with: apt install clang-tidy"; exit 1; }
+	@echo "Running clang-tidy static analysis..."
+	@failed_files=$$(mktemp); \
+	trap 'rm -f "$$failed_files"' EXIT; \
+	find src -type f -name '*.c' ! -path 'src/sdust/*' -print0 | \
+		xargs -0 -I{} sh -c '$(CLANG_TIDY) --warnings-as-errors="*" "$$1" -- -Isrc -Ihtslib -Izlib-ng $(CFLAGS) || echo "$$1" >> "$$2"' sh {} "$$failed_files"; \
+	xargs_status=$$?; \
+	if [ $$xargs_status -ne 0 ]; then \
+		exit $$xargs_status; \
+	fi; \
+	if [ -s "$$failed_files" ]; then \
+		echo "clang-tidy failed for $$(wc -l < "$$failed_files") file(s):"; \
+		cat "$$failed_files"; \
+		exit 1; \
+	fi
+
+.PHONY:
+scan_build: clean
+	@command -v $(SCAN_BUILD) >/dev/null 2>&1 || { echo "$(SCAN_BUILD) not found. Install with: apt install clang-tools"; exit 1; }
+	@echo "Running clang static analyzer..."
+	@rm -rf scan-build-results
+	@$(SCAN_BUILD) -o scan-build-results \
+		--status-bugs \
+		--exclude ./htslib \
+		--exclude $(CURDIR)/htslib \
+		--exclude htslib/ \
+		--exclude ./zlib-ng \
+		--exclude $(CURDIR)/zlib-ng \
+		--exclude zlib-ng/ \
+		make fastcat
+	@echo "Results saved to scan-build-results/"
+
+.PHONY:
+static_analysis: format_check clang_tidy
+	@echo "Static analysis checks passed!"
+
+.PHONY:
 install_hooks:
 	@mkdir -p .githooks
 	@chmod +x .githooks/pre-commit

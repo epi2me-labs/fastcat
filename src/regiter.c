@@ -17,8 +17,9 @@ int region_from_string(char *input, char **chr, int *start, int *end)
     char *reg_chr = (char *)hts_parse_reg(tmp, start, end);
     if (reg_chr) {
         *reg_chr = '\0'; // terminate at region separator
-        *chr = xalloc(strlen(tmp) + 1, sizeof(char), "chr");
-        strcpy(*chr, tmp);
+        size_t len = strlen(tmp);
+        *chr = xalloc(len + 1, sizeof(char), "chr");
+        memcpy(*chr, tmp, len + 1);
     } else {
         rtn = -1;
     }
@@ -47,13 +48,12 @@ int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end)
     char *line = NULL;
     char *line_copy = NULL;
     size_t len = 0;
-    ssize_t read;
     int rtn = 0;
 
     *start = -1;
     *end = -1;
 
-    if ((read = getline(&line, &len, bed_fp)) != -1) {
+    if (getline(&line, &len, bed_fp) != -1) {
         char *newline_pos = strchr(line, '\n');
         if (newline_pos != NULL) {
             *newline_pos = '\0'; // Null-terminate the string at the newline
@@ -67,8 +67,9 @@ int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end)
             rtn = -2;
             goto cleanup;
         }
-        *chr = xrealloc(*chr, (strlen(tok) + 1) * sizeof(char), "chr");
-        strcpy(*chr, tok);
+        size_t tok_len = strlen(tok);
+        *chr = xrealloc(*chr, (tok_len + 1) * sizeof(char), "chr");
+        memcpy(*chr, tok, tok_len + 1);
 
         // get start coordinate
         tok = strtok(NULL, "\t");
@@ -244,7 +245,7 @@ bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr)
         exit(EXIT_FAILURE);
     }
 
-    _bed_regions *out = (_bed_regions *)xalloc(1, sizeof(_bed_regions), "bed_regions");
+    _bed_regions *out = xalloc(1, sizeof(_bed_regions), "bed_regions");
     out->_capacity = 1024;
     out->regions = xalloc(out->_capacity, sizeof(*out->regions), "bed_region[]");
     out->n_regions = 0;
@@ -297,9 +298,9 @@ bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length)
     }
 
     // Create a bed_regions structure
-    _bed_regions *regions = (_bed_regions *)xalloc(1, sizeof(_bed_regions), "bed_regions");
+    _bed_regions *regions = xalloc(1, sizeof(_bed_regions), "bed_regions");
     regions->_capacity = 1024;
-    regions->regions = (bed_region)xalloc(regions->_capacity, sizeof(*regions->regions), "bed_region[]");
+    regions->regions = xalloc(regions->_capacity, sizeof(*regions->regions), "bed_region[]");
     regions->n_regions = 0;
 
     // Iterate through the header lines
@@ -309,7 +310,7 @@ bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length)
         for (uint32_t start = 0; start < hdr->target_len[i]; start += span) {
             if (regions->n_regions == regions->_capacity) {
                 size_t new_cap = regions->_capacity * 2;
-                regions->regions = (bed_region)xrealloc(
+                regions->regions = xrealloc(
                     regions->regions, new_cap * sizeof(*regions->regions), "bed_region[]");
                 regions->_capacity = new_cap;
             }

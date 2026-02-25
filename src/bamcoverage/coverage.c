@@ -53,7 +53,7 @@ static inline void _write_summary(
 
     // write all distribution file entries and collect threshold values
     // for summary file.
-    int64_t *thresh_counts = (int64_t *)xalloc(n_thresholds, sizeof(int64_t), "threshold counts");
+    int64_t *thresh_counts = xalloc(n_thresholds, sizeof(int64_t), "threshold counts");
     ssize_t cur_thresh = n_thresholds - 1;
     double cum = 0.0;
     double positions = (double)stats[3];
@@ -112,7 +112,7 @@ static void _fill_skipped_regions(cov_writer w)
                 break;
             }
             int64_t stats[4] = { 0, 0, 0, reg->end - reg->start };
-            int64_t *dist = (int64_t *)calloc(wr->max_cover, sizeof(int64_t));
+            int64_t *dist = calloc(wr->max_cover, sizeof(int64_t));
             _write_summary(wr->fh_dist, wr->fh_summary, reg, stats,
                 dist, wr->max_cover, wr->thresholds, wr->n_thresholds);
             _write_bedgraph_line(wr->fh_fwd, reg->chr, reg->start, reg->end, 0);
@@ -168,9 +168,10 @@ static void _flush_contig(cov_writer w)
             // chromosome summary
             int64_t stats[4] = { INT64_MAX, 0, 0, reg->end - reg->start }; // min, max, total, positions
             size_t max_cover = wr->max_cover; // which goes up to all thresholds
-            int64_t *dist = (int64_t *)calloc(max_cover, sizeof(int64_t));
+            int64_t *dist = calloc(max_cover, sizeof(int64_t));
             for (int64_t pos = reg->start; pos < reg->end; ++pos) {
                 int64_t cov = w->diff_fwd[pos] + w->diff_rev[pos];
+                assert(cov >= 0 && "Coverage should never be negative");
                 stats[0] = min(stats[0], cov);
                 stats[1] = max(stats[1], cov);
                 stats[2] += cov;
@@ -291,7 +292,7 @@ cov_writer_region init_coverage_writer_region(
         exit(EXIT_FAILURE);
     }
 
-    _cov_writer_region *w = (_cov_writer_region *)calloc(1, sizeof(_cov_writer_region));
+    _cov_writer_region *w = calloc(1, sizeof(_cov_writer_region));
     w->name = strdup(name);
     w->per_base = per_base;
     if (bed_fname != NULL) {
@@ -318,7 +319,7 @@ cov_writer_region init_coverage_writer_region(
     } else {
         // use default
         w->n_thresholds = 6;
-        w->thresholds = (uint32_t *)xalloc(w->n_thresholds, sizeof *w->thresholds, "default thresholds");
+        w->thresholds = xalloc(w->n_thresholds, sizeof *w->thresholds, "default thresholds");
         uint32_t tmp[] = { 1, 5, 10, 20, 30, 40 };
         for (size_t i = 0; i < w->n_thresholds; ++i) {
             w->thresholds[i] = tmp[i];
@@ -332,7 +333,7 @@ cov_writer_region init_coverage_writer_region(
     w->stats[3] = 0;
     // dist needs to be large enough to hold all thresholds, start with at least 256 to avoid reallocating
     w->max_cover = max(1u << 8, w->thresholds ? 1 + w->thresholds[w->n_thresholds - 1] : 0);
-    w->dist = (int64_t *)xalloc(w->max_cover, sizeof(int64_t), "coverage distribution");
+    w->dist = xalloc(w->max_cover, sizeof(int64_t), "coverage distribution");
 
     // per_base outputs are the main event, the full coverage traces.
     if (w->per_base) {
@@ -406,7 +407,7 @@ cov_writer_region init_coverage_writer_region(
     //// thresholds file {name}.mosdepth.thresholds.txt
     //{
     //    char* suffix = ".thresholds.txt";
-    //    char* fname = (char*)calloc(strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1, 1);
+    //    char* fname = calloc(strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1, 1);
     //    sprintf(fname, "%s/%s%s", out_dir, name, suffix);
     //    w->fh_thresh = fopen(fname, "w");
     //    if (NULL == w->fh_thresh) {
@@ -512,7 +513,7 @@ cov_writer init_coverage_writer(
     _reset_contig(w, -1);
 
     w->n_beds = 1 + n_segments + n_beds;
-    w->writers = (cov_writer_region *)xalloc(w->n_beds, sizeof(*w->writers), "coverage writers");
+    w->writers = xalloc(w->n_beds, sizeof(cov_writer_region), "coverage writers");
     // first entry is complete genome
     w->writers[0] = init_coverage_writer_region(
         out_dir, "global", per_base, by_strand, NULL,
