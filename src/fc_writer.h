@@ -6,6 +6,10 @@
 #include "fc_iter.h"
 #include "fc_stats_engine.h"
 
+// NOTE: The fc_writer, fc_sink, and fc_stats_engine interfaces are designed
+// for single-threaded record processing only. They are NOT thread-safe.
+// Only the underlying BAM writer (via htslib thread pool) may use multiple threads.
+
 typedef struct {
     size_t barcode;
     bool is_unmapped;

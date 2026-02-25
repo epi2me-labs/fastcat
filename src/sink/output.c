@@ -161,7 +161,8 @@ static void output_ensure_directory(output_sink *sink, size_t barcode, char *pat
 {
     if (sink->cfg.reads_per_file == 0
         || (sink->file_index[barcode] == 0 && sink->reads_written[barcode] == 0)) {
-        int rtn = mkdir_hier(path);
+        // Fail if barcode subdirectory already exists (fresh directory required)
+        int rtn = mkdir_hier(path, true);
         if (rtn == -1) {
             FC_LOG_ERROR("Failed to create barcode directory '%s'.", path);
             exit(EXIT_FAILURE);
@@ -289,11 +290,10 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts)
     state->file_index = calloc(state->cfg.barcode_count, sizeof(size_t));
 
     if (state->output != NULL) {
-        int rtn = mkdir_hier(state->output);
-        if (rtn == -1 && errno != EEXIST) {
-            FC_LOG_ERROR(
-                "Cannot create output directory '%s'. Check location is writeable and directory does not exist.",
-                state->output);
+        // Allow directory to exist since it may have been created by fc_program already
+        int rtn = mkdir_hier(state->output, false);
+        if (rtn == -1) {
+            FC_LOG_ERROR("Failed to create output directory '%s'.", state->output);
             exit(EXIT_FAILURE);
         }
     }

@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef enum {
     FC_LOG_ERROR = 0,
@@ -40,6 +41,13 @@ void fc_logmv(fc_log_level level, const char *module, const char *fmt, va_list a
 #define FC_LOG_INFO(...) fc_log(FC_LOG_INFO, __VA_ARGS__)
 #define FC_LOG_DEBUG(...) fc_log(FC_LOG_DEBUG, __VA_ARGS__)
 #define FC_LOG_ERROR(...) FC_LOG_ERR(__VA_ARGS__)
+
+// Logs fatal error and exits immediately with EXIT_FAILURE
+#define FC_LOG_FATAL(...)                  \
+    do {                                   \
+        fc_log(FC_LOG_ERROR, __VA_ARGS__); \
+        exit(EXIT_FAILURE);                \
+    } while (0)
 
 #define FC_LOGM_ERR(mod, ...) fc_logm(FC_LOG_ERROR, mod, __VA_ARGS__)
 #define FC_LOGM_WARN(mod, ...) fc_logm(FC_LOG_WARN, mod, __VA_ARGS__)

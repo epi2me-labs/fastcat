@@ -146,11 +146,9 @@ fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts)
         state->output_dir = NULL;
 
         if (state->hist_dir != NULL) {
-            int rtn = mkdir_hier(state->hist_dir);
-            if (rtn == -1 && errno != EEXIST) {
-                FC_LOG_ERROR(
-                    "Cannot create output directory '%s'. Check location is writeable and directory does not exist.",
-                    state->hist_dir);
+            int rtn = mkdir_hier(state->hist_dir, true);
+            if (rtn == -1) {
+                FC_LOG_ERROR("Failed to create histogram directory '%s'.", state->hist_dir);
                 exit(EXIT_FAILURE);
             }
         }

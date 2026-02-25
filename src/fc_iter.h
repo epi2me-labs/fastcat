@@ -44,6 +44,11 @@ typedef struct {
 } fc_file_stats;
 
 typedef struct {
+    char *buf;
+    size_t size;
+} dust_buffer;
+
+typedef struct {
     /* common filters */
     size_t min_length;
     size_t max_length;
@@ -73,6 +78,7 @@ typedef struct {
     int status;
     double q_sum;
     double q_comp;
+    dust_buffer dust;
 } fc_fastq_iter;
 
 typedef struct {
@@ -90,6 +96,7 @@ typedef struct {
     bool reg_active;
     bool own_idx;
     int status;
+    dust_buffer dust;
 } fc_bam_iter;
 
 typedef struct {

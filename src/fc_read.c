@@ -64,6 +64,8 @@ void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const kstring_t
     read_meta_populate_from_bam(read->meta, read->bam, hdr);
 }
 
+// NOTE: This function is NOT thread-safe due to lazy initialization of tags_str.
+// It is designed for single-threaded record processing only.
 const kstring_t *fc_read_get_tags_str(const fc_read *read)
 {
     if (!read || !read->meta) {
@@ -109,11 +111,9 @@ static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_co
         len = orig_comment->l;
         src = orig_comment->s;
     }
-    if (!meta->orig_comment || len > 0) {
-        size_t need = len + 1;
-        char *tmp = xrealloc(meta->orig_comment, need, "meta->orig_comment");
-        meta->orig_comment = tmp;
-    }
+    // Always realloc to exact size needed (simple and correct)
+    size_t need = len + 1;
+    meta->orig_comment = xrealloc(meta->orig_comment, need, "meta->orig_comment");
     if (len > 0) {
         memcpy(meta->orig_comment, src, len);
     }
@@ -183,7 +183,15 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             if (strcmp(meta->barcode, "unclassified") == 0) {
                 meta->ibarcode = 0;
             } else if (strncmp(meta->barcode, "barcode", 7) == 0) {
-                meta->ibarcode = (size_t)atoi(meta->barcode + 7);
+                const char *num_str = meta->barcode + 7;
+                size_t val = 0;
+                // MAX_BARCODES is 1025 (defined in fc_writer.c)
+                if (fc_parse_size_strict(num_str, &val) && val < 1025) {
+                    meta->ibarcode = val;
+                } else {
+                    FC_LOG_WARN("Malformed barcode '%s', treating as unclassified", meta->barcode);
+                    meta->ibarcode = 0;
+                }
             } else {
                 meta->ibarcode = 0;
             }
@@ -213,12 +221,16 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
 
     bool good_align = fc_is_primary_qc_pass(b);
     if (good_align && (meta->edit_distance == -1)) {
-        FC_LOG_WARN("Read '%s' does not contain an integer 'NM' tag.", bam_get_qname(b));
+        FC_LOG_ERROR("Read '%s' does not contain an integer 'NM' tag.", bam_get_qname(b));
+        FC_LOG_ERROR("The NM tag is required for all aligned reads (primary, non-supplementary, non-secondary, QC-pass).");
+        FC_LOG_ERROR("To fix this:");
+        FC_LOG_ERROR("  - Regenerate alignment with a tool that produces NM tags (e.g., minimap2 with default settings)");
+        FC_LOG_ERROR("  - Or use 'samtools calmd' to calculate and add NM tags to existing alignments");
         kstring_t rec = { 0, 0, NULL };
         if (sam_format1(hdr, b, &rec) < 0) {
             FC_LOG_ERROR("Failed to format record for error message.");
         } else {
-            FC_LOG_ERROR("%s", rec.s);
+            FC_LOG_ERROR("Offending record: %s", rec.s);
         }
         ks_free(&rec);
         exit(EXIT_FAILURE);

@@ -286,10 +286,8 @@ cov_writer_region init_coverage_writer_region(
     const bam_hdr_t *hdr, const htsThreadPool *pool)
 {
 
-    if (mkdir_hier((char *)out_dir) == -1) {
-        FC_LOG_ERROR(
-            "Cannot create output directory '%s'. Check location is writeable and directory does not exist.",
-            out_dir);
+    if (mkdir_hier((char *)out_dir, true) == -1) {
+        FC_LOG_ERROR("Failed to create coverage output directory '%s'.", out_dir);
         exit(EXIT_FAILURE);
     }
 

@@ -106,7 +106,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         status = EXIT_FAILURE;
         goto cleanup;
     }
-    if (mkdir_hier(args->output_dir) == -1) {
+    if (mkdir_hier(args->output_dir, true) == -1) {
         FC_LOG_ERROR("Failed to create output directory '%s'.", args->output_dir);
         status = EXIT_FAILURE;
         goto cleanup;

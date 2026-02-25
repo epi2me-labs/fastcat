@@ -11,7 +11,7 @@
 static inline size_t *create_cigar_stats(bam1_t *b)
 {
     static const size_t NCODES = 10;
-    size_t *stats = xalloc(NCODES, sizeof(size_t *), "read stats");
+    size_t *stats = xalloc(NCODES, sizeof(size_t), "read stats");
     uint32_t *cigar = bam_get_cigar(b);
     for (size_t i = 0; i < b->core.n_cigar; ++i) {
         uint32_t op = bam_cigar_op(cigar[i]);

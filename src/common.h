@@ -51,12 +51,13 @@ int can_make_dir(const char *path);
  */
 int mkdir_p(const char *path);
 
-/** mkdir a directory structure recursively, but fail if pre-exists.
+/** mkdir a directory structure recursively.
  *
  * @param path directory path
+ * @param fail_on_exist if true, return -1 if directory already exists; if false, return 0 if directory exists
  *
  */
-int mkdir_hier(char *path);
+int mkdir_hier(char *path, bool fail_on_exist);
 
 /** Ensure parent directory exists for a given path.
  *
@@ -116,16 +117,6 @@ void *xrealloc(void *ptr, size_t size, char *msg);
  *
  */
 void *xrecalloc(void *ptr, size_t orig, size_t num, size_t size, char *msg);
-
-/** Retrieves a substring.
- *
- *  @param string input string.
- *  @param postion start position of substring.
- *  @param length length of substring required.
- *  @returns string pointer.
- *
- */
-char *substring(char *string, size_t position, size_t length);
 
 /** Globally replace a char in a char*
  *

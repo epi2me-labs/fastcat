@@ -156,7 +156,7 @@ out:
  * @param path directory path
  *
  */
-int mkdir_hier(char *path)
+int mkdir_hier(char *path, bool fail_on_exist)
 {
 
     char *_path = NULL;
@@ -166,9 +166,15 @@ int mkdir_hier(char *path)
     errno = 0;
 
     // if we can just make the directory, fine. If it exists
-    // already then exit
-    if (mkdir(path, mode) != 0 && errno == EEXIST) {
-        return -1;
+    // already then fail or succeed depending on fail_on_exist flag
+    int first_mkdir_result = mkdir(path, mode);
+    int saved_errno = errno;
+    if (first_mkdir_result != 0 && saved_errno == EEXIST) {
+        return fail_on_exist ? -1 : 0;
+    }
+    // If first mkdir succeeded, we're done
+    if (first_mkdir_result == 0) {
+        return 0;
     }
 
     _path = strdup(path);
@@ -352,6 +358,12 @@ char *fc_join_path(const char *dir, const char *leaf)
     size_t llen = strlen(leaf);
     bool need_sep = len > 0 && dir[len - 1] != '/';
     size_t total = len + need_sep + llen + 1;
+
+    if (total > PATH_MAX) {
+        FC_LOG_ERROR("Path too long: '%s' + '%s' exceeds PATH_MAX (%d)", dir, leaf, PATH_MAX);
+        return NULL;
+    }
+
     char *out = calloc(total, 1);
     if (!out) {
         return NULL;
@@ -465,30 +477,6 @@ void *xrecalloc(void *ptr, size_t orig, size_t num, size_t size, char *msg)
     return res;
 }
 
-/** Retrieves a substring.
- *
- *  @param string input string.
- *  @param postion start position of substring.
- *  @param length length of substring required.
- *  @returns string pointer.
- *
- */
-char *substring(char *string, size_t position, size_t length)
-{
-    char *ptr;
-    size_t i;
-
-    ptr = malloc(length + 1);
-
-    for (i = 0; i < length; i++) {
-        *(ptr + i) = *(string + position);
-        string++;
-    }
-
-    *(ptr + i) = '\0';
-    return ptr;
-}
-
 int replace_char(char *str, char orig, char rep)
 {
     char *ix = str;
@@ -500,7 +488,9 @@ int replace_char(char *str, char orig, char rep)
     return n;
 }
 
-const double qprobs[100] = {
+// Error probability lookup table: qprobs[q] = 10^(-q/10)
+// Extended to 256 entries to cover all possible uint8_t quality scores
+const double qprobs[256] = {
     1.00000000e+00, 7.94328235e-01, 6.30957344e-01, 5.01187234e-01,
     3.98107171e-01, 3.16227766e-01, 2.51188643e-01, 1.99526231e-01,
     1.58489319e-01, 1.25892541e-01, 1.00000000e-01, 7.94328235e-02,
@@ -525,7 +515,46 @@ const double qprobs[100] = {
     3.98107171e-09, 3.16227766e-09, 2.51188643e-09, 1.99526231e-09,
     1.58489319e-09, 1.25892541e-09, 1.00000000e-09, 7.94328235e-10,
     6.30957344e-10, 5.01187234e-10, 3.98107171e-10, 3.16227766e-10,
-    2.51188643e-10, 1.99526231e-10, 1.58489319e-10, 1.25892541e-10
+    2.51188643e-10, 1.99526231e-10, 1.58489319e-10, 1.25892541e-10,
+    1.00000000e-10, 7.94328235e-11, 6.30957344e-11, 5.01187234e-11,
+    3.98107171e-11, 3.16227766e-11, 2.51188643e-11, 1.99526231e-11,
+    1.58489319e-11, 1.25892541e-11, 1.00000000e-11, 7.94328235e-12,
+    6.30957344e-12, 5.01187234e-12, 3.98107171e-12, 3.16227766e-12,
+    2.51188643e-12, 1.99526231e-12, 1.58489319e-12, 1.25892541e-12,
+    1.00000000e-12, 7.94328235e-13, 6.30957344e-13, 5.01187234e-13,
+    3.98107171e-13, 3.16227766e-13, 2.51188643e-13, 1.99526231e-13,
+    1.58489319e-13, 1.25892541e-13, 1.00000000e-13, 7.94328235e-14,
+    6.30957344e-14, 5.01187234e-14, 3.98107171e-14, 3.16227766e-14,
+    2.51188643e-14, 1.99526231e-14, 1.58489319e-14, 1.25892541e-14,
+    1.00000000e-14, 7.94328235e-15, 6.30957344e-15, 5.01187234e-15,
+    3.98107171e-15, 3.16227766e-15, 2.51188643e-15, 1.99526231e-15,
+    1.58489319e-15, 1.25892541e-15, 1.00000000e-15, 7.94328235e-16,
+    6.30957344e-16, 5.01187234e-16, 3.98107171e-16, 3.16227766e-16,
+    2.51188643e-16, 1.99526231e-16, 1.58489319e-16, 1.25892541e-16,
+    1.00000000e-16, 7.94328235e-17, 6.30957344e-17, 5.01187234e-17,
+    3.98107171e-17, 3.16227766e-17, 2.51188643e-17, 1.99526231e-17,
+    1.58489319e-17, 1.25892541e-17, 1.00000000e-17, 7.94328235e-18,
+    6.30957344e-18, 5.01187234e-18, 3.98107171e-18, 3.16227766e-18,
+    2.51188643e-18, 1.99526231e-18, 1.58489319e-18, 1.25892541e-18,
+    1.00000000e-18, 7.94328235e-19, 6.30957344e-19, 5.01187234e-19,
+    3.98107171e-19, 3.16227766e-19, 2.51188643e-19, 1.99526231e-19,
+    1.58489319e-19, 1.25892541e-19, 1.00000000e-19, 7.94328235e-20,
+    6.30957344e-20, 5.01187234e-20, 3.98107171e-20, 3.16227766e-20,
+    2.51188643e-20, 1.99526231e-20, 1.58489319e-20, 1.25892541e-20,
+    1.00000000e-20, 7.94328235e-21, 6.30957344e-21, 5.01187234e-21,
+    3.98107171e-21, 3.16227766e-21, 2.51188643e-21, 1.99526231e-21,
+    1.58489319e-21, 1.25892541e-21, 1.00000000e-21, 7.94328235e-22,
+    6.30957344e-22, 5.01187234e-22, 3.98107171e-22, 3.16227766e-22,
+    2.51188643e-22, 1.99526231e-22, 1.58489319e-22, 1.25892541e-22,
+    1.00000000e-22, 7.94328235e-23, 6.30957344e-23, 5.01187234e-23,
+    3.98107171e-23, 3.16227766e-23, 2.51188643e-23, 1.99526231e-23,
+    1.58489319e-23, 1.25892541e-23, 1.00000000e-23, 7.94328235e-24,
+    6.30957344e-24, 5.01187234e-24, 3.98107171e-24, 3.16227766e-24,
+    2.51188643e-24, 1.99526231e-24, 1.58489319e-24, 1.25892541e-24,
+    1.00000000e-24, 7.94328235e-25, 6.30957344e-25, 5.01187234e-25,
+    3.98107171e-25, 3.16227766e-25, 2.51188643e-25, 1.99526231e-25,
+    1.58489319e-25, 1.25892541e-25, 1.00000000e-25, 7.94328235e-26,
+    6.30957344e-26, 5.01187234e-26, 3.98107171e-26, 3.16227766e-26
 };
 
 inline void kahan_sum(double *sum, double term, double *c)
@@ -544,7 +573,7 @@ inline float mean_qual(char *qual, size_t len)
     double qsum = 0;
     double c = 0;
     for (size_t i = 0; i < len; ++i) {
-        int q = (int)(qual[i]) - 33;
+        uint8_t q = (uint8_t)(qual[i] - 33);
         kahan_sum(&qsum, qprobs[q], &c);
     }
     qsum /= len;
@@ -559,8 +588,7 @@ inline float mean_qual_from_bam(uint8_t *qual, size_t len)
     double qsum = 0;
     double c = 0;
     for (size_t i = 0; i < len; ++i) {
-        int q = (int)(qual[i]);
-        kahan_sum(&qsum, qprobs[q], &c);
+        kahan_sum(&qsum, qprobs[qual[i]], &c);
     }
     qsum /= len;
     return -10 * log10(qsum);
@@ -573,7 +601,7 @@ inline float mean_qual_naive(char *qual, size_t len)
     }
     double qsum = 0;
     for (size_t i = 0; i < len; ++i) {
-        int q = (int)(qual[i]) - 33;
+        uint8_t q = (uint8_t)(qual[i] - 33);
         qsum += qprobs[q];
     }
     qsum /= len;
@@ -587,15 +615,14 @@ inline float mean_qual_from_bam_naive(uint8_t *qual, size_t len)
     }
     double qsum = 0;
     for (size_t i = 0; i < len; ++i) {
-        int q = (int)(qual[i]);
-        qsum += qprobs[q];
+        qsum += qprobs[qual[i]];
     }
     qsum /= len;
     return -10 * log10(qsum);
 }
 
 // Strip hexadecimal suffixes that samtools merge can add to RG IDs
-void strip_hex_suffix(char *str)
+static void strip_hex_suffix(char *str)
 {
     regex_t regex;
     regmatch_t matches[1];

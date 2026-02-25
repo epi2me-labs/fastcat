@@ -6,7 +6,8 @@
 #include "fc_filter.h"
 #include "fc_log.h"
 
-#define MAX_BARCODES 1025 // barcode 0 is reserved for "unclassified"
+// Maximum number of barcode slots: 1024 numbered barcodes (1-1024) + unclassified at index 0
+#define MAX_BARCODES 1025
 
 fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *stats_cfg)
 {

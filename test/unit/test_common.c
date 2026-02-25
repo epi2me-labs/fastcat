@@ -20,13 +20,6 @@ static void test_replace_char(void) {
     TEST_ASSERT_EQUAL_STRING("A+C+G+T", buf);
 }
 
-static void test_substring(void) {
-    char src[] = "abcdefgh";
-    char* sub = substring(src, 2, 3);
-    TEST_ASSERT_EQUAL_STRING("cde", sub);
-    free(sub);
-}
-
 static void test_create_rg_info(void) {
     char rg[] = "12345678-1234-1234-1234-123456789012_sup@v4.0.0_barcode03";
     readgroup* info = create_rg_info(rg);
@@ -80,7 +73,6 @@ static void test_parse_float_strict(void) {
 void common_suite(void) {
     RUN_TEST(test_min_max);
     RUN_TEST(test_replace_char);
-    RUN_TEST(test_substring);
     RUN_TEST(test_create_rg_info);
     RUN_TEST(test_kahan_sum);
     RUN_TEST(test_parse_int_strict);
