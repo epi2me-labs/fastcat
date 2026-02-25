@@ -9,13 +9,13 @@
 #include "stats.h"
 
 typedef struct {
-    read_stats* length_stats;
-    read_stats* qual_stats;
-    read_stats* acc_stats;
-    read_stats* cov_stats;
-    read_stats* length_stats_unmapped;
-    read_stats* qual_stats_unmapped;
-    read_stats* polya_stats;
+    read_stats *length_stats;
+    read_stats *qual_stats;
+    read_stats *acc_stats;
+    read_stats *cov_stats;
+    read_stats *length_stats_unmapped;
+    read_stats *qual_stats_unmapped;
+    read_stats *polya_stats;
     float polya_cover;
     float polya_qual;
     bool polya_rev;
@@ -49,16 +49,16 @@ typedef enum {
     FC_STATS_ALIGNED
 } fc_stats_read_kind;
 
-fc_stats_engine* fc_stats_engine_create(
+fc_stats_engine *fc_stats_engine_create(
     bool track_alignment,
     bool track_polya,
     float polya_cover,
     float polya_qual,
     bool polya_rev);
-void fc_stats_engine_destroy(fc_stats_engine* engine);
+void fc_stats_engine_destroy(fc_stats_engine *engine);
 
 fc_stats_read_kind fc_stats_engine_add_read(
-    fc_stats_engine* engine, const fc_read* fr,
-    const sam_hdr_t* hdr, fc_stats_aligned* out);
+    fc_stats_engine *engine, const fc_read *fr,
+    const sam_hdr_t *hdr, fc_stats_aligned *out);
 
 #endif

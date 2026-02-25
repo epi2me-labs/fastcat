@@ -1,35 +1,34 @@
-#include <zlib.h>
-
-#include "htslib/kseq.h"
-
-KSEQ_INIT2(, gzFile, gzread)
-#define KSEQ_DECLARED
 
 #include "fc_iter.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <dirent.h>
 #include <unistd.h>
 
-#include "fc_log.h"
 #include "fc_bam_utils.h"
 #include "fc_filter.h"
 #include "fc_input_list.h"
+#include "fc_log.h"
+#include "kseq_gz.h"
 
-
-void fc_file_stats_init(fc_file_stats *stats) {
-    if (!stats) return;
+void fc_file_stats_init(fc_file_stats *stats)
+{
+    if (!stats) {
+        return;
+    }
     memset(stats, 0, sizeof(*stats));
     stats->min_length = SIZE_MAX;
 }
 
-
-static void finalize_file_stats(fc_file_stats *stats, double q_sum) {
-    if (!stats) return;
+static void finalize_file_stats(fc_file_stats *stats, double q_sum)
+{
+    if (!stats) {
+        return;
+    }
     if (stats->n_seqs == 0) {
         stats->min_length = 0;
         stats->max_length = 0;
@@ -42,9 +41,9 @@ static void finalize_file_stats(fc_file_stats *stats, double q_sum) {
     }
 }
 
-
 static inline void fc_iter_accum_add(size_t len, float mean_q,
-        fc_file_stats *stats, double *q_sum, double *q_comp) {
+    fc_file_stats *stats, double *q_sum, double *q_comp)
+{
     stats->n_seqs += 1;
     stats->n_bases += len;
     stats->min_length = (stats->min_length < len) ? stats->min_length : len;
@@ -52,8 +51,8 @@ static inline void fc_iter_accum_add(size_t len, float mean_q,
     kahan_sum(q_sum, mean_q, q_comp);
 }
 
-
-static inline bool fc_iter_filter_length(size_t len, size_t min_len, size_t max_len, fc_file_stats *stats) {
+static inline bool fc_iter_filter_length(size_t len, size_t min_len, size_t max_len, fc_file_stats *stats)
+{
     if (max_len != (size_t)-1 && len > max_len) {
         stats->failures[R_TOO_LONG]++;
         return false;
@@ -65,9 +64,11 @@ static inline bool fc_iter_filter_length(size_t len, size_t min_len, size_t max_
     return true;
 }
 
-
-static inline bool fc_iter_filter_quality(float mean_q, float min_qscore, fc_file_stats *stats) {
-    if (min_qscore <= 0.0f) return true;
+static inline bool fc_iter_filter_quality(float mean_q, float min_qscore, fc_file_stats *stats)
+{
+    if (min_qscore <= 0.0f) {
+        return true;
+    }
     if (mean_q < min_qscore) {
         stats->failures[R_LOW_QUALITY]++;
         return false;
@@ -75,8 +76,11 @@ static inline bool fc_iter_filter_quality(float mean_q, float min_qscore, fc_fil
     return true;
 }
 
-static void fc_iter_opts_init(fc_iter_opts *dst, const fc_iter_opts *src) {
-    if (!dst) return;
+static void fc_iter_opts_init(fc_iter_opts *dst, const fc_iter_opts *src)
+{
+    if (!dst) {
+        return;
+    }
     memset(dst, 0, sizeof(*dst));
     dst->max_length = (size_t)-1;
     if (src) {
@@ -88,8 +92,11 @@ static void fc_iter_opts_init(fc_iter_opts *dst, const fc_iter_opts *src) {
 }
 
 static bool fc_iter_filter_dust_bam(
-        bam1_t *b, const fc_iter_opts *opts, fc_file_stats *stats) {
-    if (!opts || !opts->dust) return true;
+    bam1_t *b, const fc_iter_opts *opts, fc_file_stats *stats)
+{
+    if (!opts || !opts->dust) {
+        return true;
+    }
 
     size_t len = (size_t)b->core.l_qseq;
     uint8_t *seq_data = bam_get_seq(b);
@@ -109,9 +116,10 @@ static bool fc_iter_filter_dust_bam(
 }
 
 static bool fc_iter_process_bam_record(
-        fc_read *out, const bam_hdr_t *hdr, const kstring_t *orig_comment,
-        const fc_iter_opts *opts, bool apply_filters, fc_file_stats *stats,
-        double *q_sum, double *q_comp) {
+    fc_read *out, const bam_hdr_t *hdr, const kstring_t *orig_comment,
+    const fc_iter_opts *opts, bool apply_filters, fc_file_stats *stats,
+    double *q_sum, double *q_comp)
+{
     size_t len = (size_t)out->bam->core.l_qseq;
     float mean_q = fc_bam_ensure_mean_quality(out->bam, opts->force_recalc_qual);
 
@@ -147,8 +155,11 @@ static int fc_iter_finish_common(
     double q_sum,
     int status,
     bool add_status_failure,
-    fc_file_stats *out_stats) {
-    if (!stats) return EINVAL;
+    fc_file_stats *out_stats)
+{
+    if (!stats) {
+        return EINVAL;
+    }
 
     if (add_status_failure) {
         if (status < -1) {
@@ -169,9 +180,11 @@ static int fc_iter_finish_common(
     return (status == -1 || status == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-
-static void fastq_iter_close_resources(fc_fastq_iter *iter) {
-    if (!iter) return;
+static void fastq_iter_close_resources(fc_fastq_iter *iter)
+{
+    if (!iter) {
+        return;
+    }
     if (iter->seq) {
         kseq_destroy(iter->seq);
         iter->seq = NULL;
@@ -182,23 +195,22 @@ static void fastq_iter_close_resources(fc_fastq_iter *iter) {
     }
 }
 
-static bool iter_opts_enable_filters(const fc_iter_opts *opts) {
-    if (!opts) return false;
+static bool iter_opts_enable_filters(const fc_iter_opts *opts)
+{
+    if (!opts) {
+        return false;
+    }
     return (
-        opts->min_length > 0 ||
-        opts->max_length != (size_t)-1 ||
-        opts->min_qscore > 0.0f ||
-        opts->dust ||
-        opts->tag_name[0] != '\0' ||
-        opts->read_group != NULL
-    );
+        opts->min_length > 0 || opts->max_length != (size_t)-1 || opts->min_qscore > 0.0f || opts->dust || opts->tag_name[0] != '\0' || opts->read_group != NULL);
 }
 
 static int fc_bam_iter_set_region(fc_bam_iter *iter, const char *chr, hts_pos_t start, hts_pos_t end);
 
-
-static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_iter_opts *opts) {
-    if (!iter || !fname || fname[0] == '\0') return EINVAL;
+static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_iter_opts *opts)
+{
+    if (!iter || !fname || fname[0] == '\0') {
+        return EINVAL;
+    }
     memset(iter, 0, sizeof(*iter));
     iter->fname = fname;
     fc_file_stats_init(&iter->stats);
@@ -247,9 +259,11 @@ static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_i
     return 0;
 }
 
-
-static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out) {
-    if (!iter || !iter->seq || !out || !out->bam) return FC_ITER_ERROR;
+static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
+{
+    if (!iter || !iter->seq || !out || !out->bam) {
+        return FC_ITER_ERROR;
+    }
 
     while ((iter->status = kseq_read(iter->seq)) != -1) {
         if (iter->status == -2) {
@@ -293,9 +307,11 @@ static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
     return FC_ITER_EOF;
 }
 
-
-static int fc_fastq_iter_finish(fc_fastq_iter *iter, fc_file_stats *out_stats) {
-    if (!iter) return EINVAL;
+static int fc_fastq_iter_finish(fc_fastq_iter *iter, fc_file_stats *out_stats)
+{
+    if (!iter) {
+        return EINVAL;
+    }
 
     int rc = fc_iter_finish_common(&iter->stats, iter->q_sum, iter->status, true, out_stats);
 
@@ -314,14 +330,16 @@ static int fc_fastq_iter_finish(fc_fastq_iter *iter, fc_file_stats *out_stats) {
     return rc;
 }
 
-
 static int fc_bam_iter_open(
     fc_bam_iter *iter,
     htsFile *fp,
     hts_idx_t *idx,
     sam_hdr_t *hdr,
-    const fc_iter_opts *opts) {
-    if (!iter || !fp || !hdr) return -1;
+    const fc_iter_opts *opts)
+{
+    if (!iter || !fp || !hdr) {
+        return -1;
+    }
     memset(iter, 0, sizeof(*iter));
     fc_file_stats_init(&iter->stats);
     fc_iter_opts_init(&iter->opts, opts);
@@ -363,7 +381,9 @@ static int fc_bam_iter_open(
         }
         while (check != 0) {
             check = next_region(&iter->reg);
-            if (check == -1) break;
+            if (check == -1) {
+                break;
+            }
         }
         iter->reg_active = (check == 0);
         if (iter->reg_active && iter->idx != NULL) {
@@ -373,19 +393,23 @@ static int fc_bam_iter_open(
         }
         if (iter->idx == NULL) {
             iter->bam = fc_bam_iter_data_create(fp, idx, hdr, NULL, 0, INT64_MAX);
-            if (iter->bam == NULL) return -1;
+            if (iter->bam == NULL) {
+                return -1;
+            }
         }
         return 0;
     }
 
     iter->bam = fc_bam_iter_data_create(fp, idx, hdr, NULL, 0, INT64_MAX);
-    if (iter->bam == NULL) return -1;
+    if (iter->bam == NULL) {
+        return -1;
+    }
 
     return 0;
 }
 
-
-static int fc_bam_iter_set_region(fc_bam_iter *iter, const char *chr, hts_pos_t start, hts_pos_t end) {
+static int fc_bam_iter_set_region(fc_bam_iter *iter, const char *chr, hts_pos_t start, hts_pos_t end)
+{
     if (iter->bam) {
         fc_bam_iter_data_destroy(iter->bam);
         iter->bam = NULL;
@@ -394,9 +418,11 @@ static int fc_bam_iter_set_region(fc_bam_iter *iter, const char *chr, hts_pos_t 
     return iter->bam ? 0 : -1;
 }
 
-
-static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out) {
-    if (!iter || !out || !out->bam) return FC_ITER_ERROR;
+static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
+{
+    if (!iter || !out || !out->bam) {
+        return FC_ITER_ERROR;
+    }
 
     for (;;) {
         // If no active bam iterator, try to advance to next region (if any)
@@ -452,8 +478,7 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out) {
             int tid = out->bam->core.tid;
             hts_pos_t pos = out->bam->core.pos;
             hts_pos_t rend = bam_endpos(out->bam);
-            while (iter->reg_active &&
-                   (tid > iter->reg.tid || (tid == iter->reg.tid && pos >= iter->reg.end))) {
+            while (iter->reg_active && (tid > iter->reg.tid || (tid == iter->reg.tid && pos >= iter->reg.end))) {
                 int check = next_region(&iter->reg);
                 if (check != 0) {
                     iter->reg_active = false;
@@ -481,13 +506,19 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out) {
     return FC_ITER_EOF;
 }
 
-static int fc_bam_iter_finish(fc_bam_iter *iter, fc_file_stats *out_stats) {
-    if (!iter) return EINVAL;
+static int fc_bam_iter_finish(fc_bam_iter *iter, fc_file_stats *out_stats)
+{
+    if (!iter) {
+        return EINVAL;
+    }
     return fc_iter_finish_common(&iter->stats, iter->q_sum, iter->status, true, out_stats);
 }
 
-static void fc_bam_iter_close(fc_bam_iter *iter) {
-    if (!iter) return;
+static void fc_bam_iter_close(fc_bam_iter *iter)
+{
+    if (!iter) {
+        return;
+    }
     if (iter->bam) {
         fc_bam_iter_data_destroy(iter->bam);
         iter->bam = NULL;
@@ -512,8 +543,11 @@ static void fc_bam_iter_close(fc_bam_iter *iter) {
     iter->own_idx = false;
 }
 
-static int fc_bam_iter_open_path(fc_bam_iter *bmi, const char *path, const fc_iter_opts *opts) {
-    if (!bmi || !path || path[0] == '\0') return EINVAL;
+static int fc_bam_iter_open_path(fc_bam_iter *bmi, const char *path, const fc_iter_opts *opts)
+{
+    if (!bmi || !path || path[0] == '\0') {
+        return EINVAL;
+    }
     fc_file_stats_init(&bmi->stats);
 
     htsFile *bam_fp = hts_open(path, "rb");
@@ -547,35 +581,37 @@ static int fc_bam_iter_open_path(fc_bam_iter *bmi, const char *path, const fc_it
     return 0;
 }
 
-
-static bool has_suffix(const char *path, const char *suffix) {
+static bool has_suffix(const char *path, const char *suffix)
+{
     size_t lp = strlen(path);
     size_t ls = strlen(suffix);
-    if (lp < ls) return false;
+    if (lp < ls) {
+        return false;
+    }
     return strcmp(path + (lp - ls), suffix) == 0;
 }
 
-
-bool fc_path_matches_kind(const char *path, fc_file_kind expected_kind) {
-    if (!path) return false;
+bool fc_path_matches_kind(const char *path, fc_file_kind expected_kind)
+{
+    if (!path) {
+        return false;
+    }
 
     if (expected_kind == FC_FILE_FASTQ) {
-        return has_suffix(path, ".fastq") ||
-               has_suffix(path, ".fastq.gz") ||
-               has_suffix(path, ".fq") ||
-               has_suffix(path, ".fq.gz");
-    }
-    else if (expected_kind == FC_FILE_BAM) {
+        return has_suffix(path, ".fastq") || has_suffix(path, ".fastq.gz") || has_suffix(path, ".fq") || has_suffix(path, ".fq.gz");
+    } else if (expected_kind == FC_FILE_BAM) {
         return has_suffix(path, ".bam") || has_suffix(path, ".sam");
     }
     return false;
 }
 
-
-static int append_file(char ***files, size_t *n_files, const char *path) {
+static int append_file(char ***files, size_t *n_files, const char *path)
+{
     size_t new_count = *n_files + 1;
     char **tmp = realloc(*files, new_count * sizeof(*tmp));
-    if (!tmp) return ENOMEM;
+    if (!tmp) {
+        return ENOMEM;
+    }
 
     char *dup = strdup(path);
     if (!dup) {
@@ -590,15 +626,15 @@ static int append_file(char ***files, size_t *n_files, const char *path) {
     return 0;
 }
 
-
 typedef struct {
     char *path;
     int depth;
 } pending_path;
 
 static int collect_files_from_roots(
-        const fc_path_list *input_paths, int recurse,
-        fc_file_kind expected_kind, fc_path_list *out_paths) {
+    const fc_path_list *input_paths, int recurse,
+    fc_file_kind expected_kind, fc_path_list *out_paths)
+{
     int status = 0;
     char **files = NULL;
     size_t n_files = 0;
@@ -615,13 +651,19 @@ static int collect_files_from_roots(
         if (qlen == qcap) {
             size_t newcap = qcap ? qcap * 2 : 8;
             pending_path *tmp = realloc(queue, newcap * sizeof(*tmp));
-            if (!tmp) { status = ENOMEM; goto done; }
+            if (!tmp) {
+                status = ENOMEM;
+                goto done;
+            }
             queue = tmp;
             qcap = newcap;
         }
         queue[qlen].path = strdup(input_paths->paths[i]);
         queue[qlen].depth = recurse;
-        if (!queue[qlen].path) { status = ENOMEM; goto done; }
+        if (!queue[qlen].path) {
+            status = ENOMEM;
+            goto done;
+        }
         qlen++;
     }
 
@@ -637,7 +679,7 @@ static int collect_files_from_roots(
             free(cur.path);
             continue;
         }
-        struct stat st = {0};
+        struct stat st = { 0 };
         if (stat(cur.path, &st) != 0) {
             FC_LOG_ERROR("could not stat '%s': %s", cur.path, strerror(errno));
             status = (status == 0) ? errno : status;
@@ -662,15 +704,24 @@ static int collect_files_from_roots(
             }
             struct dirent *ent;
             while ((ent = readdir(dir)) != NULL) {
-                if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+                if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+                    continue;
+                }
                 size_t clen = strlen(cur.path) + 1 + strlen(ent->d_name) + 1;
                 char *child = malloc(clen);
-                if (!child) { status = (status == 0) ? ENOMEM : status; continue; }
+                if (!child) {
+                    status = (status == 0) ? ENOMEM : status;
+                    continue;
+                }
                 snprintf(child, clen, "%s/%s", cur.path, ent->d_name);
                 if (qlen == qcap) {
                     size_t newcap = qcap ? qcap * 2 : 8;
                     pending_path *tmp = realloc(queue, newcap * sizeof(*tmp));
-                    if (!tmp) { free(child); status = (status == 0) ? ENOMEM : status; continue; }
+                    if (!tmp) {
+                        free(child);
+                        status = (status == 0) ? ENOMEM : status;
+                        continue;
+                    }
                     queue = tmp;
                     qcap = newcap;
                 }
@@ -711,7 +762,9 @@ done:
     }
     free(queue);
     if (status != 0) {
-        for (size_t i = 0; i < n_files; ++i) free(files[i]);
+        for (size_t i = 0; i < n_files; ++i) {
+            free(files[i]);
+        }
         free(files);
         files = NULL;
         n_files = 0;
@@ -721,11 +774,13 @@ done:
     return status;
 }
 
-
 int fc_iter_collect_paths(
-        const fc_path_list *input_paths, int recurse,
-        fc_file_kind expected_kind, bool stdin_is_path_list, fc_path_list *out_paths) {
-    if (!out_paths) return EINVAL;
+    const fc_path_list *input_paths, int recurse,
+    fc_file_kind expected_kind, bool stdin_is_path_list, fc_path_list *out_paths)
+{
+    if (!out_paths) {
+        return EINVAL;
+    }
 
     int rc = 0;
     out_paths->paths = NULL;
@@ -733,8 +788,7 @@ int fc_iter_collect_paths(
 
     if (stdin_is_path_list) {
         rc = fc_read_paths_from_fofn_sources(input_paths, expected_kind, out_paths);
-    } else if (input_paths && input_paths->n_paths == 1 && input_paths->paths &&
-               strcmp(input_paths->paths[0], "-") == 0) {
+    } else if (input_paths && input_paths->n_paths == 1 && input_paths->paths && strcmp(input_paths->paths[0], "-") == 0) {
         // stdin carries data stream (FASTQ/BAM), not a path list
         char **files = calloc(1, sizeof(*files));
         if (!files) {
@@ -756,14 +810,16 @@ int fc_iter_collect_paths(
     return rc;
 }
 
-
 int fc_iter_init(
-        fc_iter *it, const fc_path_list *input_paths,
-        int recurse, bool verbose, fc_file_kind expected_kind, bool stdin_is_path_list) {
-    if (!it || !input_paths || !input_paths->paths || input_paths->n_paths == 0) return EINVAL;
+    fc_iter *it, const fc_path_list *input_paths,
+    int recurse, bool verbose, fc_file_kind expected_kind, bool stdin_is_path_list)
+{
+    if (!it || !input_paths || !input_paths->paths || input_paths->n_paths == 0) {
+        return EINVAL;
+    }
 
     int rc = 0;
-    fc_path_list collected = {0};
+    fc_path_list collected = { 0 };
     memset(it, 0, sizeof(*it));
     it->recurse = recurse;
     it->verbose = verbose;
@@ -778,9 +834,11 @@ int fc_iter_init(
     return rc;
 }
 
-
-bool fc_iter_next_file(fc_iter *it, const char **out_file) {
-    if (!it || it->idx >= it->n_files) return false;
+bool fc_iter_next_file(fc_iter *it, const char **out_file)
+{
+    if (!it || it->idx >= it->n_files) {
+        return false;
+    }
 
     it->current = it->files[it->idx++];
     if (it->verbose) {
@@ -793,11 +851,13 @@ bool fc_iter_next_file(fc_iter *it, const char **out_file) {
     return true;
 }
 
-
 int fc_iter_open_record_cursor(
     fc_iter *it,
-    const fc_iter_opts *opts) {
-    if (!it || !it->current) return EINVAL;
+    const fc_iter_opts *opts)
+{
+    if (!it || !it->current) {
+        return EINVAL;
+    }
 
     int rc = EINVAL;
     it->cursor_open = false;
@@ -821,10 +881,12 @@ int fc_iter_open_record_cursor(
     return rc;
 }
 
-
-fc_iter_next_status fc_iter_next_record(fc_iter *it, fc_read *out) {
+fc_iter_next_status fc_iter_next_record(fc_iter *it, fc_read *out)
+{
     fc_iter_next_status status = FC_ITER_ERROR;
-    if (!it || !it->current || !out) return status;
+    if (!it || !it->current || !out) {
+        return status;
+    }
 
     if (it->expected_kind == FC_FILE_FASTQ) {
         status = fc_fastq_iter_next(&it->fqi, out);
@@ -834,9 +896,11 @@ fc_iter_next_status fc_iter_next_record(fc_iter *it, fc_read *out) {
     return status;
 }
 
-
-int fc_iter_finish_file(fc_iter *it) {
-    if (!it || !it->current) return EINVAL;
+int fc_iter_finish_file(fc_iter *it)
+{
+    if (!it || !it->current) {
+        return EINVAL;
+    }
 
     int rc = EINVAL;
     if (it->expected_kind == FC_FILE_FASTQ) {
@@ -849,9 +913,11 @@ int fc_iter_finish_file(fc_iter *it) {
     return rc;
 }
 
-
-void fc_iter_close(fc_iter *it) {
-    if (!it) return;
+void fc_iter_close(fc_iter *it)
+{
+    if (!it) {
+        return;
+    }
 
     if (it->expected_kind == FC_FILE_FASTQ) {
         fastq_iter_close_resources(&it->fqi);
@@ -859,7 +925,7 @@ void fc_iter_close(fc_iter *it) {
         fc_bam_iter_close(&it->bmi);
     }
 
-    fc_path_list paths = {.paths = it->files, .n_paths = it->n_files};
+    fc_path_list paths = { .paths = it->files, .n_paths = it->n_files };
     fc_path_list_free(&paths);
     it->files = paths.paths;
     it->n_files = paths.n_paths;
@@ -867,12 +933,16 @@ void fc_iter_close(fc_iter *it) {
     it->current = NULL;
 }
 
-
-void fc_iter_merge_file_stats(const fc_iter *it, fc_file_stats *dst) {
-    if (!it || !dst) return;
+void fc_iter_merge_file_stats(const fc_iter *it, fc_file_stats *dst)
+{
+    if (!it || !dst) {
+        return;
+    }
 
     const fc_file_stats *src = fc_iter_stats(it);
-    if (!src) return;
+    if (!src) {
+        return;
+    }
 
     double qsum = dst->mean_quality * (double)dst->n_seqs + src->mean_quality * (double)src->n_seqs;
     dst->n_seqs += src->n_seqs;
@@ -891,15 +961,20 @@ void fc_iter_merge_file_stats(const fc_iter *it, fc_file_stats *dst) {
     }
 }
 
-
-const fc_file_stats *fc_iter_stats(const fc_iter *it) {
-    if (!it || !it->current) return NULL;
+const fc_file_stats *fc_iter_stats(const fc_iter *it)
+{
+    if (!it || !it->current) {
+        return NULL;
+    }
 
     return it->expected_kind == FC_FILE_FASTQ ? &it->fqi.stats : &it->bmi.stats;
 }
 
-void fc_path_list_free(fc_path_list *paths) {
-    if (!paths || !paths->paths) return;
+void fc_path_list_free(fc_path_list *paths)
+{
+    if (!paths || !paths->paths) {
+        return;
+    }
 
     for (size_t i = 0; i < paths->n_paths; ++i) {
         free(paths->paths[i]);

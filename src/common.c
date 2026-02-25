@@ -1,31 +1,34 @@
+#include "common.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <libgen.h>
 #include <limits.h>
 #include <math.h>
 #include <regex.h>
-#include <string.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "common.h"
 #include "fc_log.h"
 
-
 // used with qsort to sort an array of uint32_t
-int cmp_u32(const void *a, const void *b) {
+int cmp_u32(const void *a, const void *b)
+{
     uint32_t va = *(const uint32_t *)a;
     uint32_t vb = *(const uint32_t *)b;
-    if (va < vb) return -1;
-    if (va > vb) return 1;
+    if (va < vb) {
+        return -1;
+    }
+    if (va > vb) {
+        return 1;
+    }
     return 0;
 }
-
 
 /** check if a file exists.
  *
@@ -33,12 +36,12 @@ int cmp_u32(const void *a, const void *b) {
  * @returns true if file exists, false otherwise
  *
  */
-bool file_exists(const char *path) {
-    assert (path != NULL);
+bool file_exists(const char *path)
+{
+    assert(path != NULL);
     struct stat st;
     return stat(path, &st) == 0;
 }
-
 
 /** check if we can make a directory.
  *
@@ -48,7 +51,8 @@ bool file_exists(const char *path) {
  *          -1 if we cannot make it.
  *
  */
-int can_make_dir(const char *path) {
+int can_make_dir(const char *path)
+{
     struct stat st;
     // If something already exists at path
     if (stat(path, &st) == 0) {
@@ -61,7 +65,9 @@ int can_make_dir(const char *path) {
 
     // check we can write in parent directory
     char *copy = strdup(path);
-    if (!copy) return -1;
+    if (!copy) {
+        return -1;
+    }
     char *parent = dirname(copy);
     if (access(parent, W_OK | X_OK) == 0) {
         free(copy);
@@ -72,26 +78,28 @@ int can_make_dir(const char *path) {
     }
 }
 
-
-
 /* The following three functions were adpated from:
  * https://gist.github.com/JonathonReinhart/8c0d90191c38af2dcadb102c4e202950
  */
-static int maybe_mkdir(const char* path, mode_t mode) {
+static int maybe_mkdir(const char *path, mode_t mode)
+{
     struct stat st;
     errno = 0;
 
     // Try to make the directory
-    if (mkdir(path, mode) == 0)
+    if (mkdir(path, mode) == 0) {
         return 0;
+    }
 
     // If it fails for any reason but EEXIST, fail
-    if (errno != EEXIST)
+    if (errno != EEXIST) {
         return -1;
+    }
 
     // Check if the existing path is a directory
-    if (stat(path, &st) != 0)
+    if (stat(path, &st) != 0) {
         return -1;
+    }
 
     // If not, fail with ENOTDIR
     if (!S_ISDIR(st.st_mode)) {
@@ -103,35 +111,38 @@ static int maybe_mkdir(const char* path, mode_t mode) {
     return 0;
 }
 
-
 /** mkdir a directory structure recursively.
  *
  * @param path directory path to ensure exists
  *
  */
-int mkdir_p(const char *path) {
+int mkdir_p(const char *path)
+{
     /* Adapted from http://stackoverflow.com/a/2336245/119527 */
     char *_path = NULL;
-    char *p; 
+    char *p;
     int result = -1;
     mode_t mode = 0755;
     errno = 0;
 
     _path = strdup(path);
-    if (_path == NULL)
+    if (_path == NULL) {
         goto out;
+    }
 
     for (p = _path + 1; *p; p++) {
         if (*p == '/') {
             *p = '\0';
-            if (maybe_mkdir(_path, mode) != 0)
+            if (maybe_mkdir(_path, mode) != 0) {
                 goto out;
+            }
             *p = '/';
         }
-    }   
+    }
 
-    if (maybe_mkdir(_path, mode) != 0)
+    if (maybe_mkdir(_path, mode) != 0) {
         goto out;
+    }
 
     result = 0;
 
@@ -139,48 +150,51 @@ out:
     free(_path);
     return result;
 }
-
 
 /** mkdir a directory structure recursively, but fail if pre-exists.
  *
  * @param path directory path
  *
  */
-int mkdir_hier(char *path) {
+int mkdir_hier(char *path)
+{
 
     char *_path = NULL;
-    char *p; 
+    char *p;
     int result = -1;
     mode_t mode = 0755;
     errno = 0;
 
     // if we can just make the directory, fine. If it exists
     // already then exit
-    if (mkdir(path, mode) != 0 && errno == EEXIST)
+    if (mkdir(path, mode) != 0 && errno == EEXIST) {
         return -1;
-        
+    }
+
     _path = strdup(path);
-    if (_path == NULL)
+    if (_path == NULL) {
         goto out;
+    }
 
     for (p = _path + 1; *p; p++) {
         if (*p == '/') {
             *p = '\0';
-            if (maybe_mkdir(_path, mode) != 0)
+            if (maybe_mkdir(_path, mode) != 0) {
                 goto out;
+            }
             *p = '/';
         }
-    }   
+    }
 
-    if (maybe_mkdir(_path, mode) != 0)
+    if (maybe_mkdir(_path, mode) != 0) {
         goto out;
+    }
 
     result = 0;
 out:
     free(_path);
     return result;
 }
-
 
 /** Ensure parent directory exists for a given path.
  *
@@ -190,137 +204,204 @@ out:
  *  This function checks if the parent directory of the given path exists,
  *  and creates it if it does not.
  */
-int ensure_parent_dir_exists(const char* filepath) {
-    char* path_copy = strdup(filepath);
-    if (path_copy == NULL) return -1;
+int ensure_parent_dir_exists(const char *filepath)
+{
+    char *path_copy = strdup(filepath);
+    if (path_copy == NULL) {
+        return -1;
+    }
 
-    char* dir = dirname(path_copy);
+    char *dir = dirname(path_copy);
     int rtn = mkdir_p(dir);
 
     free(path_copy);
     return rtn;
 }
 
-
-static void push_str(const char ***arr, size_t *n, const char *s) {
+static void push_str(const char ***arr, size_t *n, const char *s)
+{
     const char **tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
-    if (!tmp) argp_failure(NULL, 1, 0, "out of memory");
+    if (!tmp) {
+        argp_failure(NULL, 1, 0, "out of memory");
+    }
     *arr = tmp;
     (*arr)[(*n)++] = s;
 }
 
-bool fc_parse_int_strict(const char *text, int *out) {
-    if (!text || !*text || !out) return false;
+bool fc_parse_int_strict(const char *text, int *out)
+{
+    if (!text || !*text || !out) {
+        return false;
+    }
     errno = 0;
     char *endp = NULL;
     long val = strtol(text, &endp, 10);
-    if (errno == ERANGE || endp == text || *endp != '\0') return false;
-    if (val < INT_MIN || val > INT_MAX) return false;
+    if (errno == ERANGE || endp == text || *endp != '\0') {
+        return false;
+    }
+    if (val < INT_MIN || val > INT_MAX) {
+        return false;
+    }
     *out = (int)val;
     return true;
 }
 
-bool fc_parse_size_strict(const char *text, size_t *out) {
-    if (!text || !*text || !out) return false;
-    if (text[0] == '-') return false;
+bool fc_parse_size_strict(const char *text, size_t *out)
+{
+    if (!text || !*text || !out) {
+        return false;
+    }
+    if (text[0] == '-') {
+        return false;
+    }
 
     errno = 0;
     char *endp = NULL;
     unsigned long long val = strtoull(text, &endp, 10);
-    if (errno == ERANGE || endp == text || *endp != '\0') return false;
-    if (val > SIZE_MAX) return false;
+    if (errno == ERANGE || endp == text || *endp != '\0') {
+        return false;
+    }
+    if (val > SIZE_MAX) {
+        return false;
+    }
     *out = (size_t)val;
     return true;
 }
 
-bool fc_parse_u32_strict(const char *text, uint32_t *out) {
-    if (!text || !*text || !out) return false;
-    if (text[0] == '-') return false;
+bool fc_parse_u32_strict(const char *text, uint32_t *out)
+{
+    if (!text || !*text || !out) {
+        return false;
+    }
+    if (text[0] == '-') {
+        return false;
+    }
 
     errno = 0;
     char *endp = NULL;
     unsigned long long val = strtoull(text, &endp, 10);
-    if (errno == ERANGE || endp == text || *endp != '\0') return false;
-    if (val > UINT32_MAX) return false;
+    if (errno == ERANGE || endp == text || *endp != '\0') {
+        return false;
+    }
+    if (val > UINT32_MAX) {
+        return false;
+    }
     *out = (uint32_t)val;
     return true;
 }
 
-bool fc_parse_float_strict(const char *text, float *out) {
-    if (!text || !*text || !out) return false;
+bool fc_parse_float_strict(const char *text, float *out)
+{
+    if (!text || !*text || !out) {
+        return false;
+    }
     errno = 0;
     char *endp = NULL;
     float val = strtof(text, &endp);
-    if (errno == ERANGE || endp == text || *endp != '\0') return false;
-    if (!isfinite(val)) return false;
+    if (errno == ERANGE || endp == text || *endp != '\0') {
+        return false;
+    }
+    if (!isfinite(val)) {
+        return false;
+    }
     *out = val;
     return true;
 }
 
-bool fc_parse_double_strict(const char *text, double *out) {
-    if (!text || !*text || !out) return false;
+bool fc_parse_double_strict(const char *text, double *out)
+{
+    if (!text || !*text || !out) {
+        return false;
+    }
     errno = 0;
     char *endp = NULL;
     double val = strtod(text, &endp);
-    if (errno == ERANGE || endp == text || *endp != '\0') return false;
-    if (!isfinite(val)) return false;
+    if (errno == ERANGE || endp == text || *endp != '\0') {
+        return false;
+    }
+    if (!isfinite(val)) {
+        return false;
+    }
     *out = val;
     return true;
 }
 
-char *fc_strip_path(const char *input) {
-    if (input == NULL) return NULL;
+char *fc_strip_path(const char *input)
+{
+    if (input == NULL) {
+        return NULL;
+    }
     size_t len = strlen(input);
-    if (len > 0 && input[len - 1] == '/') len--;
+    if (len > 0 && input[len - 1] == '/') {
+        len--;
+    }
     char *output = calloc(len + 1, sizeof(char));
-    if (!output) return NULL;
+    if (!output) {
+        return NULL;
+    }
     memcpy(output, input, len);
     return output;
 }
 
-char *fc_join_path(const char *dir, const char *leaf) {
-    if (!dir || !leaf) return NULL;
+char *fc_join_path(const char *dir, const char *leaf)
+{
+    if (!dir || !leaf) {
+        return NULL;
+    }
     size_t len = strlen(dir);
     size_t llen = strlen(leaf);
     bool need_sep = len > 0 && dir[len - 1] != '/';
     size_t total = len + need_sep + llen + 1;
     char *out = calloc(total, 1);
-    if (!out) return NULL;
+    if (!out) {
+        return NULL;
+    }
     strcpy(out, dir);
-    if (need_sep) strcat(out, "/");
+    if (need_sep) {
+        strcat(out, "/");
+    }
     strcat(out, leaf);
     return out;
 }
 
-
-void slurp_args(const char ***arr, size_t *n, const char *first, struct argp_state *state) {
+void slurp_args(const char ***arr, size_t *n, const char *first, struct argp_state *state)
+{
     // slurp up all arguments until the next option
     push_str(arr, n, first);
     while (state->next < state->argc) {
         const char *next = state->argv[state->next];
-        if (next[0] == '-') break;
+        if (next[0] == '-') {
+            break;
+        }
         push_str(arr, n, next);
         state->next++;
     }
 }
 
-void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state) {
+void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state)
+{
     uint32_t val = 0;
     if (!fc_parse_u32_strict(first, &val)) {
         argp_error(state, "Invalid integer threshold: '%s'", first);
     }
     *arr = realloc(*arr, (*n + 1) * sizeof(**arr));
-    if (!*arr) argp_failure(state, 1, 0, "out of memory");
+    if (!*arr) {
+        argp_failure(state, 1, 0, "out of memory");
+    }
     (*arr)[(*n)++] = val;
 
     while (state->next < state->argc) {
         char *next = state->argv[state->next];
-        if (next[0] == '-') break;
+        if (next[0] == '-') {
+            break;
+        }
         if (!fc_parse_u32_strict(next, &val)) {
             argp_error(state, "Invalid integer threshold: '%s'", next);
         }
         *arr = realloc(*arr, (*n + 1) * sizeof(**arr));
-        if (!*arr) argp_failure(state, 1, 0, "out of memory");
+        if (!*arr) {
+            argp_failure(state, 1, 0, "out of memory");
+        }
         (*arr)[(*n)++] = val;
         state->next++;
     }
@@ -334,15 +415,15 @@ void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state
  *  @returns pointer to allocated memory
  *
  */
-void *xalloc(size_t num, size_t size, char* msg){
+void *xalloc(size_t num, size_t size, char *msg)
+{
     void *res = calloc(num, size);
-    if (res == NULL){
+    if (res == NULL) {
         FC_LOG_ERROR("Failed to allocate mem for %s", msg);
         exit(1);
     }
     return res;
 }
-
 
 /** Reallocates memory with a message on failure.
  *
@@ -352,15 +433,15 @@ void *xalloc(size_t num, size_t size, char* msg){
  *  @returns pointer to allocated memory
  *
  */
-void *xrealloc(void *ptr, size_t size, char* msg){
+void *xrealloc(void *ptr, size_t size, char *msg)
+{
     void *res = realloc(ptr, size);
-    if (res == NULL){
+    if (res == NULL) {
         FC_LOG_ERROR("Failed to reallocate mem for %s", msg);
         exit(1);
     }
     return res;
 }
-
 
 /** Reallocates memory with a message on failure, zero-initialising the new memory.
  *
@@ -372,17 +453,17 @@ void *xrealloc(void *ptr, size_t size, char* msg){
  *  @returns pointer to allocated memory
  *
  */
-void *xrecalloc(void* ptr, size_t orig, size_t num, size_t size, char* msg) {
+void *xrecalloc(void *ptr, size_t orig, size_t num, size_t size, char *msg)
+{
     void *res = realloc(ptr, num * size);
     if (res == NULL) {
         FC_LOG_ERROR("Failed to reallocate mem for %s", msg);
         exit(1);
     }
     // zero out the new memory
-    memset((char*)res + orig * size, 0, (num - orig) * size);
+    memset((char *)res + orig * size, 0, (num - orig) * size);
     return res;
 }
-
 
 /** Retrieves a substring.
  *
@@ -392,26 +473,27 @@ void *xrecalloc(void* ptr, size_t orig, size_t num, size_t size, char* msg) {
  *  @returns string pointer.
  *
  */
-char *substring(char *string, size_t position, size_t length) {
-   char *ptr;
-   size_t i;
+char *substring(char *string, size_t position, size_t length)
+{
+    char *ptr;
+    size_t i;
 
-   ptr = malloc(length + 1);
+    ptr = malloc(length + 1);
 
-   for (i = 0 ; i < length ; i++) {
-      *(ptr + i) = *(string + position);
-      string++;
-   }
+    for (i = 0; i < length; i++) {
+        *(ptr + i) = *(string + position);
+        string++;
+    }
 
-   *(ptr + i) = '\0';
-   return ptr;
+    *(ptr + i) = '\0';
+    return ptr;
 }
 
-
-int replace_char(char *str, char orig, char rep) {
+int replace_char(char *str, char orig, char rep)
+{
     char *ix = str;
     int n = 0;
-    while((ix = strchr(ix, orig)) != NULL) {
+    while ((ix = strchr(ix, orig)) != NULL) {
         *ix++ = rep;
         n++;
     }
@@ -443,22 +525,25 @@ const double qprobs[100] = {
     3.98107171e-09, 3.16227766e-09, 2.51188643e-09, 1.99526231e-09,
     1.58489319e-09, 1.25892541e-09, 1.00000000e-09, 7.94328235e-10,
     6.30957344e-10, 5.01187234e-10, 3.98107171e-10, 3.16227766e-10,
-    2.51188643e-10, 1.99526231e-10, 1.58489319e-10, 1.25892541e-10};
+    2.51188643e-10, 1.99526231e-10, 1.58489319e-10, 1.25892541e-10
+};
 
-
-inline void kahan_sum(double* sum, double term, double* c) {
+inline void kahan_sum(double *sum, double term, double *c)
+{
     double y = term + *c;
     double t = *sum + y;
     *c = (t - *sum) - y;
     *sum = t;
 }
 
-
-inline float mean_qual(char* qual, size_t len) {
-    if (len == 0 ) return nanf("");
+inline float mean_qual(char *qual, size_t len)
+{
+    if (len == 0) {
+        return nanf("");
+    }
     double qsum = 0;
     double c = 0;
-    for (size_t i=0; i<len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
         int q = (int)(qual[i]) - 33;
         kahan_sum(&qsum, qprobs[q], &c);
     }
@@ -466,12 +551,14 @@ inline float mean_qual(char* qual, size_t len) {
     return -10 * log10(qsum);
 }
 
-
-inline float mean_qual_from_bam(uint8_t* qual, size_t len) {
-    if (len == 0 || qual[0] == 0xff ) return nanf("");
+inline float mean_qual_from_bam(uint8_t *qual, size_t len)
+{
+    if (len == 0 || qual[0] == 0xff) {
+        return nanf("");
+    }
     double qsum = 0;
     double c = 0;
-    for (size_t i=0; i<len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
         int q = (int)(qual[i]);
         kahan_sum(&qsum, qprobs[q], &c);
     }
@@ -479,11 +566,13 @@ inline float mean_qual_from_bam(uint8_t* qual, size_t len) {
     return -10 * log10(qsum);
 }
 
-
-inline float mean_qual_naive(char* qual, size_t len) {
-    if (len == 0 ) return nanf("");
+inline float mean_qual_naive(char *qual, size_t len)
+{
+    if (len == 0) {
+        return nanf("");
+    }
     double qsum = 0;
-    for (size_t i=0; i<len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
         int q = (int)(qual[i]) - 33;
         qsum += qprobs[q];
     }
@@ -491,24 +580,26 @@ inline float mean_qual_naive(char* qual, size_t len) {
     return -10 * log10(qsum);
 }
 
-
-inline float mean_qual_from_bam_naive(uint8_t* qual, size_t len) {
-    if (len == 0 || qual[0] == 0xff ) return nanf("");
+inline float mean_qual_from_bam_naive(uint8_t *qual, size_t len)
+{
+    if (len == 0 || qual[0] == 0xff) {
+        return nanf("");
+    }
     double qsum = 0;
-    for (size_t i=0; i<len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
         int q = (int)(qual[i]);
         qsum += qprobs[q];
     }
     qsum /= len;
     return -10 * log10(qsum);
 }
-
 
 // Strip hexadecimal suffixes that samtools merge can add to RG IDs
-void strip_hex_suffix(char *str) {
+void strip_hex_suffix(char *str)
+{
     regex_t regex;
     regmatch_t matches[1];
-   
+
     // samtools formats this as "%s-%0lX" which is a long formatted
     // as hex with leading zeros. BUT there's no field width specified!
     // https://github.com/samtools/samtools/issues/2086
@@ -529,8 +620,8 @@ void strip_hex_suffix(char *str) {
     regfree(&regex);
 }
 
-
-void destroy_rg_info(readgroup* rg) {
+void destroy_rg_info(readgroup *rg)
+{
     if (rg != NULL) {
         free(rg->readgroup);
         free(rg);
@@ -553,8 +644,9 @@ void destroy_rg_info(readgroup* rg) {
 // NULL pointers if the parsing was incomplete. Client code should therefore always check that
 // members are not NULL before use.
 //
-readgroup* create_rg_info(char* rg) {
-    readgroup* rg_info = xalloc(1, sizeof(readgroup), "readgroup");
+readgroup *create_rg_info(char *rg)
+{
+    readgroup *rg_info = xalloc(1, sizeof(readgroup), "readgroup");
     rg_info->readgroup = strdup(rg);
     rg_info->runid = NULL;
     rg_info->basecaller = NULL;
@@ -570,7 +662,7 @@ readgroup* create_rg_info(char* rg) {
 
     // runid runs to first `_`
     rg_info->runid = rg_info->readgroup;
-    char* delim = strchr(rg_info->runid, '_');
+    char *delim = strchr(rg_info->runid, '_');
     if (delim == NULL) {
         return rg_info;
     }
@@ -594,8 +686,8 @@ readgroup* create_rg_info(char* rg) {
         return rg_info;
     }
     // modcaller is optional, we can detect its presence by more than one `@` in basecaller
-    char* delim1 = strchr(rg_info->basecaller, '@');
-    if (delim1 == delim) {  // only one `@`
+    char *delim1 = strchr(rg_info->basecaller, '@');
+    if (delim1 == delim) { // only one `@`
         rg_info->modcaller = NULL;
     } else {
         delim1 = strchr(delim1, '_'); // modcaller starts at `_` after first `@`

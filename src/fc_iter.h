@@ -4,16 +4,16 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
 #include <zlib.h>
 
-#include "common.h"
-#include "fc_failures.h"
-#include "fc_bam_utils.h"
-#include "fc_filter.h"
-#include "fc_read.h"
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
+
+#include "common.h"
+#include "fc_bam_utils.h"
+#include "fc_failures.h"
+#include "fc_filter.h"
+#include "fc_read.h"
 #include "regiter.h"
 
 typedef enum {
@@ -57,8 +57,8 @@ typedef struct {
     int tag_value;
     /* BAM-only */
     bool force_recalc_qual;
-    const char *region;      /* "chr:start-end" */
-    const char *bed;         /* BED filepath */
+    const char *region; /* "chr:start-end" */
+    const char *bed; /* BED filepath */
     htsThreadPool *thread_pool; /* optional: attach thread pool to BAM handle */
 } fc_iter_opts;
 

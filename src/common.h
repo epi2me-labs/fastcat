@@ -1,10 +1,9 @@
 #ifndef _FASTCAT_COMMON_H
 #define _FASTCAT_COMMON_H
 
+#include <argp.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <argp.h>
-
 
 /** Simple min/max
  * @param a
@@ -13,21 +12,19 @@
  * @returns the min/max of a and b
  *
  */
-#define min(a, b) ({ \
-    typeof (a) _a = (a); \
-    typeof (b) _b = (b); \
-    _a < _b ? _a : _b; \
+#define min(a, b) ({    \
+    typeof(a) _a = (a); \
+    typeof(b) _b = (b); \
+    _a < _b ? _a : _b;  \
 })
-#define max(a, b) ({ \
-    typeof (a) _a = (a); \
-    typeof (b) _b = (b); \
-    _a > _b ? _a : _b; \
+#define max(a, b) ({    \
+    typeof(a) _a = (a); \
+    typeof(b) _b = (b); \
+    _a > _b ? _a : _b;  \
 })
-
 
 // comparison function for qsort of uint32_t
 int cmp_u32(const void *a, const void *b);
-
 
 /** check if a file exists.
  *
@@ -36,7 +33,6 @@ int cmp_u32(const void *a, const void *b);
  *
  */
 bool file_exists(const char *path);
-
 
 /** check if we can make a directory.
  *
@@ -48,22 +44,19 @@ bool file_exists(const char *path);
  */
 int can_make_dir(const char *path);
 
-
 /** mkdir a directory structure recursively.
  *
  * @param directory path to ensure exists
  *
  */
-int mkdir_p(const char* path);
-
+int mkdir_p(const char *path);
 
 /** mkdir a directory structure recursively, but fail if pre-exists.
  *
  * @param path directory path
  *
  */
-int mkdir_hier(char* path);
-
+int mkdir_hier(char *path);
 
 /** Ensure parent directory exists for a given path.
  *
@@ -73,7 +66,7 @@ int mkdir_hier(char* path);
  *  This function checks if the parent directory of the given path exists,
  *  and creates it if it does not.
  */
-int ensure_parent_dir_exists(const char* path);
+int ensure_parent_dir_exists(const char *path);
 
 // Path helpers shared across tools and sinks
 char *fc_strip_path(const char *input);
@@ -100,8 +93,7 @@ bool fc_parse_double_strict(const char *text, double *out);
  *  @returns pointer to allocated memory
  *
  */
-void *xalloc(size_t num, size_t size, char* msg);
-
+void *xalloc(size_t num, size_t size, char *msg);
 
 /** Reallocates memory with a message on failure.
  *
@@ -111,8 +103,7 @@ void *xalloc(size_t num, size_t size, char* msg);
  *  @returns pointer to allocated memory
  *
  */
-void *xrealloc(void *ptr, size_t size, char* msg);
-
+void *xrealloc(void *ptr, size_t size, char *msg);
 
 /** Reallocates memory with a message on failure, zero-initialising the new memory.
  *
@@ -124,7 +115,7 @@ void *xrealloc(void *ptr, size_t size, char* msg);
  *  @returns pointer to allocated memory
  *
  */
-void *xrecalloc(void* ptr, size_t orig, size_t num, size_t size, char* msg);
+void *xrecalloc(void *ptr, size_t orig, size_t num, size_t size, char *msg);
 
 /** Retrieves a substring.
  *
@@ -137,7 +128,7 @@ void *xrecalloc(void* ptr, size_t orig, size_t num, size_t size, char* msg);
 char *substring(char *string, size_t position, size_t length);
 
 /** Globally replace a char in a char*
- * 
+ *
  * @param str char* source string
  * @param orig original character
  * @param rep replacement
@@ -146,24 +137,23 @@ char *substring(char *string, size_t position, size_t length);
  */
 int replace_char(char *str, char orig, char rep);
 
-
 // https://en.wikipedia.org/wiki/Kahan_summation_algorithm
-void kahan_sum(double* sum, double term, double* c);
+void kahan_sum(double *sum, double term, double *c);
 
-float mean_qual(char* qual, size_t len);
-float mean_qual_naive(char* qual, size_t len);
-float mean_qual_from_bam(uint8_t* qual, size_t len);
-float mean_qual_from_bam_naive(uint8_t* qual, size_t len);
+float mean_qual(char *qual, size_t len);
+float mean_qual_naive(char *qual, size_t len);
+float mean_qual_from_bam(uint8_t *qual, size_t len);
+float mean_qual_from_bam_naive(uint8_t *qual, size_t len);
 
 typedef struct readgroup {
-    char* readgroup;
-    char* runid;
-    char* basecaller;
-    char* modcaller;
-    char* barcode;
+    char *readgroup;
+    char *runid;
+    char *basecaller;
+    char *modcaller;
+    char *barcode;
 } readgroup;
 
-readgroup* create_rg_info(char* rg);
-void destroy_rg_info(readgroup* rg);
+readgroup *create_rg_info(char *rg);
+void destroy_rg_info(readgroup *rg);
 
 #endif

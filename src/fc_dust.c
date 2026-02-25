@@ -4,8 +4,11 @@
 
 #include "sdust/sdust.h"
 
-double fc_dust_fraction(const uint8_t *seq, size_t len, int t, int w) {
-    if (len == 0) return 0.0;
+double fc_dust_fraction(const uint8_t *seq, size_t len, int t, int w)
+{
+    if (len == 0) {
+        return 0.0;
+    }
     int n = 0;
     uint64_t *ranges = sdust(0, (uint8_t *)seq, -1, t, w, &n);
     int masked_bases = 0;

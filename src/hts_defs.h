@@ -26,7 +26,7 @@ DEALINGS IN THE SOFTWARE.  */
 #define HTSLIB_HTS_DEFS_H
 
 #if defined __MINGW32__
-#include <stdio.h>     // For __MINGW_PRINTF_FORMAT macro
+#include <stdio.h> // For __MINGW_PRINTF_FORMAT macro
 #endif
 
 #ifdef __clang__
@@ -46,41 +46,41 @@ DEALINGS IN THE SOFTWARE.  */
 #define HTS_GCC_AT_LEAST(major, minor) 0
 #endif
 
-#if HTS_COMPILER_HAS(__nonstring__) || HTS_GCC_AT_LEAST(8,1)
-#define HTS_NONSTRING __attribute__ ((__nonstring__))
+#if HTS_COMPILER_HAS(__nonstring__) || HTS_GCC_AT_LEAST(8, 1)
+#define HTS_NONSTRING __attribute__((__nonstring__))
 #else
 #define HTS_NONSTRING
 #endif
 
-#if HTS_COMPILER_HAS(__noreturn__) || HTS_GCC_AT_LEAST(3,0)
-#define HTS_NORETURN __attribute__ ((__noreturn__))
+#if HTS_COMPILER_HAS(__noreturn__) || HTS_GCC_AT_LEAST(3, 0)
+#define HTS_NORETURN __attribute__((__noreturn__))
 #else
 #define HTS_NORETURN
 #endif
 
 // GCC introduced warn_unused_result in 3.4 but added -Wno-unused-result later
-#if HTS_COMPILER_HAS(__warn_unused_result__) || HTS_GCC_AT_LEAST(4,5)
-#define HTS_RESULT_USED __attribute__ ((__warn_unused_result__))
+#if HTS_COMPILER_HAS(__warn_unused_result__) || HTS_GCC_AT_LEAST(4, 5)
+#define HTS_RESULT_USED __attribute__((__warn_unused_result__))
 #else
 #define HTS_RESULT_USED
 #endif
 
-#if HTS_COMPILER_HAS(__unused__) || HTS_GCC_AT_LEAST(3,0)
-#define HTS_UNUSED __attribute__ ((__unused__))
+#if HTS_COMPILER_HAS(__unused__) || HTS_GCC_AT_LEAST(3, 0)
+#define HTS_UNUSED __attribute__((__unused__))
 #else
 #define HTS_UNUSED
 #endif
 
-#if HTS_COMPILER_HAS(__deprecated__) || HTS_GCC_AT_LEAST(4,5)
-#define HTS_DEPRECATED(message) __attribute__ ((__deprecated__ (message)))
-#elif HTS_GCC_AT_LEAST(3,1)
-#define HTS_DEPRECATED(message) __attribute__ ((__deprecated__))
+#if HTS_COMPILER_HAS(__deprecated__) || HTS_GCC_AT_LEAST(4, 5)
+#define HTS_DEPRECATED(message) __attribute__((__deprecated__(message)))
+#elif HTS_GCC_AT_LEAST(3, 1)
+#define HTS_DEPRECATED(message) __attribute__((__deprecated__))
 #else
 #define HTS_DEPRECATED(message)
 #endif
 
-#if HTS_COMPILER_HAS(__deprecated__) || HTS_GCC_AT_LEAST(6,4)
-#define HTS_DEPRECATED_ENUM(message) __attribute__ ((__deprecated__ (message)))
+#if HTS_COMPILER_HAS(__deprecated__) || HTS_GCC_AT_LEAST(6, 4)
+#define HTS_DEPRECATED_ENUM(message) __attribute__((__deprecated__(message)))
 #else
 #define HTS_DEPRECATED_ENUM(message)
 #endif
@@ -97,8 +97,8 @@ DEALINGS IN THE SOFTWARE.  */
 #define HTS_PRINTF_FMT printf
 #endif
 
-#if HTS_COMPILER_HAS(__format__) || HTS_GCC_AT_LEAST(3,0)
-#define HTS_FORMAT(type, idx, first) __attribute__((__format__ (type, idx, first)))
+#if HTS_COMPILER_HAS(__format__) || HTS_GCC_AT_LEAST(3, 0)
+#define HTS_FORMAT(type, idx, first) __attribute__((__format__(type, idx, first)))
 #else
 #define HTS_FORMAT(type, idx, first)
 #endif
@@ -109,7 +109,7 @@ DEALINGS IN THE SOFTWARE.  */
 #else
 #define HTSLIB_EXPORT
 #endif
-#elif HTS_COMPILER_HAS(__visibility__) || HTS_GCC_AT_LEAST(4,0)
+#elif HTS_COMPILER_HAS(__visibility__) || HTS_GCC_AT_LEAST(4, 0)
 #define HTSLIB_EXPORT __attribute__((__visibility__("default")))
 #elif defined(__SUNPRO_C) && __SUNPRO_C >= 0x550
 #define HTSLIB_EXPORT __global

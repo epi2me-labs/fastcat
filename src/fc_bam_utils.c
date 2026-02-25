@@ -9,7 +9,7 @@
 #include "fc_log.h"
 
 /** Set up a bam file for reading records.
- *  
+ *
  *  @param fp htsFile pointer
  *  @param idx hts_idx_t pointer
  *  @param hdr sam_hdr_t pointer
@@ -20,19 +20,21 @@
  *
  */
 mplp_data *fc_bam_iter_data_create(
-        htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
-        const char *chr, hts_pos_t start, hts_pos_t end) {
+    htsFile *fp, hts_idx_t *idx, sam_hdr_t *hdr,
+    const char *chr, hts_pos_t start, hts_pos_t end)
+{
 
     mplp_data *data = xalloc(1, sizeof(mplp_data), "pileup init data");
 
     // find the target index for query below
-    if (chr == NULL) {  // all reads
+    if (chr == NULL) { // all reads
         data->iter = NULL;
     } else {
         int mytid;
         if (strcmp(chr, "*") == 0) { // unplaced
             mytid = HTS_IDX_NOCOOR;
-            start = 0; end = INT64_MAX;
+            start = 0;
+            end = INT64_MAX;
         } else {
             mytid = sam_hdr_name2tid(hdr, chr);
             if (mytid < 0) {
@@ -45,7 +47,9 @@ mplp_data *fc_bam_iter_data_create(
     }
 
     // setup bam iterator
-    data->fp = fp; data->idx = idx; data->hdr = hdr;
+    data->fp = fp;
+    data->idx = idx;
+    data->hdr = hdr;
 
     return data;
 }
@@ -55,11 +59,11 @@ mplp_data *fc_bam_iter_data_create(
  *  @param data auxiliary structure to clean.
  *
  */
-void fc_bam_iter_data_destroy(mplp_data *data) {
+void fc_bam_iter_data_destroy(mplp_data *data)
+{
     bam_itr_destroy(data->iter);
     free(data);
 }
-
 
 /** Read a bam record (unfiltered).
  *
@@ -67,12 +71,12 @@ void fc_bam_iter_data_destroy(mplp_data *data) {
  *  @param b output pointer.
  *
  */
-int fc_bam_read(void *data, bam1_t *b) {
-    mplp_data *aux = (mplp_data*) data;
+int fc_bam_read(void *data, bam1_t *b)
+{
+    mplp_data *aux = (mplp_data *)data;
     return aux->iter ? sam_itr_next(aux->fp, aux->iter, b)
                      : sam_read1(aux->fp, aux->hdr, b);
 }
-
 
 /** Create an map of query position to reference position
  *
@@ -80,30 +84,31 @@ int fc_bam_read(void *data, bam1_t *b) {
  *
  *  The length of the returned array is b->core->l_qlen.
  */
-int *fc_bam_qpos2rpos(bam1_t *b) {
+int *fc_bam_qpos2rpos(bam1_t *b)
+{
     // we only deal in primary/soft-clipped alignments so length
     // of qseq member is the length of the intact query sequence.
     // TODO: add check for alignment being primary / no hard clipping
     uint32_t qlen = b->core.l_qseq;
     uint32_t *cigar = bam_get_cigar(b);
     int *posmap = xalloc(qlen, sizeof(uint32_t), "pos_map");
-    for (size_t i = 0; i < qlen; ++i) posmap[i] = -1;  // unaligned
+    for (size_t i = 0; i < qlen; ++i) {
+        posmap[i] = -1; // unaligned
+    }
     int qpos = 0, rpos = b->core.pos;
-    for (size_t i = 0; i < b->core.n_cigar; ++i){
+    for (size_t i = 0; i < b->core.n_cigar; ++i) {
         uint32_t op = bam_cigar_op(cigar[i]);
         uint32_t len = bam_cigar_oplen(cigar[i]);
         uint32_t take = bam_cigar_type(op);
-        if (((take&0x1)>0) & ((take&0x2)>0)) {
+        if (((take & 0x1) > 0) & ((take & 0x2) > 0)) {
             // consumes query and ref
             for (size_t j = 0; j < len; ++j, ++qpos, ++rpos) {
                 posmap[qpos] = rpos;
             }
-        }
-        else if ((take&0x1)>0) {
+        } else if ((take & 0x1) > 0) {
             // consumes query only
             qpos += len;
-        }
-        else {
+        } else {
             // consumes ref
             rpos += len;
         }
@@ -111,8 +116,11 @@ int *fc_bam_qpos2rpos(bam1_t *b) {
     return posmap;
 }
 
-uint8_t *fc_bam_get_tag_caseinsensitive(const bam1_t *b, const char tag_name[2]) {
-    if (!tag_name || tag_name[0] == '\0') return NULL;
+uint8_t *fc_bam_get_tag_caseinsensitive(const bam1_t *b, const char tag_name[2])
+{
+    if (!tag_name || tag_name[0] == '\0') {
+        return NULL;
+    }
     char upper_tag[3];
     char lower_tag[3];
     upper_tag[2] = '\0';
@@ -128,7 +136,8 @@ uint8_t *fc_bam_get_tag_caseinsensitive(const bam1_t *b, const char tag_name[2])
     return ret;
 }
 
-float fc_bam_ensure_mean_quality(bam1_t *b, bool force_recalc_qual) {
+float fc_bam_ensure_mean_quality(bam1_t *b, bool force_recalc_qual)
+{
     if (!b) {
         FC_LOG_ERROR("Internal error: null BAM record in mean-quality resolver.");
         exit(EXIT_FAILURE);

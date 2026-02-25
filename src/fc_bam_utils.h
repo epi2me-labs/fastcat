@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+
 #include "htslib/sam.h"
 
 // parameters for bam iteration

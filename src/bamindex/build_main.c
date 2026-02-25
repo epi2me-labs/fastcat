@@ -1,91 +1,93 @@
 // bamindex build program
 
+#include <argp.h>
 #include <err.h>
-#include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/resource.h>
 #include <time.h>
+
+#include "htslib/bgzf.h"
 #include "htslib/faidx.h"
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
-#include "htslib/bgzf.h"
 
-#include "index.h"
-#include "../version.h"
-#include "../fc_log.h"
 #include "../common.h"
-
-#include <argp.h>
+#include "../fc_log.h"
+#include "../version.h"
+#include "index.h"
 
 typedef struct arguments {
-    const char* bam;
+    const char *bam;
     int threads;
     int chunk_size;
 } arguments_t;
 
-static char doc[] = 
-"bamindex build -- create a BAM index corresponding to batches of records.\
+static char doc[] = "bamindex build -- create a BAM index corresponding to batches of records.\
 \vThe program creates a simple index of file offsets for each of every \
 (n * M)th alignment record. No care is taken to keep records corresponding \
 to the same query together, or any other such niceities. Its intended to \
 be used simply with unaligned, unsorted BAMs.";
 static char args_doc[] = "<reads.bam>";
 static struct argp_option options[] = {
-    {0, 0, 0, 0,
-        "General options:", 0},
-    {"threads", 't', "THREADS", 0,
-        "Number of threads for BAM processing.", 0},
-    {"chunk-size", 'c', "SIZE", 0,
-        "Number of records in a chunk.", 0},
+    { 0, 0, 0, 0,
+        "General options:", 0 },
+    { "threads", 't', "THREADS", 0,
+        "Number of threads for BAM processing.", 0 },
+    { "chunk-size", 'c', "SIZE", 0,
+        "Number of records in a chunk.", 0 },
     { 0 }
 };
 
-static error_t parse_opt (int key, char *arg, struct argp_state *state) {
+static error_t parse_opt(int key, char *arg, struct argp_state *state)
+{
     arguments_t *arguments = state->input;
     int int_value = 0;
     switch (key) {
-        case 't':
-            if (!fc_parse_int_strict(arg, &int_value)) {
-                argp_error(state, "Invalid --threads value: '%s'.", arg);
-            }
-            if (int_value <= 0) {
-                argp_error(state, "--threads must be > 0.");
-            }
-            arguments->threads = int_value;
+    case 't':
+        if (!fc_parse_int_strict(arg, &int_value)) {
+            argp_error(state, "Invalid --threads value: '%s'.", arg);
+        }
+        if (int_value <= 0) {
+            argp_error(state, "--threads must be > 0.");
+        }
+        arguments->threads = int_value;
+        break;
+    case 'c':
+        if (!fc_parse_int_strict(arg, &int_value)) {
+            argp_error(state, "Invalid --chunk-size value: '%s'.", arg);
+        }
+        if (int_value <= 0) {
+            argp_error(state, "--chunk-size must be > 0.");
+        }
+        arguments->chunk_size = int_value;
+        break;
+    case ARGP_KEY_NO_ARGS:
+        argp_usage(state);
+        break;
+    case ARGP_KEY_ARG:
+        if (state->arg_num == 0) {
+            arguments->bam = arg;
             break;
-        case 'c':
-            if (!fc_parse_int_strict(arg, &int_value)) {
-                argp_error(state, "Invalid --chunk-size value: '%s'.", arg);
-            }
-            if (int_value <= 0) {
-                argp_error(state, "--chunk-size must be > 0.");
-            }
-            arguments->chunk_size = int_value;
-            break;
-        case ARGP_KEY_NO_ARGS:
-            argp_usage (state);
-            break;
-        case ARGP_KEY_ARG:
-            if (state->arg_num == 0) {
-                arguments->bam = arg;
-                break;
-            }
-            break;
-        case ARGP_KEY_END:
-            if (state->arg_num != 1)
-                argp_usage (state);
-            break;
-        default:
-            return ARGP_ERR_UNKNOWN;
+        }
+        break;
+    case ARGP_KEY_END:
+        if (state->arg_num != 1) {
+            argp_usage(state);
+        }
+        break;
+    default:
+        return ARGP_ERR_UNKNOWN;
     }
     return 0;
 }
 
-static struct argp argp = {options, parse_opt, args_doc, doc, 0, 0, 0};
+static struct argp argp = { options, parse_opt, args_doc, doc, 0, 0, 0 };
 
-static arguments_t parse_arguments(int argc, char** argv) {
+static arguments_t parse_arguments(int argc, char **argv)
+{
     arguments_t args;
     args.bam = NULL;
     args.threads = 1;
@@ -94,30 +96,31 @@ static arguments_t parse_arguments(int argc, char** argv) {
     return args;
 }
 
-void index_build(const char* filename, const char* output_fname, int threads, size_t every) {
+void index_build(const char *filename, const char *output_fname, int threads, size_t every)
+{
     htsFile *fp = hts_open(filename, "r");
     bam_hdr_t *h = sam_hdr_read(fp);
-    if(fp == NULL || h == NULL) {
+    if (fp == NULL || h == NULL) {
         FC_LOG_ERROR("Could not open %s", filename);
         exit(EXIT_FAILURE);
     }
-    
-    FILE* out_fp = fopen(output_fname, "wb");
+
+    FILE *out_fp = fopen(output_fname, "wb");
     bc_idx_t *idx = bc_idx_init1(every);
     size_t rtn;
     if ((rtn = bc_idx_write_header(out_fp, idx)) > 0) {
         FC_LOG_ERROR("Failed to write header to index. Error %zu.", rtn);
     }
 
-    htsThreadPool p = {NULL, 0};
-    if (threads > 1 ) {
+    htsThreadPool p = { NULL, 0 };
+    if (threads > 1) {
         p.pool = hts_tpool_init(threads);
         hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
     }
 
     int ret = 0;
     int i = 0;
-    bam1_t* b = bam_init1();
+    bam1_t *b = bam_init1();
     size_t file_offset = bgzf_tell(fp->fp.bgzf);
     while ((ret = sam_read1(fp, h, b)) >= 0) {
         if ((i % every) != 0) {
@@ -152,8 +155,8 @@ void index_build(const char* filename, const char* output_fname, int threads, si
     bc_idx_destroy(idx);
 }
 
-
-int main_build(int argc, char *argv[]) {
+int main_build(int argc, char *argv[])
+{
     fc_log_config log_cfg = {
         .level = FC_LOG_INFO,
         .module = "BAMBUILD",
@@ -170,7 +173,7 @@ int main_build(int argc, char *argv[]) {
     }
 #endif
 
-    char* index_fname = generate_index_filename(args.bam, NULL);
+    char *index_fname = generate_index_filename(args.bam, NULL);
     index_build(args.bam, index_fname, args.threads, args.chunk_size);
     free(index_fname);
 

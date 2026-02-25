@@ -5,12 +5,13 @@
 #include <string.h>
 
 #include "common.h"
-#include "fc_log.h"
 #include "fc_filter.h"
+#include "fc_log.h"
 
-static inline size_t* create_cigar_stats(bam1_t* b) {
+static inline size_t *create_cigar_stats(bam1_t *b)
+{
     static const size_t NCODES = 10;
-    size_t* stats = xalloc(NCODES, sizeof(size_t*), "read stats");
+    size_t *stats = xalloc(NCODES, sizeof(size_t *), "read stats");
     uint32_t *cigar = bam_get_cigar(b);
     for (size_t i = 0; i < b->core.n_cigar; ++i) {
         uint32_t op = bam_cigar_op(cigar[i]);
@@ -20,7 +21,8 @@ static inline size_t* create_cigar_stats(bam1_t* b) {
     return stats;
 }
 
-static inline size_t get_query_start(bam1_t* b) {
+static inline size_t get_query_start(bam1_t *b)
+{
     uint32_t start_offset = 0;
     uint32_t qlen = b->core.l_qseq;
     uint32_t *cigar = bam_get_cigar(b);
@@ -40,7 +42,8 @@ static inline size_t get_query_start(bam1_t* b) {
     return start_offset;
 }
 
-static inline size_t get_query_end(bam1_t* b) {
+static inline size_t get_query_end(bam1_t *b)
+{
     uint32_t end_offset = b->core.l_qseq;
     uint32_t qlen = end_offset;
     uint32_t *cigar = bam_get_cigar(b);
@@ -60,13 +63,14 @@ static inline size_t get_query_end(bam1_t* b) {
     return end_offset;
 }
 
-fc_stats_engine* fc_stats_engine_create(
-        bool track_alignment,
-        bool track_polya,
-        float polya_cover,
-        float polya_qual,
-        bool polya_rev) {
-    fc_stats_engine* engine = xalloc(1, sizeof(fc_stats_engine), "stats engine");
+fc_stats_engine *fc_stats_engine_create(
+    bool track_alignment,
+    bool track_polya,
+    float polya_cover,
+    float polya_qual,
+    bool polya_rev)
+{
+    fc_stats_engine *engine = xalloc(1, sizeof(fc_stats_engine), "stats engine");
     engine->length_stats = create_length_stats();
     engine->qual_stats = create_qual_stats(QUAL_HIST_WIDTH);
 
@@ -89,8 +93,11 @@ fc_stats_engine* fc_stats_engine_create(
     return engine;
 }
 
-void fc_stats_engine_destroy(fc_stats_engine* engine) {
-    if (engine == NULL) return;
+void fc_stats_engine_destroy(fc_stats_engine *engine)
+{
+    if (engine == NULL) {
+        return;
+    }
     destroy_length_stats(engine->length_stats);
     destroy_qual_stats(engine->qual_stats);
     destroy_qual_stats(engine->acc_stats);
@@ -101,11 +108,14 @@ void fc_stats_engine_destroy(fc_stats_engine* engine) {
     free(engine);
 }
 
-static void fc_stats_engine_add_aligned(fc_stats_engine* engine, const fc_read* fr, const sam_hdr_t* hdr, fc_stats_aligned* out) {
-    if (engine == NULL || fr == NULL || hdr == NULL) return;
+static void fc_stats_engine_add_aligned(fc_stats_engine *engine, const fc_read *fr, const sam_hdr_t *hdr, fc_stats_aligned *out)
+{
+    if (engine == NULL || fr == NULL || hdr == NULL) {
+        return;
+    }
 
-    bam1_t* b = fr->bam;
-    size_t* stats = create_cigar_stats(b);
+    bam1_t *b = fr->bam;
+    size_t *stats = create_cigar_stats(b);
     size_t match = stats[BAM_CMATCH] + stats[BAM_CEQUAL] + stats[BAM_CDIFF];
     size_t ins = stats[BAM_CINS];
     size_t delt = stats[BAM_CDEL];
@@ -140,8 +150,8 @@ static void fc_stats_engine_add_aligned(fc_stats_engine* engine, const fc_read* 
     if (engine->polya_stats != NULL) {
         int polya_len = -1;
         if ((ref_cover >= engine->polya_cover)
-                && (!bam_is_rev(b) || engine->polya_rev)
-                && mean_quality >= engine->polya_qual) {
+            && (!bam_is_rev(b) || engine->polya_rev)
+            && mean_quality >= engine->polya_qual) {
             bool has_parent_read = (fr->meta->parent_read != NULL
                 && strlen(fr->meta->parent_read) > 0);
             if (!has_parent_read && fr->meta->poly_tail_length >= 0) {
@@ -154,7 +164,7 @@ static void fc_stats_engine_add_aligned(fc_stats_engine* engine, const fc_read* 
     }
 
     if (out != NULL) {
-        *out = (fc_stats_aligned){
+        *out = (fc_stats_aligned) {
             .read_length = read_length,
             .mean_quality = mean_quality,
             .qstart = qstart,
@@ -180,9 +190,12 @@ static void fc_stats_engine_add_aligned(fc_stats_engine* engine, const fc_read* 
 }
 
 fc_stats_read_kind fc_stats_engine_add_read(
-        fc_stats_engine* engine, const fc_read* fr,
-        const sam_hdr_t* hdr, fc_stats_aligned* out) {
-    if (engine == NULL || fr == NULL || fr->bam == NULL) return FC_STATS_SKIP;
+    fc_stats_engine *engine, const fc_read *fr,
+    const sam_hdr_t *hdr, fc_stats_aligned *out)
+{
+    if (engine == NULL || fr == NULL || fr->bam == NULL) {
+        return FC_STATS_SKIP;
+    }
 
     if (fc_is_unmapped(fr->bam)) {
         add_length_count(engine->length_stats_unmapped, fr->bam->core.l_qseq);

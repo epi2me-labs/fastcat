@@ -9,9 +9,12 @@
 
 #include "fc_log.h"
 
-static int append_path(fc_path_list *list, const char *path) {
+static int append_path(fc_path_list *list, const char *path)
+{
     char *copy = strdup(path);
-    if (!copy) return ENOMEM;
+    if (!copy) {
+        return ENOMEM;
+    }
 
     char **tmp = realloc(list->paths, (list->n_paths + 1) * sizeof(*tmp));
     if (!tmp) {
@@ -25,21 +28,23 @@ static int append_path(fc_path_list *list, const char *path) {
     return 0;
 }
 
-
 static int read_paths_from_stream(
     FILE *fp,
     const char *source_name,
     fc_file_kind expected_kind,
-    fc_path_list *list) {
+    fc_path_list *list)
+{
     int status = 0;
     char *line = NULL;
     size_t cap = 0;
     ssize_t nchr = 0;
 
     while ((nchr = getline(&line, &cap, fp)) != -1) {
-        struct stat st = {0};
+        struct stat st = { 0 };
         line[strcspn(line, "\r\n")] = 0;
-        if (line[0] == '\0') continue;
+        if (line[0] == '\0') {
+            continue;
+        }
 
         if (strcmp(line, "-") == 0) {
             FC_LOG_ERROR("'-' is not valid inside --fofn input (%s).", source_name);
@@ -74,23 +79,27 @@ static int read_paths_from_stream(
     return status;
 }
 
-
 int fc_read_paths_from_fofn_sources(
     const fc_path_list *sources,
     fc_file_kind expected_kind,
-    fc_path_list *out_paths) {
-    if (!sources || !sources->paths || sources->n_paths == 0 || !out_paths) return EINVAL;
+    fc_path_list *out_paths)
+{
+    if (!sources || !sources->paths || sources->n_paths == 0 || !out_paths) {
+        return EINVAL;
+    }
 
     out_paths->paths = NULL;
     out_paths->n_paths = 0;
 
     int status = 0;
-    fc_path_list collected = {0};
+    fc_path_list collected = { 0 };
     bool consumed_stdin = false;
 
     for (size_t i = 0; i < sources->n_paths; ++i) {
         const char *source = sources->paths[i];
-        if (!source || source[0] == '\0') continue;
+        if (!source || source[0] == '\0') {
+            continue;
+        }
 
         if (strcmp(source, "-") == 0) {
             if (consumed_stdin) {
@@ -100,7 +109,9 @@ int fc_read_paths_from_fofn_sources(
             }
             consumed_stdin = true;
             int rc = read_paths_from_stream(stdin, "stdin", expected_kind, &collected);
-            if (rc != 0) status = (status == 0) ? rc : status;
+            if (rc != 0) {
+                status = (status == 0) ? rc : status;
+            }
             continue;
         }
 
@@ -113,10 +124,14 @@ int fc_read_paths_from_fofn_sources(
 
         int rc = read_paths_from_stream(fp, source, expected_kind, &collected);
         fclose(fp);
-        if (rc != 0) status = (status == 0) ? rc : status;
+        if (rc != 0) {
+            status = (status == 0) ? rc : status;
+        }
     }
 
-    if (status == 0 && collected.n_paths == 0) status = EINVAL;
+    if (status == 0 && collected.n_paths == 0) {
+        status = EINVAL;
+    }
     if (status != 0) {
         fc_path_list_free(&collected);
         return status;

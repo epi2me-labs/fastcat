@@ -5,13 +5,14 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "htslib/thread_pool.h"
+
 #include "common.h"
+#include "fc_filter.h"
 #include "fc_iter.h"
 #include "fc_log.h"
 #include "fc_sinks.h"
 #include "fc_writer.h"
-#include "fc_filter.h"
-#include "htslib/thread_pool.h"
 
 static int process_current_file(
     fc_iter *file_iter,
@@ -22,7 +23,8 @@ static int process_current_file(
     bool cursor_already_open,
     bool enforce_unmapped,
     bool *hard_error,
-    fc_file_stats *global_stats) {
+    fc_file_stats *global_stats)
+{
     int status = EXIT_SUCCESS;
 
     fc_writer_begin_file(writer, path);
@@ -37,7 +39,9 @@ static int process_current_file(
     fc_read *fr = fc_read_init();
     if (!fr) {
         FC_LOG_ERROR("Failed to allocate read buffer.");
-        if (hard_error) *hard_error = true;
+        if (hard_error) {
+            *hard_error = true;
+        }
         status = EXIT_FAILURE;
         goto finish_file;
     }
@@ -49,7 +53,9 @@ static int process_current_file(
                 "Input BAM contains mapped reads (e.g. '%s'). "
                 "fastcat fastq with --input-fmt bam only accepts unaligned BAM input.",
                 bam_get_qname(fr->bam));
-            if (hard_error) *hard_error = true;
+            if (hard_error) {
+                *hard_error = true;
+            }
             status = EXIT_FAILURE;
             break;
         }
@@ -70,7 +76,8 @@ finish_file:
     return status;
 }
 
-int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
+int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
+{
     clock_t begin = clock();
     int status = EXIT_SUCCESS;
 
@@ -83,9 +90,9 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
     fc_log_init(&log_cfg);
 
     // initialised below if we successfully create outputs
-    htsThreadPool pool = {NULL, 0};
-    fc_writer* writer = NULL;
-    fc_iter file_iter = {0};
+    htsThreadPool pool = { NULL, 0 };
+    fc_writer *writer = NULL;
+    fc_iter file_iter = { 0 };
     bool hard_error = false;
 
 #ifdef NOTHREADS
@@ -125,7 +132,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
         .dust_w = (int)args->dust_w,
         .max_dust = (float)args->max_dust,
         .read_group = args->read_group,
-        .tag_name = {args->tag_name[0], args->tag_name[1]},
+        .tag_name = { args->tag_name[0], args->tag_name[1] },
         .tag_value = args->tag_value,
         .force_recalc_qual = args->force_recalc_qual,
         .region = region_mode ? args->region : NULL,
@@ -140,7 +147,8 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
                 args->recurse,
                 args->verbose,
                 args->input_kind,
-                args->fofn) != 0) {
+                args->fofn)
+            != 0) {
             FC_LOG_ERROR("Failed to initialise file iterator.");
             status = EXIT_FAILURE;
             goto cleanup;
@@ -153,7 +161,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
     } else {
         // BAMSTATS only takes a single BAM input, so we create a synthetic path list with just the one BAM
         // then bootstrap the iterator on that. This allows us to reuse the same iteration logic for both programs.
-        char *bam_path_storage[] = {(char *)args->bam};
+        char *bam_path_storage[] = { (char *)args->bam };
         fc_path_list input_paths = {
             .paths = bam_path_storage,
             .n_paths = 1
@@ -230,7 +238,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
     }
 
     // alignment coverage (BAMSTATS only, and only if --coverage specified)
-    if (program == FC_PROGRAM_BAMSTATS && args->coverage) {        
+    if (program == FC_PROGRAM_BAMSTATS && args->coverage) {
         fc_coverage_sink_opts cov_opts = {
             .output_root = args->output_dir,
             .per_base = true,
@@ -279,7 +287,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
     }
 
     // global stats tracking across all files, for final summary output at the end
-    fc_file_stats global_stats = {0};
+    fc_file_stats global_stats = { 0 };
     fc_file_stats_init(&global_stats);
     size_t nfile = file_iter.n_files;
 
@@ -305,8 +313,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
 
     fc_writer_finish(writer);
 
-    uint64_t total_records =
-        global_stats.failures[R_RECORD_OK]
+    uint64_t total_records = global_stats.failures[R_RECORD_OK]
         + global_stats.failures[R_TOO_LONG]
         + global_stats.failures[R_TOO_SHORT]
         + global_stats.failures[R_LOW_QUALITY]

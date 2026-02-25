@@ -16,7 +16,7 @@ CFLAGS += -MMD -MP
 
 VALGRIND ?= valgrind
 CLANG_FORMAT ?= clang-format
-CLANG_FORMAT_STYLE ?= {BasedOnStyle: WebKit, BreakBeforeBraces: Attach, PointerAlignment: Right, SortIncludes: true, ReflowComments: true, AllowShortIfStatementsOnASingleLine: WithoutElse, InsertBraces: true}
+CLANG_FORMAT_STYLE ?= {BasedOnStyle: WebKit, BreakBeforeBraces: Custom, BraceWrapping: { AfterFunction: true, AfterControlStatement: Never }, PointerAlignment: Right, SortIncludes: true, IncludeBlocks: Regroup, IncludeCategories: [ { Regex: "^<.*>$$", Priority: 1 }, { Regex: "^\\\"(htslib|zlib-ng)/.*\\\"$$", Priority: 2 }, { Regex: "^\\\".*\\\"$$", Priority: 3 } ], ReflowComments: true, AllowShortIfStatementsOnASingleLine: Never, InsertBraces: true, UseTab: Never, IndentWidth: 4, ContinuationIndentWidth: 4, AlignAfterOpenBracket: DontAlign, Cpp11BracedListStyle: false}
 DEFLATEVER=1.24
 
 CC ?= gcc
@@ -142,16 +142,33 @@ test: test_unit test_fastcat test_bamstats test_meta test_bamindex test_fastlint
 .PHONY:
 test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_fastlint mem_check_bamcoverage
 
-.PHONY: tidy tidy_check
+.PHONY: tidy tidy_check tidy_staged install_hooks
 tidy:
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
-	@rg --files -0 src -g '*.c' -g '*.h' | xargs -0 $(CLANG_FORMAT) -i \
+	@find src -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 $(CLANG_FORMAT) -i \
 		-style='$(CLANG_FORMAT_STYLE)'
 
 tidy_check:
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
-	@rg --files -0 src -g '*.c' -g '*.h' | xargs -0 $(CLANG_FORMAT) --dry-run -Werror \
+	@find src -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 $(CLANG_FORMAT) --dry-run -Werror \
 		-style='$(CLANG_FORMAT_STYLE)'
+
+tidy_staged:
+	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
+	@tmp=$$(mktemp); \
+	trap 'rm -f "$$tmp"' EXIT; \
+	git diff --cached --name-only --diff-filter=ACMR -z -- ':(glob)src/**/*.c' ':(glob)src/**/*.h' > "$$tmp"; \
+	if [ ! -s "$$tmp" ]; then \
+		exit 0; \
+	fi; \
+	xargs -0 $(CLANG_FORMAT) -i -style='$(CLANG_FORMAT_STYLE)' < "$$tmp"; \
+	xargs -0 git add -- < "$$tmp"
+
+install_hooks:
+	@mkdir -p .githooks
+	@chmod +x .githooks/pre-commit
+	@git config --local core.hooksPath .githooks
+	@echo "Installed git hooks path: .githooks"
 
 .PHONY:
 clean:
@@ -171,7 +188,7 @@ clean_htslib:
 	cd htslib && make clean
 
 # core library
-CORE_OBJS = src/common.o src/fc_log.o src/stats.o src/fc_stats_engine.o src/fastqcomments.o src/fc_read.o src/fc_filter.o src/fc_bam_utils.o src/fc_dust.o src/fc_iter.o src/fc_writer.o src/fc_catstats_args.o src/fc_program.o src/fc_failures.o src/sink/common.o src/sink/output.o src/sink/perread.o src/sink/perfile.o src/sink/counter.o src/sink/hist.o src/sink/coverage.o src/sink/flagstats.o src/bamcoverage/coverage.o src/sdust/sdust.o src/sdust/kalloc.o src/kh_counter.o src/regiter.o src/fc_input_list.o
+CORE_OBJS = src/common.o src/fc_log.o src/stats.o src/fc_stats_engine.o src/fastqcomments.o src/fc_read.o src/fc_filter.o src/fc_bam_utils.o src/fc_dust.o src/fc_iter.o src/kseq_gz.o src/fc_writer.o src/fc_catstats_args.o src/fc_program.o src/fc_failures.o src/sink/common.o src/sink/output.o src/sink/perread.o src/sink/perfile.o src/sink/counter.o src/sink/hist.o src/sink/coverage.o src/sink/flagstats.o src/bamcoverage/coverage.o src/sdust/sdust.o src/sdust/kalloc.o src/kh_counter.o src/regiter.o src/fc_input_list.o
 CORE_LIB = libfastcatcore.a
 FASTCAT_SUBCOMMAND_OBJS = src/fastlint/main.o src/fastlint/args.o src/bamcoverage/main.o src/bamcoverage/args.o src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o
 

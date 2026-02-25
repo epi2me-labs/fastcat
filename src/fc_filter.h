@@ -10,15 +10,18 @@
 #define FC_NOTPRIMARY (BAM_FSUPPLEMENTARY | BAM_FSECONDARY | BAM_FUNMAP)
 #define FC_PRIMARY_QC_EXCLUDE (FC_NOTPRIMARY | BAM_FQCFAIL | BAM_FDUP)
 
-static inline bool fc_is_unmapped(const bam1_t *b) {
+static inline bool fc_is_unmapped(const bam1_t *b)
+{
     return (b->core.flag & BAM_FUNMAP) != 0;
 }
 
-static inline bool fc_is_primary(const bam1_t *b) {
+static inline bool fc_is_primary(const bam1_t *b)
+{
     return (b->core.flag & FC_NOTPRIMARY) == 0;
 }
 
-static inline bool fc_is_primary_qc_pass(const bam1_t *b) {
+static inline bool fc_is_primary_qc_pass(const bam1_t *b)
+{
     return (b->core.flag & FC_PRIMARY_QC_EXCLUDE) == 0;
 }
 

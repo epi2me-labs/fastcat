@@ -1,29 +1,28 @@
-#include "fc_sinks.h"
-
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-
 #include <zlib.h>
 
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
 
-#include "common.h"
-#include "sink/common.h"
 #include "../fc_log.h"
+#include "common.h"
+#include "fc_sinks.h"
+#include "sink/common.h"
 #include "version.h"
 
 // default buffer size for writing to gzip, this is large enough that most reads will not require
 // the write buffer to be resized. See gz_fprintf_bridge() below.
 // The size is also used with gzbuffer() when opening gzFile handles.
-#define GZBUFSIZE 131072  // 128 kB
+#define GZBUFSIZE 131072 // 128 kB
 
 typedef int (*sink_write_fn)(void *handle, const char *fmt, ...);
 
-static int fprintf_bridge(void *h, const char *fmt, ...) {
+static int fprintf_bridge(void *h, const char *fmt, ...)
+{
     va_list ap;
     va_start(ap, fmt);
     int r = vfprintf((FILE *)h, fmt, ap);
@@ -31,7 +30,8 @@ static int fprintf_bridge(void *h, const char *fmt, ...) {
     return r;
 }
 
-static int gz_fprintf_bridge(void *h, const char *fmt, ...) {
+static int gz_fprintf_bridge(void *h, const char *fmt, ...)
+{
     size_t bufsize = GZBUFSIZE;
     char *buf = (char *)xalloc(bufsize, sizeof(char), "gzbuffer");
 
@@ -68,7 +68,8 @@ typedef struct {
     size_t *file_index;
 } output_sink;
 
-static void output_write_fastq(output_sink *sink, const fc_read *read, void *handle) {
+static void output_write_fastq(output_sink *sink, const fc_read *read, void *handle)
+{
     (void)sink;
     sink_write_fn sink_write = handle == stdout ? fprintf_bridge : gz_fprintf_bridge;
 
@@ -101,7 +102,8 @@ static void output_write_fastq(output_sink *sink, const fc_read *read, void *han
     free(qual_str);
 }
 
-static void output_write_bam(output_sink *sink, bam1_t *bam, htsFile *handle) {
+static void output_write_bam(output_sink *sink, bam1_t *bam, htsFile *handle)
+{
     if (bam == NULL) {
         FC_LOG_ERROR("Internal error: BAM record missing for output.");
         exit(EXIT_FAILURE);
@@ -113,7 +115,8 @@ static void output_write_bam(output_sink *sink, bam1_t *bam, htsFile *handle) {
     }
 }
 
-static void output_create_filepath(output_sink *sink, size_t barcode, char **path, char **filepath) {
+static void output_create_filepath(output_sink *sink, size_t barcode, char **path, char **filepath)
+{
     char *extra = NULL;
     if (sink->cfg.reads_per_file != 0) {
         int need = snprintf(NULL, 0, "_%04zu", sink->file_index[barcode]);
@@ -130,7 +133,7 @@ static void output_create_filepath(output_sink *sink, size_t barcode, char **pat
         extra = xalloc(1, sizeof(char), "output filename suffix");
     }
 
-    char stem_buf[32] = {0};
+    char stem_buf[32] = { 0 };
     const char *stem = fc_sink_barcode_stem(barcode, stem_buf, sizeof(stem_buf));
     if (!stem) {
         FC_LOG_ERROR("Failed to format barcode stem for output path.");
@@ -138,13 +141,13 @@ static void output_create_filepath(output_sink *sink, size_t barcode, char **pat
     }
     *path = fc_join_path(sink->output, stem);
     const char *ext = sink->cfg.write_bam ? "bam" : "fastq.gz";
-    size_t fsz = strlen(*path)   // base path
-        + 1                      // '/'
+    size_t fsz = strlen(*path) // base path
+        + 1 // '/'
         + strlen(stem)
         + strlen(extra)
-        + 1                      // '.'
+        + 1 // '.'
         + strlen(ext)
-        + 1;                     // NUL
+        + 1; // NUL
     *filepath = xalloc(fsz, sizeof(char), "output filepath");
     int n = snprintf(*filepath, fsz, "%s/%s%s.%s", *path, stem, extra, ext);
     if (n < 0 || (size_t)n >= fsz) {
@@ -154,9 +157,10 @@ static void output_create_filepath(output_sink *sink, size_t barcode, char **pat
     free(extra);
 }
 
-static void output_ensure_directory(output_sink *sink, size_t barcode, char *path) {
+static void output_ensure_directory(output_sink *sink, size_t barcode, char *path)
+{
     if (sink->cfg.reads_per_file == 0
-            || (sink->file_index[barcode] == 0 && sink->reads_written[barcode] == 0)) {
+        || (sink->file_index[barcode] == 0 && sink->reads_written[barcode] == 0)) {
         int rtn = mkdir_hier(path);
         if (rtn == -1) {
             FC_LOG_ERROR("Failed to create barcode directory '%s'.", path);
@@ -166,7 +170,8 @@ static void output_ensure_directory(output_sink *sink, size_t barcode, char *pat
 }
 
 static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_ctx *read_ctx,
-        const char *fname, const sam_hdr_t *hdr) {
+    const char *fname, const sam_hdr_t *hdr)
+{
     output_sink *sink = (output_sink *)ctx;
     (void)fname;
     (void)hdr;
@@ -174,7 +179,7 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
     size_t barcode = read_ctx->barcode;
     if (barcode >= sink->cfg.barcode_count) {
         FC_LOG_ERROR("Read's barcode number (%lu) exceeds configured barcode slots (%zu)",
-                     barcode, sink->cfg.barcode_count);
+            barcode, sink->cfg.barcode_count);
         exit(EXIT_FAILURE);
     }
 
@@ -235,7 +240,8 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
     sink->reads_written[barcode]++;
 }
 
-static void output_sink_destroy(void *ctx) {
+static void output_sink_destroy(void *ctx)
+{
     output_sink *sink = (output_sink *)ctx;
     for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
         if (sink->cfg.write_bam) {
@@ -264,9 +270,12 @@ static void output_sink_destroy(void *ctx) {
     free(sink);
 }
 
-fc_sink fc_output_sink_create(const fc_output_sink_opts *opts) {
-    fc_sink sink = {0};
-    if (!opts) return sink;
+fc_sink fc_output_sink_create(const fc_output_sink_opts *opts)
+{
+    fc_sink sink = { 0 };
+    if (!opts) {
+        return sink;
+    }
 
     // Convention: non-NULL output_root means per-barcode output under <output_root>/{unclassified,barcodeXXXX}; NULL streams to stdout.
     output_sink *state = calloc(1, sizeof(*state));
