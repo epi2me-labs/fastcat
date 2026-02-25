@@ -14,7 +14,7 @@ KSEQ_DECLARE(gzFile)
 #define KSEQ_DECLARED
 #endif
 
-typedef struct {
+typedef struct read_meta {
     char* orig_comment;
     char* rg;             // RG:Z
     readgroup* rg_info;
@@ -32,41 +32,29 @@ typedef struct {
     float mean_q;         // qs:f
     size_t read_number;   // rn:i
     size_t channel;       // ch:i
-    kstring_t* tags_str;
-} _read_meta;
-
-typedef _read_meta* read_meta;
+    kstring_t* tags_str;  // lazily materialized string form of aux tags
+    bool tags_ready;
+} read_meta;
 
 typedef struct {
     bam1_t *bam;
-    read_meta meta;
-    bool owns_bam;
+    read_meta *meta;
 } fc_read;
 
-// Resolve mean quality, preferring qs tag unless force_recalc_qual is true.
-static inline float resolve_mean_quality(const bam1_t *b, const read_meta meta, bool force_recalc_qual) {
-    float mean_quality = meta ? meta->mean_q : -1.0f;
-    if (mean_quality == -1.0f || force_recalc_qual) {
-        mean_quality = mean_qual_from_bam_naive(bam_get_qual(b), b->core.l_qseq);
-    }
-    return mean_quality;
-}
+// Allocate and initialize a heap-owned fc_read and its BAM record storage.
+fc_read *fc_read_init(void);
 
-// Construct from an existing BAM record; does not take ownership of bam.
-fc_read* fc_read_from_bam(bam1_t* bam, const bam_hdr_t* hdr, bool force_recalc_qual);
+// Destroy a caller-owned fc_read and free all owned allocations.
+void fc_read_destroy(fc_read *read);
 
-// Construct from FASTQ (kseq); owns the BAM.
-fc_read* fc_read_from_kseq(kseq_t* seq);
+// Convert a FASTQ kseq record into an unaligned BAM record, including FASTQ comment tags.
+int kseq_to_bam(bam1_t *b, kseq_t *seq);
 
-// Free a read_meta and any associated allocations.
-void fc_read_meta_destroy(read_meta meta);
+// Reset a reusable fc_read in-place from the current BAM record.
+// Expects mean quality tag policy to have been applied by the caller.
+void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const kstring_t *orig_comment);
 
-// Free metadata/tags, and BAM if owned.
-void fc_read_destroy(fc_read* r);
-
-// Construct read_meta from BAM aux tags, optionally preserving the original FASTQ comment.
-// Caller owns the returned read_meta and must destroy it.
-read_meta fc_read_meta_create(const bam1_t *b, const bam_hdr_t *hdr,
-                              const kstring_t *orig_comment);
+// Return SAM-style auxiliary tags text, lazily materialized and cached on first use.
+const kstring_t *fc_read_get_tags_str(const fc_read *read);
 
 #endif

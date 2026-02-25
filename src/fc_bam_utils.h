@@ -54,4 +54,13 @@ int *fc_bam_qpos2rpos(bam1_t *b);
 
 uint8_t *fc_bam_get_tag_caseinsensitive(const bam1_t *b, const char tag_name[2]);
 
+/**
+ * Resolve mean quality for a BAM record from qs/QS tag unless force_recalc_qual
+ * is set, then ensure the effective value is stored back in aux tags.
+ *
+ * Tag preference is lowercase "qs" then uppercase "QS".
+ * If neither exists, a new "qs" tag is appended.
+ */
+float fc_bam_ensure_mean_quality(bam1_t *b, bool force_recalc_qual);
+
 #endif

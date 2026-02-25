@@ -34,8 +34,16 @@ static int process_current_file(
         return status;
     }
 
-    fc_read *fr = NULL;
-    while ((fr = fc_iter_next_record(file_iter)) != NULL) {
+    fc_read *fr = fc_read_init();
+    if (!fr) {
+        FC_LOG_ERROR("Failed to allocate read buffer.");
+        if (hard_error) *hard_error = true;
+        status = EXIT_FAILURE;
+        goto finish_file;
+    }
+
+    fc_iter_next_status next_rc = FC_ITER_RECORD;
+    while ((next_rc = fc_iter_next_record(file_iter, fr)) == FC_ITER_RECORD) {
         if (enforce_unmapped && !fc_is_unmapped(fr->bam)) {
             FC_LOG_ERROR(
                 "Input BAM contains mapped reads (e.g. '%s'). "
@@ -43,13 +51,17 @@ static int process_current_file(
                 bam_get_qname(fr->bam));
             if (hard_error) *hard_error = true;
             status = EXIT_FAILURE;
-            fc_read_destroy(fr);
             break;
         }
         fc_writer_add_read(writer, fr, path, hdr_for_records);
-        fc_read_destroy(fr);
+    }
+    if (next_rc == FC_ITER_ERROR) {
+        status = EXIT_FAILURE;
     }
 
+    fc_read_destroy(fr);
+
+finish_file:
     if (fc_iter_finish_file(file_iter) != 0) {
         status = EXIT_FAILURE;
     }
@@ -281,7 +293,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args) {
         while (fc_iter_next_file(&file_iter, &path)) {
             int file_status = process_current_file(
                 &file_iter, writer, path, NULL, &iter_opts, false,
-                (args->input_kind == FC_FILE_BAM), &hard_error, &global_stats);
+                (args->input_kind != FC_FILE_FASTQ), &hard_error, &global_stats);
             if (file_status != EXIT_SUCCESS) {
                 status = EXIT_FAILURE;
             }

@@ -68,13 +68,14 @@ typedef struct {
     size_t *file_index;
 } output_sink;
 
-static void output_write_fastq(output_sink *sink, bam1_t *bam, read_meta meta, void *handle) {
+static void output_write_fastq(output_sink *sink, const fc_read *read, void *handle) {
     (void)sink;
     sink_write_fn sink_write = handle == stdout ? fprintf_bridge : gz_fprintf_bridge;
 
     static const char *sam_comment_fmt = "@%s\t%s\n%s\n+\n%s\n";
     static const char *no_comment_fmt = "@%s\n%s\n+\n%s\n";
 
+    bam1_t *bam = read->bam;
     char *qname = bam_get_qname(bam);
     size_t len = bam->core.l_qseq;
     uint8_t *seq_data = bam_get_seq(bam);
@@ -89,8 +90,9 @@ static void output_write_fastq(output_sink *sink, bam1_t *bam, read_meta meta, v
     seq_str[len] = '\0';
     qual_str[len] = '\0';
 
-    if (meta->tags_str && meta->tags_str->l > 0) {
-        sink_write(handle, sam_comment_fmt, qname, meta->tags_str->s, seq_str, qual_str);
+    const kstring_t *tags = fc_read_get_tags_str(read);
+    if (tags && tags->l > 0) {
+        sink_write(handle, sam_comment_fmt, qname, tags->s, seq_str, qual_str);
     } else {
         sink_write(handle, no_comment_fmt, qname, seq_str, qual_str);
     }
@@ -180,7 +182,7 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
         if (sink->cfg.write_bam) {
             output_write_bam(sink, read->bam, sink->bam_files[0]);
         } else {
-            output_write_fastq(sink, read->bam, read->meta, stdout);
+            output_write_fastq(sink, read, stdout);
         }
         return;
     }
@@ -224,7 +226,7 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
                 sink->handles[barcode] = gzopen(filepath, "wb");
                 gzbuffer(sink->handles[barcode], GZBUFSIZE);
             }
-            output_write_fastq(sink, read->bam, read->meta, sink->handles[barcode]);
+            output_write_fastq(sink, read, sink->handles[barcode]);
         }
         free(filepath);
         free(path);

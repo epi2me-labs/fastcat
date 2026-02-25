@@ -1,6 +1,8 @@
 #include "fc_bam_utils.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "common.h"
@@ -124,4 +126,39 @@ uint8_t *fc_bam_get_tag_caseinsensitive(const bam1_t *b, const char tag_name[2])
         ret = bam_aux_get(b, lower_tag);
     }
     return ret;
+}
+
+float fc_bam_ensure_mean_quality(bam1_t *b, bool force_recalc_qual) {
+    if (!b) {
+        FC_LOG_ERROR("Internal error: null BAM record in mean-quality resolver.");
+        exit(EXIT_FAILURE);
+    }
+
+    // Prefer lowercase qs if both exist.
+    const char *target_tag = "qs";
+    uint8_t *qs_tag = bam_aux_get(b, "qs");
+    if (qs_tag == NULL) {
+        qs_tag = bam_aux_get(b, "QS");
+        target_tag = "QS";
+    }
+
+    if (!force_recalc_qual && qs_tag != NULL) {
+        errno = 0;
+        float qs = (float)bam_aux2f(qs_tag);
+        if (!(qs == 0.0f && errno == EINVAL)) {
+            return qs;
+        }
+    }
+
+    float mean_q = mean_qual_from_bam_naive(bam_get_qual(b), b->core.l_qseq);
+    if (qs_tag != NULL) {
+        if (bam_aux_update_float(b, target_tag, mean_q) < 0) {
+            FC_LOG_ERROR("Failed to update %s tag with recalculated mean quality.", target_tag);
+            exit(EXIT_FAILURE);
+        }
+    } else if (bam_aux_append(b, "qs", 'f', sizeof(mean_q), (const uint8_t *)&mean_q) < 0) {
+        FC_LOG_ERROR("Failed to append qs tag with recalculated mean quality.");
+        exit(EXIT_FAILURE);
+    }
+    return mean_q;
 }

@@ -17,6 +17,8 @@ typedef struct {
 typedef struct {
     void *ctx;
     void (*begin_file)(void *ctx, const char *fname);
+    // `read` is only valid for the duration of this callback. Sinks must not retain
+    // pointers into `read` (or `read->meta`) after returning.
     void (*add_read)(void *ctx, const fc_read *read, const fc_read_ctx *read_ctx,
         const char *fname, const sam_hdr_t *hdr);
     void (*end_file)(void *ctx, const char *fname, const fc_file_stats *stats);
@@ -49,6 +51,7 @@ fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *sta
 void fc_writer_add_sink(fc_writer *writer, fc_sink sink);
 
 void fc_writer_begin_file(fc_writer *writer, const char *fname);
+// Dispatches a single record to all sinks. `read` must remain valid for this call only.
 void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, const sam_hdr_t *hdr);
 void fc_writer_end_file(fc_writer *writer, const char *fname, const fc_file_stats *stats);
 void fc_writer_finish(fc_writer *writer);
