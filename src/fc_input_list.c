@@ -41,7 +41,13 @@ static int read_paths_from_stream(
 
     while ((nchr = getline(&line, &cap, fp)) != -1) {
         struct stat st = { 0 };
-        line[strcspn(line, "\r\n")] = 0;
+        // Remove trailing newline
+        if (nchr > 0 && (line[nchr - 1] == '\n' || line[nchr - 1] == '\r')) {
+            line[nchr - 1] = '\0';
+            if (nchr > 1 && line[nchr - 2] == '\r') {
+                line[nchr - 2] = '\0';
+            }
+        }
         if (line[0] == '\0') {
             continue;
         }

@@ -106,6 +106,12 @@ void index_build(const char *filename, const char *output_fname, int threads, si
     }
 
     FILE *out_fp = fopen(output_fname, "wb");
+    if (!out_fp) {
+        FC_LOG_ERROR("Cannot open output file: %s.", output_fname);
+        bam_hdr_destroy(h);
+        hts_close(fp);
+        exit(EXIT_FAILURE);
+    }
     bc_idx_t *idx = bc_idx_init1(every);
     size_t rtn;
     if ((rtn = bc_idx_write_header(out_fp, idx)) > 0) {
@@ -137,6 +143,11 @@ void index_build(const char *filename, const char *output_fname, int threads, si
         }
         file_offset = bgzf_tell(fp->fp.bgzf);
         i++;
+    }
+
+    if (ret < -1) {
+        FC_LOG_ERROR("Error reading BAM file (sam_read1 returned %d)", ret);
+        exit(EXIT_FAILURE);
     }
 
     bam_hdr_destroy(h);

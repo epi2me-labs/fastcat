@@ -16,25 +16,27 @@ char *generate_index_filename(const char *input_bam, const char *input_index)
     char *out_fn;
 
     if (input_index != NULL) {
-        out_fn = calloc(strlen(input_index) + 1, sizeof(char));
+        size_t idx_len = strlen(input_index);
+        out_fn = calloc(idx_len + 1, sizeof(char));
         if (out_fn == NULL) {
             exit(EXIT_FAILURE);
         }
-        strcpy(out_fn, input_index);
+        memcpy(out_fn, input_index, idx_len + 1);
     } else {
-        out_fn = calloc(strlen(input_bam) + 5, sizeof(char));
+        size_t bam_len = strlen(input_bam);
+        out_fn = calloc(bam_len + 5, sizeof(char));
         if (out_fn == NULL) {
             exit(EXIT_FAILURE);
         }
-        strcpy(out_fn, input_bam);
-        strcat(out_fn, ".bci");
+        memcpy(out_fn, input_bam, bam_len);
+        memcpy(out_fn + bam_len, ".bci", 5); // includes null terminator
     }
     return out_fn;
 }
 
 bc_idx_t *bc_idx_init(void)
 {
-    bc_idx_t *h = (bc_idx_t *)calloc(1, sizeof(bc_idx_t));
+    bc_idx_t *h = calloc(1, sizeof(bc_idx_t));
     if (h == NULL) {
         return NULL;
     }
@@ -74,7 +76,7 @@ bc_idx_t *bc_idx_read(FILE *fp)
 {
     char buf[MAGIC_LEN];
     size_t magic_len = fread(&(buf), sizeof(char), MAGIC_LEN, fp);
-    if (magic_len != MAGIC_LEN || memcmp(buf, FILE_MAGIC, MAGIC_LEN)) {
+    if (magic_len != MAGIC_LEN || memcmp(buf, FILE_MAGIC, MAGIC_LEN) != 0) {
         FC_LOG_ERROR("Invalid BAM chunk index binary header.");
         return NULL;
     }
@@ -94,7 +96,7 @@ bc_idx_t *bc_idx_read(FILE *fp)
     }
 
     h->stored = h->n_chunks;
-    h->recs = (bc_rec_t *)calloc(h->stored, sizeof(bc_rec_t));
+    h->recs = calloc(h->stored, sizeof(bc_rec_t));
 
     size_t valid = 0;
     const char *msg = "Failed to read index contents. File is corrupt.";
@@ -108,7 +110,7 @@ bc_idx_t *bc_idx_read(FILE *fp)
             FC_LOG_ERROR("%s", msg);
             break;
         }
-        r->qname = (char *)calloc(r->lqname, sizeof(char));
+        r->qname = calloc(r->lqname, sizeof(char));
         if (fread(r->qname, sizeof(char), r->lqname, fp) != r->lqname) {
             FC_LOG_ERROR("%s", msg);
             break;

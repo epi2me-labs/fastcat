@@ -8,6 +8,7 @@ test/tmp/
 libdeflate-*/
 libdeflate-v*.tar.gz
 samtools-*/
+scan-build-results/
 .fastcat_patch_applied
 # executables
 /bamindex

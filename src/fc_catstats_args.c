@@ -463,6 +463,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         if (ctx->program == FC_PROGRAM_FASTCAT) {
             if (!arguments->input_paths.paths) {
                 argp_error(state, "Missing input path(s). Use '-' to read data from stdin.");
+                return 0; // argp_error doesn't return, but helps static analyzer
             }
             while (arguments->input_paths.paths[arguments->input_paths.n_paths]) {
                 arguments->input_paths.n_paths++;
@@ -509,8 +510,8 @@ void fc_destroy_catstats_args(fc_catstats_args *args)
     if (!args) {
         return;
     }
-    free((void *)args->coverage_beds);
-    free((void *)args->coverage_names);
+    free(args->coverage_beds);
+    free(args->coverage_names);
     free(args->coverage_thresholds);
     free(args->segments);
 }

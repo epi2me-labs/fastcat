@@ -180,9 +180,9 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             meta->flow_cell_id = bam_aux2Z(aux);
         } else if (((strcmp(tag, "SM") == 0) || (strcmp(tag, "BC") == 0)) && type == 'Z') {
             meta->barcode = bam_aux2Z(aux);
-            if (strcmp(meta->barcode, "unclassified") == 0) {
-                meta->ibarcode = 0;
-            } else if (strncmp(meta->barcode, "barcode", 7) == 0) {
+            // Default to unclassified (0) unless we parse a valid barcode number
+            meta->ibarcode = 0;
+            if (strncmp(meta->barcode, "barcode", 7) == 0) {
                 const char *num_str = meta->barcode + 7;
                 size_t val = 0;
                 // MAX_BARCODES is 1025 (defined in fc_writer.c)
@@ -190,10 +190,7 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
                     meta->ibarcode = val;
                 } else {
                     FC_LOG_WARN("Malformed barcode '%s', treating as unclassified", meta->barcode);
-                    meta->ibarcode = 0;
                 }
-            } else {
-                meta->ibarcode = 0;
             }
         } else if (((strcmp(tag, "BA") == 0) || (strcmp(tag, "AL") == 0)) && type == 'Z') {
             meta->barcode_alias = bam_aux2Z(aux);

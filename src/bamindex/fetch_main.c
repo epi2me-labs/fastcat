@@ -33,7 +33,7 @@ static struct argp_option options[] = {
 
 typedef struct arguments {
     const char *bam;
-    const char *index;
+    char *index;
     int chunk_idx;
     int threads;
 } arguments_t;
@@ -115,8 +115,13 @@ void index_fetch(const char *bam_fname, const char *index_fname, int chunk, int 
         exit(EXIT_FAILURE);
     }
     FILE *idx_fp = fopen(index_fname, "rb");
+    if (!idx_fp) {
+        FC_LOG_ERROR("Cannot open index file: %s.", index_fname);
+        exit(EXIT_FAILURE);
+    }
     bc_idx_t *idx;
     if ((idx = bc_idx_read(idx_fp)) == NULL) {
+        fclose(idx_fp);
         FC_LOG_ERROR("Couldn't read index file: %s.", index_fname);
         exit(EXIT_FAILURE);
     }
@@ -181,7 +186,7 @@ int main_fetch(int argc, char *argv[])
 
     arguments_t args = parse_arguments(argc, argv);
     index_fetch(args.bam, args.index, args.chunk_idx, args.threads);
-    free((char *)args.index);
+    free(args.index);
     clock_t end = clock();
     FC_LOG_INFO("Total CPU time: %fs", (double)(end - begin) / CLOCKS_PER_SEC);
     fc_log_destroy();
