@@ -41,6 +41,15 @@ static void finalize_file_stats(fc_file_stats *stats, double q_sum)
     }
 }
 
+static inline void free_dust_buffer(dust_buffer *dust)
+{
+    if (dust->buf) {
+        free(dust->buf);
+        dust->buf = NULL;
+        dust->size = 0;
+    }
+}
+
 static inline void fc_iter_accum_add(size_t len, float mean_q,
     fc_file_stats *stats, double *q_sum, double *q_comp)
 {
@@ -92,7 +101,7 @@ static void fc_iter_opts_init(fc_iter_opts *dst, const fc_iter_opts *src)
 }
 
 static bool fc_iter_filter_dust_bam(
-    bam1_t *b, const fc_iter_opts *opts, fc_file_stats *stats)
+    bam1_t *b, const fc_iter_opts *opts, fc_file_stats *stats, dust_buffer *dust)
 {
     if (!opts || !opts->dust) {
         return true;
@@ -100,14 +109,20 @@ static bool fc_iter_filter_dust_bam(
 
     size_t len = (size_t)b->core.l_qseq;
     uint8_t *seq_data = bam_get_seq(b);
-    char *seq = xalloc(len + 1, sizeof(char), "bam dust seq");
+
+    // Reuse/grow buffer as needed
+    if (len + 1 > dust->size) {
+        dust->buf = xrealloc(dust->buf, len + 1, "bam dust seq");
+        dust->size = len + 1;
+    }
+    char *seq = dust->buf;
+
     for (size_t i = 0; i < len; ++i) {
         seq[i] = seq_nt16_str[bam_seqi(seq_data, i)];
     }
     seq[len] = '\0';
 
     bool pass = fc_filter_dust((uint8_t *)seq, len, opts->dust_t, opts->dust_w, opts->max_dust);
-    free(seq);
     if (!pass) {
         stats->failures[R_DUST_MASKED]++;
         return false;
@@ -118,7 +133,7 @@ static bool fc_iter_filter_dust_bam(
 static bool fc_iter_process_bam_record(
     fc_read *out, const bam_hdr_t *hdr, const kstring_t *orig_comment,
     const fc_iter_opts *opts, bool apply_filters, fc_file_stats *stats,
-    double *q_sum, double *q_comp)
+    double *q_sum, double *q_comp, dust_buffer *dust)
 {
     size_t len = (size_t)out->bam->core.l_qseq;
     float mean_q = fc_bam_ensure_mean_quality(out->bam, opts->force_recalc_qual);
@@ -130,7 +145,7 @@ static bool fc_iter_process_bam_record(
         if (!fc_iter_filter_quality(mean_q, opts->min_qscore, stats)) {
             return false;
         }
-        if (!fc_iter_filter_dust_bam(out->bam, opts, stats)) {
+        if (!fc_iter_filter_dust_bam(out->bam, opts, stats, dust)) {
             return false;
         }
         if (opts->tag_name[0] != '\0') {
@@ -148,6 +163,20 @@ static bool fc_iter_process_bam_record(
     fc_iter_accum_add(len, mean_q, stats, q_sum, q_comp);
     fc_read_reset_from_bam(out, hdr, orig_comment);
     return true;
+}
+
+static bool fastq_iter_process_record(fc_fastq_iter *iter, fc_read *out)
+{
+    return fc_iter_process_bam_record(out, NULL, &iter->seq->comment,
+        &iter->opts, iter->apply_filters, &iter->stats,
+        &iter->q_sum, &iter->q_comp, &iter->dust);
+}
+
+static bool bam_iter_process_record(fc_bam_iter *iter, fc_read *out)
+{
+    return fc_iter_process_bam_record(out, iter->hdr, NULL,
+        &iter->opts, iter->apply_filters, &iter->stats,
+        &iter->q_sum, &iter->q_comp, &iter->dust);
 }
 
 static int fc_iter_finish_common(
@@ -193,6 +222,7 @@ static void fastq_iter_close_resources(fc_fastq_iter *iter)
         gzclose(iter->fp);
         iter->fp = NULL;
     }
+    free_dust_buffer(&iter->dust);
 }
 
 static bool iter_opts_enable_filters(const fc_iter_opts *opts)
@@ -292,8 +322,7 @@ static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
             FC_LOG_ERROR("Error building BAM record for read '%s'", iter->seq->name.s);
             exit(EXIT_FAILURE);
         }
-        if (fc_iter_process_bam_record(out, NULL, &iter->seq->comment,
-                &iter->opts, iter->apply_filters, &iter->stats, &iter->q_sum, &iter->q_comp)) {
+        if (fastq_iter_process_record(iter, out)) {
             return FC_ITER_RECORD;
         }
     }
@@ -497,8 +526,7 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
             }
         }
 
-        if (fc_iter_process_bam_record(out, iter->hdr, NULL,
-                &iter->opts, iter->apply_filters, &iter->stats, &iter->q_sum, &iter->q_comp)) {
+        if (bam_iter_process_record(iter, out)) {
             return FC_ITER_RECORD;
         }
     }
@@ -541,6 +569,7 @@ static void fc_bam_iter_close(fc_bam_iter *iter)
         iter->idx = NULL;
     }
     iter->own_idx = false;
+    free_dust_buffer(&iter->dust);
 }
 
 static int fc_bam_iter_open_path(fc_bam_iter *bmi, const char *path, const fc_iter_opts *opts)

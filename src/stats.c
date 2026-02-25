@@ -115,6 +115,15 @@ void add_qual_count(read_stats *stats, float q)
     stats->counts[(int)(q / stats->width)]++;
 }
 
+// nasty function to e.g. 0.001 -> 3
+size_t _leading_decimals(float number)
+{
+    char str[64] = { 0 };
+    snprintf(str, sizeof(str), "%f", number);
+    char *point = strchr(str, '.');
+    return 1 + strspn(point + 1, "0");
+}
+
 void print_stats(read_stats *stats, bool zeroes, bool tsv, FILE *fp)
 {
     if (fp == NULL) {
@@ -155,79 +164,3 @@ void print_stats(read_stats *stats, bool zeroes, bool tsv, FILE *fp)
         }
     }
 }
-
-// nasty function to e.g. 0.001 -> 3
-size_t _leading_decimals(float number)
-{
-    char str[64] = { 0 };
-    snprintf(str, sizeof(str), "%f", number);
-    char *point = strchr(str, '.');
-    return 1 + strspn(point + 1, "0");
-}
-
-// int main(int argc, char **argv) {
-//     read_stats* stats = create_length_stats();
-//     // bins every 1
-//     add_length_count(stats, 1);
-//     add_length_count(stats, 4);
-//     add_length_count(stats, 950);
-//     add_length_count(stats, 998);
-//     add_length_count(stats, 999);
-//
-//     //// changing to bins every 10
-//     add_length_count(stats, 1000);
-//     add_length_count(stats, 1001);
-//     add_length_count(stats, 1009);
-//     add_length_count(stats, 1010);
-//     add_length_count(stats, 1045);
-//     add_length_count(stats, 1050);
-//
-//     // changing to bins every 100
-//     add_length_count(stats, 9845);
-//     add_length_count(stats, 9900);
-//     add_length_count(stats, 9901);
-//     add_length_count(stats, 9909);
-//     add_length_count(stats, 9910);
-//     add_length_count(stats, 9999);
-//     add_length_count(stats, 10000);
-//     add_length_count(stats, 10001);
-//     add_length_count(stats, 10010);
-//     add_length_count(stats, 10100);
-//     add_length_count(stats, 10150);
-//     add_length_count(stats, 10199);
-//     add_length_count(stats, 10200);
-//     add_length_count(stats, 10210);
-//
-//     // changing to bins every 1000
-//     add_length_count(stats, 99100);
-//     add_length_count(stats, 99150);
-//     add_length_count(stats, 99500);
-//     add_length_count(stats, 99999);
-//     add_length_count(stats, 100000);
-//     add_length_count(stats, 100001);
-//     add_length_count(stats, 100999);
-//     add_length_count(stats, 101000);
-//     add_length_count(stats, 102000);
-//
-//     add_length_count(stats,  999999);
-//     add_length_count(stats, 1000000);
-//     add_length_count(stats, 2000000);
-//
-//     print_stats(stats, false, false, stderr);
-//     destroy_length_stats(stats);
-//
-//     float width = 0.02;
-//     read_stats* qstats = create_q_stats(width);
-//
-//     add_q_count(qstats, 9.89);
-//     add_q_count(qstats, 9.89);
-//     add_q_count(qstats, 99.5);
-//     add_q_count(qstats, 99.9);
-//     add_q_count(qstats, 100);
-//     add_q_count(qstats, 101);
-//     add_q_count(qstats, 101);
-//     add_q_count(qstats, 101);
-//     print_stats(qstats, false, false, stderr);
-//     destroy_q_stats(qstats);
-//
-// }
