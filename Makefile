@@ -67,6 +67,9 @@ endif
     UBSAN_OPTIONS ?= print_stacktrace=1:halt_on_error=1
     export ASAN_OPTIONS
     export UBSAN_OPTIONS
+else
+    # Production builds: disable asserts for performance
+    CFLAGS += -DNDEBUG
 endif
 
 LIBDEF=$(abspath libdeflate-$(DEFLATEVER))
