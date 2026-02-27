@@ -472,6 +472,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             if (!arguments->bam) {
                 argp_error(state, "Missing <reads.bam>");
             }
+            if (arguments->region && arguments->bed) {
+                argp_error(state, "--region and --bed are mutually exclusive.");
+            }
             if (arguments->n_coverage_beds && arguments->n_coverage_beds != arguments->n_coverage_names) {
                 argp_error(
                     state,
