@@ -44,6 +44,17 @@ static inline void _write_bedgraph_line(
     }
 }
 
+static void coverage_fail_invalid_alignment(cov_writer w, const bam1_t *b, const char *reason)
+{
+    const char *chrom = "<unknown>";
+    if (w && w->hdr && b && b->core.tid >= 0 && b->core.tid < w->hdr->n_targets) {
+        chrom = w->hdr->target_name[b->core.tid];
+    }
+    FC_LOG_FATAL(
+        "Invalid alignment coordinates for read '%s' on '%s': %s.",
+        b ? bam_get_qname(b) : "<unknown>", chrom, reason);
+}
+
 static inline void _write_summary(
     FILE *fh_dist, FILE *fh_summary, const bed_region reg, const int64_t *stats, const int64_t *dist, size_t max_cover, uint32_t *thresholds, size_t n_thresholds)
 {
@@ -183,7 +194,7 @@ static void _flush_contig(cov_writer w)
                     dist = xrecalloc(dist, max_cover, new_cap, sizeof(int64_t), "coverage distribution");
                     max_cover = new_cap;
                 }
-                dist[cov] += 1;
+                dist[(size_t)cov] += 1;
             }
 
             // summary stats including sparse (user-defined) coverage distribution
@@ -622,21 +633,33 @@ void coverage_process(cov_writer w, const bam1_t *b)
 
     // either use rstart/rend or studiously examine cigar
     if (!w->use_cigar) {
-        size_t rstart = (size_t)b->core.pos;
-        size_t rend = (size_t)bam_endpos(b);
+        int64_t rstart = (int64_t)b->core.pos;
+        int64_t rend = (int64_t)bam_endpos(b);
+        if (rstart < 0 || rend < rstart || rstart >= w->contig_len || rend > w->contig_len) {
+            coverage_fail_invalid_alignment(w, b, "reference span falls outside contig bounds");
+        }
         diff[rstart] += 1;
         diff[rend] -= 1;
     } else {
         const uint32_t *cigar = bam_get_cigar(b);
-        size_t rstart = (size_t)b->core.pos;
+        int64_t rstart = (int64_t)b->core.pos;
+        if (rstart < 0 || rstart > w->contig_len) {
+            coverage_fail_invalid_alignment(w, b, "reference start falls outside contig bounds");
+        }
         for (uint32_t i = 0; i < b->core.n_cigar; ++i) {
             const uint32_t op = cigar[i];
-            size_t len = (size_t)bam_cigar_oplen(op);
+            int64_t len = (int64_t)bam_cigar_oplen(op);
             if (is_ref_and_query(op)) {
+                if (len < 0 || rstart + len > w->contig_len) {
+                    coverage_fail_invalid_alignment(w, b, "CIGAR consumes reference past contig end");
+                }
                 diff[rstart] += 1;
                 diff[rstart + len] -= 1;
                 rstart += len;
             } else if (consumes_ref_only(op)) {
+                if (len < 0 || rstart + len > w->contig_len) {
+                    coverage_fail_invalid_alignment(w, b, "CIGAR skips past contig end");
+                }
                 rstart += len; // advance reference, no coverage
             } else {
                 // do not advance reference
