@@ -1,0 +1,462 @@
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "unity.h"
+#include "htslib/sam.h"
+
+#include "bamcoverage/coverage.h"
+
+static bam_hdr_t *make_header(const int *lengths, size_t n_lengths)
+{
+    char text[2048];
+    size_t used = 0;
+
+    int n = snprintf(text, sizeof(text), "@HD\tVN:1.6\tSO:coordinate\n");
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_TRUE((size_t)n < sizeof(text) - used);
+    used += (size_t)n;
+
+    for (size_t i = 0; i < n_lengths; ++i) {
+        TEST_ASSERT_TRUE(lengths[i] > 0);
+        n = snprintf(
+            text + used, sizeof(text) - used,
+            "@SQ\tSN:chr%zu\tLN:%d\n", i + 1, lengths[i]);
+        TEST_ASSERT_TRUE(n > 0);
+        TEST_ASSERT_TRUE((size_t)n < sizeof(text) - used);
+        used += (size_t)n;
+    }
+
+    bam_hdr_t *hdr = sam_hdr_parse((int)used, text);
+    TEST_ASSERT_NOT_NULL(hdr);
+    return hdr;
+}
+
+static void cleanup_output_dir(const char *dir_path)
+{
+    char path[512];
+
+    int n = snprintf(path, sizeof(path), "%s/global.summary.txt", dir_path);
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_TRUE((size_t)n < sizeof(path));
+    TEST_ASSERT_EQUAL_INT(0, remove(path));
+
+    n = snprintf(path, sizeof(path), "%s/global.dist.txt", dir_path);
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_TRUE((size_t)n < sizeof(path));
+    TEST_ASSERT_EQUAL_INT(0, remove(path));
+
+    TEST_ASSERT_EQUAL_INT(0, rmdir(dir_path));
+}
+
+static bam1_t *make_read(
+    const char *qname, int32_t tid, int32_t pos,
+    uint32_t read_len, const uint32_t *cigar, uint32_t n_cigar, const uint16_t *flags)
+{
+    bam1_t *b = bam_init1();
+    TEST_ASSERT_NOT_NULL(b);
+
+    uint32_t fallback_cigar = 0;
+    const uint32_t *use_cigar = cigar;
+    uint32_t use_n_cigar = n_cigar;
+    size_t use_read_len = read_len;
+
+    if (use_cigar == NULL) {
+        // tell us where you're from
+        fallback_cigar = bam_cigar_gen(read_len, BAM_CMATCH);
+        use_cigar = &fallback_cigar;
+        use_n_cigar = 1;
+    } else {
+        // what you want to become
+        TEST_ASSERT_TRUE(use_n_cigar > 0);
+        use_read_len = 0;
+        for (uint32_t i = 0; i < use_n_cigar; ++i) {
+            uint32_t op = bam_cigar_op(use_cigar[i]);
+            if (bam_cigar_type(op) & 1) {
+                use_read_len += bam_cigar_oplen(use_cigar[i]);
+            }
+        }
+    }
+    // and we'll say if you're ok
+    TEST_ASSERT_TRUE(use_read_len > 0);
+
+    uint16_t use_flags = flags ? *flags : 0;
+
+    char *seq = malloc(use_read_len + 1);
+    char *qual = malloc(use_read_len + 1);
+    TEST_ASSERT_NOT_NULL(seq);
+    TEST_ASSERT_NOT_NULL(qual);
+    memset(seq, 'N', use_read_len);
+    memset(qual, 'A', use_read_len);
+    seq[use_read_len] = '\0';
+    qual[use_read_len] = '\0';
+
+    int rc = bam_set1(
+        b,
+        strlen(qname) + 1, qname,
+        use_flags, tid, pos, 60,
+        use_n_cigar, use_cigar,
+        -1, -1, 0,
+        use_read_len, seq, qual,
+        0);
+    free(seq);
+    free(qual);
+
+    TEST_ASSERT_TRUE(rc >= 0);
+    return b;
+}
+
+static void test_coverage_process_exclude_flags(void)
+{
+    const int lengths[1] = { 100 };
+    const size_t active_len = (size_t)lengths[0] + 1u;
+
+    char out_dir[] = "/tmp/fastcat_cov_flags_exclXXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
+
+    // setup writer with an explicit exclude flag
+    bam_hdr_t *hdr = make_header(lengths, 1);
+    cov_writer w = init_coverage_writer(
+        out_dir, false, false,
+        BAM_FQCFAIL, 0, false,
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+    TEST_ASSERT_NOT_NULL(w);
+
+    // process one allowed read and one excluded read
+    uint16_t flags_qcfail = BAM_FQCFAIL;
+    bam1_t *read_ok = make_read("ok", 0, 10, 10, NULL, 0, NULL);
+    bam1_t *read_qcfail = make_read("qcfail", 0, 30, 10, NULL, 0, &flags_qcfail);
+    coverage_process(w, read_ok);
+    coverage_process(w, read_qcfail);
+
+    // only the allowed read should contribute to forward diffs
+    int32_t *expected = calloc(active_len, sizeof(*expected));
+    TEST_ASSERT_NOT_NULL(expected);
+    expected[10] = 1;
+    expected[20] = -1;
+    TEST_ASSERT_EQUAL_INT32_ARRAY(expected, w->diff_fwd, active_len);
+    TEST_ASSERT_EACH_EQUAL_INT32(0, w->diff_rev, active_len);
+    free(expected);
+
+    bam_destroy1(read_ok);
+    bam_destroy1(read_qcfail);
+    destroy_coverage_writer(w);
+    sam_hdr_destroy(hdr);
+    cleanup_output_dir(out_dir);
+}
+
+static void test_coverage_process_include_flags(void)
+{
+    const int lengths[1] = { 100 };
+    const size_t active_len = (size_t)lengths[0] + 1u;
+
+    char out_dir[] = "/tmp/fastcat_cov_flags_inclXXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
+
+    // setup writer requiring reads to match include flag
+    bam_hdr_t *hdr = make_header(lengths, 1);
+    cov_writer w = init_coverage_writer(
+        out_dir, false, false,
+        0, BAM_FREVERSE, false,
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+    TEST_ASSERT_NOT_NULL(w);
+
+    // process one non-matching forward read and one matching reverse read
+    uint16_t flags_rev = BAM_FREVERSE;
+    bam1_t *read_fwd = make_read("fwd", 0, 40, 10, NULL, 0, NULL);
+    bam1_t *read_rev = make_read("rev", 0, 50, 10, NULL, 0, &flags_rev);
+    coverage_process(w, read_fwd);
+    coverage_process(w, read_rev);
+
+    // only reverse buffer should be populated by the included read
+    int32_t *expected_fwd = calloc(active_len, sizeof(*expected_fwd));
+    int32_t *expected_rev = calloc(active_len, sizeof(*expected_rev));
+    TEST_ASSERT_NOT_NULL(expected_fwd);
+    TEST_ASSERT_NOT_NULL(expected_rev);
+    expected_rev[50] = 1;
+    expected_rev[60] = -1;
+    TEST_ASSERT_EQUAL_INT32_ARRAY(expected_fwd, w->diff_fwd, active_len);
+    TEST_ASSERT_EQUAL_INT32_ARRAY(expected_rev, w->diff_rev, active_len);
+    free(expected_fwd);
+    free(expected_rev);
+
+    bam_destroy1(read_fwd);
+    bam_destroy1(read_rev);
+    destroy_coverage_writer(w);
+    sam_hdr_destroy(hdr);
+    cleanup_output_dir(out_dir);
+}
+
+static void test_coverage_process_use_cigar_mixed_ops(void)
+{
+    const int lengths[1] = { 100 };
+    const size_t active_len = (size_t)lengths[0] + 1u;
+
+    char out_dir[] = "/tmp/fastcat_cov_cigarXXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
+
+    // setup writer in CIGAR-aware mode
+    bam_hdr_t *hdr = make_header(lengths, 1);
+    cov_writer w = init_coverage_writer(
+        out_dir, false, true,
+        -1, -1, false,
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+    TEST_ASSERT_NOT_NULL(w);
+
+    // 4M2I3M1D2M2N1M at POS=10. Covered ranges:
+    // [10,14), [14,17), [18,20), [22,23)
+    uint32_t cigar[] = {
+        bam_cigar_gen(4, BAM_CMATCH),
+        bam_cigar_gen(2, BAM_CINS),
+        bam_cigar_gen(3, BAM_CMATCH),
+        bam_cigar_gen(1, BAM_CDEL),
+        bam_cigar_gen(2, BAM_CMATCH),
+        bam_cigar_gen(2, BAM_CREF_SKIP),
+        bam_cigar_gen(1, BAM_CMATCH),
+    };
+    bam1_t *read = make_read("mix", 0, 10, 0, cigar, 7, NULL);
+    coverage_process(w, read);
+
+    // expected diff is the sum of the CIGAR-derived covered segments
+    int32_t *expected = calloc(active_len, sizeof(*expected));
+    TEST_ASSERT_NOT_NULL(expected);
+    expected[10] += 1;
+    expected[17] -= 1;
+    expected[18] += 1;
+    expected[20] -= 1;
+    expected[22] += 1;
+    expected[23] -= 1;
+    TEST_ASSERT_EQUAL_INT32_ARRAY(expected, w->diff_fwd, active_len);
+    TEST_ASSERT_EACH_EQUAL_INT32(0, w->diff_rev, active_len);
+    free(expected);
+
+    bam_destroy1(read);
+    destroy_coverage_writer(w);
+    sam_hdr_destroy(hdr);
+    cleanup_output_dir(out_dir);
+}
+
+static void test_coverage_process_end_marker_at_contig_len(void)
+{
+    const int lengths[1] = { 50 };
+    const size_t active_len = (size_t)lengths[0] + 1u;
+
+    char out_dir[] = "/tmp/fastcat_cov_boundaryXXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
+
+    // setup a simple writer and process one boundary read
+    bam_hdr_t *hdr = make_header(lengths, 1);
+    cov_writer w = init_coverage_writer(
+        out_dir, false, false,
+        -1, -1, false,
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+    TEST_ASSERT_NOT_NULL(w);
+
+    bam1_t *read = make_read("boundary", 0, 40, 10, NULL, 0, NULL);
+    coverage_process(w, read);
+
+    // end marker should land exactly at contig_len
+    int32_t *expected = calloc(active_len, sizeof(*expected));
+    TEST_ASSERT_NOT_NULL(expected);
+    expected[40] = 1;
+    expected[50] = -1;
+    TEST_ASSERT_EQUAL_INT32_ARRAY(expected, w->diff_fwd, active_len);
+    TEST_ASSERT_EACH_EQUAL_INT32(0, w->diff_rev, active_len);
+    free(expected);
+
+    bam_destroy1(read);
+    destroy_coverage_writer(w);
+    sam_hdr_destroy(hdr);
+    cleanup_output_dir(out_dir);
+}
+
+static void test_coverage_writer_init_destroy_no_data(void)
+{
+    const int lengths[1] = { 80 };
+    char out_dir[] = "/tmp/fastcat_cov_lifecycleXXXXXX";
+    char summary[512];
+    char dist[512];
+
+    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
+
+    // init writer without processing any reads
+    bam_hdr_t *hdr = make_header(lengths, 1);
+    cov_writer w = init_coverage_writer(
+        out_dir, false, false,
+        -1, -1, false,
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+    TEST_ASSERT_NOT_NULL(w);
+
+    // writer starts in an uninitialized contig state
+    TEST_ASSERT_EQUAL_INT(-1, w->tid);
+    TEST_ASSERT_EQUAL_INT64(0, w->contig_len);
+    TEST_ASSERT_NULL(w->chrom);
+    TEST_ASSERT_EQUAL_UINT(0u, w->buf_size);
+    TEST_ASSERT_NULL(w->diff_fwd);
+    TEST_ASSERT_NULL(w->diff_rev);
+
+    // destroy should still emit expected summary/dist outputs
+    destroy_coverage_writer(w);
+
+    int n = snprintf(summary, sizeof(summary), "%s/global.summary.txt", out_dir);
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_TRUE((size_t)n < sizeof(summary));
+    n = snprintf(dist, sizeof(dist), "%s/global.dist.txt", out_dir);
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_TRUE((size_t)n < sizeof(dist));
+    TEST_ASSERT_EQUAL_INT(0, access(summary, F_OK));
+    TEST_ASSERT_EQUAL_INT(0, access(dist, F_OK));
+
+    sam_hdr_destroy(hdr);
+    cleanup_output_dir(out_dir);
+}
+
+static void test_coverage_process(void)
+{
+    const int lengths[7] = { 120, 60, 180, 70, 220, 80, 260 };
+    const int32_t read_offset = 3;
+    const uint32_t read_length = 10;
+
+    char out_dir[] = "/tmp/fastcat_cov_wXXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
+
+    bam_hdr_t *hdr = make_header(lengths, 7);
+    cov_writer w = init_coverage_writer(
+        out_dir,
+        false, // per-base output off for unit tests
+        false, // don't inspect CIGAR op-by-op in unit tests
+        -1, -1, false,
+        hdr, NULL,
+        NULL, NULL, 0,
+        NULL, 0,
+        NULL, 0);
+    TEST_ASSERT_NOT_NULL(w);
+
+    size_t prev_buf_size = 0;
+    for (int32_t contig = 0; contig < 7; ++contig) {
+        size_t active_len = (size_t)lengths[contig] + 1u;
+        int32_t first_read_start = contig;  // do be different for each contig
+        int32_t max_start = lengths[contig] - (int32_t)read_length;
+        size_t n_reads = 1u + (size_t)((max_start - first_read_start) / read_offset);
+
+        // add first read: triggers contig switch and reset of state
+        {
+            int32_t read_start = first_read_start;
+            char qname[64];
+            int n = snprintf(qname, sizeof(qname), "t%d_r0", contig);
+            TEST_ASSERT_TRUE(n > 0);
+            TEST_ASSERT_TRUE((size_t)n < sizeof(qname));
+            bam1_t *read = make_read(qname, contig, read_start, read_length, NULL, 0, NULL);
+            coverage_process(w, read);
+            bam_destroy1(read);
+        }
+
+        // check contig meta data
+        TEST_ASSERT_EQUAL_INT(contig, w->tid);
+        TEST_ASSERT_EQUAL_INT64(lengths[contig], w->contig_len);
+        {
+            char expected_chrom[16];
+            int n = snprintf(expected_chrom, sizeof(expected_chrom), "chr%d", contig + 1);
+            TEST_ASSERT_TRUE(n > 0);
+            TEST_ASSERT_TRUE((size_t)n < sizeof(expected_chrom));
+            TEST_ASSERT_EQUAL_STRING(expected_chrom, w->chrom);
+        }
+        // check buffer size, contigent on if size went up or down from previous
+        if (contig > 0) {
+            if (active_len > prev_buf_size) {
+                TEST_ASSERT_TRUE(w->buf_size > prev_buf_size);
+            } else {
+                TEST_ASSERT_TRUE(w->buf_size == prev_buf_size);
+            }
+        } else {
+            TEST_ASSERT_TRUE(w->buf_size >= active_len);
+        }
+
+        // buffers are correctly zeroed on contig change:
+        // after first read on this contig, only one +1/-1 pair should be present
+        // we don't care about anything after active_len (memset optimisation)
+        {
+            int32_t *expected = calloc(active_len, sizeof(*expected));
+            TEST_ASSERT_NOT_NULL(expected);
+            expected[first_read_start] = 1;
+            expected[first_read_start + read_length] = -1;
+            TEST_ASSERT_EQUAL_INT32_ARRAY(expected, w->diff_fwd, active_len);
+            TEST_ASSERT_EACH_EQUAL_INT32(0, w->diff_rev, active_len);
+            free(expected);
+        }
+
+        // add remaining reads for this contig
+        for (size_t read_idx = 1; read_idx < n_reads; ++read_idx) {
+            int32_t read_start = first_read_start + (int32_t)read_idx * read_offset;
+            char qname[64];
+            int n = snprintf(qname, sizeof(qname), "t%d_r%zu", contig, read_idx);
+            TEST_ASSERT_TRUE(n > 0);
+            TEST_ASSERT_TRUE((size_t)n < sizeof(qname));
+            bam1_t *read = make_read(qname, contig, read_start, read_length, NULL, 0, NULL);
+            coverage_process(w, read);
+            bam_destroy1(read);
+        }
+
+        // buffers contain correct contents after all reads added for this contig
+        {
+            int32_t *expected_fwd = calloc(active_len, sizeof(*expected_fwd));
+            TEST_ASSERT_NOT_NULL(expected_fwd);
+            // trivial reimplementation of expected values
+            for (size_t read_idx = 0; read_idx < n_reads; ++read_idx) {
+                size_t start = (size_t)(first_read_start + (int32_t)read_idx * read_offset);
+                size_t end = start + (size_t)read_length;
+                TEST_ASSERT_TRUE(end < active_len);
+                expected_fwd[start] += 1;
+                expected_fwd[end] -= 1;
+            }
+            TEST_ASSERT_EQUAL_INT32_ARRAY(expected_fwd, w->diff_fwd, active_len);
+            TEST_ASSERT_EACH_EQUAL_INT32(0, w->diff_rev, active_len);
+
+            // add in a reverse read to check that diff_rev is unaffected by forward reads and vice versa
+            int32_t read_start = first_read_start;
+            char qname[64];
+            int n = snprintf(qname, sizeof(qname), "t%d_r_rev", contig);
+            TEST_ASSERT_TRUE(n > 0);
+            TEST_ASSERT_TRUE((size_t)n < sizeof(qname));
+            uint16_t flags_rev = BAM_FREVERSE;
+            bam1_t *read = make_read(qname, contig, read_start, read_length, NULL, 0, &flags_rev);
+            coverage_process(w, read);
+            bam_destroy1(read);
+       
+            TEST_ASSERT_EQUAL_INT32_ARRAY(expected_fwd, w->diff_fwd, active_len);
+        
+            int32_t *expected_rev = calloc(active_len, sizeof(*expected_rev));
+            TEST_ASSERT_NOT_NULL(expected_rev);
+            expected_rev[first_read_start] = 1;
+            expected_rev[first_read_start + read_length] = -1;
+            TEST_ASSERT_EQUAL_INT32_ARRAY(expected_rev, w->diff_rev, active_len);
+            free(expected_rev);
+            free(expected_fwd);
+        }
+        
+        prev_buf_size = w->buf_size;
+    }
+
+    destroy_coverage_writer(w);
+    sam_hdr_destroy(hdr);
+    cleanup_output_dir(out_dir);
+}
+
+void bamcoverage_suite(void)
+{
+    RUN_TEST(test_coverage_process_exclude_flags);
+    RUN_TEST(test_coverage_process_include_flags);
+    RUN_TEST(test_coverage_process_use_cigar_mixed_ops);
+    RUN_TEST(test_coverage_process_end_marker_at_contig_len);
+    RUN_TEST(test_coverage_writer_init_destroy_no_data);
+    RUN_TEST(test_coverage_process);
+}
