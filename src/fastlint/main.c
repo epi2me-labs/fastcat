@@ -1,6 +1,7 @@
 #include "main.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "../fc_log.h"
 #include "../kseq_gz.h"
@@ -23,14 +24,27 @@ int fastlint_main(int argc, char *argv[])
     arguments_t args = fastlint_parse_arguments(argc, argv);
 
     for (size_t i = 0; i < args.nfiles; ++i) {
+        const char *input_name = args.fastq[i];
         if ((strcmp(args.fastq[i], "-") == 0) && (strlen(args.fastq[i]) == 1)) {
             fp = gzdopen(fileno(stdin), "r");
         } else {
             fp = gzopen(args.fastq[i], "r");
         }
+        if (fp == NULL) {
+            FC_LOG_ERROR("Failed to open FASTQ input: %s", input_name);
+            fc_log_destroy();
+            return EXIT_FAILURE;
+        }
         ks = kseq_init(fp);
+        if (ks == NULL) {
+            FC_LOG_ERROR("Failed to initialize FASTQ reader for input: %s", input_name);
+            gzclose(fp);
+            fc_log_destroy();
+            return EXIT_FAILURE;
+        }
 
-        while (kseq_read(ks) >= 0) {
+        int kseq_status = 0;
+        while ((kseq_status = kseq_read(ks)) >= 0) {
             uint64_t *r;
             int n;
             r = sdust(0, (uint8_t *)ks->seq.s, -1, args.t, args.w, &n);
@@ -43,7 +57,7 @@ int fastlint_main(int argc, char *argv[])
                 masked_bases += (end - start);
             }
             int read_length = ks->seq.l;
-            double masked_fraction = (double)masked_bases / read_length;
+            double masked_fraction = read_length == 0 ? 0.0 : (double)masked_bases / read_length;
             if (masked_fraction > args.max_proportion) {
                 FC_LOG_WARN("Read %s masked fraction %.2f exceeds threshold %.2f, skipping.",
                     ks->name.s, masked_fraction, args.max_proportion);
@@ -65,8 +79,19 @@ int fastlint_main(int argc, char *argv[])
             }
             free(r);
         }
+        if (kseq_status < -1) {
+            FC_LOG_ERROR("Failed to parse FASTQ input: %s", input_name);
+            kseq_destroy(ks);
+            gzclose(fp);
+            fc_log_destroy();
+            return EXIT_FAILURE;
+        }
         kseq_destroy(ks);
-        gzclose(fp);
+        if (gzclose(fp) != Z_OK) {
+            FC_LOG_ERROR("Failed to close FASTQ input stream: %s", input_name);
+            fc_log_destroy();
+            return EXIT_FAILURE;
+        }
     }
     fc_log_destroy();
     return 0;
