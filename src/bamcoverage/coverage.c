@@ -267,13 +267,21 @@ static void _reset_contig(cov_writer w, const int32_t tid)
         w->tid = tid;
         w->contig_len = w->hdr->target_len[tid];
         w->chrom = w->hdr->target_name[tid];
-        if (w->contig_len > w->buf_size) {
-            w->buf_size = w->contig_len + 1;
+
+        size_t required_buf = (size_t)w->contig_len + 1u;
+
+        if (required_buf > w->buf_size) {
+            // grow buffer and clear everything
+            w->buf_size = required_buf;
             w->diff_fwd = xrealloc(w->diff_fwd, w->buf_size * sizeof(int32_t), "coverage buffer");
             w->diff_rev = xrealloc(w->diff_rev, w->buf_size * sizeof(int32_t), "coverage buffer");
+            memset(w->diff_fwd, 0, w->buf_size * sizeof(int32_t));
+            memset(w->diff_rev, 0, w->buf_size * sizeof(int32_t));
+        } else {
+            // buffer is good size, zero what we need
+            memset(w->diff_fwd, 0, required_buf * sizeof(int32_t));
+            memset(w->diff_rev, 0, required_buf * sizeof(int32_t));
         }
-        memset(w->diff_fwd, 0, w->buf_size * sizeof(int32_t));
-        memset(w->diff_rev, 0, w->buf_size * sizeof(int32_t));
     } else {
         w->tid = -1;
         w->contig_len = 0;
@@ -614,16 +622,16 @@ void coverage_process(cov_writer w, const bam1_t *b)
 
     // either use rstart/rend or studiously examine cigar
     if (!w->use_cigar) {
-        int32_t rstart = (int32_t)b->core.pos;
-        int32_t rend = (int32_t)bam_endpos(b);
+        size_t rstart = (size_t)b->core.pos;
+        size_t rend = (size_t)bam_endpos(b);
         diff[rstart] += 1;
         diff[rend] -= 1;
     } else {
         const uint32_t *cigar = bam_get_cigar(b);
-        int32_t rstart = (int32_t)b->core.pos;
+        size_t rstart = (size_t)b->core.pos;
         for (uint32_t i = 0; i < b->core.n_cigar; ++i) {
             const uint32_t op = cigar[i];
-            const int len = bam_cigar_oplen(op);
+            size_t len = (size_t)bam_cigar_oplen(op);
             if (is_ref_and_query(op)) {
                 diff[rstart] += 1;
                 diff[rstart + len] -= 1;

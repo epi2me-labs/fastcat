@@ -13,6 +13,7 @@ void bam_utils_suite(void);
 void qualcalcs_suite(void);
 void iter_suite(void);
 void iter_collect_suite(void);
+void bamcoverage_suite(void);
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -39,6 +40,7 @@ int main(void) {
     qualcalcs_suite();
     iter_suite();
     iter_collect_suite();
+    bamcoverage_suite();
     int rc = UNITY_END();
 
     fc_log_destroy();

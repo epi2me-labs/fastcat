@@ -38,7 +38,6 @@ HTSLIB_PATCH_STAMP ?= .fastcat_patch_applied
 EXTRA_CFLAGS ?=
 EXTRA_LDFLAGS ?=
 EXTRA_LIBS ?=
-EXTRA_LIBS ?=
 HTS_CONF_ARGS ?=
 NOTHREADS ?=
 ifeq ($(NOTHREADS), 1)
@@ -68,8 +67,18 @@ endif
     export ASAN_OPTIONS
     export UBSAN_OPTIONS
 else
-    # Production builds: disable asserts for performance
+    # disable asserts in non-sanitizer builds
     CFLAGS += -DNDEBUG
+endif
+
+PROFILE ?= 0
+PROFILER_LIBDIR ?=
+ifeq ($(PROFILE),1)
+    EXTRA_CFLAGS += -g3 -fno-omit-frame-pointer
+    EXTRA_LIBS += -Wl,--no-as-needed -lprofiler -Wl,--as-needed
+    ifneq ($(PROFILER_LIBDIR),)
+        EXTRA_LDFLAGS += -L$(PROFILER_LIBDIR) -Wl,-rpath,$(PROFILER_LIBDIR)
+    endif
 endif
 
 LIBDEF=$(abspath libdeflate-$(DEFLATEVER))
@@ -184,8 +193,8 @@ clang_tidy: $(HTSLIB_PATCH_STAMP)
 	@echo "Running clang-tidy static analysis..."
 	@failed_files=$$(mktemp); \
 	trap 'rm -f "$$failed_files"' EXIT; \
-	find src -type f -name '*.c' ! -path 'src/sdust/*' -print0 | \
-		xargs -0 -I{} sh -c '$(CLANG_TIDY) --warnings-as-errors="*" "$$1" -- -Isrc -Ihtslib -Izlib-ng $(CFLAGS) || echo "$$1" >> "$$2"' sh {} "$$failed_files"; \
+		find src -type f -name '*.c' ! -path 'src/sdust/*' -print0 | \
+		xargs -0 -I{} sh -c '$(CLANG_TIDY) --quiet --warnings-as-errors="*" --header-filter="(^|.*/)src/.*" "$$1" -- -Isrc -Ihtslib -Izlib-ng $(CFLAGS) || echo "$$1" >> "$$2"' sh {} "$$failed_files"; \
 	xargs_status=$$?; \
 	if [ $$xargs_status -ne 0 ]; then \
 		exit $$xargs_status; \
@@ -246,7 +255,7 @@ CORE_LIB = libfastcatcore.a
 FASTCAT_SUBCOMMAND_OBJS = src/fastlint/main.o src/fastlint/args.o src/bamcoverage/main.o src/bamcoverage/args.o src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o
 
 # unit tests
-UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unity/unity.c
+UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unit/test_bamcoverage.c test/unity/unity.c
 UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
 
