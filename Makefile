@@ -833,7 +833,7 @@ regression_test_rg_parsing: test/rg_parse
 # bamindex tests
 
 .PHONY:
-test_bamindex: mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamindex-fetch 
+test_bamindex: mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamindex-fetch
 
 .PHONY: mem_check_bamindex-build
 mem_check_bamindex-build: fastcat
