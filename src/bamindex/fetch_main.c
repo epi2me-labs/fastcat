@@ -126,6 +126,16 @@ void index_fetch(const char *bam_fname, const char *index_fname, int chunk, int 
         exit(EXIT_FAILURE);
     }
     fclose(idx_fp);
+    if ((size_t)chunk >= idx->n_chunks) {
+        FC_LOG_ERROR("Requested chunk %d is out of range for index with %zu chunk(s).", chunk, idx->n_chunks);
+        bc_idx_destroy(idx);
+        bam_hdr_destroy(h);
+        hts_close(fp);
+        if (p.pool) {
+            hts_tpool_destroy(p.pool);
+        }
+        exit(EXIT_FAILURE);
+    }
     bc_rec_t rec = idx->recs[chunk];
 
     FC_LOG_INFO("Starting from: %zu %s", rec.file_offset, rec.qname);
