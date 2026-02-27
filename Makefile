@@ -584,7 +584,7 @@ test_fastcat_bam_input_rejects_mapped: fastcat
 # bamstats tests
 
 .PHONY: 
-test_bamstats: test_bamstats_NM test_bamstats_polya test_bamstats_filters test_bamstats_vs_fastcat_unaligned test_bamstats_vs_fastcat_unaligned_demux test_bamstats_demux_single_equiv test_bamstats_perfile_all_filtered test_bamstats_sample_column mem_check_bamstats
+test_bamstats: test_bamstats_NM test_bamstats_no_nan_metrics test_bamstats_polya test_bamstats_filters test_bamstats_vs_fastcat_unaligned test_bamstats_vs_fastcat_unaligned_demux test_bamstats_demux_single_equiv test_bamstats_perfile_all_filtered test_bamstats_sample_column mem_check_bamstats
 .PHONY: test_bamstats_coverage_demux_layout
 test_bamstats: test_bamstats_coverage_demux_layout
 .PHONY: test_bamstats_stdin_equiv test_bamstats_stdin_bed_equiv
@@ -661,8 +661,24 @@ test_bamstats_stdin_bed_equiv: fastcat samtools
 test_bamstats_NM: fastcat
 	@$(call TEST_DESC,Bamstats NM validation)
 	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/nm, \
-		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats_badNM/test.sam --output out_bad 2> err || grep "appears to contain implausible alignment information" err && \
-		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats_zeroNM/test.sam --output out_zero)
+		set +e; \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats_zeroNM/implausible_nm.sam --output out_bad_implausible > /dev/null 2> err_implausible.log; \
+		rc_implausible=$$?; \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats_zeroNM/inconsistent_nm.sam --output out_bad_inconsistent > /dev/null 2> err_inconsistent.log; \
+		rc_inconsistent=$$?; \
+		$(RUN_BAMSTATS) $(TEST_ROOT)/bamstats_zeroNM/test.sam --output out_zero > /dev/null 2> err_zero.log; \
+		rc_zero=$$?; \
+		set -e; \
+		test $$rc_implausible -ne 0 && grep -Eq "appears to contain implausible alignment information|zero aligned match/length" err_implausible.log && \
+		test $$rc_inconsistent -ne 0 && grep -q "inconsistent NM tag" err_inconsistent.log && \
+		test $$rc_zero -eq 0)
+
+.PHONY: test_bamstats_no_nan_metrics
+test_bamstats_no_nan_metrics: fastcat
+	@$(call TEST_DESC,Bamstats rejects alignments that produce non-finite metrics)
+	$(call RUN_IN_TMP,$(TEST_TMP_BAMSTATS)/nan_guard, \
+		set +e; $(RUN_BAMSTATS) $(TEST_ROOT)/bamstats_zeroNM/nan_bad.sam --output out_bad_nan > /dev/null 2> err_nan.log; rc=$$?; set -e; \
+		test $$rc -ne 0 && grep -q "zero aligned match/length" err_nan.log)
 
 .PHONY: test_bamstats_polya
 test_bamstats_polya: fastcat

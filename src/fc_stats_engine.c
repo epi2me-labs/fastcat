@@ -1,5 +1,6 @@
 #include "fc_stats_engine.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,8 +31,7 @@ static inline size_t get_query_start(bam1_t *b)
         uint32_t op = bam_cigar_op(cigar[i]);
         if (op == BAM_CHARD_CLIP) {
             if ((start_offset != 0) && (start_offset != qlen)) {
-                FC_LOG_ERROR("Invalid clipping in cigar string.");
-                exit(EXIT_FAILURE);
+                FC_LOG_FATAL("Invalid clipping in cigar string.");
             }
         } else if (op == BAM_CSOFT_CLIP) {
             start_offset += bam_cigar_oplen(cigar[i]);
@@ -51,8 +51,7 @@ static inline size_t get_query_end(bam1_t *b)
         uint32_t op = bam_cigar_op(cigar[i]);
         if (op == BAM_CHARD_CLIP) {
             if (end_offset != qlen) {
-                FC_LOG_ERROR("Invalid clipping in cigar string.");
-                exit(EXIT_FAILURE);
+                FC_LOG_FATAL("Invalid clipping in cigar string.");
             }
         } else if (op == BAM_CSOFT_CLIP) {
             end_offset -= bam_cigar_oplen(cigar[i]);
@@ -119,25 +118,47 @@ static void fc_stats_engine_add_aligned(fc_stats_engine *engine, const fc_read *
     size_t match = stats[BAM_CMATCH] + stats[BAM_CEQUAL] + stats[BAM_CDIFF];
     size_t ins = stats[BAM_CINS];
     size_t delt = stats[BAM_CDEL];
-    size_t sub = fr->meta->edit_distance - ins - delt;
+    if (fr->meta->edit_distance < 0) {
+        FC_LOG_FATAL("Read '%s' has a negative NM edit distance.", bam_get_qname(b));
+    }
+    size_t edit_distance = (size_t)fr->meta->edit_distance;
+    if (edit_distance < (ins + delt)) {
+        FC_LOG_FATAL(
+            "Read '%s' has inconsistent NM tag (%zu) and CIGAR indel length (%zu).",
+            bam_get_qname(b), edit_distance, ins + delt);
+    }
+    size_t sub = edit_distance - ins - delt;
     size_t length = match + ins + delt;
+    if (match == 0 || length == 0) {
+        FC_LOG_FATAL("Read '%s' has zero aligned match/length; cannot compute alignment metrics.", bam_get_qname(b));
+    }
     float iden = 100 * ((float)(match - sub)) / match;
-    float acc = 100 - 100 * ((float)(fr->meta->edit_distance)) / length;
-    if (iden < 0.0 || acc < 0.0 || (size_t)fr->meta->edit_distance > length) {
-        FC_LOG_ERROR("Read '%s' appears to contain implausible alignment information", bam_get_qname(b));
-        exit(EXIT_FAILURE);
+    float acc = 100 - 100 * ((float)edit_distance) / length;
+    if (sub > match || !isfinite(iden) || !isfinite(acc)
+        || iden < 0.0 || acc < 0.0 || edit_distance > length) {
+        FC_LOG_FATAL("Read '%s' appears to contain implausible alignment information", bam_get_qname(b));
     }
 
     uint32_t read_length = b->core.l_qseq;
     size_t qstart = get_query_start(b);
     size_t qend = get_query_end(b);
+    if (qend < qstart || read_length == 0) {
+        FC_LOG_FATAL("Read '%s' has invalid query span (%zu-%zu) for read length %u.",
+            bam_get_qname(b), qstart, qend, read_length);
+    }
     float mean_quality = fr->meta->mean_q;
     float coverage = 100 * ((float)(qend - qstart)) / read_length;
     size_t rstart = b->core.pos;
     size_t rend = bam_endpos(b);
     size_t aligned_ref_len = rend - rstart;
     size_t ref_length = sam_hdr_tid2len(hdr, b->core.tid);
+    if (ref_length == 0) {
+        FC_LOG_FATAL("Read '%s' is aligned to a zero-length reference.", bam_get_qname(b));
+    }
     float ref_cover = 100 * ((float)(aligned_ref_len)) / ref_length;
+    if (!isfinite(coverage) || !isfinite(ref_cover)) {
+        FC_LOG_FATAL("Read '%s' produced non-finite coverage metrics.", bam_get_qname(b));
+    }
     char direction = "+-"[bam_is_rev(b)];
 
     if (engine->acc_stats) {
@@ -208,12 +229,10 @@ fc_stats_read_kind fc_stats_engine_add_read(
     }
 
     if (!engine->track_alignment) {
-        FC_LOG_ERROR("Stats engine requires alignment tracking for mapped reads.");
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Stats engine requires alignment tracking for mapped reads.");
     }
     if (hdr == NULL) {
-        FC_LOG_ERROR("Stats engine requires a BAM header for aligned reads.");
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Stats engine requires a BAM header for aligned reads.");
     }
 
     add_length_count(engine->length_stats, fr->bam->core.l_qseq);

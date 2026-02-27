@@ -42,6 +42,7 @@ This has led to some changes in behaviour, particularly in the handling of SAM-s
 ### Added
 - Summary outputs from `bamstats` have been harmonized with `fastcat`; running `bamstats` on strictly unaligned reads will produce the same outputs (bar fastq/bam output) as running `fastcat`.
 - All ancilliarly file outputs are consistent in the case that demultiplexing is performance, and when it is not. i.e This means that a single demultiplexed output folder contains all the same files as when processing an input without demultiplexing and a single barcode.
+- Additional guards for implausible input data, such as an NM tag that is larger than the read length
 
 ## [v0.25.0]
 ### Fixed
