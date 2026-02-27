@@ -354,7 +354,7 @@ char *fc_strip_path(const char *input)
 char *fc_join_path(const char *dir, const char *leaf)
 {
     if (!dir || !leaf) {
-        return NULL;
+        FC_LOG_FATAL("Cannot join path with NULL components.");
     }
     size_t len = strlen(dir);
     size_t llen = strlen(leaf);
@@ -362,13 +362,12 @@ char *fc_join_path(const char *dir, const char *leaf)
     size_t total = len + need_sep + llen + 1;
 
     if (total > PATH_MAX) {
-        FC_LOG_ERROR("Path too long: '%s' + '%s' exceeds PATH_MAX (%d)", dir, leaf, PATH_MAX);
-        return NULL;
+        FC_LOG_FATAL("Path too long: '%s' + '%s' exceeds PATH_MAX (%d)", dir, leaf, PATH_MAX);
     }
 
     char *out = calloc(total, 1);
     if (!out) {
-        return NULL;
+        FC_LOG_FATAL("Failed to allocate joined path for '%s' + '%s'.", dir, leaf);
     }
     char *p = out;
     memcpy(p, dir, len);
