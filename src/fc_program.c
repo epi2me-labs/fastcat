@@ -313,12 +313,11 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
 
     fc_writer_finish(writer);
 
-    uint64_t total_records = global_stats.failures[R_RECORD_OK]
-        + global_stats.failures[R_TOO_LONG]
-        + global_stats.failures[R_TOO_SHORT]
-        + global_stats.failures[R_LOW_QUALITY]
-        + global_stats.failures[R_DUST_MASKED];
-    FC_LOG_INFO("Processed %" PRIu64 " records in %zu files.", total_records, nfile);
+    uint64_t seen_records = global_stats.failures[R_RECORD_SEEN];
+    uint64_t used_records = global_stats.failures[R_RECORD_OK];
+    FC_LOG_INFO(
+        "Processed %" PRIu64 " records (%" PRIu64 " passed filters) in %zu files.",
+        seen_records, used_records, nfile);
     if (status != EXIT_SUCCESS) {
         FC_LOG_WARN("Error processing files.");
     }

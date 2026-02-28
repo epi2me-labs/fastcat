@@ -137,15 +137,16 @@ bin edge.
 
 ### Per-file outputs
 
-The `per-file.txt` is also a tab-separated file with columns:
+The `per_file.txt` is also a tab-separated file with columns:
 
 ```text
-filename        n_seqs  n_bases min_length      max_length      mean_quality    f_file_ok       f_stream_error  f_qual_missing  f_qual_truncated        f_unknown_error r_record_ok     r_too_long r_too_short     r_low_quality   r_dust_masked
-test/data/bc0.fastq.gz  10      4599    191     965     9.86    1       0       0       0       0       10      0       0       0       0
+filename        n_seqs  n_bases min_length      max_length      mean_quality    f_file_ok       f_stream_error  f_qual_missing  f_qual_truncated        f_unknown_error r_record_seen   r_record_ok     r_too_long r_too_short     r_low_quality   r_dust_masked
+test/data/bc0.fastq.gz  10      4599    191     965     9.86    1       0       0       0       0       10      10      0       0       0       0
 ...
 ```
 where the `mean_quality` column is the mean of the per-read `mean_quality` values.
-The `f_*` fields detail various error and filtering read counts.
+The `f_*` fields detail file-level parse errors.
+`r_record_seen` is records parsed/considered, while `r_record_ok` is records that passed filters and were used downstream.
 
 The `basecallers.txt` and `runids.tsv` files contain per-file counts of unique basecallers and MinKNOW run identifiers observed in the input files.
 Their structures are, respectively:
@@ -165,7 +166,7 @@ test/data/bc0.fastq.gz  5a21d8a6996146deceeaea3784244c52741cae93        10
 
 ### Per-read output
 
-The (optional) `per-read.txt` is a tab-separated file with columns:
+The (optional) `per_read.txt` is a tab-separated file with columns:
 
 ```text
 read_id filename        runid   read_length     mean_quality    channel read_number     start_time

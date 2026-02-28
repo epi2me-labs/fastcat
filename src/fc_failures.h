@@ -10,6 +10,7 @@
     X(F_QUAL_MISSING)   \
     X(F_QUAL_TRUNCATED) \
     X(F_UNKNOWN_ERROR)  \
+    X(R_RECORD_SEEN)    \
     X(R_RECORD_OK)      \
     X(R_TOO_LONG)       \
     X(R_TOO_SHORT)      \
