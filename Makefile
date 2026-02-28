@@ -163,7 +163,7 @@ default: fastcat
 test: test_unit test_fastcat test_bamstats test_meta test_bamindex test_fastlint test_bamcoverage
 
 .PHONY:
-test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex mem_check_fastlint mem_check_bamcoverage
+test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamindex-fetch mem_check_fastlint mem_check_bamcoverage
 
 .PHONY: format format_check format_staged install_hooks
 format:

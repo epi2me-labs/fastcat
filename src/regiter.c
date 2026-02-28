@@ -141,45 +141,40 @@ void destroy_region_iterator(regiter *it)
     }
 }
 
-// Get the next region
-// returns:
-//      0 successful
-//     -1 if no more regions
-//     -2 if error parsing region string
-//     -3 if reference not found in BAM header
-int next_region(regiter *it)
+// Get the next region.
+regiter_status next_region(regiter *it)
 {
     if (it == NULL) {
-        return -1;
+        return REGITER_EOF;
     }
-    int rtn = 0;
+    regiter_status rtn = REGITER_OK;
     if (it->mode == 0) {
         if (it->bed_fp == NULL) {
-            return -1;
+            return REGITER_EOF;
         }
-        rtn = region_from_bed(it->bed_fp, &it->chr, &it->start, &it->end);
+        rtn = (regiter_status)region_from_bed(it->bed_fp, &it->chr, &it->start, &it->end);
     } else if (it->mode == 1) {
         it->mode = (it->bed_fp != NULL) ? 0 : 2;
         if (it->single_region) {
-            rtn = region_from_string(it->single_region, &it->chr, &it->start, &it->end);
-            if (rtn == -1) {
+            rtn = (regiter_status)region_from_string(it->single_region, &it->chr, &it->start, &it->end);
+            if (rtn == REGITER_EOF) {
                 FC_LOG_WARN("Failed to parse region string: %s", it->single_region);
                 it->error |= 2;
-                rtn = -2;
+                rtn = REGITER_PARSE_ERROR;
             }
         } else {
-            rtn = -1;
+            rtn = REGITER_EOF;
         }
     } else {
-        return -1;
+        return REGITER_EOF;
     }
 
-    if (rtn == 0) {
+    if (rtn == REGITER_OK) {
         // check reference exists and tidy up length
         int tid = sam_hdr_name2tid((sam_hdr_t *)it->hdr, it->chr);
         if (tid < 0) {
             FC_LOG_WARN("Failed to find reference '%s' in BAM header.", it->chr);
-            rtn = -3;
+            rtn = REGITER_REF_MISSING;
         } else {
             it->tid = tid;
             size_t ref_length = (size_t)sam_hdr_tid2len(it->hdr, tid);
@@ -187,7 +182,7 @@ int next_region(regiter *it)
             int ne = min(it->end, (int)ref_length);
             if (ns >= ne) {
                 FC_LOG_WARN("Zero-length region created after truncating to reference length (%zu) '%s:%d-%d'.", ref_length, it->chr, it->start, it->end);
-                rtn = -2;
+                rtn = REGITER_PARSE_ERROR;
             } else {
                 it->start = ns;
                 it->end = ne;
@@ -244,8 +239,8 @@ bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr)
     out->n_regions = 0;
 
     for (;;) {
-        int rc = next_region(&it);
-        if (rc == 0) {
+        regiter_status rc = next_region(&it);
+        if (rc == REGITER_OK) {
             if (out->n_regions == out->_capacity) {
                 size_t new_cap = out->_capacity * 2;
                 out->regions = fc_realloc(
@@ -265,10 +260,10 @@ bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr)
             out->n_regions++;
             continue;
         }
-        if (rc == -1) { // EOF
+        if (rc == REGITER_EOF) {
             break;
         }
-        // rc == -2 or -3: already warned by next_region(); skip.
+        // Parse/ref errors are already warned by next_region(); skip.
     }
 
     destroy_region_iterator(&it);

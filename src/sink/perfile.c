@@ -55,7 +55,7 @@ fc_sink fc_perfile_sink_create(const char *output_root, const char *sample)
         return sink;
     }
 
-    perfile_sink *state = calloc(1, sizeof(*state));
+    perfile_sink *state = fc_alloc(1, sizeof(*state), "per-file sink");
     char *path = fc_join_path(output_root, "per_file.tsv");
     ensure_parent_dir_exists(path);
     state->fp = fopen(path, "w");
@@ -75,7 +75,7 @@ fc_sink fc_perfile_sink_create(const char *output_root, const char *sample)
     for (size_t i = 0; i < NUM_FAILURE_CODES; ++i) {
         const char *src = failure_type[i];
         size_t len = strlen(src);
-        char *buffer = calloc(len + 1, sizeof(char));
+        char *buffer = fc_alloc(len + 1, sizeof(char), "failure label buffer");
         for (size_t j = 0; j < len; ++j) {
             buffer[j] = tolower((unsigned char)src[j]);
         }

@@ -40,7 +40,9 @@ int bamcoverage_main(int argc, char **argv)
         NULL, 0);
     bam1_t *rec = bam_init1();
     int ret;
+    size_t records_read = 0;
     while ((ret = sam_read1(in, hdr, rec)) >= 0) {
+        records_read++;
         coverage_process(writer, rec);
     }
     if (ret < -1) {
@@ -54,7 +56,7 @@ int bamcoverage_main(int argc, char **argv)
 
     hts_tpool_destroy(p.pool);
 
-    FC_LOG_INFO("Processed %zu regions from %s", args.n_beds, args.bam);
+    FC_LOG_INFO("Processed %zu records from %s", records_read, args.bam);
 
     fc_log_destroy();
     return 0;

@@ -21,10 +21,7 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
 
 fc_read *fc_read_init(void)
 {
-    fc_read *read = calloc(1, sizeof(*read));
-    if (!read) {
-        return NULL;
-    }
+    fc_read *read = fc_alloc(1, sizeof(*read), "read");
     read->bam = bam_init1();
     if (!read->bam) {
         free(read);

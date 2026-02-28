@@ -344,10 +344,7 @@ char *fc_strip_path(const char *input)
     if (len > 0 && input[len - 1] == '/') {
         len--;
     }
-    char *output = calloc(len + 1, sizeof(char));
-    if (!output) {
-        return NULL;
-    }
+    char *output = fc_alloc(len + 1, sizeof(char), "stripped path");
     memcpy(output, input, len);
     output[len] = '\0'; // explicit null termination
     return output;
@@ -367,17 +364,8 @@ char *fc_join_path(const char *dir, const char *leaf)
         FC_LOG_FATAL("Path too long: '%s' + '%s' exceeds PATH_MAX (%d)", dir, leaf, PATH_MAX);
     }
 
-    char *out = calloc(total, 1);
-    if (!out) {
-        FC_LOG_FATAL("Failed to allocate joined path for '%s' + '%s'.", dir, leaf);
-    }
-    char *p = out;
-    memcpy(p, dir, len);
-    p += len;
-    if (need_sep) {
-        *p++ = '/';
-    }
-    memcpy(p, leaf, llen + 1); // includes null terminator
+    char *out = fc_alloc(total, 1, "joined path");
+    FC_SNPRINTF_CHECK(out, total, "%s%s%s", dir, need_sep ? "/" : "", leaf);
     return out;
 }
 

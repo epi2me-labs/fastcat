@@ -85,11 +85,11 @@ static void test_region_from_bed_errors(void) {
     char* chr = NULL;
     int start = 0, end = 0;
 
-    TEST_ASSERT_EQUAL_INT(-2, region_from_bed(fp, &chr, &start, &end)); // missing end
-    TEST_ASSERT_EQUAL_INT(-2, region_from_bed(fp, &chr, &start, &end)); // bad start
-    TEST_ASSERT_EQUAL_INT(-2, region_from_bed(fp, &chr, &start, &end)); // bad end
-    TEST_ASSERT_EQUAL_INT(-2, region_from_bed(fp, &chr, &start, &end)); // start>=end
-    TEST_ASSERT_EQUAL_INT(-1, region_from_bed(fp, &chr, &start, &end)); // EOF
+    TEST_ASSERT_EQUAL_INT(REGITER_PARSE_ERROR, region_from_bed(fp, &chr, &start, &end)); // missing end
+    TEST_ASSERT_EQUAL_INT(REGITER_PARSE_ERROR, region_from_bed(fp, &chr, &start, &end)); // bad start
+    TEST_ASSERT_EQUAL_INT(REGITER_PARSE_ERROR, region_from_bed(fp, &chr, &start, &end)); // bad end
+    TEST_ASSERT_EQUAL_INT(REGITER_PARSE_ERROR, region_from_bed(fp, &chr, &start, &end)); // start>=end
+    TEST_ASSERT_EQUAL_INT(REGITER_EOF, region_from_bed(fp, &chr, &start, &end)); // EOF
 
     free(chr);
     fclose(fp);
@@ -114,11 +114,11 @@ static void test_region_from_bed_valid(void) {
 static void test_next_region_and_truncation(void) {
     sam_hdr_t* hdr = make_header();
     regiter it = init_region_iterator(NULL, "chr1:90-200", hdr);
-    TEST_ASSERT_EQUAL_INT(0, next_region(&it));
+    TEST_ASSERT_EQUAL_INT(REGITER_OK, next_region(&it));
     TEST_ASSERT_EQUAL_STRING("chr1", it.chr);
     TEST_ASSERT_EQUAL_INT(89, it.start); // truncated to ref length 100
     TEST_ASSERT_EQUAL_INT(100, it.end);
-    TEST_ASSERT_EQUAL_INT(-1, next_region(&it)); // exhausted single-region iterator
+    TEST_ASSERT_EQUAL_INT(REGITER_EOF, next_region(&it)); // exhausted single-region iterator
     destroy_region_iterator(&it);
     sam_hdr_destroy(hdr);
 }
@@ -126,7 +126,7 @@ static void test_next_region_and_truncation(void) {
 static void test_next_region_unknown_reference(void) {
     sam_hdr_t *hdr = make_header();
     regiter it = init_region_iterator(NULL, "chrX:1-10", hdr);
-    TEST_ASSERT_EQUAL_INT(-3, next_region(&it));
+    TEST_ASSERT_EQUAL_INT(REGITER_REF_MISSING, next_region(&it));
     TEST_ASSERT_EQUAL_INT(0, it.n_regions);
     destroy_region_iterator(&it);
     sam_hdr_destroy(hdr);

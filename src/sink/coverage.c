@@ -125,15 +125,7 @@ fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts)
             return sink;
         }
     }
-    state->barcode_writers = calloc(state->cfg.barcode_count, sizeof(cov_writer));
-    if (!state->barcode_writers) {
-        if (state->global_writer) {
-            destroy_coverage_writer(state->global_writer);
-        }
-        free(state->output_root);
-        free(state);
-        return sink;
-    }
+    state->barcode_writers = fc_alloc(state->cfg.barcode_count, sizeof(cov_writer), "coverage barcode writers");
     sink.ctx = state;
     sink.add_read = coverage_sink_add_read;
     sink.destroy = coverage_sink_destroy;

@@ -284,11 +284,8 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts)
             FC_LOG_FATAL("Failed to prepare output path.");
         }
     }
-    state->reads_written = calloc(state->cfg.barcode_count, sizeof(size_t));
-    state->file_index = calloc(state->cfg.barcode_count, sizeof(size_t));
-    if (!state->reads_written || !state->file_index) {
-        FC_LOG_FATAL("Failed to allocate output sink counters.");
-    }
+    state->reads_written = fc_alloc(state->cfg.barcode_count, sizeof(size_t), "output reads-written counters");
+    state->file_index = fc_alloc(state->cfg.barcode_count, sizeof(size_t), "output file-index counters");
 
     if (state->output != NULL) {
         // Allow directory to exist since it may have been created by fc_program already
@@ -311,10 +308,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts)
         }
         sam_hdr_add_line(state->bam_hdr, "HD", "VN", SAM_FORMAT_VERSION, "SO", "unsorted", NULL);
         sam_hdr_add_line(state->bam_hdr, "PG", "ID", "fastcat", "PN", "fastcat", "VN", argp_program_version, NULL);
-        state->bam_files = calloc(state->cfg.barcode_count, sizeof(htsFile *));
-        if (state->bam_files == NULL) {
-            FC_LOG_FATAL("Failed to allocate BAM output handles.");
-        }
+        state->bam_files = fc_alloc(state->cfg.barcode_count, sizeof(htsFile *), "BAM output handles");
         if (state->output == NULL) {
             state->bam_files[0] = hts_open("-", "wb");
             if (state->bam_files[0] == NULL) {
@@ -328,10 +322,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts)
             }
         }
     } else {
-        state->handles = calloc(state->cfg.barcode_count, sizeof(gzFile));
-        if (state->handles == NULL) {
-            FC_LOG_FATAL("Failed to allocate FASTQ output handles.");
-        }
+        state->handles = fc_alloc(state->cfg.barcode_count, sizeof(gzFile), "FASTQ output handles");
     }
 
     sink.ctx = state;
