@@ -64,7 +64,7 @@ fc_sink fc_perfile_sink_create(const char *output_root, const char *sample)
     }
     free(path);
     if (sample) {
-        state->sample = strdup(sample);
+        state->sample = fc_strdup(sample, "sample name for per-file sink");
     }
 
     fprintf(state->fp, "filename\t");

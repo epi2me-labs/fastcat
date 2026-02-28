@@ -10,10 +10,7 @@
 int region_from_string(char *input, char **chr, int *start, int *end)
 {
     int rtn = 0;
-    char *tmp = strdup(input);
-    if (tmp == NULL) {
-        return -1;
-    }
+    char *tmp = fc_strdup(input, "region string for parsing");
     char *reg_chr = (char *)hts_parse_reg(tmp, start, end);
     if (reg_chr) {
         *reg_chr = '\0'; // terminate at region separator
@@ -47,7 +44,7 @@ int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end)
         if (newline_pos != NULL) {
             *newline_pos = '\0'; // Null-terminate the string at the newline
         }
-        line_copy = strdup(line); // Copy line for error reporting
+        line_copy = fc_strdup(line, "BED line for error reporting"); // Copy line for error reporting
 
         // get chromosome
         char *tok = strtok(line, "\t");
@@ -121,7 +118,7 @@ regiter init_region_iterator(const char *bed_file, const char *single_region, co
             it.error |= 1;
         }
     } else if (single_region != NULL) {
-        it.single_region = strdup(single_region);
+        it.single_region = fc_strdup(single_region, "single region string");
         it.mode = 1; // we'll process this first then switch to BED file mode
     }
     return it;
@@ -248,7 +245,7 @@ bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr)
                 out->_capacity = new_cap;
             }
             bed_region dst = &out->regions[out->n_regions];
-            dst->chr = strdup(it.chr);
+            dst->chr = fc_strdup(it.chr, "region chromosome name");
             if (dst->chr == NULL) {
                 FC_LOG_ERROR("could not allocate memory for chromosome name '%s'", it.chr);
                 destroy_region_iterator(&it);
@@ -304,7 +301,7 @@ bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length)
             }
 
             bed_region dst = &regions->regions[regions->n_regions];
-            dst->chr = strdup(hdr->target_name[i]);
+            dst->chr = fc_strdup(hdr->target_name[i], "whole genome region chromosome");
             if (dst->chr == NULL) {
                 destroy_bed(regions);
                 FC_LOG_FATAL("could not allocate memory for chromosome name '%s'", hdr->target_name[i]);

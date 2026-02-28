@@ -632,20 +632,10 @@ bool fc_path_matches_kind(const char *path, fc_file_kind expected_kind)
 static int append_file(char ***files, size_t *n_files, const char *path)
 {
     size_t new_count = *n_files + 1;
-    char **tmp = realloc(*files, new_count * sizeof(*tmp));
-    if (!tmp) {
-        return ENOMEM;
-    }
+    *files = fc_realloc(*files, new_count * sizeof(**files), "file list array");
 
-    char *dup = strdup(path);
-    if (!dup) {
-        // Keep the possibly moved buffer pointer valid for caller cleanup.
-        *files = tmp;
-        return ENOMEM;
-    }
-
-    tmp[*n_files] = dup;
-    *files = tmp;
+    char *dup = fc_strdup(path, "path string for region parsing");
+    (*files)[*n_files] = dup;
     *n_files = new_count;
     return 0;
 }
@@ -674,20 +664,11 @@ static int collect_files_from_roots(
     for (size_t i = 0; i < input_paths->n_paths; ++i) {
         if (qlen == qcap) {
             size_t newcap = qcap ? qcap * 2 : 8;
-            pending_path *tmp = realloc(queue, newcap * sizeof(*tmp));
-            if (!tmp) {
-                status = ENOMEM;
-                goto done;
-            }
-            queue = tmp;
+            queue = fc_realloc(queue, newcap * sizeof(*queue), "path iteration queue");
             qcap = newcap;
         }
-        queue[qlen].path = strdup(input_paths->paths[i]);
+        queue[qlen].path = fc_strdup(input_paths->paths[i], "queued path for iteration");
         queue[qlen].depth = recurse;
-        if (!queue[qlen].path) {
-            status = ENOMEM;
-            goto done;
-        }
         qlen++;
     }
 
@@ -734,13 +715,7 @@ static int collect_files_from_roots(
                 char *child = fc_asprintf("recursive input child path", "%s/%s", cur.path, ent->d_name);
                 if (qlen == qcap) {
                     size_t newcap = qcap ? qcap * 2 : 8;
-                    pending_path *tmp = realloc(queue, newcap * sizeof(*tmp));
-                    if (!tmp) {
-                        free(child);
-                        status = (status == 0) ? ENOMEM : status;
-                        continue;
-                    }
-                    queue = tmp;
+                    queue = fc_realloc(queue, newcap * sizeof(*queue), "path iteration queue (recursive)");
                     qcap = newcap;
                 }
                 queue[qlen].path = child;
@@ -774,7 +749,6 @@ static int collect_files_from_roots(
         free(cur.path);
     }
 
-done:
     for (size_t i = qhead; i < qlen; ++i) {
         free(queue[i].path);
     }
@@ -809,14 +783,9 @@ int fc_iter_collect_paths(
     } else if (input_paths && input_paths->n_paths == 1 && input_paths->paths && strcmp(input_paths->paths[0], "-") == 0) {
         // stdin carries data stream (FASTQ/BAM), not a path list
         char **files = fc_alloc(1, sizeof(*files), "stdin path array");
-        files[0] = strdup("-");
-        if (!files[0]) {
-            free(files);
-            rc = ENOMEM;
-        } else {
-            out_paths->paths = files;
-            out_paths->n_paths = 1;
-        }
+        files[0] = fc_strdup("-", "stdin path marker");
+        out_paths->paths = files;
+        out_paths->n_paths = 1;
     } else {
         rc = collect_files_from_roots(input_paths, recurse, expected_kind, out_paths);
     }

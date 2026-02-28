@@ -159,7 +159,7 @@ fc_sink fc_perread_sink_create(const fc_perread_sink_opts *opts)
     state->fp = fc_alloc(state->cfg.barcode_count, sizeof(FILE *), "per-read sink files");
     state->header_written = fc_alloc(state->cfg.barcode_count, sizeof(bool), "per-read header flags");
     if (opts->sample) {
-        state->sample = strdup(opts->sample);
+        state->sample = fc_strdup(opts->sample, "sample name for per-read sink");
     }
 
     sink.ctx = state;

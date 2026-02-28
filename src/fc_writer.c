@@ -41,11 +41,7 @@ void fc_writer_add_sink(fc_writer *writer, fc_sink sink)
     }
     if (writer->sink_count == writer->sink_capacity) {
         size_t new_cap = writer->sink_capacity == 0 ? 4 : writer->sink_capacity * 2;
-        fc_sink *new_sinks = realloc(writer->sinks, new_cap * sizeof(*new_sinks));
-        if (!new_sinks) {
-            exit(EXIT_FAILURE);
-        }
-        writer->sinks = new_sinks;
+        writer->sinks = fc_realloc(writer->sinks, new_cap * sizeof(*writer->sinks), "writer sinks array");
         writer->sink_capacity = new_cap;
     }
     writer->sinks[writer->sink_count++] = sink;
