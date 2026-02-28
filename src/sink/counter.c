@@ -226,7 +226,7 @@ fc_sink fc_counter_sink_create(const fc_counter_sink_opts *opts)
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->output_root = fc_strip_path(opts->output_root);
     if (opts->sample) {
-        state->sample = strdup(opts->sample);
+        state->sample = fc_strdup(opts->sample, "sample name for counter sink");
         state->cfg.sample = state->sample;
     }
     char *runids_path = fc_join_path(opts->output_root, "runids.tsv");

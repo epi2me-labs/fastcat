@@ -335,7 +335,7 @@ cov_writer_region init_coverage_writer_region(
     }
 
     _cov_writer_region *w = fc_alloc(1, sizeof(_cov_writer_region), "coverage writer region");
-    w->name = strdup(name);
+    w->name = fc_strdup(name, "coverage region name");
     w->per_base = per_base;
     if (bed_fname != NULL) {
         w->whole_chrom = false;

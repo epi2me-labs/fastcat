@@ -257,7 +257,7 @@ fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts)
     state->bc_fp = fc_alloc(state->cfg.barcode_count, sizeof(FILE *), "flagstats barcode files");
     state->output_root = fc_strip_path(opts->output_root);
     if (opts->sample) {
-        state->sample_dup = strdup(opts->sample);
+        state->sample_dup = fc_strdup(opts->sample, "sample name for flagstats sink");
         state->cfg.sample = state->sample_dup;
     }
     if (state->output_root) {

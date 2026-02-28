@@ -39,6 +39,15 @@
 
 char *fc_asprintf(const char *msg, const char *fmt, ...);
 
+/** Duplicates a string with a message on failure.
+ *
+ *  @param s string to duplicate (may be NULL).
+ *  @param msg message to describe allocation on failure.
+ *  @returns pointer to duplicated string, or NULL if input is NULL.
+ *
+ */
+char *fc_strdup(const char *s, const char *msg);
+
 // Maximum barcode slots: unclassified (0) + barcode0001..barcode1024.
 #define FC_MAX_BARCODES 1025
 
@@ -113,7 +122,7 @@ bool fc_parse_double_strict(const char *text, double *out);
  *  @returns pointer to allocated memory
  *
  */
-void *fc_alloc(size_t num, size_t size, char *msg);
+void *fc_alloc(size_t num, size_t size, const char *msg);
 
 /** Reallocates memory with a message on failure.
  *
@@ -123,7 +132,7 @@ void *fc_alloc(size_t num, size_t size, char *msg);
  *  @returns pointer to allocated memory
  *
  */
-void *fc_realloc(void *ptr, size_t size, char *msg);
+void *fc_realloc(void *ptr, size_t size, const char *msg);
 
 /** Reallocates memory with a message on failure, zero-initialising the new memory.
  *
@@ -135,7 +144,7 @@ void *fc_realloc(void *ptr, size_t size, char *msg);
  *  @returns pointer to allocated memory
  *
  */
-void *fc_recalloc(void *ptr, size_t orig, size_t num, size_t size, char *msg);
+void *fc_recalloc(void *ptr, size_t orig, size_t num, size_t size, const char *msg);
 
 /** Globally replace a char in a char*
  *

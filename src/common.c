@@ -66,10 +66,7 @@ int can_make_dir(const char *path)
     }
 
     // check we can write in parent directory
-    char *copy = strdup(path);
-    if (!copy) {
-        return -1;
-    }
+    char *copy = fc_strdup(path, "path copy for dirname");
     char *parent = dirname(copy);
     if (access(parent, W_OK | X_OK) == 0) {
         free(copy);
@@ -127,10 +124,7 @@ int mkdir_p(const char *path)
     mode_t mode = 0755;
     errno = 0;
 
-    _path = strdup(path);
-    if (_path == NULL) {
-        goto out;
-    }
+    _path = fc_strdup(path, "path copy for mkdir_hier");
 
     for (p = _path + 1; *p; p++) {
         if (*p == '/') {
@@ -179,10 +173,7 @@ int mkdir_hier(char *path, bool fail_on_exist)
         return 0;
     }
 
-    _path = strdup(path);
-    if (_path == NULL) {
-        goto out;
-    }
+    _path = fc_strdup(path, "path copy for mkdir_p");
 
     for (p = _path + 1; *p; p++) {
         if (*p == '/') {
@@ -214,7 +205,7 @@ out:
  */
 int ensure_parent_dir_exists(const char *filepath)
 {
-    char *path_copy = strdup(filepath);
+    char *path_copy = fc_strdup(filepath, "filepath copy for parent dir check");
     if (path_copy == NULL) {
         return -1;
     }
@@ -424,7 +415,7 @@ void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state
  *  @returns pointer to allocated memory
  *
  */
-void *fc_alloc(size_t num, size_t size, char *msg)
+void *fc_alloc(size_t num, size_t size, const char *msg)
 {
     void *res = calloc(num, size);
     if (res == NULL) {
@@ -441,7 +432,7 @@ void *fc_alloc(size_t num, size_t size, char *msg)
  *  @returns pointer to allocated memory
  *
  */
-void *fc_realloc(void *ptr, size_t size, char *msg)
+void *fc_realloc(void *ptr, size_t size, const char *msg)
 {
     void *res = realloc(ptr, size);
     if (res == NULL) {
@@ -460,7 +451,7 @@ void *fc_realloc(void *ptr, size_t size, char *msg)
  *  @returns pointer to allocated memory
  *
  */
-void *fc_recalloc(void *ptr, size_t orig, size_t num, size_t size, char *msg)
+void *fc_recalloc(void *ptr, size_t orig, size_t num, size_t size, const char *msg)
 {
     void *res = realloc(ptr, num * size);
     if (res == NULL) {
@@ -482,6 +473,24 @@ char *fc_asprintf(const char *msg, const char *fmt, ...)
         FC_LOG_FATAL("asprintf failed for %s", msg ? msg : "formatted string");
     }
     return out;
+}
+
+/** Duplicates a string with a message on failure.
+ *
+ *  @param s string to duplicate (may be NULL).
+ *  @param msg message to describe allocation on failure.
+ *  @returns pointer to duplicated string, or NULL if input is NULL.
+ *
+ */
+char *fc_strdup(const char *s, const char *msg)
+{
+    if (!s) {
+        return NULL;
+    }
+    size_t len = strlen(s);
+    char *copy = fc_alloc(len + 1, sizeof(char), msg);
+    memcpy(copy, s, len + 1);
+    return copy;
 }
 
 int replace_char(char *str, char orig, char rep)
@@ -680,7 +689,7 @@ void destroy_rg_info(readgroup *rg)
 readgroup *create_rg_info(char *rg)
 {
     readgroup *rg_info = fc_alloc(1, sizeof(readgroup), "readgroup");
-    rg_info->readgroup = strdup(rg);
+    rg_info->readgroup = fc_strdup(rg, "readgroup string");
     rg_info->runid = NULL;
     rg_info->basecaller = NULL;
     rg_info->modcaller = NULL;
@@ -705,7 +714,7 @@ readgroup *create_rg_info(char *rg)
     if (runid_l != 36 && runid_l != 40) {
         // free the mutated copy, and reset
         free(rg_info->readgroup);
-        rg_info->readgroup = strdup(rg);
+        rg_info->readgroup = fc_strdup(rg, "readgroup string (reset)");
         rg_info->runid = NULL;
         return rg_info;
     }

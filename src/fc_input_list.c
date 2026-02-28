@@ -11,18 +11,8 @@
 
 static int append_path(fc_path_list *list, const char *path)
 {
-    char *copy = strdup(path);
-    if (!copy) {
-        return ENOMEM;
-    }
-
-    char **tmp = realloc(list->paths, (list->n_paths + 1) * sizeof(*tmp));
-    if (!tmp) {
-        free(copy);
-        return ENOMEM;
-    }
-
-    list->paths = tmp;
+    char *copy = fc_strdup(path, "input list path");
+    list->paths = fc_realloc(list->paths, (list->n_paths + 1) * sizeof(*list->paths), "input list paths array");
     list->paths[list->n_paths] = copy;
     list->n_paths++;
     return 0;
