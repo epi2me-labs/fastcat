@@ -395,22 +395,22 @@ static int fc_bam_iter_open(
 
         iter->reg = init_region_iterator(bed_path, region_string, hdr);
 
-        int check = next_region(&iter->reg);
-        if (check == -1) {
+        regiter_status check = next_region(&iter->reg);
+        if (check == REGITER_EOF) {
             iter->reg_active = false;
             return 0;
         }
-        if (check == -2 && bed_path == NULL && region_string != NULL) {
+        if (check == REGITER_PARSE_ERROR && bed_path == NULL && region_string != NULL) {
             FC_LOG_ERROR("Failed to parse region string: %s", region_string);
             return -1;
         }
-        while (check != 0) {
+        while (check != REGITER_OK) {
             check = next_region(&iter->reg);
-            if (check == -1) {
+            if (check == REGITER_EOF) {
                 break;
             }
         }
-        iter->reg_active = (check == 0);
+        iter->reg_active = (check == REGITER_OK);
         if (iter->reg_active && iter->idx != NULL) {
             if (fc_bam_iter_set_region(iter, iter->reg.chr, iter->reg.start, iter->reg.end) != 0) {
                 iter->reg_active = false;
@@ -463,11 +463,11 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
         if (iter->status < 0) {
             if (iter->use_regions) {
                 // advance to next region
-                int check = next_region(&iter->reg);
-                while (check > 0) { // skip invalid regions
+                regiter_status check = next_region(&iter->reg);
+                while (check == REGITER_PARSE_ERROR || check == REGITER_REF_MISSING) { // skip invalid/unknown regions
                     check = next_region(&iter->reg);
                 }
-                if (check == 0) {
+                if (check == REGITER_OK) {
                     iter->reg_active = true;
                     // reset iterator for new region
                     // hdr and idx are already set
@@ -504,8 +504,8 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
             hts_pos_t pos = out->bam->core.pos;
             hts_pos_t rend = bam_endpos(out->bam);
             while (iter->reg_active && (tid > iter->reg.tid || (tid == iter->reg.tid && pos >= iter->reg.end))) {
-                int check = next_region(&iter->reg);
-                if (check != 0) {
+                regiter_status check = next_region(&iter->reg);
+                if (check != REGITER_OK) {
                     iter->reg_active = false;
                     break;
                 }
@@ -598,8 +598,7 @@ static int fc_bam_iter_open_path(fc_bam_iter *bmi, const char *path, const fc_it
 
     int rc = fc_bam_iter_open(bmi, bam_fp, NULL, bam_hdr, opts);
     if (rc != 0) {
-        sam_hdr_destroy(bam_hdr);
-        hts_close(bam_fp);
+        fc_bam_iter_close(bmi);
         bmi->stats.failures[F_UNKNOWN_ERROR] = 1;
         return rc;
     }
@@ -809,18 +808,14 @@ int fc_iter_collect_paths(
         rc = fc_read_paths_from_fofn_sources(input_paths, expected_kind, out_paths);
     } else if (input_paths && input_paths->n_paths == 1 && input_paths->paths && strcmp(input_paths->paths[0], "-") == 0) {
         // stdin carries data stream (FASTQ/BAM), not a path list
-        char **files = calloc(1, sizeof(*files));
-        if (!files) {
+        char **files = fc_alloc(1, sizeof(*files), "stdin path array");
+        files[0] = strdup("-");
+        if (!files[0]) {
+            free(files);
             rc = ENOMEM;
         } else {
-            files[0] = strdup("-");
-            if (!files[0]) {
-                free(files);
-                rc = ENOMEM;
-            } else {
-                out_paths->paths = files;
-                out_paths->n_paths = 1;
-            }
+            out_paths->paths = files;
+            out_paths->n_paths = 1;
         }
     } else {
         rc = collect_files_from_roots(input_paths, recurse, expected_kind, out_paths);

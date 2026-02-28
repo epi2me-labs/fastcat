@@ -34,12 +34,19 @@ typedef struct {
 
 typedef _bed_regions *bed_regions;
 
+typedef enum {
+    REGITER_OK = 0,
+    REGITER_EOF = -1,
+    REGITER_PARSE_ERROR = -2,
+    REGITER_REF_MISSING = -3
+} regiter_status;
+
 int region_from_string(char *input, char **chr, int *start, int *end);
 char *region_to_string(bed_region region);
 int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end);
 regiter init_region_iterator(const char *bed_file, const char *single_region, const sam_hdr_t *hdr);
 void destroy_region_iterator(regiter *it);
-int next_region(regiter *it);
+regiter_status next_region(regiter *it);
 
 bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr);
 bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length);

@@ -6,6 +6,7 @@
 
 #include "htslib/sam.h"
 
+#include "../common.h"
 #include "../fc_log.h"
 
 #define MAGIC_LEN 5
@@ -17,29 +18,19 @@ char *generate_index_filename(const char *input_bam, const char *input_index)
 
     if (input_index != NULL) {
         size_t idx_len = strlen(input_index);
-        out_fn = calloc(idx_len + 1, sizeof(char));
-        if (out_fn == NULL) {
-            exit(EXIT_FAILURE);
-        }
-        memcpy(out_fn, input_index, idx_len + 1);
+        out_fn = fc_alloc(idx_len + 1, sizeof(char), "index output filename");
+        FC_SNPRINTF_CHECK(out_fn, idx_len + 1, "%s", input_index);
     } else {
         size_t bam_len = strlen(input_bam);
-        out_fn = calloc(bam_len + 5, sizeof(char));
-        if (out_fn == NULL) {
-            exit(EXIT_FAILURE);
-        }
-        memcpy(out_fn, input_bam, bam_len);
-        memcpy(out_fn + bam_len, ".bci", 5); // includes null terminator
+        out_fn = fc_alloc(bam_len + 5, sizeof(char), "derived index output filename");
+        FC_SNPRINTF_CHECK(out_fn, bam_len + 5, "%s.bci", input_bam);
     }
     return out_fn;
 }
 
 bc_idx_t *bc_idx_init(void)
 {
-    bc_idx_t *h = calloc(1, sizeof(bc_idx_t));
-    if (h == NULL) {
-        return NULL;
-    }
+    bc_idx_t *h = fc_alloc(1, sizeof(bc_idx_t), "bam chunk index header");
     // any init?
     return h;
 }
@@ -96,7 +87,9 @@ bc_idx_t *bc_idx_read(FILE *fp)
     }
 
     h->stored = h->n_chunks;
-    h->recs = calloc(h->stored, sizeof(bc_rec_t));
+    h->recs = (h->stored > 0)
+        ? fc_alloc(h->stored, sizeof(bc_rec_t), "bam chunk index records")
+        : NULL;
 
     size_t valid = 0;
     const char *msg = "Failed to read index contents. File is corrupt.";
@@ -110,7 +103,11 @@ bc_idx_t *bc_idx_read(FILE *fp)
             FC_LOG_ERROR("%s", msg);
             break;
         }
-        r->qname = calloc(r->lqname, sizeof(char));
+        if (r->lqname == 0) {
+            FC_LOG_ERROR("%s", msg);
+            break;
+        }
+        r->qname = fc_alloc(r->lqname, sizeof(char), "bam chunk index qname");
         if (fread(r->qname, sizeof(char), r->lqname, fp) != r->lqname) {
             FC_LOG_ERROR("%s", msg);
             break;

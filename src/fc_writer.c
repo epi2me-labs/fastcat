@@ -9,10 +9,7 @@
 
 fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *stats_cfg)
 {
-    fc_writer *writer = calloc(1, sizeof(*writer));
-    if (!writer) {
-        return NULL;
-    }
+    fc_writer *writer = fc_alloc(1, sizeof(*writer), "writer");
 
     writer->use_barcodes = use_barcodes;
     writer->barcode_count = use_barcodes ? FC_MAX_BARCODES : 1;
@@ -22,11 +19,8 @@ fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *sta
     if (writer->stats_cfg_set) {
         writer->stats_cfg = *stats_cfg;
         writer->stats_engine_count = writer->stats_per_barcode ? writer->barcode_count : 1;
-        writer->stats_engines = calloc(writer->stats_engine_count, sizeof(fc_stats_engine *));
-        if (!writer->stats_engines) {
-            free(writer);
-            return NULL;
-        }
+        writer->stats_engines = fc_alloc(
+            writer->stats_engine_count, sizeof(fc_stats_engine *), "stats engines");
         // Non-demux runs use a single shared engine; create it eagerly.
         if (!writer->stats_per_barcode && writer->stats_engine_count > 0) {
             writer->stats_engines[0] = fc_stats_engine_create(

@@ -102,7 +102,7 @@ static inline void _write_summary(
     double mean = stats[3] == 0 ? 0 : (double)stats[2] / stats[3];
     int64_t min = stats[0] == INT64_MAX ? 0 : stats[0];
     fprintf(
-        fh_summary, "%s\t%" PRId64 "\t%" PRId64 "\t%" PRId64 "\t%" PRId64 "\t%.2f\t%" PRId64 " \t%" PRId64,
+        fh_summary, "%s\t%" PRId64 "\t%" PRId64 "\t%" PRId64 "\t%" PRId64 "\t%.2f\t%" PRId64 "\t%" PRId64,
         reg->chr, reg->start, reg->end, stats[3], stats[2], mean, min, stats[1]);
     for (size_t i = 0; i < n_thresholds; ++i) {
         double frac = stats[3] == 0 ? 0 : (double)thresh_counts[i] / stats[3];
@@ -131,7 +131,7 @@ static void _fill_skipped_regions(cov_writer w)
                 break;
             }
             int64_t stats[4] = { 0, 0, 0, reg->end - reg->start };
-            int64_t *dist = calloc(wr->max_cover, sizeof(int64_t));
+            int64_t *dist = fc_alloc(wr->max_cover, sizeof(int64_t), "coverage region distribution");
             _write_summary(wr->fh_dist, wr->fh_summary, reg, stats,
                 dist, wr->max_cover, wr->thresholds, wr->n_thresholds);
             _write_bedgraph_line(wr->fh_fwd, reg->chr, reg->start, reg->end, 0);
@@ -187,7 +187,7 @@ static void _flush_contig(cov_writer w)
             // chromosome summary
             int64_t stats[4] = { INT64_MAX, 0, 0, reg->end - reg->start }; // min, max, total, positions
             size_t max_cover = wr->max_cover; // which goes up to all thresholds
-            int64_t *dist = calloc(max_cover, sizeof(int64_t));
+            int64_t *dist = fc_alloc(max_cover, sizeof(int64_t), "coverage contig distribution");
             for (int64_t pos = reg->start; pos < reg->end; ++pos) {
                 int64_t cov = w->diff_fwd[pos] + w->diff_rev[pos];
                 // Negative coverage should be impossible given the diff array logic.
@@ -334,7 +334,7 @@ cov_writer_region init_coverage_writer_region(
         FC_LOG_FATAL("Failed to create coverage output directory '%s'.", out_dir);
     }
 
-    _cov_writer_region *w = calloc(1, sizeof(_cov_writer_region));
+    _cov_writer_region *w = fc_alloc(1, sizeof(_cov_writer_region), "coverage writer region");
     w->name = strdup(name);
     w->per_base = per_base;
     if (bed_fname != NULL) {
@@ -503,7 +503,7 @@ cov_writer init_coverage_writer(
     }
     free(ks.s);
 
-    cov_writer w = (cov_writer)calloc(1, sizeof(_cov_writer));
+    cov_writer w = (cov_writer)fc_alloc(1, sizeof(_cov_writer), "coverage writer");
 
     w->use_cigar = use_cigar;
     w->exclude_flags = exclude_flags == -1 ? 1796 : exclude_flags; // default from mosdepth: unmapped, not primary, failed QC, duplicate
