@@ -100,8 +100,7 @@ void index_fetch(const char *bam_fname, const char *index_fname, int chunk, int 
     htsFile *fp = hts_open(bam_fname, "r");
     bam_hdr_t *h = sam_hdr_read(fp);
     if (fp == NULL || h == NULL) {
-        FC_LOG_ERROR("Could not open %s", bam_fname);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Could not open %s", bam_fname);
     }
     htsThreadPool p = { NULL, 0 };
     if (threads > 1) {
@@ -116,14 +115,12 @@ void index_fetch(const char *bam_fname, const char *index_fname, int chunk, int 
     }
     FILE *idx_fp = fopen(index_fname, "rb");
     if (!idx_fp) {
-        FC_LOG_ERROR("Cannot open index file: %s.", index_fname);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Cannot open index file: %s.", index_fname);
     }
     bc_idx_t *idx;
     if ((idx = bc_idx_read(idx_fp)) == NULL) {
         fclose(idx_fp);
-        FC_LOG_ERROR("Couldn't read index file: %s.", index_fname);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Couldn't read index file: %s.", index_fname);
     }
     fclose(idx_fp);
     if ((size_t)chunk >= idx->n_chunks) {
@@ -142,31 +139,26 @@ void index_fetch(const char *bam_fname, const char *index_fname, int chunk, int 
     FC_LOG_INFO("Reading %zu records from bam.", idx->chunk_size);
 
     if (bgzf_seek(fp->fp.bgzf, rec.file_offset, SEEK_SET) != 0) {
-        FC_LOG_ERROR("Failed to seek to first record.");
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Failed to seek to first record.");
     }
 
     size_t written = 0;
     bam1_t *b = bam_init1();
     htsFile *out_fp;
     if ((out_fp = hts_open("-", "wb0")) == 0) {
-        FC_LOG_ERROR("Failed to open standard output for writing.");
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Failed to open standard output for writing.");
     }
 
     // TODO: fill in the NULLs here
     if (sam_hdr_add_pg(h, "bamindex.fetch", "VN", argp_program_version, NULL, NULL, NULL) != 0) {
-        FC_LOG_ERROR("Failed to add PG line to the header.");
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Failed to add PG line to the header.");
     }
     if (sam_hdr_write(out_fp, h) != 0) {
-        FC_LOG_ERROR("Failed to write the SAM header.");
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Failed to write the SAM header.");
     }
     while ((sam_read1(fp, h, b) >= 0) && (written < (idx->chunk_size))) {
         if ((sam_write1(out_fp, h, b) < 0)) {
-            FC_LOG_ERROR("Failed to write output record.");
-            exit(EXIT_FAILURE);
+            FC_LOG_FATAL("Failed to write output record.");
         }
         written++;
     }

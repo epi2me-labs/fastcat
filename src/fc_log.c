@@ -6,6 +6,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "common.h"
+
 typedef struct {
     fc_log_level level;
     char module[11]; // 10 chars + NUL
@@ -109,7 +111,7 @@ static void format_time(char *buf, size_t n)
     struct tm tm;
     clock_gettime(CLOCK_REALTIME, &ts);
     localtime_r(&ts.tv_sec, &tm);
-    snprintf(buf, n, "%02d:%02d:%02d", tm.tm_hour, tm.tm_min, tm.tm_sec);
+    FC_SNPRINTF_CHECK(buf, n, "%02d:%02d:%02d", tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 
 void fc_logv(fc_log_level level, const char *fmt, va_list ap)

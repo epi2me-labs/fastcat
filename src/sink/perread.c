@@ -50,8 +50,7 @@ static FILE *perread_sink_ensure_fp(perread_sink *sink, size_t barcode)
         ? fc_sink_ensure_barcode_dir(sink->output_root, barcode)
         : fc_strip_path(sink->output_root);
     if (!dir) {
-        FC_LOG_ERROR("Failed to create barcode directory for per-read output (barcode %zu).", barcode);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Failed to create barcode directory for per-read output (barcode %zu).", barcode);
     }
     char *path = fc_join_path(dir, leaf);
     free(dir);
@@ -153,12 +152,12 @@ fc_sink fc_perread_sink_create(const fc_perread_sink_opts *opts)
         return sink;
     }
 
-    perread_sink *state = calloc(1, sizeof(*state));
+    perread_sink *state = fc_alloc(1, sizeof(*state), "per-read sink");
     state->cfg = *opts;
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->output_root = fc_strip_path(opts->output_root);
-    state->fp = calloc(state->cfg.barcode_count, sizeof(FILE *));
-    state->header_written = calloc(state->cfg.barcode_count, sizeof(bool));
+    state->fp = fc_alloc(state->cfg.barcode_count, sizeof(FILE *), "per-read sink files");
+    state->header_written = fc_alloc(state->cfg.barcode_count, sizeof(bool), "per-read header flags");
     if (opts->sample) {
         state->sample = strdup(opts->sample);
     }

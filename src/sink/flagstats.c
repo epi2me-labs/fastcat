@@ -20,13 +20,13 @@ typedef struct flag_stats {
 // Allocate and destroy flag statistics structures.
 static flag_stats *create_flag_stats(size_t n_refs, bool store_unmapped)
 {
-    flag_stats *stats = xalloc(1, sizeof(flag_stats), "flagstat");
+    flag_stats *stats = fc_alloc(1, sizeof(flag_stats), "flagstat");
     stats->n_refs = n_refs;
-    stats->counts = xalloc(n_refs, sizeof(size_t *), "flagstat");
-    stats->unmapped = store_unmapped ? xalloc(FLAG_COLS, sizeof(size_t), "flagstat") : NULL;
+    stats->counts = fc_alloc(n_refs, sizeof(size_t *), "flagstat");
+    stats->unmapped = store_unmapped ? fc_alloc(FLAG_COLS, sizeof(size_t), "flagstat") : NULL;
 
     for (size_t i = 0; i < n_refs; i++) {
-        stats->counts[i] = xalloc(FLAG_COLS, sizeof(size_t), "flagstat");
+        stats->counts[i] = fc_alloc(FLAG_COLS, sizeof(size_t), "flagstat");
     }
     return stats;
 }
@@ -163,7 +163,7 @@ static void flagstats_write_all(flagstats_sink *sink, flag_stats *stats, FILE *f
         }
         char tmp[32];
         if (!label) {
-            snprintf(tmp, sizeof(tmp), "%zu", i);
+            FC_SNPRINTF_CHECK(tmp, sizeof(tmp), "%zu", i);
             label = tmp;
         }
         flagstats_write_line(fp, sink->cfg.sample, label, stats->counts[i]);
@@ -178,8 +178,7 @@ static FILE *flagstats_open_file(flagstats_sink *sink, const char *path)
     ensure_parent_dir_exists(path);
     FILE *fp = fopen(path, "w");
     if (!fp) {
-        FC_LOG_ERROR("Cannot open file '%s' for writing.", path);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Cannot open file '%s' for writing.", path);
     }
     flagstats_write_header(fp, sink->cfg.sample);
     return fp;
@@ -203,8 +202,7 @@ static void flagstats_sink_finish(void *ctx)
             if (!s->bc_fp[b]) {
                 char *dir = fc_sink_ensure_barcode_dir(s->output_root, b);
                 if (!dir) {
-                    FC_LOG_ERROR("Failed to create barcode directory for flagstats (barcode %zu).", b);
-                    exit(EXIT_FAILURE);
+                    FC_LOG_FATAL("Failed to create barcode directory for flagstats (barcode %zu).", b);
                 }
                 char *path = fc_join_path(dir, leaf);
                 free(dir);
@@ -249,14 +247,14 @@ fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts)
         return sink;
     }
 
-    flagstats_sink *state = calloc(1, sizeof(*state));
+    flagstats_sink *state = fc_alloc(1, sizeof(*state), "flagstats sink");
     state->cfg = *opts;
     state->cfg.sample = NULL;
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->n_refs = state->cfg.region_mode ? 1 : (state->cfg.hdr ? (size_t)state->cfg.hdr->n_targets : 0);
     state->global_stats = create_flag_stats(state->n_refs, true);
-    state->bc_stats = calloc(state->cfg.barcode_count, sizeof(flag_stats *));
-    state->bc_fp = calloc(state->cfg.barcode_count, sizeof(FILE *));
+    state->bc_stats = fc_alloc(state->cfg.barcode_count, sizeof(flag_stats *), "flagstats barcode stats");
+    state->bc_fp = fc_alloc(state->cfg.barcode_count, sizeof(FILE *), "flagstats barcode files");
     state->output_root = fc_strip_path(opts->output_root);
     if (opts->sample) {
         state->sample_dup = strdup(opts->sample);

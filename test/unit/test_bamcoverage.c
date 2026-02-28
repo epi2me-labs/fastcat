@@ -9,25 +9,28 @@
 #include "htslib/sam.h"
 
 #include "bamcoverage/coverage.h"
+#include "common.h"
 
 static bam_hdr_t *make_header(const int *lengths, size_t n_lengths)
 {
     char text[2048];
     size_t used = 0;
 
-    int n = snprintf(text, sizeof(text), "@HD\tVN:1.6\tSO:coordinate\n");
+    FC_SNPRINTF_CHECK(text + used, sizeof(text) - used, "@HD\tVN:1.6\tSO:coordinate\n");
+    size_t n = strlen(text + used);
     TEST_ASSERT_TRUE(n > 0);
-    TEST_ASSERT_TRUE((size_t)n < sizeof(text) - used);
-    used += (size_t)n;
+    TEST_ASSERT_TRUE(n < sizeof(text) - used);
+    used += n;
 
     for (size_t i = 0; i < n_lengths; ++i) {
         TEST_ASSERT_TRUE(lengths[i] > 0);
-        n = snprintf(
+        FC_SNPRINTF_CHECK(
             text + used, sizeof(text) - used,
             "@SQ\tSN:chr%zu\tLN:%d\n", i + 1, lengths[i]);
+        n = strlen(text + used);
         TEST_ASSERT_TRUE(n > 0);
-        TEST_ASSERT_TRUE((size_t)n < sizeof(text) - used);
-        used += (size_t)n;
+        TEST_ASSERT_TRUE(n < sizeof(text) - used);
+        used += n;
     }
 
     bam_hdr_t *hdr = sam_hdr_parse((int)used, text);
@@ -39,14 +42,10 @@ static void cleanup_output_dir(const char *dir_path)
 {
     char path[512];
 
-    int n = snprintf(path, sizeof(path), "%s/global.summary.txt", dir_path);
-    TEST_ASSERT_TRUE(n > 0);
-    TEST_ASSERT_TRUE((size_t)n < sizeof(path));
+    FC_SNPRINTF_CHECK(path, sizeof(path), "%s/global.summary.txt", dir_path);
     TEST_ASSERT_EQUAL_INT(0, remove(path));
 
-    n = snprintf(path, sizeof(path), "%s/global.dist.txt", dir_path);
-    TEST_ASSERT_TRUE(n > 0);
-    TEST_ASSERT_TRUE((size_t)n < sizeof(path));
+    FC_SNPRINTF_CHECK(path, sizeof(path), "%s/global.dist.txt", dir_path);
     TEST_ASSERT_EQUAL_INT(0, remove(path));
 
     TEST_ASSERT_EQUAL_INT(0, rmdir(dir_path));
@@ -306,12 +305,8 @@ static void test_coverage_writer_init_destroy_no_data(void)
     // destroy should still emit expected summary/dist outputs
     destroy_coverage_writer(w);
 
-    int n = snprintf(summary, sizeof(summary), "%s/global.summary.txt", out_dir);
-    TEST_ASSERT_TRUE(n > 0);
-    TEST_ASSERT_TRUE((size_t)n < sizeof(summary));
-    n = snprintf(dist, sizeof(dist), "%s/global.dist.txt", out_dir);
-    TEST_ASSERT_TRUE(n > 0);
-    TEST_ASSERT_TRUE((size_t)n < sizeof(dist));
+    FC_SNPRINTF_CHECK(summary, sizeof(summary), "%s/global.summary.txt", out_dir);
+    FC_SNPRINTF_CHECK(dist, sizeof(dist), "%s/global.dist.txt", out_dir);
     TEST_ASSERT_EQUAL_INT(0, access(summary, F_OK));
     TEST_ASSERT_EQUAL_INT(0, access(dist, F_OK));
 
@@ -352,9 +347,7 @@ static void test_coverage_process(void)
         {
             int32_t read_start = first_read_start;
             char qname[64];
-            int n = snprintf(qname, sizeof(qname), "t%d_r0", contig);
-            TEST_ASSERT_TRUE(n > 0);
-            TEST_ASSERT_TRUE((size_t)n < sizeof(qname));
+            FC_SNPRINTF_CHECK(qname, sizeof(qname), "t%d_r0", contig);
             bam1_t *read = make_read(qname, contig, read_start, read_length, NULL, 0, NULL);
             coverage_process(w, read);
             bam_destroy1(read);
@@ -365,9 +358,7 @@ static void test_coverage_process(void)
         TEST_ASSERT_EQUAL_INT64(lengths[contig], w->contig_len);
         {
             char expected_chrom[16];
-            int n = snprintf(expected_chrom, sizeof(expected_chrom), "chr%d", contig + 1);
-            TEST_ASSERT_TRUE(n > 0);
-            TEST_ASSERT_TRUE((size_t)n < sizeof(expected_chrom));
+            FC_SNPRINTF_CHECK(expected_chrom, sizeof(expected_chrom), "chr%d", contig + 1);
             TEST_ASSERT_EQUAL_STRING(expected_chrom, w->chrom);
         }
         // check buffer size, contigent on if size went up or down from previous
@@ -398,9 +389,7 @@ static void test_coverage_process(void)
         for (size_t read_idx = 1; read_idx < n_reads; ++read_idx) {
             int32_t read_start = first_read_start + (int32_t)read_idx * read_offset;
             char qname[64];
-            int n = snprintf(qname, sizeof(qname), "t%d_r%zu", contig, read_idx);
-            TEST_ASSERT_TRUE(n > 0);
-            TEST_ASSERT_TRUE((size_t)n < sizeof(qname));
+            FC_SNPRINTF_CHECK(qname, sizeof(qname), "t%d_r%zu", contig, read_idx);
             bam1_t *read = make_read(qname, contig, read_start, read_length, NULL, 0, NULL);
             coverage_process(w, read);
             bam_destroy1(read);
@@ -424,9 +413,7 @@ static void test_coverage_process(void)
             // add in a reverse read to check that diff_rev is unaffected by forward reads and vice versa
             int32_t read_start = first_read_start;
             char qname[64];
-            int n = snprintf(qname, sizeof(qname), "t%d_r_rev", contig);
-            TEST_ASSERT_TRUE(n > 0);
-            TEST_ASSERT_TRUE((size_t)n < sizeof(qname));
+            FC_SNPRINTF_CHECK(qname, sizeof(qname), "t%d_r_rev", contig);
             uint16_t flags_rev = BAM_FREVERSE;
             bam1_t *read = make_read(qname, contig, read_start, read_length, NULL, 0, &flags_rev);
             coverage_process(w, read);

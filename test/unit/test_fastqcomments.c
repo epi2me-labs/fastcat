@@ -61,7 +61,7 @@ static void test_parse_simple_comment(void) {
     const char* runid = "e4994c62-93f9-439a-bc8f-d20c95a137a5";
     const char* model = "rna004_130bps_fast@v5.1.0";
     char comment[256];
-    snprintf(comment, sizeof(comment),
+    FC_SNPRINTF_CHECK(comment, sizeof(comment),
         "runid=%s basecall_model_version_id=%s barcode=barcode12 start_time=2023-01-01T00:00:00Z",
         runid, model);
     fc_read *read = fc_read_init();
@@ -160,7 +160,7 @@ static void test_barcode_empty_value_fallback(void) {
     const char *runid = "12345678-1234-1234-1234-123456789012";
     const char *model = "sup@v1";
     char comment[256];
-    snprintf(comment, sizeof(comment),
+    FC_SNPRINTF_CHECK(comment, sizeof(comment),
         "runid=%s basecall_model_version_id=%s barcode=", runid, model);
 
     fc_read *read = fc_read_init();
@@ -182,7 +182,7 @@ static void test_barcode_empty_value_fallback(void) {
 static void test_rg_populates_runid_and_basecaller(void) {
     const char* rg = "12345678-1234-1234-1234-123456789012_sup@v1";
     char buf[256];
-    snprintf(buf, sizeof(buf), "RG:Z:%s", rg);
+    FC_SNPRINTF_CHECK(buf, sizeof(buf), "RG:Z:%s", rg);
     fc_read *read = fc_read_init();
     TEST_ASSERT_NOT_NULL(read);
     read_from_comment(read, buf);
@@ -197,7 +197,7 @@ static void test_rg_populates_runid_and_basecaller(void) {
 static void test_rg_fallback(void) {
     const char* rg = "12345678-1234-1234-1234-123456789012_sup@v4.0.0_barcode07";
     char buf[256];
-    snprintf(buf, sizeof(buf), "RG:Z:%s\tSM:Z:barcode07", rg);
+    FC_SNPRINTF_CHECK(buf, sizeof(buf), "RG:Z:%s\tSM:Z:barcode07", rg);
     fc_read *read = fc_read_init();
     TEST_ASSERT_NOT_NULL(read);
     read_from_comment(read, buf);

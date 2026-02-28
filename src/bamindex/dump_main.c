@@ -66,14 +66,12 @@ void index_dump(const char *filename)
 
     FILE *fp = fopen(filename, "rb");
     if (!fp) {
-        FC_LOG_ERROR("Cannot open index file: %s.", filename);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Cannot open index file: %s.", filename);
     }
     bc_idx_t *idx;
     if ((idx = bc_idx_read(fp)) == NULL) {
         fclose(fp);
-        FC_LOG_ERROR("Couldn't read index file: %s.", filename);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Couldn't read index file: %s.", filename);
     }
     fprintf(stdout, "Index contains %zu chunks of size %zu.\n", idx->n_chunks, idx->chunk_size);
     for (size_t i = 0; i < idx->n_chunks; ++i) {

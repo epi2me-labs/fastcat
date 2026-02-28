@@ -17,7 +17,15 @@
 
 static inline int is_ref_and_query(const uint32_t op)
 {
-    // TODO: add BAM_CDEL is we want deletions to cover?
+    // NOTE: CIGAR mode excludes deletions (BAM_CDEL) from coverage. This is
+    // intentionally different from non-CIGAR mode, which uses POS..bam_endpos()
+    // and therefore counts deleted/skipped reference positions as covered span.
+    // This is the same as mosdepth's default behavior; our spanning mode is
+    // mosdepth's --fast-mode.
+
+    // RNA-seq workflows might want to count deletions while excluding introns
+    // (BAM_CREF_SKIP), so we should maybe add a mode to CLI for configuring
+    // whether either/or DEL and SKIP count as coverage.
     const int code = bam_cigar_op(op);
     return code == BAM_CMATCH || code == BAM_CEQUAL || code == BAM_CDIFF;
 }
@@ -36,11 +44,11 @@ static inline void _write_bedgraph_line(
     }
     //  (chrom + tabs + ints) easily fits in <128 bytes
     char buf[160];
-    int n = snprintf(buf, sizeof(buf), "%s\t%" PRId64 "\t%" PRId64 "\t%u\n",
+    FC_SNPRINTF_CHECK(buf, sizeof(buf), "%s\t%" PRId64 "\t%" PRId64 "\t%u\n",
         chrom, s, e, cov);
-    if (n < 0 || bgzf_write_small(fp, buf, n) != n) {
-        FC_LOG_ERROR("bgzf_write failed");
-        exit(1);
+    size_t n = strlen(buf);
+    if (bgzf_write_small(fp, buf, n) != (ssize_t)n) {
+        FC_LOG_FATAL("bgzf_write failed");
     }
 }
 
@@ -64,7 +72,7 @@ static inline void _write_summary(
 
     // write all distribution file entries and collect threshold values
     // for summary file.
-    int64_t *thresh_counts = xalloc(n_thresholds, sizeof(int64_t), "threshold counts");
+    int64_t *thresh_counts = fc_alloc(n_thresholds, sizeof(int64_t), "threshold counts");
     ssize_t cur_thresh = n_thresholds - 1;
     double cum = 0.0;
     double positions = (double)stats[3];
@@ -182,6 +190,8 @@ static void _flush_contig(cov_writer w)
             int64_t *dist = calloc(max_cover, sizeof(int64_t));
             for (int64_t pos = reg->start; pos < reg->end; ++pos) {
                 int64_t cov = w->diff_fwd[pos] + w->diff_rev[pos];
+                // Negative coverage should be impossible given the diff array logic.
+                // This assert is primarily for sanitizer validation during development.
                 assert(cov >= 0 && "Coverage should never be negative");
                 stats[0] = min(stats[0], cov);
                 stats[1] = max(stats[1], cov);
@@ -191,7 +201,7 @@ static void _flush_contig(cov_writer w)
                     while ((size_t)cov >= new_cap) {
                         new_cap *= 2;
                     }
-                    dist = xrecalloc(dist, max_cover, new_cap, sizeof(int64_t), "coverage distribution");
+                    dist = fc_recalloc(dist, max_cover, new_cap, sizeof(int64_t), "coverage distribution");
                     max_cover = new_cap;
                 }
                 dist[(size_t)cov] += 1;
@@ -208,7 +218,7 @@ static void _flush_contig(cov_writer w)
             wr->stats[3] += stats[3];
             // ..and total dist
             if (max_cover > wr->max_cover) {
-                wr->dist = xrecalloc(wr->dist, wr->max_cover, max_cover, sizeof(int64_t), "total coverage distribution");
+                wr->dist = fc_recalloc(wr->dist, wr->max_cover, max_cover, sizeof(int64_t), "total coverage distribution");
                 wr->max_cover = max_cover;
             }
             for (size_t i = 0; i < max_cover; ++i) {
@@ -275,17 +285,31 @@ static void _flush_contig(cov_writer w)
 static void _reset_contig(cov_writer w, const int32_t tid)
 {
     if (tid >= 0) {
+        if (w->hdr == NULL || tid >= w->hdr->n_targets) {
+            FC_LOG_FATAL("Invalid contig id %d (header has %d targets).", tid, w->hdr ? w->hdr->n_targets : 0);
+        }
         w->tid = tid;
         w->contig_len = w->hdr->target_len[tid];
+        if (w->contig_len < 0) {
+            FC_LOG_FATAL("Invalid contig length %" PRId64 " for %s.", w->contig_len, w->hdr->target_name[tid]);
+        }
+        if ((uint64_t)w->contig_len > ((uint64_t)SIZE_MAX - 1u)) {
+            FC_LOG_FATAL("Contig %s length %" PRId64 " cannot be represented on this platform.",
+                w->hdr->target_name[tid], w->contig_len);
+        }
         w->chrom = w->hdr->target_name[tid];
 
         size_t required_buf = (size_t)w->contig_len + 1u;
+        if (required_buf > (SIZE_MAX / sizeof(int32_t))) {
+            FC_LOG_FATAL("Coverage buffer for contig %s would overflow addressable memory.",
+                w->hdr->target_name[tid]);
+        }
 
         if (required_buf > w->buf_size) {
             // grow buffer and clear everything
             w->buf_size = required_buf;
-            w->diff_fwd = xrealloc(w->diff_fwd, w->buf_size * sizeof(int32_t), "coverage buffer");
-            w->diff_rev = xrealloc(w->diff_rev, w->buf_size * sizeof(int32_t), "coverage buffer");
+            w->diff_fwd = fc_realloc(w->diff_fwd, w->buf_size * sizeof(int32_t), "coverage buffer");
+            w->diff_rev = fc_realloc(w->diff_rev, w->buf_size * sizeof(int32_t), "coverage buffer");
             memset(w->diff_fwd, 0, w->buf_size * sizeof(int32_t));
             memset(w->diff_rev, 0, w->buf_size * sizeof(int32_t));
         } else {
@@ -307,8 +331,7 @@ cov_writer_region init_coverage_writer_region(
 {
 
     if (mkdir_hier((char *)out_dir, true) == -1) {
-        FC_LOG_ERROR("Failed to create coverage output directory '%s'.", out_dir);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Failed to create coverage output directory '%s'.", out_dir);
     }
 
     _cov_writer_region *w = calloc(1, sizeof(_cov_writer_region));
@@ -331,20 +354,19 @@ cov_writer_region init_coverage_writer_region(
 
     // sparse CDF thresholds
     if (n_thresholds > 0 && thresholds) {
-        w->thresholds = xalloc(n_thresholds, sizeof *w->thresholds, "thresholds");
+        w->thresholds = fc_alloc(n_thresholds, sizeof *w->thresholds, "thresholds");
         memcpy(w->thresholds, thresholds, n_thresholds * sizeof *w->thresholds);
         w->n_thresholds = n_thresholds;
         qsort(w->thresholds, w->n_thresholds, sizeof *w->thresholds, cmp_u32);
     } else {
         // use default
         w->n_thresholds = 6;
-        w->thresholds = xalloc(w->n_thresholds, sizeof *w->thresholds, "default thresholds");
+        w->thresholds = fc_alloc(w->n_thresholds, sizeof *w->thresholds, "default thresholds");
         uint32_t tmp[] = { 1, 5, 10, 20, 30, 40 };
         for (size_t i = 0; i < w->n_thresholds; ++i) {
             w->thresholds[i] = tmp[i];
         }
     }
-
     // min, max, total bases, num. positions
     w->stats[0] = INT64_MAX;
     w->stats[1] = 0;
@@ -352,7 +374,7 @@ cov_writer_region init_coverage_writer_region(
     w->stats[3] = 0;
     // dist needs to be large enough to hold all thresholds, start with at least 256 to avoid reallocating
     w->max_cover = max(1u << 8, w->thresholds ? 1 + w->thresholds[w->n_thresholds - 1] : 0);
-    w->dist = xalloc(w->max_cover, sizeof(int64_t), "coverage distribution");
+    w->dist = fc_alloc(w->max_cover, sizeof(int64_t), "coverage distribution");
 
     // per_base outputs are the main event, the full coverage traces.
     if (w->per_base) {
@@ -362,17 +384,10 @@ cov_writer_region init_coverage_writer_region(
 
         int k = by_strand ? 0 : 2; // only need last is not by_strand
         for (int i = k; i < 3; ++i) {
-            size_t flen = strlen(out_dir) + 1 + strlen(name) + strlen(suffixes[i]) + 1;
-            *fn[i] = xalloc(flen, sizeof(char), "bedgraph output path");
-            int n = snprintf(*fn[i], flen, "%s/%s%s", out_dir, name, suffixes[i]);
-            if (n < 0 || (size_t)n >= flen) {
-                FC_LOG_ERROR("Cannot format bedgraph output path.");
-                exit(EXIT_FAILURE);
-            }
+            *fn[i] = fc_asprintf("bedgraph output path", "%s/%s%s", out_dir, name, suffixes[i]);
             *fh[i] = bgzf_open(*fn[i], "w1");
             if (NULL == *fh[i]) {
-                FC_LOG_ERROR("Cannot open bedgraph output '%s'", *fn[i]);
-                exit(EXIT_FAILURE);
+                FC_LOG_FATAL("Cannot open bedgraph output '%s'", *fn[i]);
             }
             bgzf_index_build_init(*fh[i]);
             if (NULL != pool && NULL != pool->pool) {
@@ -384,17 +399,10 @@ cov_writer_region init_coverage_writer_region(
     // summary file {name}.mosdepth.summary.txt
     {
         char *suffix = ".summary.txt";
-        size_t flen = strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1;
-        char *fname = xalloc(flen, sizeof(char), "summary output path");
-        int n = snprintf(fname, flen, "%s/%s%s", out_dir, name, suffix);
-        if (n < 0 || (size_t)n >= flen) {
-            FC_LOG_ERROR("Cannot format summary output path.");
-            exit(EXIT_FAILURE);
-        }
+        char *fname = fc_asprintf("summary output path", "%s/%s%s", out_dir, name, suffix);
         w->fh_summary = fopen(fname, "w");
         if (NULL == w->fh_summary) {
-            FC_LOG_ERROR("Cannot open summary output '%s'", fname);
-            exit(EXIT_FAILURE);
+            FC_LOG_FATAL("Cannot open summary output '%s'", fname);
         }
         // TODO: mosdepth allows mean to be changed to median
         fprintf(w->fh_summary, "chrom\tstart\tend\tlength\tbases\tmean\tmin\tmax");
@@ -408,33 +416,17 @@ cov_writer_region init_coverage_writer_region(
     // distribution of coverage {name}.mosdepth.dist.txt
     {
         char *suffix = ".dist.txt";
-        size_t flen = strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1;
-        char *fname = xalloc(flen, sizeof(char), "distribution output path");
-        int n = snprintf(fname, flen, "%s/%s%s", out_dir, name, suffix);
-        if (n < 0 || (size_t)n >= flen) {
-            FC_LOG_ERROR("Cannot format distribution output path.");
-            exit(EXIT_FAILURE);
-        }
+        char *fname = fc_asprintf("distribution output path", "%s/%s%s", out_dir, name, suffix);
         w->fh_dist = fopen(fname, "w");
         if (NULL == w->fh_dist) {
-            FC_LOG_ERROR("Cannot open summary output '%s'", fname);
-            exit(EXIT_FAILURE);
+            FC_LOG_FATAL("Cannot open summary output '%s'", fname);
         }
         free(fname);
     }
 
-    //// thresholds file {name}.mosdepth.thresholds.txt
-    //{
-    //    char* suffix = ".thresholds.txt";
-    //    char* fname = calloc(strlen(out_dir) + 1 + strlen(name) + strlen(suffix) + 1, 1);
-    //    sprintf(fname, "%s/%s%s", out_dir, name, suffix);
-    //    w->fh_thresh = fopen(fname, "w");
-    //    if (NULL == w->fh_thresh) {
-    //        exit(EXIT_FAILURE);
-    //    }
-    //    fprintf(w->fh_thresh, "chrom\tcoverage\tfraction\n");
-    //    free(fname);
-    //}
+    // NOTE: mosdepth can emit a separate ".thresholds.txt" file, but fastcat does not.
+    // Threshold CDF values are already written into ".summary.txt" as wide "Nx" columns,
+    // and per-threshold counts are derived from the same cumulative distribution.
 
     return w;
 }
@@ -449,10 +441,6 @@ void destroy_coverage_writer_region(cov_writer_region w)
     if (NULL != w->bed) {
         destroy_bed(w->bed);
     }
-
-    // summary file
-    //_write_summary(w->fh_summary, "total", w->stats);
-    // fclose(w->fh_summary);
 
     // distribution and thresholds files
     // make a region corresponding to the whole BED for writing distribution
@@ -472,12 +460,10 @@ void destroy_coverage_writer_region(cov_writer_region w)
                 continue; // from by_strand == false
             }
             if (bgzf_index_dump(fhs[i], *fns[i], ".csi") < 0) {
-                FC_LOG_ERROR("Cannot write index for '%s'", *fns[i]);
-                exit(EXIT_FAILURE);
+                FC_LOG_FATAL("Cannot write index for '%s'", *fns[i]);
             }
             if (bgzf_close(fhs[i]) < 0) {
-                FC_LOG_ERROR("Cannot close '%s'", *fns[i]);
-                exit(EXIT_FAILURE);
+                FC_LOG_FATAL("Cannot close '%s'", *fns[i]);
             }
             free(*fns[i]);
         }
@@ -502,21 +488,18 @@ cov_writer init_coverage_writer(
     // check outputs are writeable, we don't use mkdir_hier here because otherwise
     // the global coverage writer would fail to make the TLD.
     if (can_make_dir(out_dir) < 1) {
-        FC_LOG_ERROR(
+        FC_LOG_FATAL(
             "Cannot create output directory '%s'. Check location is writeable and directory does not exist.",
             out_dir);
-        exit(EXIT_FAILURE);
     }
 
     kstring_t ks = KS_INITIALIZE;
     if (sam_hdr_find_tag_hd((bam_hdr_t *)hdr, "SO", &ks) >= 0) {
         if (strcmp(ks.s, "coordinate") != 0) {
-            FC_LOG_ERROR("BAM sort order is '%s', must be 'coordinate'. Cannot calculate coverage data.", ks.s);
-            exit(EXIT_FAILURE);
+            FC_LOG_FATAL("BAM sort order is '%s', must be 'coordinate'. Cannot calculate coverage data.", ks.s);
         }
     } else {
-        FC_LOG_ERROR("BAM header missing 'SO' (sort order) tag. Cannot calculate coverage data.");
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("BAM header missing 'SO' (sort order) tag. Cannot calculate coverage data.");
     }
     free(ks.s);
 
@@ -532,7 +515,7 @@ cov_writer init_coverage_writer(
     _reset_contig(w, -1);
 
     w->n_beds = 1 + n_segments + n_beds;
-    w->writers = xalloc(w->n_beds, sizeof(cov_writer_region), "coverage writers");
+    w->writers = fc_alloc(w->n_beds, sizeof(cov_writer_region), "coverage writers");
     // first entry is complete genome
     w->writers[0] = init_coverage_writer_region(
         out_dir, "global", per_base, by_strand, NULL,
@@ -541,18 +524,8 @@ cov_writer init_coverage_writer(
     // fixed length segments
     for (size_t i = 0; i < n_segments; ++i) {
         char seg_name[32]; // largest uint32 is 10 digits
-        int seg_len = snprintf(seg_name, sizeof(seg_name), "segments_%u", segments[i]);
-        if (seg_len < 0 || (size_t)seg_len >= sizeof(seg_name)) {
-            FC_LOG_ERROR("Cannot format segment name.");
-            exit(EXIT_FAILURE);
-        }
-        size_t dir_len = strlen(out_dir) + 1 + strlen(seg_name) + 1;
-        char *seg_out_dir = xalloc(dir_len, sizeof(char), "segment output directory path");
-        int n = snprintf(seg_out_dir, dir_len, "%s/%s", out_dir, seg_name);
-        if (n < 0 || (size_t)n >= dir_len) {
-            FC_LOG_ERROR("Cannot format segment output directory path.");
-            exit(EXIT_FAILURE);
-        }
+        FC_SNPRINTF_CHECK(seg_name, sizeof(seg_name), "segments_%u", segments[i]);
+        char *seg_out_dir = fc_asprintf("segment output directory path", "%s/segments_%u", out_dir, segments[i]);
         w->writers[1 + i] = init_coverage_writer_region(
             seg_out_dir, seg_name, per_base, by_strand, NULL,
             thresholds, n_thresholds, segments[i],
@@ -563,13 +536,7 @@ cov_writer init_coverage_writer(
     for (size_t i = 0; i < n_beds; ++i) {
         if (NULL != bed_files[i]) {
             const char *bed_name = bed_names[i];
-            size_t dir_len = strlen(out_dir) + 1 + strlen(bed_name) + 1;
-            char *bed_out_dir = xalloc(dir_len, sizeof(char), "bed output directory path");
-            int n = snprintf(bed_out_dir, dir_len, "%s/%s", out_dir, bed_name);
-            if (n < 0 || (size_t)n >= dir_len) {
-                FC_LOG_ERROR("Cannot format BED output directory path.");
-                exit(EXIT_FAILURE);
-            }
+            char *bed_out_dir = fc_asprintf("bed output directory path", "%s/%s", out_dir, bed_name);
             w->writers[1 + n_segments + i] = init_coverage_writer_region(
                 bed_out_dir, bed_name, per_base, by_strand, bed_files[i],
                 thresholds, n_thresholds, 0,

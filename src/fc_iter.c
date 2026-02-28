@@ -112,7 +112,7 @@ static bool fc_iter_filter_dust_bam(
 
     // Reuse/grow buffer as needed
     if (len + 1 > dust->size) {
-        dust->buf = xrealloc(dust->buf, len + 1, "bam dust seq");
+        dust->buf = fc_realloc(dust->buf, len + 1, "bam dust seq");
         dust->size = len + 1;
     }
     char *seq = dust->buf;
@@ -316,8 +316,7 @@ static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
 
         // convert from kseq to BAM record in-place for filtering and metadata extraction
         if (kseq_to_bam(out->bam, iter->seq) < 0) {
-            FC_LOG_ERROR("Error building BAM record for read '%s'", iter->seq->name.s);
-            exit(EXIT_FAILURE);
+            FC_LOG_FATAL("Error building BAM record for read '%s'", iter->seq->name.s);
         }
         if (fastq_iter_process_record(iter, out)) {
             return FC_ITER_RECORD;
@@ -733,13 +732,7 @@ static int collect_files_from_roots(
                 if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
                     continue;
                 }
-                size_t clen = strlen(cur.path) + 1 + strlen(ent->d_name) + 1;
-                char *child = malloc(clen);
-                if (!child) {
-                    status = (status == 0) ? ENOMEM : status;
-                    continue;
-                }
-                snprintf(child, clen, "%s/%s", cur.path, ent->d_name);
+                char *child = fc_asprintf("recursive input child path", "%s/%s", cur.path, ent->d_name);
                 if (qlen == qcap) {
                     size_t newcap = qcap ? qcap * 2 : 8;
                     pending_path *tmp = realloc(queue, newcap * sizeof(*tmp));

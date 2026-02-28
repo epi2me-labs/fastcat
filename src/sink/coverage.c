@@ -19,9 +19,8 @@ static cov_writer coverage_create_writer(const coverage_sink *sink, size_t barco
 {
     char *dir = fc_sink_ensure_barcode_dir(sink->output_root, barcode);
     if (!dir) {
-        FC_LOG_ERROR("Failed to create barcode directory under '%s' (barcode %zu).",
+        FC_LOG_FATAL("Failed to create barcode directory under '%s' (barcode %zu).",
             sink->output_root, barcode);
-        exit(EXIT_FAILURE);
     }
     char *out_dir = fc_join_path(dir, "coverage");
     free(dir);
@@ -92,10 +91,7 @@ fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts)
         return sink;
     }
 
-    coverage_sink *state = calloc(1, sizeof(*state));
-    if (!state) {
-        exit(EXIT_FAILURE);
-    }
+    coverage_sink *state = fc_alloc(1, sizeof(*state), "coverage sink");
     state->cfg = *opts;
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->output_root = fc_strip_path(opts->output_root);

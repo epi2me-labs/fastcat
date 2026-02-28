@@ -24,7 +24,7 @@ mplp_data *fc_bam_iter_data_create(
     const char *chr, hts_pos_t start, hts_pos_t end)
 {
 
-    mplp_data *data = xalloc(1, sizeof(mplp_data), "pileup init data");
+    mplp_data *data = fc_alloc(1, sizeof(mplp_data), "pileup init data");
 
     // find the target index for query below
     if (chr == NULL) { // all reads
@@ -91,7 +91,7 @@ int *fc_bam_qpos2rpos(bam1_t *b)
     // TODO: add check for alignment being primary / no hard clipping
     uint32_t qlen = b->core.l_qseq;
     uint32_t *cigar = bam_get_cigar(b);
-    int *posmap = xalloc(qlen, sizeof(uint32_t), "pos_map");
+    int *posmap = fc_alloc(qlen, sizeof(uint32_t), "pos_map");
     for (size_t i = 0; i < qlen; ++i) {
         posmap[i] = -1; // unaligned
     }
@@ -139,8 +139,7 @@ uint8_t *fc_bam_get_tag_caseinsensitive(const bam1_t *b, const char tag_name[2])
 float fc_bam_ensure_mean_quality(bam1_t *b, bool force_recalc_qual)
 {
     if (!b) {
-        FC_LOG_ERROR("Internal error: null BAM record in mean-quality resolver.");
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Internal error: null BAM record in mean-quality resolver.");
     }
 
     // Prefer lowercase qs if both exist.
@@ -162,12 +161,10 @@ float fc_bam_ensure_mean_quality(bam1_t *b, bool force_recalc_qual)
     float mean_q = mean_qual_from_bam_naive(bam_get_qual(b), b->core.l_qseq);
     if (qs_tag != NULL) {
         if (bam_aux_update_float(b, target_tag, mean_q) < 0) {
-            FC_LOG_ERROR("Failed to update %s tag with recalculated mean quality.", target_tag);
-            exit(EXIT_FAILURE);
+            FC_LOG_FATAL("Failed to update %s tag with recalculated mean quality.", target_tag);
         }
     } else if (bam_aux_append(b, "qs", 'f', sizeof(mean_q), (const uint8_t *)&mean_q) < 0) {
-        FC_LOG_ERROR("Failed to append qs tag with recalculated mean quality.");
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Failed to append qs tag with recalculated mean quality.");
     }
     return mean_q;
 }

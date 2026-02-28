@@ -33,7 +33,7 @@ static int fprintf_bridge(void *h, const char *fmt, ...)
 static int gz_fprintf_bridge(void *h, const char *fmt, ...)
 {
     size_t bufsize = GZBUFSIZE;
-    char *buf = xalloc(bufsize, sizeof(char), "gzbuffer");
+    char *buf = fc_alloc(bufsize, sizeof(char), "gzbuffer");
 
     va_list ap;
     va_start(ap, fmt);
@@ -47,7 +47,7 @@ static int gz_fprintf_bridge(void *h, const char *fmt, ...)
 
     if ((size_t)need >= bufsize) {
         bufsize = (size_t)need + 1;
-        buf = xrealloc(buf, bufsize, "gzbuffer");
+        buf = fc_realloc(buf, bufsize, "gzbuffer");
         va_start(ap, fmt);
         need = vsnprintf(buf, bufsize, fmt, ap);
         va_end(ap);
@@ -82,8 +82,8 @@ static void output_write_fastq(output_sink *sink, const fc_read *read, void *han
     uint8_t *seq_data = bam_get_seq(bam);
     uint8_t *qual_data = bam_get_qual(bam);
 
-    char *seq_str = xalloc(len + 1, sizeof(char), "bam seq");
-    char *qual_str = xalloc(len + 1, sizeof(char), "bam qual");
+    char *seq_str = fc_alloc(len + 1, sizeof(char), "bam seq");
+    char *qual_str = fc_alloc(len + 1, sizeof(char), "bam qual");
     for (size_t i = 0; i < len; ++i) {
         seq_str[i] = seq_nt16_str[bam_seqi(seq_data, i)];
         qual_str[i] = (qual_data[0] == 0xff) ? '!' : (char)(qual_data[i] + 33);
@@ -121,16 +121,9 @@ static void output_create_filepath(output_sink *sink, size_t barcode, char **pat
 {
     char *extra = NULL;
     if (sink->cfg.reads_per_file != 0) {
-        int need = snprintf(NULL, 0, "_%04zu", sink->file_index[barcode]);
-        if (need < 0) {
-            FC_LOG_FATAL("Failed to format output filename suffix.");
-        }
-        extra = xalloc((size_t)need + 1, sizeof(char), "output filename suffix");
-        if (snprintf(extra, (size_t)need + 1, "_%04zu", sink->file_index[barcode]) != need) {
-            FC_LOG_FATAL("Failed to write output filename suffix.");
-        }
+        extra = fc_asprintf("output filename suffix", "_%04zu", sink->file_index[barcode]);
     } else {
-        extra = xalloc(1, sizeof(char), "output filename suffix");
+        extra = fc_alloc(1, sizeof(char), "output filename suffix");
     }
 
     char stem_buf[32] = { 0 };
@@ -140,18 +133,7 @@ static void output_create_filepath(output_sink *sink, size_t barcode, char **pat
     }
     *path = fc_join_path(sink->output, stem);
     const char *ext = sink->cfg.write_bam ? "bam" : "fastq.gz";
-    size_t fsz = strlen(*path) // base path
-        + 1 // '/'
-        + strlen(stem)
-        + strlen(extra)
-        + 1 // '.'
-        + strlen(ext)
-        + 1; // NUL
-    *filepath = xalloc(fsz, sizeof(char), "output filepath");
-    int n = snprintf(*filepath, fsz, "%s/%s%s.%s", *path, stem, extra, ext);
-    if (n < 0 || (size_t)n >= fsz) {
-        FC_LOG_FATAL("Failed to create output filepath.");
-    }
+    *filepath = fc_asprintf("output filepath", "%s/%s%s.%s", *path, stem, extra, ext);
     free(extra);
 }
 
@@ -292,10 +274,7 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts)
     }
 
     // Convention: non-NULL output_root means per-barcode output under <output_root>/{unclassified,barcodeXXXX}; NULL streams to stdout.
-    output_sink *state = calloc(1, sizeof(*state));
-    if (!state) {
-        FC_LOG_FATAL("Failed to allocate output sink state.");
-    }
+    output_sink *state = fc_alloc(1, sizeof(*state), "output sink");
     state->cfg = *opts;
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->output = NULL;

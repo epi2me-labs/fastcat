@@ -101,8 +101,7 @@ void index_build(const char *filename, const char *output_fname, int threads, si
     htsFile *fp = hts_open(filename, "r");
     bam_hdr_t *h = sam_hdr_read(fp);
     if (fp == NULL || h == NULL) {
-        FC_LOG_ERROR("Could not open %s", filename);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Could not open %s", filename);
     }
 
     FILE *out_fp = fopen(output_fname, "wb");
@@ -138,16 +137,14 @@ void index_build(const char *filename, const char *output_fname, int threads, si
             FC_LOG_INFO("Record %d %zu", i, file_offset);
         }
         if (bc_idx_write(out_fp, idx, file_offset, bam_get_qname(b)) < 0) {
-            FC_LOG_ERROR("Failed to write records to index.");
-            exit(EXIT_FAILURE);
+            FC_LOG_FATAL("Failed to write records to index.");
         }
         file_offset = bgzf_tell(fp->fp.bgzf);
         i++;
     }
 
     if (ret < -1) {
-        FC_LOG_ERROR("Error reading BAM file (sam_read1 returned %d)", ret);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Error reading BAM file (sam_read1 returned %d)", ret);
     }
 
     bam_hdr_destroy(h);

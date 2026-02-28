@@ -55,9 +55,9 @@ static void make_temp_gz_fastq(char *path, size_t path_len) {
     TEST_ASSERT_EQUAL_INT((int)strlen(FASTQ_FIXTURE), gzwrite(gz, FASTQ_FIXTURE, strlen(FASTQ_FIXTURE)));
     TEST_ASSERT_EQUAL_INT(0, gzclose(gz));
     char renamed[64];
-    snprintf(renamed, sizeof(renamed), "%s.fastq.gz", tmpl);
+    FC_SNPRINTF_CHECK(renamed, sizeof(renamed), "%s.fastq.gz", tmpl);
     TEST_ASSERT_EQUAL_INT(0, rename(tmpl, renamed));
-    snprintf(path, path_len, "%s", renamed);
+    FC_SNPRINTF_CHECK(path, path_len, "%s", renamed);
 }
 
 static void make_temp_sam_contents(const char *sam_contents, char *path, size_t path_len) {
@@ -69,9 +69,9 @@ static void make_temp_sam_contents(const char *sam_contents, char *path, size_t 
     TEST_ASSERT_EQUAL_INT((int)strlen(sam_contents), fprintf(fp, "%s", sam_contents));
     TEST_ASSERT_EQUAL_INT(0, fclose(fp));
     char renamed[64];
-    snprintf(renamed, sizeof(renamed), "%s.sam", tmpl);
+    FC_SNPRINTF_CHECK(renamed, sizeof(renamed), "%s.sam", tmpl);
     TEST_ASSERT_EQUAL_INT(0, rename(tmpl, renamed));
-    snprintf(path, path_len, "%s", renamed);
+    FC_SNPRINTF_CHECK(path, path_len, "%s", renamed);
 }
 
 static void make_temp_sam(char *path, size_t path_len) {

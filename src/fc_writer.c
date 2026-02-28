@@ -3,11 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "common.h"
 #include "fc_filter.h"
 #include "fc_log.h"
-
-// Maximum number of barcode slots: 1024 numbered barcodes (1-1024) + unclassified at index 0
-#define MAX_BARCODES 1025
 
 fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *stats_cfg)
 {
@@ -17,7 +15,7 @@ fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *sta
     }
 
     writer->use_barcodes = use_barcodes;
-    writer->barcode_count = use_barcodes ? MAX_BARCODES : 1;
+    writer->barcode_count = use_barcodes ? FC_MAX_BARCODES : 1;
 
     writer->stats_per_barcode = use_barcodes;
     writer->stats_cfg_set = (stats_cfg != NULL);
@@ -79,9 +77,8 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
     fc_read_ctx ctx = { 0 };
     ctx.barcode = writer->use_barcodes ? read->meta->ibarcode : 0;
     if (writer->barcode_count > 0 && ctx.barcode >= writer->barcode_count) {
-        FC_LOG_ERROR("read barcode (%zu) exceeds configured count (%zu)",
+        FC_LOG_FATAL("read barcode (%zu) exceeds configured count (%zu)",
             ctx.barcode, writer->barcode_count);
-        exit(EXIT_FAILURE);
     }
     ctx.is_unmapped = fc_is_unmapped(read->bam);
     ctx.is_primary_qc = fc_is_primary_qc_pass(read->bam);

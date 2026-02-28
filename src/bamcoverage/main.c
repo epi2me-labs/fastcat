@@ -44,8 +44,7 @@ int bamcoverage_main(int argc, char **argv)
         coverage_process(writer, rec);
     }
     if (ret < -1) {
-        FC_LOG_ERROR("Error reading BAM file (sam_read1 returned %d)", ret);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Error reading BAM file (sam_read1 returned %d)", ret);
     }
     bam_destroy1(rec);
     destroy_coverage_writer(writer);

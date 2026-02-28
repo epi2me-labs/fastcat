@@ -18,7 +18,7 @@ int region_from_string(char *input, char **chr, int *start, int *end)
     if (reg_chr) {
         *reg_chr = '\0'; // terminate at region separator
         size_t len = strlen(tmp);
-        *chr = xalloc(len + 1, sizeof(char), "chr");
+        *chr = fc_alloc(len + 1, sizeof(char), "chr");
         memcpy(*chr, tmp, len + 1);
     } else {
         rtn = -1;
@@ -29,18 +29,7 @@ int region_from_string(char *input, char **chr, int *start, int *end)
 
 char *region_to_string(bed_region r)
 {
-    int len = snprintf(NULL, 0, "%s:%" PRId64 "-%" PRId64, r->chr, r->start, r->end);
-    if (len < 0) {
-        return NULL;
-    }
-
-    char *s = malloc(len + 1);
-    if (!s) {
-        return NULL;
-    }
-
-    snprintf(s, len + 1, "%s:%" PRId64 "-%" PRId64, r->chr, r->start, r->end);
-    return s;
+    return fc_asprintf("region string", "%s:%" PRId64 "-%" PRId64, r->chr, r->start, r->end);
 }
 
 int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end)
@@ -68,7 +57,7 @@ int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end)
             goto cleanup;
         }
         size_t tok_len = strlen(tok);
-        *chr = xrealloc(*chr, (tok_len + 1) * sizeof(char), "chr");
+        *chr = fc_realloc(*chr, (tok_len + 1) * sizeof(char), "chr");
         memcpy(*chr, tok, tok_len + 1);
 
         // get start coordinate
@@ -79,12 +68,14 @@ int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end)
             goto cleanup;
         }
         char *endptr;
-        *start = strtol(tok, &endptr, 10);
-        if (*endptr != '\0') {
-            FC_LOG_ERROR("Invalid start field in BED file line: '%s'.", line_copy);
+        errno = 0;
+        long start_val = strtol(tok, &endptr, 10);
+        if (*endptr != '\0' || errno == ERANGE || start_val < 0 || start_val > INT_MAX) {
+            FC_LOG_ERROR("Invalid or out-of-range start coordinate in BED file line: '%s'.", line_copy);
             rtn = -2;
             goto cleanup;
         }
+        *start = (int)start_val;
 
         // get end coordinate
         tok = strtok(NULL, "\t");
@@ -93,12 +84,14 @@ int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end)
             rtn = -2;
             goto cleanup;
         }
-        *end = strtol(tok, &endptr, 10);
-        if (*endptr != '\0') {
-            FC_LOG_ERROR("Invalid end field in BED file line: '%s'.", line_copy);
+        errno = 0;
+        long end_val = strtol(tok, &endptr, 10);
+        if (*endptr != '\0' || errno == ERANGE || end_val < 0 || end_val > INT_MAX) {
+            FC_LOG_ERROR("Invalid or out-of-range end coordinate in BED file line: '%s'.", line_copy);
             rtn = -2;
             goto cleanup;
         }
+        *end = (int)end_val;
 
         // Validate start and end
         if (*start < 0 || *end < 0 || *start >= *end) {
@@ -193,7 +186,7 @@ int next_region(regiter *it)
             int ns = min(it->start, (int)ref_length);
             int ne = min(it->end, (int)ref_length);
             if (ns >= ne) {
-                FC_LOG_WARN("Zero-length region created after truncating to reference length (%ld) '%s:%d-%d'.", ref_length, it->chr, it->start, it->end);
+                FC_LOG_WARN("Zero-length region created after truncating to reference length (%zu) '%s:%d-%d'.", ref_length, it->chr, it->start, it->end);
                 rtn = -2;
             } else {
                 it->start = ns;
@@ -245,9 +238,9 @@ bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr)
         exit(EXIT_FAILURE);
     }
 
-    _bed_regions *out = xalloc(1, sizeof(_bed_regions), "bed_regions");
+    _bed_regions *out = fc_alloc(1, sizeof(_bed_regions), "bed_regions");
     out->_capacity = 1024;
-    out->regions = xalloc(out->_capacity, sizeof(*out->regions), "bed_region[]");
+    out->regions = fc_alloc(out->_capacity, sizeof(*out->regions), "bed_region[]");
     out->n_regions = 0;
 
     for (;;) {
@@ -255,7 +248,7 @@ bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr)
         if (rc == 0) {
             if (out->n_regions == out->_capacity) {
                 size_t new_cap = out->_capacity * 2;
-                out->regions = xrealloc(
+                out->regions = fc_realloc(
                     out->regions, new_cap * sizeof(*out->regions), "bed_region[]");
                 out->_capacity = new_cap;
             }
@@ -282,7 +275,7 @@ bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr)
 
     // shrink-to-fit
     if (out->n_regions < out->_capacity) {
-        out->regions = xrealloc(
+        out->regions = fc_realloc(
             out->regions, out->n_regions * sizeof(*out->regions), "bed_region[]");
         out->_capacity = out->n_regions;
     }
@@ -298,9 +291,9 @@ bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length)
     }
 
     // Create a bed_regions structure
-    _bed_regions *regions = xalloc(1, sizeof(_bed_regions), "bed_regions");
+    _bed_regions *regions = fc_alloc(1, sizeof(_bed_regions), "bed_regions");
     regions->_capacity = 1024;
-    regions->regions = xalloc(regions->_capacity, sizeof(*regions->regions), "bed_region[]");
+    regions->regions = fc_alloc(regions->_capacity, sizeof(*regions->regions), "bed_region[]");
     regions->n_regions = 0;
 
     // Iterate through the header lines
@@ -310,7 +303,7 @@ bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length)
         for (uint32_t start = 0; start < hdr->target_len[i]; start += span) {
             if (regions->n_regions == regions->_capacity) {
                 size_t new_cap = regions->_capacity * 2;
-                regions->regions = xrealloc(
+                regions->regions = fc_realloc(
                     regions->regions, new_cap * sizeof(*regions->regions), "bed_region[]");
                 regions->_capacity = new_cap;
             }
@@ -319,8 +312,7 @@ bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length)
             dst->chr = strdup(hdr->target_name[i]);
             if (dst->chr == NULL) {
                 destroy_bed(regions);
-                FC_LOG_ERROR("could not allocate memory for chromosome name '%s'", hdr->target_name[i]);
-                exit(EXIT_FAILURE);
+                FC_LOG_FATAL("could not allocate memory for chromosome name '%s'", hdr->target_name[i]);
             }
             dst->start = start;
             dst->end = min(start + span, (uint32_t)hdr->target_len[i]);
@@ -331,7 +323,7 @@ bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length)
 
     // shrink-to-fit
     if (regions->n_regions < regions->_capacity) {
-        regions->regions = (bed_region)xrealloc(
+        regions->regions = (bed_region)fc_realloc(
             regions->regions, regions->n_regions * sizeof(*regions->regions), "bed_region[]");
         regions->_capacity = regions->n_regions;
     }
