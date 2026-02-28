@@ -12,6 +12,22 @@
 #include "fc_iter.h"
 #include "fc_read.h"
 #include "fc_failures.h"
+#include "fc_writer.h"
+
+typedef struct {
+    uint64_t passed_reads;
+} read_count_sink_state;
+
+static void read_count_sink_add_read(void *ctx, const fc_read *read, const fc_read_ctx *read_ctx,
+    const char *fname, const sam_hdr_t *hdr)
+{
+    (void)read;
+    (void)read_ctx;
+    (void)fname;
+    (void)hdr;
+    read_count_sink_state *state = (read_count_sink_state *)ctx;
+    state->passed_reads += 1;
+}
 
 static fc_iter_opts fq_opts_defaults(void) {
     fc_iter_opts o = {0};
@@ -85,7 +101,11 @@ static void _run_iter_and_assert(
     const char *path, const fc_iter_opts *opts,
     size_t exp_nseqs, size_t exp_nbases,
     size_t exp_min_len, size_t exp_max_len,
-    double exp_mean_q, uint64_t exp_r_record_ok, uint64_t exp_r_too_short, uint64_t exp_r_low_quality
+    double exp_mean_q,
+    uint64_t exp_r_record_seen,
+    uint64_t exp_r_record_ok,
+    uint64_t exp_r_too_short,
+    uint64_t exp_r_low_quality
 ) {
     fc_iter iter = {0};
     char *paths[2] = { (char *)path, NULL };
@@ -99,12 +119,23 @@ static void _run_iter_and_assert(
     TEST_ASSERT_TRUE(fc_iter_next_file(&iter, &f));
     TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, opts));
 
+    fc_writer *writer = fc_writer_create(false, NULL);
+    TEST_ASSERT_NOT_NULL(writer);
+    read_count_sink_state count_state = { 0 };
+    fc_sink count_sink = {
+        .ctx = &count_state,
+        .add_read = read_count_sink_add_read
+    };
+    fc_writer_add_sink(writer, count_sink);
+    fc_writer_begin_file(writer, f);
+
     size_t seen = 0;
     fc_read *r = fc_read_init();
     TEST_ASSERT_NOT_NULL(r);
     fc_iter_next_status next_rc = FC_ITER_RECORD;
     while ((next_rc = fc_iter_next_record(&iter, r)) == FC_ITER_RECORD) {
         ++seen;
+        fc_writer_add_read(writer, r, f, NULL);
     }
     TEST_ASSERT_EQUAL_INT(FC_ITER_EOF, next_rc);
     fc_read_destroy(r);
@@ -112,6 +143,7 @@ static void _run_iter_and_assert(
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_iter_finish_file(&iter));
     const fc_file_stats *stats = fc_iter_stats(&iter);
     TEST_ASSERT_NOT_NULL(stats);
+    fc_writer_end_file(writer, f, stats);
 
     // some basic properties that should hold regardless of the fixture contents
     TEST_ASSERT_EQUAL_UINT(seen, stats->n_seqs);
@@ -125,11 +157,22 @@ static void _run_iter_and_assert(
     TEST_ASSERT_EQUAL_UINT(exp_max_len, stats->max_length);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, exp_mean_q, stats->mean_quality);
     TEST_ASSERT_EQUAL_UINT64(1, stats->failures[F_FILE_OK]);
+    TEST_ASSERT_EQUAL_UINT64(exp_r_record_seen, stats->failures[R_RECORD_SEEN]);
     TEST_ASSERT_EQUAL_UINT64(exp_r_record_ok, stats->failures[R_RECORD_OK]);
     TEST_ASSERT_EQUAL_UINT64(exp_r_too_short, stats->failures[R_TOO_SHORT]);
     TEST_ASSERT_EQUAL_UINT64(exp_r_low_quality, stats->failures[R_LOW_QUALITY]);
     TEST_ASSERT_EQUAL_UINT64(0, stats->failures[F_UNKNOWN_ERROR]);
+    uint64_t filtered_out = stats->failures[R_TOO_LONG]
+        + stats->failures[R_TOO_SHORT]
+        + stats->failures[R_LOW_QUALITY]
+        + stats->failures[R_DUST_MASKED];
+    TEST_ASSERT_EQUAL_UINT64(exp_nseqs, count_state.passed_reads);
+    TEST_ASSERT_EQUAL_UINT64(stats->failures[R_RECORD_OK], count_state.passed_reads);
+    TEST_ASSERT_EQUAL_UINT64(
+        stats->failures[R_RECORD_SEEN],
+        stats->failures[R_RECORD_OK] + filtered_out);
 
+    fc_writer_destroy(writer);
     fc_iter_close(&iter);
 }
 
@@ -139,14 +182,14 @@ static void _run_iter_and_assert(
 static void test_fastq_iter_stats_accumulate(void) {
     fc_iter_opts opts = fq_opts_defaults();
     _run_iter_and_assert("test/data/bc1.fastq.gz", &opts,
-        10, 5904, 281, 878,12.8569, 10, 0, 0);
+        10, 5904, 281, 878, 12.8569, 10, 10, 0, 0);
 }
 
 
 // check stats in a controlled case
 
 static void _test_known_stats(const char *path) {
-    _run_iter_and_assert(path, NULL, 3, 15, 4, 6, 20.0, 3, 0, 0);
+    _run_iter_and_assert(path, NULL, 3, 15, 4, 6, 20.0, 3, 3, 0, 0);
 }
 
 static void test_iter_fastq_known_stats(void) {
@@ -171,7 +214,7 @@ static void _test_case_filters_length_and_quality(const char *path) {
     opts.min_length = 5;
     opts.min_qscore = 30.0f;
     _run_iter_and_assert(path, &opts,
-        1, 6, 6, 6, 40.0, 3, 1, 1);
+        1, 6, 6, 6, 40.0, 3, 1, 1, 1);
 }
 
 static void test_iter_fastq_filters_length_and_quality(void) {
@@ -193,7 +236,7 @@ static void test_iter_bam_lowercase_qs_used_for_quality_filtering(void) {
     make_temp_sam_contents(SAM_LOWER_QS_FIXTURE, sam_path, sizeof(sam_path));
     fc_iter_opts opts = fq_opts_defaults();
     opts.min_qscore = 30.0f;
-    _run_iter_and_assert(sam_path, &opts, 0, 0, 0, 0, 0.0, 1, 0, 1);
+    _run_iter_and_assert(sam_path, &opts, 0, 0, 0, 0, 0.0, 1, 0, 0, 1);
     remove(sam_path);
 }
 
@@ -203,7 +246,7 @@ static void test_iter_bam_lowercase_qs_used_for_quality_filtering(void) {
 static void _test_case_all_filtered(const char *path) {
     fc_iter_opts opts = fq_opts_defaults();
     opts.min_length = 100;
-    _run_iter_and_assert(path, &opts, 0, 0, 0, 0, 0.0, 3, 3, 0);
+    _run_iter_and_assert(path, &opts, 0, 0, 0, 0, 0.0, 3, 0, 3, 0);
 }
 
 static void test_iter_fastq_all_filtered_sets_minmax_zero(void) {

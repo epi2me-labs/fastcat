@@ -312,13 +312,14 @@ static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
         }
 
         iter->truncated = false;
-        iter->stats.failures[R_RECORD_OK]++;
+        iter->stats.failures[R_RECORD_SEEN]++;
 
         // convert from kseq to BAM record in-place for filtering and metadata extraction
         if (kseq_to_bam(out->bam, iter->seq) < 0) {
             FC_LOG_FATAL("Error building BAM record for read '%s'", iter->seq->name.s);
         }
         if (fastq_iter_process_record(iter, out)) {
+            iter->stats.failures[R_RECORD_OK]++;
             return FC_ITER_RECORD;
         }
     }
@@ -497,8 +498,6 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
             return (iter->status < -1) ? FC_ITER_ERROR : FC_ITER_EOF;
         }
 
-        iter->stats.failures[R_RECORD_OK]++;
-
         if (iter->use_regions && iter->idx == NULL) {
             int tid = out->bam->core.tid;
             hts_pos_t pos = out->bam->core.pos;
@@ -511,18 +510,18 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
                 }
             }
             if (!iter->reg_active) {
-                iter->stats.failures[R_RECORD_OK]--;
                 iter->status = -1;
                 return FC_ITER_EOF;
             }
             bool overlap = (tid == iter->reg.tid) && (pos < iter->reg.end) && (rend > iter->reg.start);
             if (!overlap) {
-                iter->stats.failures[R_RECORD_OK]--;
                 continue;
             }
         }
 
+        iter->stats.failures[R_RECORD_SEEN]++;
         if (bam_iter_process_record(iter, out)) {
+            iter->stats.failures[R_RECORD_OK]++;
             return FC_ITER_RECORD;
         }
     }

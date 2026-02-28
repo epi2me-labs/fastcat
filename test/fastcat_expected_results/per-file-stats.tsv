@@ -1,8 +1,8 @@
-filename	sample_name	n_seqs	n_bases	min_length	max_length	mean_quality	f_file_ok	f_stream_error	f_qual_missing	f_qual_truncated	f_unknown_error	r_record_ok	r_too_long	r_too_short	r_low_quality	r_dust_masked
-../data/bc0.fastq.gz	sample	10	4599	191	965	9.86	1	0	0	0	0	10	0	0	0	0
-../data/bc1.fastq.gz	sample	10	5904	281	878	12.86	1	0	0	0	0	10	0	0	0	0
-../data/bc2.fastq.gz	sample	10	5812	259	990	12.19	1	0	0	0	0	10	0	0	0	0
-../data/bcEmpty.fastq.gz	sample	10	4599	191	965	9.86	1	0	0	0	0	10	0	0	0	0
-../data/bcMangled.fastq.gz	sample	20	9990	470	517	13.27	1	0	0	0	0	20	0	0	0	0
-../data/bcMixed.fastq.gz	sample	4	31	7	8	40.00	1	0	0	0	0	4	0	0	0	0
-../data/samtoolsfastq.fastq.gz	sample	20	261268	247	43346	19.55	1	0	0	0	0	20	0	0	0	0
+filename	sample_name	n_seqs	n_bases	min_length	max_length	mean_quality	f_file_ok	f_stream_error	f_qual_missing	f_qual_truncated	f_unknown_error	r_record_seen	r_record_ok	r_too_long	r_too_short	r_low_quality	r_dust_masked
+../data/bc0.fastq.gz	sample	10	4599	191	965	9.86	1	0	0	0	0	10	10	0	0	0	0
+../data/bc1.fastq.gz	sample	10	5904	281	878	12.86	1	0	0	0	0	10	10	0	0	0	0
+../data/bc2.fastq.gz	sample	10	5812	259	990	12.19	1	0	0	0	0	10	10	0	0	0	0
+../data/bcEmpty.fastq.gz	sample	10	4599	191	965	9.86	1	0	0	0	0	10	10	0	0	0	0
+../data/bcMangled.fastq.gz	sample	20	9990	470	517	13.27	1	0	0	0	0	20	20	0	0	0	0
+../data/bcMixed.fastq.gz	sample	4	31	7	8	40.00	1	0	0	0	0	4	4	0	0	0	0
+../data/samtoolsfastq.fastq.gz	sample	20	261268	247	43346	19.55	1	0	0	0	0	20	20	0	0	0	0

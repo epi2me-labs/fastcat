@@ -481,7 +481,7 @@ test_fastcat_perfile_all_filtered: fastcat
 		printf "@r1\nACGT\n+\n!!!!\n@r2\nACGT\n+\n!!!!\n" > short.fastq && \
 		$(RUN_FASTCAT) short.fastq --min-length 100 --sample sample --output out > /dev/null && \
 		awk 'NR==1{for(i=1;i<=NF;i++)h[$$i]=i;next} NR==2{ \
-			if($$h["n_seqs"]!=0||$$h["n_bases"]!=0||$$h["min_length"]!=0||$$h["max_length"]!=0||$$h["mean_quality"]!=0||$$h["f_file_ok"]!=1||$$h["f_unknown_error"]!=0||$$h["r_record_ok"]!=2||$$h["r_too_short"]!=2){ \
+			if($$h["n_seqs"]!=0||$$h["n_bases"]!=0||$$h["min_length"]!=0||$$h["max_length"]!=0||$$h["mean_quality"]!=0||$$h["f_file_ok"]!=1||$$h["f_unknown_error"]!=0||$$h["r_record_seen"]!=2||$$h["r_record_ok"]!=0||$$h["r_too_short"]!=2){ \
 				print "unexpected per_file.tsv: "$$0; exit 1}}' out/per_file.tsv)
 
 .PHONY: test_fastcat_stdin_data_equiv
@@ -755,7 +755,7 @@ test_bamstats_perfile_all_filtered: fastcat
 		printf "@HD\tVN:1.6\tSO:unknown\n@SQ\tSN:chr1\tLN:1000\nr1\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\t!!!!\nr2\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\t!!!!\n" > short.sam && \
 		$(RUN_BAMSTATS) short.sam --tag-name ZZ --tag-value 1 --output out > /dev/null && \
 		awk 'NR==1{for(i=1;i<=NF;i++)h[$$i]=i;next} NR==2{ \
-			if($$h["n_seqs"]!=0||$$h["n_bases"]!=0||$$h["min_length"]!=0||$$h["max_length"]!=0||$$h["mean_quality"]!=0||$$h["f_file_ok"]!=1||$$h["f_unknown_error"]!=0||$$h["r_record_ok"]!=2||$$h["r_too_short"]!=0){ \
+			if($$h["n_seqs"]!=0||$$h["n_bases"]!=0||$$h["min_length"]!=0||$$h["max_length"]!=0||$$h["mean_quality"]!=0||$$h["f_file_ok"]!=1||$$h["f_unknown_error"]!=0||$$h["r_record_seen"]!=2||$$h["r_record_ok"]!=0||$$h["r_too_short"]!=0){ \
 				print "unexpected per_file.tsv: "$$0; exit 1}}' out/per_file.tsv)
 
 .PHONY:
