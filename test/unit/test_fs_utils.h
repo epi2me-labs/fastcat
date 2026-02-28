@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "common.h"
+
 // Recursively removes a file tree rooted at `path`.
 // Returns 0 on success (or when path does not exist), -1 on failure.
 static int fc_test_remove_tree(const char *path) {
@@ -46,7 +48,7 @@ static int fc_test_remove_tree(const char *path) {
             saved_errno = ENOMEM;
             break;
         }
-        snprintf(child, clen, "%s/%s", path, ent->d_name);
+        FC_SNPRINTF_CHECK(child, clen, "%s/%s", path, ent->d_name);
         if (fc_test_remove_tree(child) != 0 && status == 0) {
             status = -1;
             saved_errno = errno;

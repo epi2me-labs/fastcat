@@ -91,10 +91,10 @@ static void read_meta_destroy(read_meta *meta)
 
 static read_meta *read_meta_create_empty(void)
 {
-    read_meta *meta = xalloc(1, sizeof(read_meta), "meta");
-    meta->orig_comment = xalloc(1, sizeof(char), "meta->orig_comment");
+    read_meta *meta = fc_alloc(1, sizeof(read_meta), "meta");
+    meta->orig_comment = fc_alloc(1, sizeof(char), "meta->orig_comment");
     meta->orig_comment[0] = '\0';
-    meta->tags_str = xalloc(1, sizeof(kstring_t), "meta->tags_str");
+    meta->tags_str = fc_alloc(1, sizeof(kstring_t), "meta->tags_str");
     ks_initialize(meta->tags_str);
     meta->tags_ready = false;
     return meta;
@@ -113,7 +113,7 @@ static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_co
     }
     // Always realloc to exact size needed (simple and correct)
     size_t need = len + 1;
-    meta->orig_comment = xrealloc(meta->orig_comment, need, "meta->orig_comment");
+    meta->orig_comment = fc_realloc(meta->orig_comment, need, "meta->orig_comment");
     if (len > 0) {
         memcpy(meta->orig_comment, src, len);
     }
@@ -185,8 +185,7 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             if (strncmp(meta->barcode, "barcode", 7) == 0) {
                 const char *num_str = meta->barcode + 7;
                 size_t val = 0;
-                // MAX_BARCODES is 1025 (defined in fc_writer.c)
-                if (fc_parse_size_strict(num_str, &val) && val < 1025) {
+                if (fc_parse_size_strict(num_str, &val) && val < FC_MAX_BARCODES) {
                     meta->ibarcode = val;
                 } else {
                     FC_LOG_WARN("Malformed barcode '%s', treating as unclassified", meta->barcode);
@@ -280,7 +279,7 @@ int kseq_to_bam(bam1_t *b, kseq_t *seq)
 static void build_tags_string_from_bam(const bam1_t *b, read_meta *meta)
 {
     if (!meta->tags_str) {
-        meta->tags_str = xalloc(1, sizeof(kstring_t), "meta->tags_str");
+        meta->tags_str = fc_alloc(1, sizeof(kstring_t), "meta->tags_str");
         ks_initialize(meta->tags_str);
     } else {
         ks_clear(meta->tags_str);

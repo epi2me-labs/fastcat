@@ -12,7 +12,7 @@
 static inline size_t *create_cigar_stats(bam1_t *b)
 {
     static const size_t NCODES = 10;
-    size_t *stats = xalloc(NCODES, sizeof(size_t), "read stats");
+    size_t *stats = fc_alloc(NCODES, sizeof(size_t), "read stats");
     uint32_t *cigar = bam_get_cigar(b);
     for (size_t i = 0; i < b->core.n_cigar; ++i) {
         uint32_t op = bam_cigar_op(cigar[i]);
@@ -69,7 +69,7 @@ fc_stats_engine *fc_stats_engine_create(
     float polya_qual,
     bool polya_rev)
 {
-    fc_stats_engine *engine = xalloc(1, sizeof(fc_stats_engine), "stats engine");
+    fc_stats_engine *engine = fc_alloc(1, sizeof(fc_stats_engine), "stats engine");
     engine->length_stats = create_length_stats();
     engine->qual_stats = create_qual_stats(QUAL_HIST_WIDTH);
 
@@ -124,8 +124,8 @@ static void fc_stats_engine_add_aligned(fc_stats_engine *engine, const fc_read *
     size_t edit_distance = (size_t)fr->meta->edit_distance;
     if (edit_distance < (ins + delt)) {
         FC_LOG_FATAL(
-            "Read '%s' has inconsistent NM tag (%zu) and CIGAR indel length (%zu).",
-            bam_get_qname(b), edit_distance, ins + delt);
+            "Read '%s' has inconsistent NM tag (%zu) vs CIGAR indels (%zu ins + %zu del = %zu).",
+            bam_get_qname(b), edit_distance, ins, delt, ins + delt);
     }
     size_t sub = edit_distance - ins - delt;
     size_t length = match + ins + delt;
@@ -136,7 +136,8 @@ static void fc_stats_engine_add_aligned(fc_stats_engine *engine, const fc_read *
     float acc = 100 - 100 * ((float)edit_distance) / length;
     if (sub > match || !isfinite(iden) || !isfinite(acc)
         || iden < 0.0 || acc < 0.0 || edit_distance > length) {
-        FC_LOG_FATAL("Read '%s' appears to contain implausible alignment information", bam_get_qname(b));
+        FC_LOG_FATAL("Read '%s' has implausible alignment: sub=%zu match=%zu iden=%.2f acc=%.2f edit_distance=%zu length=%zu",
+            bam_get_qname(b), sub, match, iden, acc, edit_distance, length);
     }
 
     uint32_t read_length = b->core.l_qseq;

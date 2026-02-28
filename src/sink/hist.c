@@ -21,40 +21,25 @@ static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t 
     const char *suff = "hist";
 
     if (plex_dir == NULL) {
-        size_t flen = strlen(hist_dir) + 1 + strlen(type) + 1 + strlen(suff) + 1;
-        filepath = xalloc(flen, sizeof(char), "histogram output path");
-        int n = snprintf(filepath, flen, "%s/%s.%s", hist_dir, type, suff);
-        if (n < 0 || (size_t)n >= flen) {
-            FC_LOG_ERROR("Could not format histogram output path.");
-            exit(EXIT_FAILURE);
-        }
+        filepath = fc_asprintf("histogram output path", "%s/%s.%s", hist_dir, type, suff);
     } else {
         char stem_buf[32] = { 0 };
         const char *stem = fc_sink_barcode_stem(barcode, stem_buf, sizeof(stem_buf));
         if (!stem) {
-            FC_LOG_ERROR("Could not format barcode stem for histogram output.");
-            exit(EXIT_FAILURE);
+            FC_LOG_FATAL("Could not format barcode stem for histogram output.");
         }
         char *dir = fc_sink_ensure_barcode_dir(plex_dir, barcode);
         if (!dir) {
-            FC_LOG_ERROR("Failed to create barcode directory for histograms (barcode %zu).", barcode);
-            exit(EXIT_FAILURE);
+            FC_LOG_FATAL("Failed to create barcode directory for histograms (barcode %zu).", barcode);
         }
-        size_t flen = strlen(dir) + 1 + strlen(stem) + 1 + strlen(type) + 1 + strlen(suff) + 1;
-        filepath = xalloc(flen, sizeof(char), "histogram output path");
-        int n = snprintf(filepath, flen, "%s/%s.%s.%s", dir, stem, type, suff);
-        if (n < 0 || (size_t)n >= flen) {
-            FC_LOG_ERROR("Could not format histogram output path.");
-            exit(EXIT_FAILURE);
-        }
+        filepath = fc_asprintf("histogram output path", "%s/%s.%s.%s", dir, stem, type, suff);
         free(dir);
     }
 
     ensure_parent_dir_exists(filepath);
     FILE *fp = fopen(filepath, "w");
     if (fp == NULL) {
-        FC_LOG_ERROR("Could not open file %s for writing", filepath);
-        exit(1);
+        FC_LOG_FATAL("Could not open file %s for writing", filepath);
     }
     print_stats(stats, false, true, fp);
     fclose(fp);
@@ -130,7 +115,7 @@ fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts)
         return sink;
     }
 
-    hist_sink *state = calloc(1, sizeof(*state));
+    hist_sink *state = fc_alloc(1, sizeof(*state), "hist sink");
 
     state->cfg = *opts;
 
@@ -148,8 +133,7 @@ fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts)
         if (state->hist_dir != NULL) {
             int rtn = mkdir_hier(state->hist_dir, true);
             if (rtn == -1) {
-                FC_LOG_ERROR("Failed to create histogram directory '%s'.", state->hist_dir);
-                exit(EXIT_FAILURE);
+                FC_LOG_FATAL("Failed to create histogram directory '%s'.", state->hist_dir);
             }
         }
     }

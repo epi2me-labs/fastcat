@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "common.h"
 
 #include <assert.h>
@@ -6,6 +7,7 @@
 #include <limits.h>
 #include <math.h>
 #include <regex.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -434,12 +436,11 @@ void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state
  *  @returns pointer to allocated memory
  *
  */
-void *xalloc(size_t num, size_t size, char *msg)
+void *fc_alloc(size_t num, size_t size, char *msg)
 {
     void *res = calloc(num, size);
     if (res == NULL) {
-        FC_LOG_ERROR("Failed to allocate mem for %s", msg);
-        exit(1);
+        FC_LOG_FATAL("Failed to allocate mem for %s", msg);
     }
     return res;
 }
@@ -452,12 +453,11 @@ void *xalloc(size_t num, size_t size, char *msg)
  *  @returns pointer to allocated memory
  *
  */
-void *xrealloc(void *ptr, size_t size, char *msg)
+void *fc_realloc(void *ptr, size_t size, char *msg)
 {
     void *res = realloc(ptr, size);
     if (res == NULL) {
-        FC_LOG_ERROR("Failed to reallocate mem for %s", msg);
-        exit(1);
+        FC_LOG_FATAL("Failed to reallocate mem for %s", msg);
     }
     return res;
 }
@@ -472,16 +472,28 @@ void *xrealloc(void *ptr, size_t size, char *msg)
  *  @returns pointer to allocated memory
  *
  */
-void *xrecalloc(void *ptr, size_t orig, size_t num, size_t size, char *msg)
+void *fc_recalloc(void *ptr, size_t orig, size_t num, size_t size, char *msg)
 {
     void *res = realloc(ptr, num * size);
     if (res == NULL) {
-        FC_LOG_ERROR("Failed to reallocate mem for %s", msg);
-        exit(1);
+        FC_LOG_FATAL("Failed to reallocate mem for %s", msg);
     }
     // zero out the new memory
     memset((char *)res + orig * size, 0, (num - orig) * size);
     return res;
+}
+
+char *fc_asprintf(const char *msg, const char *fmt, ...)
+{
+    char *out = NULL;
+    va_list ap;
+    va_start(ap, fmt);
+    int wrote = vasprintf(&out, fmt, ap);
+    va_end(ap);
+    if (wrote < 0 || out == NULL) {
+        FC_LOG_FATAL("asprintf failed for %s", msg ? msg : "formatted string");
+    }
+    return out;
 }
 
 int replace_char(char *str, char orig, char rep)
@@ -642,8 +654,7 @@ static void strip_hex_suffix(char *str)
     // the 16 edge cases of 0 ("") to F. No one should have and RG ID
     // ending in "-", right?
     if (regcomp(&regex, "-[0-9A-Fa-f]{0,8}$", REG_EXTENDED) != 0) {
-        FC_LOG_ERROR("Could not compile regex");
-        exit(1);
+        FC_LOG_FATAL("Failed to compile regex for RG ID suffix stripping (internal error).");
     }
 
     // Check if the string matches the pattern, and strip the match from the src
@@ -680,7 +691,7 @@ void destroy_rg_info(readgroup *rg)
 //
 readgroup *create_rg_info(char *rg)
 {
-    readgroup *rg_info = xalloc(1, sizeof(readgroup), "readgroup");
+    readgroup *rg_info = fc_alloc(1, sizeof(readgroup), "readgroup");
     rg_info->readgroup = strdup(rg);
     rg_info->runid = NULL;
     rg_info->basecaller = NULL;

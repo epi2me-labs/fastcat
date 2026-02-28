@@ -15,10 +15,7 @@ const char *fc_sink_barcode_stem(size_t barcode, char *buf, size_t buf_size)
     if (!buf || buf_size == 0) {
         return NULL;
     }
-    int n = snprintf(buf, buf_size, "barcode%04zu", barcode);
-    if (n < 0 || (size_t)n >= buf_size) {
-        return NULL;
-    }
+    FC_SNPRINTF_CHECK(buf, buf_size, "barcode%04zu", barcode);
     return buf;
 }
 

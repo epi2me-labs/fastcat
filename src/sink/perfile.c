@@ -60,8 +60,7 @@ fc_sink fc_perfile_sink_create(const char *output_root, const char *sample)
     ensure_parent_dir_exists(path);
     state->fp = fopen(path, "w");
     if (state->fp == NULL) {
-        FC_LOG_ERROR("Error opening per-file file '%s' for writing.", path);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Error opening per-file file '%s' for writing.", path);
     }
     free(path);
     if (sample) {

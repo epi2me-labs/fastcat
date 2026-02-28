@@ -79,7 +79,7 @@ static int parse_key_value_comment_to_bam(const kstring_t *comment, bam1_t *b)
         return 0;
     }
 
-    char *buf = xalloc(comment->l + 1, sizeof(char), "comment buf");
+    char *buf = fc_alloc(comment->l + 1, sizeof(char), "comment buf");
     memcpy(buf, comment->s, comment->l);
     buf[comment->l] = '\0';
 

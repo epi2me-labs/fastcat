@@ -4,6 +4,10 @@
 #include <argp.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "fc_log.h"
 
 /** Simple min/max
  * @param a
@@ -22,6 +26,21 @@
     typeof(b) _b = (b); \
     _a > _b ? _a : _b;  \
 })
+
+#define FC_SNPRINTF_CHECK(buf, size, ...)                                        \
+    do {                                                                         \
+        size_t _fc_snprintf_size = (size_t)(size);                               \
+        int _fc_snprintf_n = snprintf((buf), _fc_snprintf_size, __VA_ARGS__);    \
+        if (_fc_snprintf_n < 0 || (size_t)_fc_snprintf_n >= _fc_snprintf_size) { \
+            FC_LOG_ERROR("snprintf failed at %s:%d", __FILE__, __LINE__);        \
+            exit(EXIT_FAILURE);                                                  \
+        }                                                                        \
+    } while (0)
+
+char *fc_asprintf(const char *msg, const char *fmt, ...);
+
+// Maximum barcode slots: unclassified (0) + barcode0001..barcode1024.
+#define FC_MAX_BARCODES 1025
 
 // comparison function for qsort of uint32_t
 int cmp_u32(const void *a, const void *b);
@@ -94,7 +113,7 @@ bool fc_parse_double_strict(const char *text, double *out);
  *  @returns pointer to allocated memory
  *
  */
-void *xalloc(size_t num, size_t size, char *msg);
+void *fc_alloc(size_t num, size_t size, char *msg);
 
 /** Reallocates memory with a message on failure.
  *
@@ -104,7 +123,7 @@ void *xalloc(size_t num, size_t size, char *msg);
  *  @returns pointer to allocated memory
  *
  */
-void *xrealloc(void *ptr, size_t size, char *msg);
+void *fc_realloc(void *ptr, size_t size, char *msg);
 
 /** Reallocates memory with a message on failure, zero-initialising the new memory.
  *
@@ -116,7 +135,7 @@ void *xrealloc(void *ptr, size_t size, char *msg);
  *  @returns pointer to allocated memory
  *
  */
-void *xrecalloc(void *ptr, size_t orig, size_t num, size_t size, char *msg);
+void *fc_recalloc(void *ptr, size_t orig, size_t num, size_t size, char *msg);
 
 /** Globally replace a char in a char*
  *

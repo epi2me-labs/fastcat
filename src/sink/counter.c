@@ -56,8 +56,7 @@ static FILE *counter_open_file(counter_sink *sink, const char *path, const char 
     ensure_parent_dir_exists(path);
     FILE *fp = fopen(path, "w");
     if (!fp) {
-        FC_LOG_ERROR("Cannot open counter file '%s' for writing.", path);
-        exit(EXIT_FAILURE);
+        FC_LOG_FATAL("Cannot open counter file '%s' for writing.", path);
     }
     fprintf(fp, "filename\t");
     if (sink->sample) {
@@ -222,7 +221,7 @@ fc_sink fc_counter_sink_create(const fc_counter_sink_opts *opts)
         return sink;
     }
 
-    counter_sink *state = calloc(1, sizeof(*state));
+    counter_sink *state = fc_alloc(1, sizeof(*state), "counter sink");
     state->cfg = *opts;
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->output_root = fc_strip_path(opts->output_root);
@@ -238,10 +237,10 @@ fc_sink fc_counter_sink_create(const fc_counter_sink_opts *opts)
     state->basecallers_global = counter_open_file(state, basecallers_path, "basecaller");
     free(basecallers_path);
 
-    state->run_ids_bc_ctr = calloc(state->cfg.barcode_count, sizeof(kh_counter_t *));
-    state->basecallers_bc_ctr = calloc(state->cfg.barcode_count, sizeof(kh_counter_t *));
-    state->runids_bc = calloc(state->cfg.barcode_count, sizeof(FILE *));
-    state->basecallers_bc = calloc(state->cfg.barcode_count, sizeof(FILE *));
+    state->run_ids_bc_ctr = fc_alloc(state->cfg.barcode_count, sizeof(kh_counter_t *), "barcode run-id counters");
+    state->basecallers_bc_ctr = fc_alloc(state->cfg.barcode_count, sizeof(kh_counter_t *), "barcode basecaller counters");
+    state->runids_bc = fc_alloc(state->cfg.barcode_count, sizeof(FILE *), "barcode run-id files");
+    state->basecallers_bc = fc_alloc(state->cfg.barcode_count, sizeof(FILE *), "barcode basecaller files");
     state->run_ids_global_ctr = NULL;
     state->basecallers_global_ctr = NULL;
 

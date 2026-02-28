@@ -10,12 +10,12 @@
 
 read_stats *create_length_stats(void)
 {
-    read_stats *stats = xalloc(1, sizeof(read_stats), "length_stats");
+    read_stats *stats = fc_alloc(1, sizeof(read_stats), "length_stats");
 
-    bin_groups *bins = xalloc(1, sizeof(bin_groups), "bin_groups");
+    bin_groups *bins = fc_alloc(1, sizeof(bin_groups), "bin_groups");
     stats->buckets = bins;
     bins->n = 1;
-    bins->groups = xalloc(1, 3 * bins->n * sizeof(size_t), "groups");
+    bins->groups = fc_alloc(1, 3 * bins->n * sizeof(size_t), "groups");
     size_t *grps = bins->groups;
     // - end exclusive upper edges
     // - 0 is first lower edge
@@ -42,8 +42,8 @@ read_stats *create_length_stats(void)
 
     // fill in all the edges
     stats->width = 0;
-    stats->edges = xalloc(stats->n, sizeof(size_t), "edges");
-    stats->counts = xalloc(stats->n, sizeof(size_t), "counts");
+    stats->edges = fc_alloc(stats->n, sizeof(size_t), "edges");
+    stats->counts = fc_alloc(stats->n, sizeof(size_t), "counts");
     size_t i = 0;
     lower = 0;
     size_t upper = 0;
@@ -93,11 +93,11 @@ void add_length_count(read_stats *stats, size_t x)
 
 read_stats *create_qual_stats(float width)
 {
-    read_stats *stats = xalloc(1, sizeof(read_stats), "quality stats");
+    read_stats *stats = fc_alloc(1, sizeof(read_stats), "quality stats");
     stats->width = width;
     // this fixes the range to [0, 100], good for both QUAL and %age acc
     stats->n = (size_t)(100.0 / stats->width) + 1;
-    stats->counts = xalloc(stats->n, sizeof(size_t), "counts");
+    stats->counts = fc_alloc(stats->n, sizeof(size_t), "counts");
     return stats;
 }
 
@@ -111,15 +111,28 @@ void destroy_qual_stats(read_stats *stats)
 
 void add_qual_count(read_stats *stats, float q)
 {
-    q = fmin(q, 100.0);
-    stats->counts[(int)(q / stats->width)]++;
+    // Non-finite (NaN, Inf), negative, and zero quality scores bin to index 0
+    size_t idx = 0;
+    if (isfinite(q) && q > 0.0f) {
+        if (q >= 100.0f) {
+            idx = stats->n - 1;
+        } else {
+            idx = (size_t)(q / stats->width);
+            if (idx >= stats->n) {
+                idx = stats->n - 1;
+            }
+        }
+    }
+    stats->counts[idx]++;
 }
 
-// nasty function to e.g. 0.001 -> 3
+// Counts leading decimal places for histogram bin formatting.
+// E.g., 0.001 -> 3, 0.02 -> 2. Uses string formatting to avoid
+// floating-point arithmetic edge cases.
 size_t _leading_decimals(float number)
 {
     char str[64] = { 0 };
-    snprintf(str, sizeof(str), "%f", number);
+    FC_SNPRINTF_CHECK(str, sizeof(str), "%f", number);
     char *point = strchr(str, '.');
     return 1 + strspn(point + 1, "0");
 }
@@ -144,7 +157,7 @@ void print_stats(read_stats *stats, bool zeroes, bool tsv, FILE *fp)
         if (tsv) {
             size_t decimals = _leading_decimals(stats->width);
             char fmt[64] = { 0 }; // my brain hurts and 64 seems big enough
-            snprintf(fmt, 63, "%%.%zuf\t%%.%zuf\t%%zu\n", decimals, decimals);
+            FC_SNPRINTF_CHECK(fmt, sizeof(fmt), "%%.%zuf\t%%.%zuf\t%%zu\n", decimals, decimals);
             for (size_t i = 0; i < stats->n; i++) {
                 if (stats->counts[i] == 0 && !zeroes) {
                     continue;
@@ -154,7 +167,7 @@ void print_stats(read_stats *stats, bool zeroes, bool tsv, FILE *fp)
         } else {
             size_t decimals = _leading_decimals(stats->width);
             char fmt[64] = { 0 };
-            snprintf(fmt, 63, "[%%.%zuf, %%.%zuf)\t%%zu\n", decimals, decimals);
+            FC_SNPRINTF_CHECK(fmt, sizeof(fmt), "[%%.%zuf, %%.%zuf)\t%%zu\n", decimals, decimals);
             for (size_t i = 0; i < stats->n; i++) {
                 if (stats->counts[i] == 0 && !zeroes) {
                     continue;
