@@ -221,8 +221,13 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
 
     // alignment specific flags/statistics (BAMSTATS only)
     if (program == FC_PROGRAM_BAMSTATS) {
+        const char *region_label = NULL;
+        if (region_mode) {
+            region_label = args->region ? args->region : "bed_regions";
+        }
         fc_flagstats_sink_opts flag_opts = {
             .region_mode = region_mode,
+            .region_label = region_label,
             .output_root = args->output_dir,
             .sample = args->sample,
             .hdr = file_iter.bmi.hdr,

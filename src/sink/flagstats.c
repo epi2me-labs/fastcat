@@ -63,6 +63,7 @@ static inline void flagstats_add_counts(const bam1_t *b, size_t *counts, const i
 typedef struct {
     fc_flagstats_sink_opts cfg; // cached configuration
     char *sample_dup;
+    char *region_label_dup;
     flag_stats *global_stats;
     flag_stats **bc_stats;
     FILE *global_fp;
@@ -156,17 +157,23 @@ static void flagstats_write_all(flagstats_sink *sink, flag_stats *stats, FILE *f
     if (!stats || !fp) {
         return;
     }
-    for (size_t i = 0; i < stats->n_refs; ++i) {
-        const char *label = NULL;
-        if (sink->cfg.hdr && i < (size_t)sink->cfg.hdr->n_targets) {
-            label = sam_hdr_tid2name((sam_hdr_t *)sink->cfg.hdr, (int)i);
+
+    if (sink->cfg.region_mode) {
+        const char *label = sink->cfg.region_label ? sink->cfg.region_label : "region";
+        flagstats_write_line(fp, sink->cfg.sample, label, stats->counts[0]);
+    } else {
+        for (size_t i = 0; i < stats->n_refs; ++i) {
+            const char *label = NULL;
+            if (sink->cfg.hdr && i < (size_t)sink->cfg.hdr->n_targets) {
+                label = sam_hdr_tid2name((sam_hdr_t *)sink->cfg.hdr, (int)i);
+            }
+            char tmp[32];
+            if (!label) {
+                FC_SNPRINTF_CHECK(tmp, sizeof(tmp), "%zu", i);
+                label = tmp;
+            }
+            flagstats_write_line(fp, sink->cfg.sample, label, stats->counts[i]);
         }
-        char tmp[32];
-        if (!label) {
-            FC_SNPRINTF_CHECK(tmp, sizeof(tmp), "%zu", i);
-            label = tmp;
-        }
-        flagstats_write_line(fp, sink->cfg.sample, label, stats->counts[i]);
     }
     if (stats->unmapped) {
         flagstats_write_line(fp, sink->cfg.sample, "*", stats->unmapped);
@@ -228,6 +235,7 @@ static void flagstats_sink_destroy(void *ctx)
         }
     }
     free(sink->sample_dup);
+    free(sink->region_label_dup);
     destroy_flag_stats(sink->global_stats);
     if (sink->bc_stats) {
         for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
@@ -259,6 +267,10 @@ fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts)
     if (opts->sample) {
         state->sample_dup = fc_strdup(opts->sample, "sample name for flagstats sink");
         state->cfg.sample = state->sample_dup;
+    }
+    if (opts->region_label) {
+        state->region_label_dup = fc_strdup(opts->region_label, "region label for flagstats sink");
+        state->cfg.region_label = state->region_label_dup;
     }
     if (state->output_root) {
         char *path = fc_join_path(state->output_root, "flagstats.tsv");
