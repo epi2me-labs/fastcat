@@ -119,8 +119,9 @@ Instructions for automated code auditting tools
 * Focus area: Give extra scrutiny to FASTQ and BAM stats-generation subcommands.
 * Priority order: Correctness → simplicity/readability → backward+forward compatibility → performance.
 * Data model / security posture: Optimize for correctness on normal bioinformatics data (not primarily hostile/corrupt-file hardening).
-* Input handling: Fail-fast on malformed input (fatal; no warn-and-continue).
-* Compatibility exception (intentional): In BAM region mode, malformed BED lines or unknown references are skipped with logging and iteration continues across remaining regions. Audits should not flag this as a defect.
+* Input handling: Fail-fast on malformed input (fatal; no warn-and-continue). Two exceptions:
+   * in `fastq` mode, malformed/truncated FASTQ stream errors are logged and tracked, but overall exit status remains success unless `--force-error` is supplied (or a hard-fatal path is hit). Audits should not flag this as a defect.
+   * in BAM region mode, malformed BED lines or unknown references are skipped with logging and iteration continues across remaining regions. Audits should not flag this as a defect.
 * Compatibility: Treat CLI and outputs as part of the contract; aim for backward + forward compatibility over the LTS window. Expect no major FASTQ/BAM format changes, but allow for new meta tags that may later feed into summary stats.
 * Platforms: Target Linux x86 via conda (per GitLab CI) for production; macOS is a primary dev environment.
 * Readability vs performance: Prefer readability for non-C maintainers; do not undo intentional performance optimizations—document them if they’re non-obvious.
