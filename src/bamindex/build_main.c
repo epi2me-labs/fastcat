@@ -124,7 +124,7 @@ void index_build(const char *filename, const char *output_fname, int threads, si
     }
 
     int ret = 0;
-    int i = 0;
+    size_t i = 0;
     bam1_t *b = bam_init1();
     size_t file_offset = bgzf_tell(fp->fp.bgzf);
     while ((ret = sam_read1(fp, h, b)) >= 0) {
@@ -134,7 +134,7 @@ void index_build(const char *filename, const char *output_fname, int threads, si
             continue;
         }
         if (i % 100000 == 0) {
-            FC_LOG_INFO("Record %d %zu", i, file_offset);
+            FC_LOG_INFO("Record %zu %zu", i, file_offset);
         }
         if (bc_idx_write(out_fp, idx, file_offset, bam_get_qname(b)) < 0) {
             FC_LOG_FATAL("Failed to write records to index.");
@@ -159,7 +159,7 @@ void index_build(const char *filename, const char *output_fname, int threads, si
         FC_LOG_ERROR("Failed to write header to index.");
     }
     fclose(out_fp);
-    FC_LOG_INFO("Written %zu/%d records to index.", idx->n_chunks, i);
+    FC_LOG_INFO("Written %zu/%zu records to index.", idx->n_chunks, i);
     bc_idx_destroy(idx);
 }
 
