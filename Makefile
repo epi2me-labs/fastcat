@@ -126,7 +126,6 @@ TEST_TMP_BAMSTATS = $(TEST_TMP_DIR)/bamstats
 TEST_TMP_META = $(TEST_TMP_DIR)/meta
 TEST_TMP_BAMINDEX = $(TEST_TMP_DIR)/bamindex
 TEST_TMP_FASTLINT = $(TEST_TMP_DIR)/fastlint
-TEST_TMP_BAMCOVERAGE = $(TEST_TMP_DIR)/bamcoverage
 
 comma := ,
 
@@ -160,10 +159,10 @@ RUN_BAMSTATS = $(PEPPER) $(REPO_ROOT)/fastcat bam
 default: fastcat
 
 .PHONY:
-test: test_unit test_fastcat test_bamstats test_meta test_bamindex test_fastlint test_bamcoverage
+test: test_unit test_fastcat test_bamstats test_meta test_bamindex test_fastlint
 
 .PHONY:
-test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamindex-fetch mem_check_fastlint mem_check_bamcoverage
+test_memory: mem_check_fastcat mem_check_bamstats mem_check_bamindex-build mem_check_bamindex-dump mem_check_bamindex-fetch mem_check_fastlint
 
 .PHONY: format format_check format_staged install_hooks
 format:
@@ -252,7 +251,7 @@ clean_htslib:
 # core library
 CORE_OBJS = src/common.o src/fc_log.o src/stats.o src/fc_stats_engine.o src/fastqcomments.o src/fc_read.o src/fc_filter.o src/fc_bam_utils.o src/fc_dust.o src/fc_iter.o src/kseq_gz.o src/fc_writer.o src/fc_catstats_args.o src/fc_program.o src/fc_failures.o src/sink/common.o src/sink/output.o src/sink/perread.o src/sink/perfile.o src/sink/counter.o src/sink/hist.o src/sink/coverage.o src/sink/flagstats.o src/bamcoverage/coverage.o src/sdust/sdust.o src/sdust/kalloc.o src/kh_counter.o src/regiter.o src/fc_input_list.o
 CORE_LIB = libfastcatcore.a
-FASTCAT_SUBCOMMAND_OBJS = src/fastlint/main.o src/fastlint/args.o src/bamcoverage/main.o src/bamcoverage/args.o src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o
+FASTCAT_SUBCOMMAND_OBJS = src/fastlint/main.o src/fastlint/args.o src/bamindex/main.o src/bamindex/build_main.o src/bamindex/fetch_main.o src/bamindex/dump_main.o src/bamindex/index.o
 
 # unit tests
 UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unit/test_bamcoverage.c test/unity/unity.c
@@ -884,15 +883,3 @@ mem_check_fastlint: fastcat
 	@$(call TEST_DESC,Memcheck fastlint)
 	$(call RUN_IN_TMP,$(TEST_TMP_FASTLINT)/memcheck, \
 		$(GRIND) $(REPO_ROOT)/fastcat lint $(TEST_ROOT)/data/*.fastq.gz > /dev/null)
-
-###
-# bamcoverage tests
-
-test_bamcoverage: mem_check_bamcoverage
-
-.PHONY:
-mem_check_bamcoverage: fastcat
-	@$(call TEST_DESC,Memcheck bamcoverage)
-	$(call RUN_IN_TMP,$(TEST_TMP_BAMCOVERAGE)/memcheck, \
-		rm -rf bamstats-coverage covtmp && \
-		$(GRIND) $(REPO_ROOT)/fastcat cover $(TEST_ROOT)/bamstats/400ecoli.bam)

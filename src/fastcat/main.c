@@ -1,9 +1,8 @@
-#include "bamcoverage/main.h"
+#include "bamindex/main.h"
 
 #include <stdio.h>
 #include <string.h>
 
-#include "bamindex/main.h"
 #include "fastlint/main.h"
 #include "fc_catstats_args.h"
 #include "fc_program.h"
@@ -17,7 +16,6 @@ static void print_usage(const char *prog)
     fprintf(stderr, "  bam     BAM stats/filtering mode (bamstats)\n");
     fprintf(stderr, "  lint    Standalone FASTQ low-complexity filter (fastlint)\n");
     fprintf(stderr, "  index   BAM chunk index tools (bamindex)\n");
-    fprintf(stderr, "  cover   BAM reference coverage summaries (bamcoverage)\n");
     fprintf(stderr, "Try '%s <subcommand> --help' for subcommand options.\n", prog);
 }
 
@@ -38,7 +36,9 @@ int main(int argc, char **argv)
     } else if (strcmp(argv[1], "index") == 0 || strcmp(argv[1], "bamindex") == 0) {
         return bamindex_main(argc - 1, argv + 1);
     } else if (strcmp(argv[1], "cover") == 0 || strcmp(argv[1], "bamcoverage") == 0) {
-        return bamcoverage_main(argc - 1, argv + 1);
+        fprintf(stderr, "Subcommand '%s' has been removed.\n", argv[1]);
+        fprintf(stderr, "Use 'fastcat bam --coverage ...' instead.\n");
+        return 1;
     } else {
         fprintf(stderr, "Unknown subcommand '%s'.\n", argv[1]);
         print_usage(argv[0]);
