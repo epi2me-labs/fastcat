@@ -62,16 +62,6 @@ int cmp_u32(const void *a, const void *b);
  */
 bool file_exists(const char *path);
 
-/** check if we can make a directory.
- *
- * @param path path to directory
- * @returns  1 if we can make the directory,
- *           0 if it already exists,
- *          -1 if we cannot make it.
- *
- */
-int can_make_dir(const char *path);
-
 /** mkdir a directory structure recursively.
  *
  * @param directory path to ensure exists

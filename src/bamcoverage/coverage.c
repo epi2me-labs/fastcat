@@ -485,14 +485,6 @@ cov_writer init_coverage_writer(
     uint32_t *segments, size_t n_segments)
 {
 
-    // check outputs are writeable, we don't use mkdir_hier here because otherwise
-    // the global coverage writer would fail to make the TLD.
-    if (can_make_dir(out_dir) < 1) {
-        FC_LOG_FATAL(
-            "Cannot create output directory '%s'. Check location is writeable and directory does not exist.",
-            out_dir);
-    }
-
     kstring_t ks = KS_INITIALIZE;
     if (sam_hdr_find_tag_hd((bam_hdr_t *)hdr, "SO", &ks) >= 0) {
         if (strcmp(ks.s, "coordinate") != 0) {

@@ -45,38 +45,6 @@ bool file_exists(const char *path)
     return stat(path, &st) == 0;
 }
 
-/** check if we can make a directory.
- *
- * @param path path to directory
- * @returns  1 if we can make the directory,
- *           0 if it already exists,
- *          -1 if we cannot make it.
- *
- */
-int can_make_dir(const char *path)
-{
-    struct stat st;
-    // If something already exists at path
-    if (stat(path, &st) == 0) {
-        if (S_ISDIR(st.st_mode)) {
-            return 0; // already a directory
-        } else {
-            return -1; // already something
-        }
-    }
-
-    // check we can write in parent directory
-    char *copy = fc_strdup(path, "path copy for dirname");
-    char *parent = dirname(copy);
-    if (access(parent, W_OK | X_OK) == 0) {
-        free(copy);
-        return 1;
-    } else {
-        free(copy);
-        return -1;
-    }
-}
-
 /* The following three functions were adpated from:
  * https://gist.github.com/JonathonReinhart/8c0d90191c38af2dcadb102c4e202950
  */
