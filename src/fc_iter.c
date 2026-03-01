@@ -395,6 +395,9 @@ static int fc_bam_iter_open(
         }
 
         iter->reg = init_region_iterator(bed_path, region_string, hdr);
+        if (bed_path != NULL && (iter->reg.error & 1) != 0) {
+            return -1;
+        }
 
         regiter_status check = next_region(&iter->reg);
         if (check == REGITER_EOF) {
@@ -405,6 +408,7 @@ static int fc_bam_iter_open(
             FC_LOG_ERROR("Failed to parse region string: %s", region_string);
             return -1;
         }
+        // tolerate malformed region entries, and continue with next
         while (check != REGITER_OK) {
             check = next_region(&iter->reg);
             if (check == REGITER_EOF) {
@@ -465,7 +469,9 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
             if (iter->use_regions) {
                 // advance to next region
                 regiter_status check = next_region(&iter->reg);
-                while (check == REGITER_PARSE_ERROR || check == REGITER_REF_MISSING) { // skip invalid/unknown regions
+                // tolerate malformed region entries, and continue with next
+                // lines or unknown references instead of aborting the run.
+                while (check == REGITER_PARSE_ERROR || check == REGITER_REF_MISSING) {
                     check = next_region(&iter->reg);
                 }
                 if (check == REGITER_OK) {
