@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdio.h>
+#include <limits.h>
 
 #include "unity.h"
 #include "stats.h"
@@ -51,8 +52,30 @@ static void test_length_stats_layout(void) {
     TEST_ASSERT_EQUAL_size_t(0, stats->edges[0]);
     TEST_ASSERT_EQUAL_size_t(1, stats->edges[1]);
     TEST_ASSERT_EQUAL_size_t(10000000, stats->edges[stats->n - 1]);
+    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, stats->edges[stats->n]);
     // spot check monotonicity
     TEST_ASSERT_TRUE(stats->edges[5000] < stats->edges[5001]);
+    destroy_length_stats(stats);
+}
+
+static void test_print_stats_length_overflow_bucket_output(void) {
+    read_stats *stats = create_length_stats();
+    add_length_count(stats, 10000001);
+
+    FILE *fp = tmpfile();
+    TEST_ASSERT_NOT_NULL(fp);
+    print_stats(stats, false, true, fp);
+    TEST_ASSERT_EQUAL_INT(0, fflush(fp));
+    rewind(fp);
+
+    char line[128] = {0};
+    TEST_ASSERT_NOT_NULL(fgets(line, sizeof(line), fp));
+    char expected[128] = {0};
+    FC_SNPRINTF_CHECK(expected, sizeof(expected), "10000000\t%zu\t1\n", (size_t)SIZE_MAX);
+    TEST_ASSERT_EQUAL_STRING(expected, line);
+    TEST_ASSERT_NULL(fgets(line, sizeof(line), fp));
+
+    fclose(fp);
     destroy_length_stats(stats);
 }
 
@@ -102,6 +125,7 @@ void stats_suite(void) {
     RUN_TEST(test_leading_decimals);
     RUN_TEST(test_mean_qual_naive);
     RUN_TEST(test_length_stats_layout);
+    RUN_TEST(test_print_stats_length_overflow_bucket_output);
     RUN_TEST(test_print_stats_tsv_output);
     RUN_TEST(test_print_stats_pretty_output);
 }

@@ -1,5 +1,6 @@
 #include "stats.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -42,7 +43,8 @@ read_stats *create_length_stats(void)
 
     // fill in all the edges
     stats->width = 0;
-    stats->edges = fc_alloc(stats->n, sizeof(size_t), "edges");
+    // Keep n+1 edges so the overflow bucket [edges[n-1], edges[n]) is representable.
+    stats->edges = fc_alloc(stats->n + 1, sizeof(size_t), "edges");
     stats->counts = fc_alloc(stats->n, sizeof(size_t), "counts");
     size_t i = 0;
     lower = 0;
@@ -56,6 +58,8 @@ read_stats *create_length_stats(void)
         lower = upper;
     }
     stats->edges[i] = upper;
+    // Final edge for the overflow bucket upper bound.
+    stats->edges[stats->n] = SIZE_MAX;
     return stats;
 }
 
