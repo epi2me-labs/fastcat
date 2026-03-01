@@ -575,7 +575,7 @@ const double qprobs[256] = {
 
 inline void kahan_sum(double *sum, double term, double *c)
 {
-    double y = term + *c;
+    double y = term - *c;
     double t = *sum + y;
     *c = (t - *sum) - y;
     *sum = t;
