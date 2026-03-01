@@ -33,7 +33,6 @@ Subcommands:
   bam     BAM stats/filtering mode (bamstats)
   lint    Standalone FASTQ low-complexity filter (fastlint)
   index   BAM chunk index tools (bamindex)
-  cover   BAM reference coverage summaries (bamcoverage)
 Try './fastcat <subcommand> --help' for subcommand options.
 ```
 
@@ -336,26 +335,6 @@ fastlint -- apply sdust algorithm to input files.
                              read to keep the read (default: 0.95).
   -t, --threshold=THRESHOLD  Threshold for repetition (default: 20).
   -w, --window=WINDOW        Window size (default: 64).
-
-  -?, --help                 Give this help list
-      --usage                Give a short usage message
-  -V, --version              Print program version
-```
-
-## fastcat cover
-
-Standalone BAM coverage summaries.
-
-```text
-$ ./fastcat cover --help
-Usage: cover [OPTION...] <reads.bam>
-bamcoverage -- summarise coverage statistics from a BAM file.
-
- General options:
-  -b, --beds=BEDFILE ...     BED files for regions (space-separated list).
-  -n, --names=NAME...        Names associated with the BED files
-                             (space-separated list).
-  -t, --threads=THREADS      Number of threads for BAM processing.
 
   -?, --help                 Give this help list
       --usage                Give a short usage message
