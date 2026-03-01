@@ -53,7 +53,7 @@ static inline void flagstats_add_counts(const bam1_t *b, size_t *counts, const i
 {
     counts[0] += 1;
     counts[1] += fc_is_primary(b);
-    for (size_t i = 2; i < 6; ++i) {
+    for (size_t i = 2; i < 7; ++i) {
         counts[i] += ((b->core.flag & FLAG_MASK[i]) != 0);
     }
     counts[7] += (duplex_code == 1);
