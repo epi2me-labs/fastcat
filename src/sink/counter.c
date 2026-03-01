@@ -68,8 +68,12 @@ static FILE *counter_open_file(counter_sink *sink, const char *path, const char 
 
 static FILE *ensure_bc_file(counter_sink *sink, FILE **files, const char *leaf, const char *value_label, size_t barcode)
 {
-    if (!sink->cfg.use_barcodes || barcode >= sink->cfg.barcode_count) {
-        return NULL;
+    if (!sink->cfg.use_barcodes) {
+        FC_LOG_FATAL("Internal error: requested barcode counter file '%s' while barcodes are disabled.", leaf);
+    }
+    if (barcode >= sink->cfg.barcode_count) {
+        FC_LOG_FATAL("Internal error: barcode index %zu out of range for '%s' (count=%zu).",
+            barcode, leaf, sink->cfg.barcode_count);
     }
     if (files[barcode]) {
         return files[barcode];
@@ -77,8 +81,7 @@ static FILE *ensure_bc_file(counter_sink *sink, FILE **files, const char *leaf, 
 
     char *dir = fc_sink_ensure_barcode_dir(sink->output_root, barcode);
     if (!dir) {
-        FC_LOG_ERROR("Failed to create barcode directory for %s (barcode %zu).", leaf, barcode);
-        return NULL;
+        FC_LOG_FATAL("Failed to create barcode directory for %s (barcode %zu).", leaf, barcode);
     }
     char *path = fc_join_path(dir, leaf);
     free(dir);
