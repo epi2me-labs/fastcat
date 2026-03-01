@@ -368,7 +368,7 @@ fastcat: src/version.o src/fastcat/main.o $(FASTCAT_SUBCOMMAND_OBJS) $(CORE_LIB)
 # fastcat tests
 
 .PHONY:
-test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters test_fastcat_demultiplex_outputs test_fastcat_demultiplex_split test_fastcat_demux_single_equiv test_fastcat_regression_results test_fastcat_perfile_all_filtered test_fastcat_stdin_data_equiv test_fastcat_fofn_equiv test_fastcat_stdin_requires_dash test_fastcat_bam_input_equiv test_fastcat_bam_input_fofn_equiv test_fastcat_bam_input_stdin_equiv test_fastcat_bam_input_rejects_mapped
+test_fastcat: mem_check_fastcat mem_check_fastcat_demultiplex mem_check_fastcat_bam mem_check_fastcat_demultiplex_bam test_fastcat_bam_equivalent test_fastcat_reheader_roundtrip test_fastcat_filters test_fastcat_demultiplex_outputs test_fastcat_demultiplex_split test_fastcat_demux_single_equiv test_fastcat_regression_results test_fastcat_perfile_all_filtered test_fastcat_stdin_data_equiv test_fastcat_fofn_equiv test_fastcat_stdin_requires_dash test_fastcat_bam_input_equiv test_fastcat_bam_input_fofn_equiv test_fastcat_bam_input_stdin_equiv test_fastcat_bam_input_rejects_mapped test_fastcat_nested_output_dir
 
 .PHONY: test_fastcat_demux_single_equiv
 test_fastcat_demux_single_equiv: fastcat
@@ -521,6 +521,14 @@ test_fastcat_stdin_requires_dash: fastcat
 		rc_fofn=$$?; \
 		set -e; \
 		test $$rc_data -ne 0 && test $$rc_fofn -ne 0)
+
+.PHONY: test_fastcat_nested_output_dir
+test_fastcat_nested_output_dir: fastcat
+	@$(call TEST_DESC,Fastcat supports nested output directories)
+	$(call RUN_IN_TMP,$(TEST_TMP_FASTCAT)/nested_output, \
+		$(RUN_FASTCAT) $(TEST_ROOT)/data/bc1.fastq.gz --output nested/out/path > /dev/null && \
+		test -f nested/out/path/per_file.tsv && \
+		test -f nested/out/path/histograms/length.hist)
 
 .PHONY: test_fastcat_bam_input_equiv
 test_fastcat_bam_input_equiv: fastcat
