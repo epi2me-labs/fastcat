@@ -50,6 +50,7 @@ fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts);
 
 typedef struct {
     bool region_mode;
+    const char *region_label;
     const char *output_root;
     const char *sample;
     const bam_hdr_t *hdr;
