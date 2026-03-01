@@ -30,6 +30,16 @@ static void test_create_rg_info(void) {
     destroy_rg_info(info);
 }
 
+static void test_create_rg_info_extra_at_without_modcaller_separator(void) {
+    char rg[] = "12345678-1234-1234-1234-123456789012_sup@v4.0.0@modcaller";
+    readgroup* info = create_rg_info(rg);
+    TEST_ASSERT_EQUAL_STRING("12345678-1234-1234-1234-123456789012", info->runid);
+    TEST_ASSERT_EQUAL_STRING("sup@v4.0.0@modcaller", info->basecaller);
+    TEST_ASSERT_NULL(info->modcaller);
+    TEST_ASSERT_NULL(info->barcode);
+    destroy_rg_info(info);
+}
+
 static void test_kahan_sum(void) {
     double sum = 0.0, c = 0.0;
     for (int i = 0; i < 100000; ++i) {
@@ -84,6 +94,7 @@ void common_suite(void) {
     RUN_TEST(test_min_max);
     RUN_TEST(test_replace_char);
     RUN_TEST(test_create_rg_info);
+    RUN_TEST(test_create_rg_info_extra_at_without_modcaller_separator);
     RUN_TEST(test_kahan_sum);
     RUN_TEST(test_kahan_sum_cancellation);
     RUN_TEST(test_parse_int_strict);

@@ -700,9 +700,16 @@ readgroup *create_rg_info(char *rg)
     if (delim1 == delim) { // only one `@`
         rg_info->modcaller = NULL;
     } else {
-        delim1 = strchr(delim1, '_'); // modcaller starts at `_` after first `@`
-        delim1[0] = '\0';
-        rg_info->modcaller = delim1 + 1;
+        // if RG string contains an extra '@' separators without a modcaller "_"
+        // delimiter after the first '@'. Treat those as "no modcaller" instead of
+        // dereferencing a NULL separator.
+        char *mod_sep = strchr(delim1, '_'); // modcaller starts at `_` after first `@`
+        if (mod_sep != NULL && mod_sep < delim) {
+            mod_sep[0] = '\0';
+            rg_info->modcaller = mod_sep + 1;
+        } else {
+            rg_info->modcaller = NULL;
+        }
     }
     delim = strchr(delim, '_');
     // barcode is optional
