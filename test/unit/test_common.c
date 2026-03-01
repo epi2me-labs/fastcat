@@ -38,6 +38,16 @@ static void test_kahan_sum(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.05, sum, 10000.0);
 }
 
+static void test_kahan_sum_cancellation(void) {
+    double sum = 0.0, c = 0.0;
+    kahan_sum(&sum, 1e12, &c);
+    for (int i = 0; i < 10; ++i) {
+        kahan_sum(&sum, 0.1, &c);
+    }
+    kahan_sum(&sum, -1e12, &c);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 1.0, sum);
+}
+
 static void test_parse_int_strict(void) {
     int v = 0;
     TEST_ASSERT_TRUE(fc_parse_int_strict("42", &v));
@@ -75,6 +85,7 @@ void common_suite(void) {
     RUN_TEST(test_replace_char);
     RUN_TEST(test_create_rg_info);
     RUN_TEST(test_kahan_sum);
+    RUN_TEST(test_kahan_sum_cancellation);
     RUN_TEST(test_parse_int_strict);
     RUN_TEST(test_parse_size_strict);
     RUN_TEST(test_parse_u32_strict_overflow);
