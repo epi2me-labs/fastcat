@@ -209,7 +209,7 @@ static void _flush_contig(cov_writer w)
 
             // summary stats including sparse (user-defined) coverage distribution
             _write_summary(NULL, wr->fh_summary, reg, stats,
-                dist, wr->max_cover, wr->thresholds, wr->n_thresholds);
+                dist, max_cover, wr->thresholds, wr->n_thresholds);
 
             // update total stats - these get written on close
             wr->stats[0] = min(stats[0], wr->stats[0]);

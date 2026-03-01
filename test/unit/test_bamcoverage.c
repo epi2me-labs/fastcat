@@ -314,6 +314,59 @@ static void test_coverage_writer_init_destroy_no_data(void)
     cleanup_output_dir(out_dir);
 }
 
+static void test_coverage_summary_thresholds_handle_depth_above_initial_cap(void)
+{
+    const int lengths[1] = { 100 };
+    char out_dir[] = "/tmp/fastcat_cov_thresholdsXXXXXX";
+    char summary_path[512];
+
+    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
+
+    bam_hdr_t *hdr = make_header(lengths, 1);
+    uint32_t thresholds[] = { 1, 5, 10, 20 };
+    cov_writer w = init_coverage_writer(
+        out_dir, false, false,
+        -1, -1, false,
+        hdr, NULL, NULL, NULL, 0, thresholds, 4, NULL, 0);
+    TEST_ASSERT_NOT_NULL(w);
+
+    for (int i = 0; i < 300; ++i) {
+        char qname[32];
+        FC_SNPRINTF_CHECK(qname, sizeof(qname), "depth_%d", i);
+        bam1_t *read = make_read(qname, 0, 0, 1, NULL, 0, NULL);
+        coverage_process(w, read);
+        bam_destroy1(read);
+    }
+
+    destroy_coverage_writer(w);
+    sam_hdr_destroy(hdr);
+
+    FC_SNPRINTF_CHECK(summary_path, sizeof(summary_path), "%s/global.summary.txt", out_dir);
+    FILE *fp = fopen(summary_path, "r");
+    TEST_ASSERT_NOT_NULL(fp);
+
+    char line[512];
+    TEST_ASSERT_NOT_NULL(fgets(line, sizeof(line), fp)); // header
+    TEST_ASSERT_NOT_NULL(fgets(line, sizeof(line), fp)); // chr1 row
+
+    char chrom[64] = { 0 };
+    long long start = 0, end = 0, length = 0, bases = 0, min_cov = 0, max_cov = 0;
+    double mean = 0.0, t1 = 0.0, t5 = 0.0, t10 = 0.0, t20 = 0.0;
+    int parsed = sscanf(line,
+        "%63[^\t]\t%lld\t%lld\t%lld\t%lld\t%lf\t%lld\t%lld\t%lf\t%lf\t%lf\t%lf",
+        chrom, &start, &end, &length, &bases, &mean, &min_cov, &max_cov, &t1, &t5, &t10, &t20);
+    TEST_ASSERT_EQUAL_INT(12, parsed);
+    TEST_ASSERT_EQUAL_STRING("chr1", chrom);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.01f, (float)t1);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.01f, (float)t5);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.01f, (float)t10);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.01f, (float)t20);
+
+    fclose(fp);
+    cleanup_output_dir(out_dir);
+}
+
 static void test_coverage_process(void)
 {
     const int lengths[7] = { 120, 60, 180, 70, 220, 80, 260 };
@@ -445,5 +498,6 @@ void bamcoverage_suite(void)
     RUN_TEST(test_coverage_process_use_cigar_mixed_ops);
     RUN_TEST(test_coverage_process_end_marker_at_contig_len);
     RUN_TEST(test_coverage_writer_init_destroy_no_data);
+    RUN_TEST(test_coverage_summary_thresholds_handle_depth_above_initial_cap);
     RUN_TEST(test_coverage_process);
 }
