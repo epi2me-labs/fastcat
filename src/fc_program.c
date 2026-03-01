@@ -316,6 +316,8 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     if (status != EXIT_SUCCESS) {
         FC_LOG_WARN("Error processing files.");
     }
+    // for fastq-mode parsing/stream errors we allow isolated broken files to
+    // not bring everything to a halt, unless --force-error is given
     if (!args->force_error && !hard_error) {
         status = EXIT_SUCCESS;
     }
