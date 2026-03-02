@@ -8,6 +8,39 @@
 #include "common.h"
 #include "fc_log.h"
 
+static const char *format_name(enum htsExactFormat fmt)
+{
+    switch (fmt) {
+    case sam:
+        return "SAM";
+    case bam:
+        return "BAM";
+    case cram:
+        return "CRAM";
+    default:
+        return "unknown";
+    }
+}
+
+void fc_require_bam_input(htsFile *fp, const char *path, const char *operation)
+{
+    const htsFormat *fmt = hts_get_format(fp);
+    enum htsExactFormat exact = fmt ? fmt->format : unknown_format;
+    if (exact == bam) {
+        return;
+    }
+
+    const char *op = operation ? operation : "operation";
+    const char *got = format_name(exact);
+    if (exact == sam || exact == cram) {
+        FC_LOG_FATAL(
+            "%s requires BAM input (BGZF-compressed), but '%s' is %s. "
+            "Convert first, e.g.: samtools view -b -o reads.bam %s",
+            op, path, got, path);
+    }
+    FC_LOG_FATAL("%s requires BAM input (BGZF-compressed), but '%s' is %s.", op, path, got);
+}
+
 /** Set up a bam file for reading records.
  *
  *  @param fp htsFile pointer
