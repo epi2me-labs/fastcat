@@ -61,6 +61,11 @@ static const char *SAM_LOWER_QS_FIXTURE =
     "@SQ\tSN:chr1\tLN:1000\n"
     "r1\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\tIIII\tqs:f:5.0\n";
 
+static const char *SAM_MISSING_QUAL_FIXTURE =
+    "@HD\tVN:1.6\tSO:unknown\n"
+    "@SQ\tSN:chr1\tLN:1000\n"
+    "r1\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\t*\n";
+
 static void make_temp_gz_fastq(char *path, size_t path_len) {
     char tmpl[] = "/tmp/fastcat_iter_fastqXXXXXX";
     int fd = mkstemp(tmpl);
@@ -240,6 +245,14 @@ static void test_iter_bam_lowercase_qs_used_for_quality_filtering(void) {
     remove(sam_path);
 }
 
+static void test_iter_bam_missing_quality_counts_as_low_quality(void) {
+    char sam_path[64];
+    make_temp_sam_contents(SAM_MISSING_QUAL_FIXTURE, sam_path, sizeof(sam_path));
+    fc_iter_opts opts = fq_opts_defaults();
+    _run_iter_and_assert(sam_path, &opts, 0, 0, 0, 0, 0.0, 1, 0, 0, 1);
+    remove(sam_path);
+}
+
 
 // all filtered sets some things
 
@@ -299,6 +312,7 @@ void iter_suite(void) {
     RUN_TEST(test_iter_fastq_filters_length_and_quality);
     RUN_TEST(test_iter_bam_filters_length_and_quality);
     RUN_TEST(test_iter_bam_lowercase_qs_used_for_quality_filtering);
+    RUN_TEST(test_iter_bam_missing_quality_counts_as_low_quality);
     // all filtered sets min/max length to zero
     RUN_TEST(test_iter_fastq_all_filtered_sets_minmax_zero);
     RUN_TEST(test_iter_bam_all_filtered_sets_minmax_zero);
