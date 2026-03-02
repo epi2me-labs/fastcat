@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -137,6 +138,11 @@ static bool fc_iter_process_bam_record(
 {
     size_t len = (size_t)out->bam->core.l_qseq;
     float mean_q = fc_bam_ensure_mean_quality(out->bam, opts->force_recalc_qual);
+    // if mean_q not present then consider low quality and filter out
+    if (!isfinite(mean_q)) {
+        stats->failures[R_LOW_QUALITY]++;
+        return false;
+    }
 
     if (apply_filters) {
         if (!fc_iter_filter_length(len, opts->min_length, opts->max_length, stats)) {
