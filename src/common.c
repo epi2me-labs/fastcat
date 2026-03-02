@@ -314,12 +314,13 @@ char *fc_join_path(const char *dir, const char *leaf)
     size_t len = strlen(dir);
     size_t llen = strlen(leaf);
     bool need_sep = len > 0 && dir[len - 1] != '/';
-    size_t total = len + need_sep + llen + 1;
 
-    if (total > PATH_MAX) {
+    // Check for overflow before computing total
+    if (len > PATH_MAX || llen > PATH_MAX || len + need_sep > PATH_MAX - llen - 1) {
         FC_LOG_FATAL("Path too long: '%s' + '%s' exceeds PATH_MAX (%d)", dir, leaf, PATH_MAX);
     }
 
+    size_t total = len + need_sep + llen + 1;
     char *out = fc_alloc(total, 1, "joined path");
     FC_SNPRINTF_CHECK(out, total, "%s%s%s", dir, need_sep ? "/" : "", leaf);
     return out;
@@ -386,6 +387,12 @@ void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state
  */
 void *fc_alloc(size_t num, size_t size, const char *msg)
 {
+    if (num == 0 || size == 0) {
+        FC_LOG_FATAL("Invalid zero-size allocation for %s (num=%zu, size=%zu)", msg, num, size);
+    }
+    if (size > SIZE_MAX / num) {
+        FC_LOG_FATAL("Overflow in allocation size for %s (num=%zu, size=%zu)", msg, num, size);
+    }
     void *res = calloc(num, size);
     if (res == NULL) {
         FC_LOG_FATAL("Failed to allocate mem for %s", msg);
@@ -422,11 +429,23 @@ void *fc_realloc(void *ptr, size_t size, const char *msg)
  */
 void *fc_recalloc(void *ptr, size_t orig, size_t num, size_t size, const char *msg)
 {
+    if (num < orig) {
+        FC_LOG_FATAL("fc_recalloc: new size (%zu) cannot be less than original (%zu) for %s", num, orig, msg);
+    }
+    if (num == 0 || size == 0) {
+        FC_LOG_FATAL("Invalid zero-size reallocation for %s (num=%zu, size=%zu)", msg, num, size);
+    }
+    if (size > SIZE_MAX / num) {
+        FC_LOG_FATAL("Overflow in reallocation size for %s (num=%zu, size=%zu)", msg, num, size);
+    }
+    if (orig != 0 && size > SIZE_MAX / orig) {
+        FC_LOG_FATAL("Overflow in original size calculation for %s (orig=%zu, size=%zu)", msg, orig, size);
+    }
     void *res = realloc(ptr, num * size);
     if (res == NULL) {
         FC_LOG_FATAL("Failed to reallocate mem for %s", msg);
     }
-    // zero out the new memory
+    // zero out the new memory (overflow already checked above)
     memset((char *)res + orig * size, 0, (num - orig) * size);
     return res;
 }
@@ -550,7 +569,7 @@ inline void kahan_sum(double *sum, double term, double *c)
     *sum = t;
 }
 
-inline float mean_qual(char *qual, size_t len)
+inline float mean_qual(const char *qual, size_t len)
 {
     if (len == 0) {
         return nanf("");
@@ -569,7 +588,7 @@ inline float mean_qual(char *qual, size_t len)
     return -10 * log10(qsum);
 }
 
-inline float mean_qual_from_bam(uint8_t *qual, size_t len)
+inline float mean_qual_from_bam(const uint8_t *qual, size_t len)
 {
     if (len == 0 || qual[0] == 0xff) {
         return nanf("");
@@ -583,7 +602,7 @@ inline float mean_qual_from_bam(uint8_t *qual, size_t len)
     return -10 * log10(qsum);
 }
 
-inline float mean_qual_naive(char *qual, size_t len)
+inline float mean_qual_naive(const char *qual, size_t len)
 {
     if (len == 0) {
         return nanf("");
@@ -601,7 +620,7 @@ inline float mean_qual_naive(char *qual, size_t len)
     return -10 * log10(qsum);
 }
 
-inline float mean_qual_from_bam_naive(uint8_t *qual, size_t len)
+inline float mean_qual_from_bam_naive(const uint8_t *qual, size_t len)
 {
     if (len == 0 || qual[0] == 0xff) {
         return nanf("");
@@ -644,7 +663,6 @@ void destroy_rg_info(readgroup *rg)
     if (rg != NULL) {
         free(rg->readgroup);
         free(rg);
-        rg = NULL;
     }
 }
 

@@ -51,7 +51,7 @@ int fc_bam_read(void *data, bam1_t *b);
  *
  *  The length of the returned array is b->core->l_qlen.
  */
-int *fc_bam_qpos2rpos(bam1_t *b);
+int *fc_bam_qpos2rpos(const bam1_t *b);
 
 uint8_t *fc_bam_get_tag_caseinsensitive(const bam1_t *b, const char tag_name[2]);
 

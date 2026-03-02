@@ -22,7 +22,8 @@ static flag_stats *create_flag_stats(size_t n_refs, bool store_unmapped)
 {
     flag_stats *stats = fc_alloc(1, sizeof(flag_stats), "flagstat");
     stats->n_refs = n_refs;
-    stats->counts = fc_alloc(n_refs, sizeof(size_t *), "flagstat");
+    // For unaligned-only BAMs (n_refs=0), we only track unmapped stats
+    stats->counts = n_refs > 0 ? fc_alloc(n_refs, sizeof(size_t *), "flagstat") : NULL;
     stats->unmapped = store_unmapped ? fc_alloc(FLAG_COLS, sizeof(size_t), "flagstat") : NULL;
 
     for (size_t i = 0; i < n_refs; i++) {

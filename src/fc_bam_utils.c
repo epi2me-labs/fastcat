@@ -117,7 +117,7 @@ int fc_bam_read(void *data, bam1_t *b)
  *
  *  The length of the returned array is b->core->l_qlen.
  */
-int *fc_bam_qpos2rpos(bam1_t *b)
+int *fc_bam_qpos2rpos(const bam1_t *b)
 {
     // we only deal in primary/soft-clipped alignments so length
     // of qseq member is the length of the intact query sequence.
