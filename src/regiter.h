@@ -42,7 +42,7 @@ typedef enum {
 } regiter_status;
 
 int region_from_string(char *input, char **chr, int *start, int *end);
-char *region_to_string(bed_region region);
+char *region_to_string(const bed_region region);
 int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end);
 regiter init_region_iterator(const char *bed_file, const char *single_region, const sam_hdr_t *hdr);
 void destroy_region_iterator(regiter *it);

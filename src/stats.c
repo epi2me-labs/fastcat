@@ -34,6 +34,9 @@ read_stats *create_length_stats(void)
     for (size_t i = 0; i < bins->n; i++) {
         size_t upper = bins->groups[3 * i];
         size_t step = bins->groups[3 * i + 1];
+        if (step == 0) {
+            FC_LOG_FATAL("Invalid histogram configuration: step size cannot be zero");
+        }
         size_t nbins = (upper - lower) / step;
         bins->groups[3 * i + 2] = nbins;
         stats->n += nbins;
@@ -97,10 +100,19 @@ void add_length_count(read_stats *stats, size_t x)
 
 read_stats *create_qual_stats(float width)
 {
+    if (width <= 0.0f || !isfinite(width)) {
+        FC_LOG_FATAL("Invalid histogram width: %f (must be positive and finite)", width);
+    }
     read_stats *stats = fc_alloc(1, sizeof(read_stats), "quality stats");
     stats->width = width;
     // this fixes the range to [0, 100], good for both QUAL and %age acc
     stats->n = (size_t)(100.0 / stats->width) + 1;
+
+    // Validate resulting size is reasonable (prevent massive allocations)
+    if (stats->n > 10000000) {
+        FC_LOG_FATAL("Histogram width %f results in excessive bins (%zu)", width, stats->n);
+    }
+
     stats->counts = fc_alloc(stats->n, sizeof(size_t), "counts");
     return stats;
 }

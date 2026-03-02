@@ -24,7 +24,7 @@ int region_from_string(char *input, char **chr, int *start, int *end)
     return rtn;
 }
 
-char *region_to_string(bed_region r)
+char *region_to_string(const bed_region r)
 {
     return fc_asprintf("region string", "%s:%" PRId64 "-%" PRId64, r->chr, r->start, r->end);
 }
