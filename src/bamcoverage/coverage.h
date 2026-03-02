@@ -61,10 +61,6 @@ typedef struct {
 
 typedef _cov_writer *cov_writer;
 
-cov_writer_region init_coverage_writer_region(
-    const char *out_dir, const char *name, bool per_base, bool by_strand, const char *bed_fname,
-    uint32_t *thresholds, size_t n_thresholds, uint32_t segment_length,
-    const bam_hdr_t *hdr, const htsThreadPool *pool);
 void destroy_coverage_writer_region(cov_writer_region writer);
 
 cov_writer init_coverage_writer(
