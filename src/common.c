@@ -174,19 +174,16 @@ out:
 int ensure_parent_dir_exists(const char *filepath)
 {
     char *path_copy = fc_strdup(filepath, "filepath copy for parent dir check");
-    if (path_copy == NULL) {
-        return -1;
-    }
-
     char *dir = dirname(path_copy);
     int rtn = mkdir_p(dir);
-
     free(path_copy);
     return rtn;
 }
 
 static void push_str(const char ***arr, size_t *n, const char *s)
 {
+    // Use bare realloc + argp_failure to integrate with argp error reporting,
+    // rather than fc_realloc which would use FC_LOG_FATAL.
     const char **tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
     if (!tmp) {
         argp_failure(NULL, 1, 0, "out of memory");
@@ -348,6 +345,8 @@ void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state
     if (!fc_parse_u32_strict(first, &val)) {
         argp_error(state, "Invalid integer threshold: '%s'", first);
     }
+    // Use bare realloc + argp_failure to integrate with argp error reporting,
+    // rather than fc_realloc which would use FC_LOG_FATAL.
     uint32_t *tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
     if (!tmp) {
         argp_failure(state, 1, 0, "out of memory");
@@ -364,6 +363,8 @@ void slurp_ints(uint32_t **arr, size_t *n, char *first, struct argp_state *state
         if (!fc_parse_u32_strict(next, &val)) {
             argp_error(state, "Invalid integer threshold: '%s'", next);
         }
+        // Use bare realloc + argp_failure to integrate with argp error reporting,
+        // rather than fc_realloc which would use FC_LOG_FATAL.
         tmp = realloc(*arr, (*n + 1) * sizeof(**arr));
         if (!tmp) {
             argp_failure(state, 1, 0, "out of memory");
@@ -557,7 +558,11 @@ inline float mean_qual(char *qual, size_t len)
     double qsum = 0;
     double c = 0;
     for (size_t i = 0; i < len; ++i) {
-        uint8_t q = (uint8_t)(qual[i] - 33);
+        if ((unsigned char)qual[i] < 33) {
+            FC_LOG_FATAL("Invalid FASTQ quality character %d (< 33) at position %zu",
+                (unsigned char)qual[i], i);
+        }
+        uint8_t q = (uint8_t)qual[i] - 33;
         kahan_sum(&qsum, qprobs[q], &c);
     }
     qsum /= len;
@@ -585,7 +590,11 @@ inline float mean_qual_naive(char *qual, size_t len)
     }
     double qsum = 0;
     for (size_t i = 0; i < len; ++i) {
-        uint8_t q = (uint8_t)(qual[i] - 33);
+        if ((unsigned char)qual[i] < 33) {
+            FC_LOG_FATAL("Invalid FASTQ quality character %d (< 33) at position %zu",
+                (unsigned char)qual[i], i);
+        }
+        uint8_t q = (uint8_t)qual[i] - 33;
         qsum += qprobs[q];
     }
     qsum /= len;

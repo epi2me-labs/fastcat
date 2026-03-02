@@ -179,7 +179,11 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             meta->barcode = bam_aux2Z(aux);
             // Default to unclassified (0) unless we parse a valid barcode number
             meta->ibarcode = 0;
-            if (strncmp(meta->barcode, "barcode", 7) == 0) {
+            if (meta->barcode == NULL) {
+                // Corrupted aux tag - treat as unclassified rather than crashing
+                FC_LOG_WARN("Read '%s' has malformed barcode tag, treating as unclassified.",
+                    bam_get_qname(b));
+            } else if (strncmp(meta->barcode, "barcode", 7) == 0) {
                 const char *num_str = meta->barcode + 7;
                 size_t val = 0;
                 if (fc_parse_size_strict(num_str, &val) && val < FC_MAX_BARCODES) {

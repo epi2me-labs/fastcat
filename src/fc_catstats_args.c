@@ -424,11 +424,17 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         if (!fc_parse_float_strict(arg, &float_value)) {
             argp_error(state, "Invalid --poly-a-cover value: '%s'.", arg);
         }
+        if (float_value < 0.0 || float_value > 100.0) {
+            argp_error(state, "--poly-a-cover must be between 0.0 and 100.0 (percentage).");
+        }
         arguments->poly_a_cover = float_value;
         break;
     case KEY_POLYA_QUAL:
         if (!fc_parse_float_strict(arg, &float_value)) {
             argp_error(state, "Invalid --poly-a-qual value: '%s'.", arg);
+        }
+        if (float_value < 0.0 || float_value > 60.0) {
+            argp_error(state, "--poly-a-qual must be between 0.0 and 60.0.");
         }
         arguments->poly_a_qual = float_value;
         break;

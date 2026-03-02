@@ -516,6 +516,10 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
             hts_pos_t rend = bam_endpos(out->bam);
             while (iter->reg_active && (tid > iter->reg.tid || (tid == iter->reg.tid && pos >= iter->reg.end))) {
                 regiter_status check = next_region(&iter->reg);
+                // Skip malformed entries like indexed mode does
+                while (check == REGITER_PARSE_ERROR || check == REGITER_REF_MISSING) {
+                    check = next_region(&iter->reg);
+                }
                 if (check != REGITER_OK) {
                     iter->reg_active = false;
                     break;

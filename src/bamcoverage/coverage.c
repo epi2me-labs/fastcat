@@ -106,7 +106,7 @@ static inline void _write_summary(
         cum += (double)dist[cover];
 
         // dense CDF - mosdepth calls this "distribution"
-        if (fh_dist) {
+        if (fh_dist && positions > 0) {
             double frac = cum / positions;
             if (frac < 1e-3) {
                 continue; // mosdepth uses 8e-5 \:D/
