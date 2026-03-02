@@ -55,6 +55,8 @@ int *fc_bam_qpos2rpos(bam1_t *b);
 
 uint8_t *fc_bam_get_tag_caseinsensitive(const bam1_t *b, const char tag_name[2]);
 
+void fc_require_bam_input(htsFile *fp, const char *path, const char *operation);
+
 /**
  * Resolve mean quality for a BAM record from qs/QS tag unless force_recalc_qual
  * is set, then ensure the effective value is stored back in aux tags.

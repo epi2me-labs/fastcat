@@ -13,6 +13,7 @@
 #include "htslib/thread_pool.h"
 
 #include "../common.h"
+#include "../fc_bam_utils.h"
 #include "../fc_log.h"
 #include "index.h"
 
@@ -98,9 +99,13 @@ static arguments_t parse_arguments(int argc, char **argv)
 void index_fetch(const char *bam_fname, const char *index_fname, int chunk, int threads)
 {
     htsFile *fp = hts_open(bam_fname, "r");
-    bam_hdr_t *h = sam_hdr_read(fp);
-    if (fp == NULL || h == NULL) {
+    if (fp == NULL) {
         FC_LOG_FATAL("Could not open %s", bam_fname);
+    }
+    fc_require_bam_input(fp, bam_fname, "bamindex fetch");
+    bam_hdr_t *h = sam_hdr_read(fp);
+    if (h == NULL) {
+        FC_LOG_FATAL("Could not read BAM header from %s", bam_fname);
     }
     htsThreadPool p = { NULL, 0 };
     if (threads > 1) {
