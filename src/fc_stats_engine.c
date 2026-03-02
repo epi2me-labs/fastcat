@@ -11,7 +11,7 @@
 
 static inline size_t *create_cigar_stats(bam1_t *b)
 {
-    static const size_t NCODES = 10;
+    static const size_t NCODES = 16; // Full 4-bit range; invalid ops 10-15 count to unused slots
     size_t *stats = fc_alloc(NCODES, sizeof(size_t), "read stats");
     uint32_t *cigar = bam_get_cigar(b);
     for (size_t i = 0; i < b->core.n_cigar; ++i) {
@@ -54,7 +54,12 @@ static inline size_t get_query_end(bam1_t *b)
                 FC_LOG_FATAL("Invalid clipping in cigar string.");
             }
         } else if (op == BAM_CSOFT_CLIP) {
-            end_offset -= bam_cigar_oplen(cigar[i]);
+            uint32_t oplen = bam_cigar_oplen(cigar[i]);
+            if (oplen > end_offset) {
+                FC_LOG_FATAL("Read '%s' has soft clip length %u exceeding query length %u.",
+                    bam_get_qname(b), oplen, end_offset);
+            }
+            end_offset -= oplen;
         } else {
             break;
         }

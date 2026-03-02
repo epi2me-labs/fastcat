@@ -246,11 +246,6 @@ bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr)
             }
             bed_region dst = &out->regions[out->n_regions];
             dst->chr = fc_strdup(it.chr, "region chromosome name");
-            if (dst->chr == NULL) {
-                FC_LOG_ERROR("could not allocate memory for chromosome name '%s'", it.chr);
-                destroy_region_iterator(&it);
-                exit(EXIT_FAILURE);
-            }
             dst->start = it.start;
             dst->end = it.end;
             dst->tid = it.tid;
@@ -302,10 +297,6 @@ bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length)
 
             bed_region dst = &regions->regions[regions->n_regions];
             dst->chr = fc_strdup(hdr->target_name[i], "whole genome region chromosome");
-            if (dst->chr == NULL) {
-                destroy_bed(regions);
-                FC_LOG_FATAL("could not allocate memory for chromosome name '%s'", hdr->target_name[i]);
-            }
             dst->start = start;
             dst->end = min(start + span, (uint32_t)hdr->target_len[i]);
             dst->tid = i;
