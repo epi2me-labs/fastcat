@@ -314,6 +314,32 @@ static void test_coverage_writer_init_destroy_no_data(void)
     cleanup_output_dir(out_dir);
 }
 
+static void test_coverage_thresholds_deduplicated(void)
+{
+    const int lengths[1] = { 80 };
+    char out_dir[] = "/tmp/fastcat_cov_thresholdsXXXXXX";
+    uint32_t thresholds[] = { 20, 5, 20, 10, 5 };
+    uint32_t expected[] = { 5, 10, 20 };
+ 
+    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
+
+    bam_hdr_t *hdr = make_header(lengths, 1);
+    cov_writer w = init_coverage_writer(
+        out_dir, false, false,
+        -1, -1, false,
+        hdr, NULL, NULL, NULL, 0,
+        thresholds, sizeof(thresholds) / sizeof(thresholds[0]),
+        NULL, 0);
+    TEST_ASSERT_NOT_NULL(w);
+    TEST_ASSERT_EQUAL_UINT(3u, w->writers[0]->n_thresholds);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(expected, w->writers[0]->thresholds, 3);
+
+    destroy_coverage_writer(w);
+    sam_hdr_destroy(hdr);
+    cleanup_output_dir(out_dir);
+}
+
 static void test_coverage_summary_thresholds_handle_depth_above_initial_cap(void)
 {
     const int lengths[1] = { 100 };
@@ -498,6 +524,7 @@ void bamcoverage_suite(void)
     RUN_TEST(test_coverage_process_use_cigar_mixed_ops);
     RUN_TEST(test_coverage_process_end_marker_at_contig_len);
     RUN_TEST(test_coverage_writer_init_destroy_no_data);
+    RUN_TEST(test_coverage_thresholds_deduplicated);
     RUN_TEST(test_coverage_summary_thresholds_handle_depth_above_initial_cap);
     RUN_TEST(test_coverage_process);
 }

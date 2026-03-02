@@ -63,6 +63,32 @@ static void coverage_fail_invalid_alignment(cov_writer w, const bam1_t *b, const
         b ? bam_get_qname(b) : "<unknown>", chrom, reason);
 }
 
+static size_t sort_and_deduplicate_thresholds(uint32_t *thresholds, size_t n_thresholds, uint32_t **out_thresholds)
+{
+    if (!thresholds || n_thresholds < 2) {
+        return n_thresholds;
+    }
+    *out_thresholds = fc_alloc(n_thresholds, sizeof(uint32_t), "coverage thresholds");
+
+    qsort(thresholds, n_thresholds, sizeof(*thresholds), cmp_u32);
+    (*out_thresholds)[0] = thresholds[0];
+    size_t n_duplicates = 0;
+    uint32_t prev = thresholds[0];
+    size_t out_idx = 1;
+    for (size_t i = 1; i < n_thresholds; ++i) {
+        if (thresholds[i] == prev) {
+            ++n_duplicates;
+            continue;
+        }
+        (*out_thresholds)[out_idx] = thresholds[i];
+        prev = thresholds[i];
+        ++out_idx;
+    }
+    *out_thresholds = fc_realloc(*out_thresholds, (n_thresholds - n_duplicates) * sizeof(uint32_t), "deduplicated coverage thresholds");
+
+    return n_thresholds - n_duplicates;
+}
+
 static inline void _write_summary(
     FILE *fh_dist, FILE *fh_summary, const bed_region reg, const int64_t *stats, const int64_t *dist, size_t max_cover, uint32_t *thresholds, size_t n_thresholds)
 {
@@ -324,7 +350,7 @@ static void _reset_contig(cov_writer w, const int32_t tid)
     }
 }
 
-cov_writer_region init_coverage_writer_region(
+static cov_writer_region init_coverage_writer_region(
     const char *out_dir, const char *name, bool per_base, bool by_strand, const char *bed_fname,
     uint32_t *thresholds, size_t n_thresholds, uint32_t segment_length,
     const bam_hdr_t *hdr, const htsThreadPool *pool)
@@ -357,7 +383,6 @@ cov_writer_region init_coverage_writer_region(
         w->thresholds = fc_alloc(n_thresholds, sizeof *w->thresholds, "thresholds");
         memcpy(w->thresholds, thresholds, n_thresholds * sizeof *w->thresholds);
         w->n_thresholds = n_thresholds;
-        qsort(w->thresholds, w->n_thresholds, sizeof *w->thresholds, cmp_u32);
     } else {
         // use default
         w->n_thresholds = 6;
@@ -495,6 +520,24 @@ cov_writer init_coverage_writer(
     }
     free(ks.s);
 
+    bool own_thresholds = false;
+    if (thresholds && n_thresholds > 0) {
+        uint32_t *norm_thresholds = NULL;
+        // side effect: thresholds will be sorted
+        size_t n_norm_thresholds = sort_and_deduplicate_thresholds(
+            thresholds, n_thresholds, &norm_thresholds);
+        if (n_norm_thresholds < n_thresholds) {
+            FC_LOG_WARN("Coverage thresholds include %zu duplicate value%s; using %zu unique threshold%s.",
+                n_thresholds - n_norm_thresholds, n_thresholds - n_norm_thresholds == 1 ? "" : "s",
+                n_norm_thresholds, n_norm_thresholds == 1 ? "" : "s");
+            own_thresholds = true;
+            thresholds = norm_thresholds;
+            n_thresholds = n_norm_thresholds;
+        } else {
+            free(norm_thresholds);
+        }
+    }
+
     cov_writer w = (cov_writer)fc_alloc(1, sizeof(_cov_writer), "coverage writer");
 
     w->use_cigar = use_cigar;
@@ -535,6 +578,9 @@ cov_writer init_coverage_writer(
                 hdr, pool);
             free(bed_out_dir);
         }
+    }
+    if (own_thresholds) {
+        free(thresholds);
     }
     return w;
 }
