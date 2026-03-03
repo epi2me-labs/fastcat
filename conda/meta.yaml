@@ -33,9 +33,10 @@ requirements:
         - openssl
 test:
     commands:
-        fastcat --help
-        bamstats --help
-        bamindex build --help
+        fastcat fastq --help
+        fastcat bam --help
+        fastcat lint --help
+        fastcat index --help
 
 about:
     home: "https://github.com/epi2me-labs/fastcat"
