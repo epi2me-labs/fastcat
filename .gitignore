@@ -27,3 +27,12 @@ scan-build-results/
 TODO
 mk25.09.fastq.spec.html
 mk26.01.fastq.spec.html
+
+# Build directory
+/build/
+
+# Downloaded optional dependencies
+/third_party/libdeflate-*/
+/third_party/samtools-*/
+*.tar.gz
+*.tar.bz2

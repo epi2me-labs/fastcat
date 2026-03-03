@@ -1,6 +1,8 @@
 [submodule "htslib"]
-	path = htslib
+	path = third_party/htslib
 	url = https://github.com/samtools/htslib.git
+	ignore = dirty
 [submodule "zlib-ng"]
-	path = zlib-ng
+	path = third_party/zlib-ng
 	url = https://github.com/zlib-ng/zlib-ng.git
+	ignore = dirty

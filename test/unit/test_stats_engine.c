@@ -4,8 +4,8 @@
 #include "unity.h"
 #include "htslib/sam.h"
 
-#include "fc_stats_engine.h"
-#include "fc_bam_utils.h"
+#include "core/fc_stats_engine.h"
+#include "core/fc_bam_utils.h"
 
 static size_t sum_counts(const read_stats* stats) {
     size_t total = 0;

@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../common.h" // ensure_parent_dir_exists, path helpers
+#include "core/fc_common.h" // ensure_parent_dir_exists, path helpers
 
 const char *fc_sink_barcode_stem(size_t barcode, char *buf, size_t buf_size)
 {

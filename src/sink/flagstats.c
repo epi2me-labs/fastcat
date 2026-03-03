@@ -2,11 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../fc_log.h"
-#include "../fc_sinks.h"
-#include "common.h"
-#include "fc_filter.h"
-#include "fc_sinks.h"
+#include "core/fc_common.h"
+#include "core/fc_filter.h"
+#include "core/fc_log.h"
+#include "core/fc_sinks.h"
 #include "sink/common.h"
 
 #define FLAG_COLS 9

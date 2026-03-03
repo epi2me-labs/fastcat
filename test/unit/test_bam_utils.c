@@ -11,9 +11,9 @@
 KSEQ_DECLARE(gzFile)
 #endif
 
-#include "fc_read.h"
-#include "fastqcomments.h"
-#include "fc_bam_utils.h"
+#include "core/fc_read.h"
+#include "core/fc_fastqcomments.h"
+#include "core/fc_bam_utils.h"
 
 static void read_from_comment(fc_read *fr, const char* comment) {
     if (!fr->bam) {

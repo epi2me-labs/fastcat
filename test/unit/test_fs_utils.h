@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "common.h"
+#include "core/fc_common.h"
 
 // Recursively removes a file tree rooted at `path`.
 // Returns 0 on success (or when path does not exist), -1 on failure.

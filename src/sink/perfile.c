@@ -4,10 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../fc_log.h"
-#include "common.h"
-#include "fc_failures.h"
-#include "fc_sinks.h"
+#include "core/fc_common.h"
+#include "core/fc_failures.h"
+#include "core/fc_log.h"
+#include "core/fc_sinks.h"
 #include "sink/common.h"
 
 typedef struct {

@@ -1,5 +1,5 @@
 #include "unity.h"
-#include "../../src/fc_log.h"
+#include "core/fc_log.h"
 
 void common_suite(void);
 void stats_suite(void);

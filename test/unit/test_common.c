@@ -4,7 +4,7 @@
 #include <unistd.h>
 
 #include "unity.h"
-#include "common.h"
+#include "core/fc_common.h"
 
 static void test_min_max(void) {
     int a = 5, b = 3;

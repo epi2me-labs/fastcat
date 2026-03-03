@@ -8,8 +8,8 @@
 #include "unity.h"
 #include "htslib/sam.h"
 
-#include "bamcoverage/coverage.h"
-#include "common.h"
+#include "core/fc_coverage.h"
+#include "core/fc_common.h"
 
 static bam_hdr_t *make_header(const int *lengths, size_t n_lengths)
 {

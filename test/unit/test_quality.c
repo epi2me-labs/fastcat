@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 #include "unity.h"
-#include "common.h"
+#include "core/fc_common.h"
 
 static void test_mean_qual_from_bam_matches_naive(void) {
     TEST_ASSERT_FLOAT_WITHIN(1e-4, 20.0f, mean_qual_from_bam_naive((uint8_t[]){20, 20, 20, 20}, 4));

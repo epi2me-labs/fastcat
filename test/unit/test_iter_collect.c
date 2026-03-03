@@ -6,8 +6,8 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-#include "fc_iter.h"
-#include "common.h"  // fc_join_path
+#include "core/fc_iter.h"
+#include "core/fc_common.h"  // fc_join_path
 #include "test_fs_utils.h"
 
 static void make_file(const char *path, const char *content) {

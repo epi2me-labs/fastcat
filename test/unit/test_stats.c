@@ -3,8 +3,8 @@
 #include <limits.h>
 
 #include "unity.h"
-#include "stats.h"
-#include "common.h"
+#include "core/fc_stats.h"
+#include "core/fc_common.h"
 
 static void test_length_bins(void) {
     read_stats* stats = create_length_stats();

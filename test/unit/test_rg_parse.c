@@ -2,7 +2,7 @@
 #include <string.h>
 
 #include "unity.h"
-#include "common.h"
+#include "core/fc_common.h"
 
 typedef struct {
     const char* runid;

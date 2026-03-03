@@ -3,9 +3,9 @@
 #include <string.h>
 
 #include "unity.h"
-#include "fastqcomments.h"
-#include "fc_read.h"
-#include "fc_bam_utils.h"
+#include "core/fc_fastqcomments.h"
+#include "core/fc_read.h"
+#include "core/fc_bam_utils.h"
 #include "htslib/kstring.h"
 #include "htslib/sam.h"
 
