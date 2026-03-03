@@ -8,9 +8,9 @@
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
 
-#include "../fc_log.h"
-#include "common.h"
-#include "fc_sinks.h"
+#include "core/fc_common.h"
+#include "core/fc_log.h"
+#include "core/fc_sinks.h"
 #include "sink/common.h"
 #include "version.h"
 

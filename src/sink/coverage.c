@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../fc_log.h"
-#include "fc_sinks.h"
+#include "core/fc_log.h"
+#include "core/fc_sinks.h"
 #include "sink/common.h"
 
 // Coverage is a thin adapter: cov_writer owns most lifecycle and file I/O concerns that would

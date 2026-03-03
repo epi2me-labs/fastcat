@@ -4,7 +4,7 @@
 #include "unity.h"
 #include "htslib/sam.h"
 
-#include "fc_bam_utils.h"
+#include "core/fc_bam_utils.h"
 
 // helper to build a simple BAM record with given qualities and optional QS tag
 static bam1_t* build_read(const char* qname, const char* seq, const char* qual, uint16_t flag, float qs_tag, bool add_qs) {

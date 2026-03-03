@@ -1,9 +1,9 @@
 #include "unity.h"
 #include "htslib/sam.h"
 
-#include "fc_bam_utils.h"
-#include "fc_dust.h"
-#include "fc_filter.h"
+#include "core/fc_bam_utils.h"
+#include "core/fc_dust.h"
+#include "core/fc_filter.h"
 
 static void test_filter_dust(void) {
     const uint8_t simple_seq[] =

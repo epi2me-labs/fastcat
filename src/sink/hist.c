@@ -3,11 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../fc_log.h"
-#include "common.h"
-#include "fc_sinks.h"
+#include "core/fc_common.h"
+#include "core/fc_log.h"
+#include "core/fc_sinks.h"
+#include "core/fc_stats.h"
 #include "sink/common.h"
-#include "stats.h"
 
 typedef struct {
     fc_hist_sink_opts cfg; // cached configuration

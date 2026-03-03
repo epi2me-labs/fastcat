@@ -31,16 +31,16 @@ stages:
       paths:
         - test/*
     script:
-        - ./fastcat fastq --help
-        - ./fastcat bam --help
-        - ./fastcat index --help
+        - ./build/fastcat fastq --help
+        - ./build/fastcat bam --help
+        - ./build/fastcat index --help
 
 build:
     extends: .fastcat-test-base
     script:
         - make
         - !reference [.fastcat-test-base, script]
-        - PEPPER=1 make test
+        - BUILD_MODE=valgrind make test
 
 clang_format:
     image: ${UBUNTUIMAGE}:24.04
@@ -56,7 +56,7 @@ clang_tidy:
     before_script:
         - *prep-image
     script:
-        - make clang_tidy
+        - BUILD_MODE=debug make clang_tidy
 
 scan_build:
     image: ${UBUNTUIMAGE}:24.04
@@ -64,7 +64,7 @@ scan_build:
     before_script:
         - *prep-image
     script:
-        - make scan_build
+        - BUILD_MODE=debug make scan_build
     artifacts:
         when: always
         expire_in: 7 days
@@ -74,9 +74,9 @@ scan_build:
 sanitize:
     extends: .fastcat-test-base
     script:
-        - SANITIZE=ubsan make
+        - BUILD_MODE=sanitize make
         - !reference [.fastcat-test-base, script]
-        - SANITIZE=ubsan make test
+        - BUILD_MODE=sanitize make test
 
 deploy-checks:
     stage: prerelease

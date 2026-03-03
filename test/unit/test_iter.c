@@ -9,10 +9,10 @@
 
 #include "htslib/sam.h"
 
-#include "fc_iter.h"
-#include "fc_read.h"
-#include "fc_failures.h"
-#include "fc_writer.h"
+#include "core/fc_iter.h"
+#include "core/fc_read.h"
+#include "core/fc_failures.h"
+#include "core/fc_writer.h"
 
 typedef struct {
     uint64_t passed_reads;
@@ -186,7 +186,7 @@ static void _run_iter_and_assert(
 
 static void test_fastq_iter_stats_accumulate(void) {
     fc_iter_opts opts = fq_opts_defaults();
-    _run_iter_and_assert("test/data/bc1.fastq.gz", &opts,
+    _run_iter_and_assert("test/fixtures/fastq/basic/bc1.fastq.gz", &opts,
         10, 5904, 281, 878, 12.8569, 10, 10, 0, 0);
 }
 

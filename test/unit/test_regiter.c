@@ -4,8 +4,8 @@
 #include <unistd.h>
 
 #include "unity.h"
-#include "regiter.h"
-#include "common.h"
+#include "core/fc_regiter.h"
+#include "core/fc_common.h"
 
 static sam_hdr_t* make_header(void) {
     sam_hdr_t* hdr = sam_hdr_init();
