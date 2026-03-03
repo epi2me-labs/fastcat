@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [unreleased]
+## [v1.0.0]
 
 This major release of the `fastcat` suite of programs includes a number of breaking changes to the command-line interface, and some changes to the output formats.
 
@@ -24,6 +24,9 @@ This has led to some changes in behaviour, particularly in the handling of SAM-s
   This gave rise to a failure to exclude reads based on having a parent (notably in poly-A tail analysis).
 - A memory leak when performing low-complexity read filtering with `fastlint` or `fastcat --dust`.
 - A difference in behaviour between some operating systems when parsing (perculiar and rare) fastq comment entries.
+- The `--region` and `--bed` options for `fastcat bam` were not correctly mutually exclusive.
+- Coverage counting had undefined behaviour if the same threshold was provided multiple times by user. The user provided thresholds are now sanitized before use.
+- When `--region` was provided the outputs of flagstats were erroneously labelled with the first contig of the input file, regardless of the value of `--region`.
 ### Changed
 - Reorganised command-line interface under a unified single `fastcat` program with subcommands for different modes of operation. 
 - CLI options are all now `--kebab-case` rather than `--snake_case` to match other ONT tooling.
@@ -39,10 +42,14 @@ This has led to some changes in behaviour, particularly in the handling of SAM-s
 - The read group (RG) tag for a read is inferred from the protocol ("run") ID, the basecaller model, and optionally the barcode ID, when not explicitly provided in the FASTQ header.
 - The `--unmapped` option is removed from `fastcat bam`; statististics for unmapped reads are always produced.
 - The `fastcat fastq` program will now respect the `qs` mean quality score tag in fastq headers rather than recomputing mean quality from the base qualities. This can be overridden with the `--recalc-qual` flag.
+- the per-file output now separates observed records "r_record_seen" from records that pass filters "r_record_ok".
 ### Added
-- Summary outputs from `bamstats` have been harmonized with `fastcat`; running `bamstats` on strictly unaligned reads will produce the same outputs (bar fastq/bam output) as running `fastcat`.
+- Summary outputs from `fastcat bam` have been harmonized with `fastcat fastq`; running `fastcat bam` on strictly unaligned reads will produce the same outputs (bar fastq/bam output) as running `fastcat fastq`.
 - All ancilliarly file outputs are consistent in the case that demultiplexing is performance, and when it is not. i.e This means that a single demultiplexed output folder contains all the same files as when processing an input without demultiplexing and a single barcode.
-- Additional guards for implausible input data, such as an NM tag that is larger than the read length
+- Additional guards for implausible input data, such as an NM tag that is larger than the read length.
+- Duplicate alignments are now counted in flagstats output.
+### Removed
+- The standlaone `bamcoverage` program, as coverage calculations are integrated into `fastcat bam` (previously `bamstats`).
 
 ## [v0.25.0]
 ### Fixed
