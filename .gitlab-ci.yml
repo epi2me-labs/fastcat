@@ -18,9 +18,18 @@ variables:
     apt install -y --no-install-recommends gcc autoconf automake valgrind make curl wget zlib1g-dev libbz2-dev libreadline-dev libssl-dev libffi-dev liblzma-dev libcurl4-gnutls-dev cmake python3 clang-format clang-tidy clang-tools
 
 stages:
+    - preflight
     - test
     - prerelease
     - release
+
+
+check-changelog:
+    stage: preflight
+    image: ${CWG_BUILD_REGISTRY}/build-image-x86:latest
+    script:
+        - !reference [.install, gleeok]
+        - gleeok changelog validate CHANGELOG.md
 
 .fastcat-test-base:
     stage: test
