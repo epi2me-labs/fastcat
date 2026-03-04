@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.0.1]
+
+### Fixed
+- Contrary to the 1.0.0 release note, the layout of histogram output files was not entirely consistent with and without the `--demultiplex` option.
+
 ## [v1.0.0]
 
 This major release of the `fastcat` suite of programs includes a number of breaking changes to the command-line interface, and some changes to the output formats.

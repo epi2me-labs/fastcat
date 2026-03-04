@@ -555,6 +555,65 @@ TEST_HELPERS := $(TEST_ROOT)/helpers
 TEST_TMP_DIR ?= $(TEST_ROOT)/tmp
 comma := ,
 
+
+# Test demux single barcode equivalence
+# This is used with both `fastcat fastq` and `fastcat bam` to provide the same test
+# $(1) = setup commands to run before comparison
+# $(2) = expected files list
+# $(3) = test name prefix
+# $(4) = per_read.tsv comparison macro (COMPARE_TABLES or COMPARE_TABLES_SKIP_FIRST)
+define TEST_DEMUX_SINGLE_EQUIV
+	$(1) && \
+	$(call COMPARE_TABLES_SKIP_FIRST,plain_out/per_file.tsv,demux_out/per_file.tsv,$(3)_perfile) && \
+	$(call COMPARE_TABLES_SKIP_FIRST,plain_out/runids.tsv,demux_out/runids.tsv,$(3)_runids_top) && \
+	$(call COMPARE_TABLES_SKIP_FIRST,plain_out/basecallers.tsv,demux_out/basecallers.tsv,$(3)_basecallers_top) && \
+	for f in $(2); do \
+		echo "Checking $$f..." && \
+		if [[ "$$f" == *.hist ]]; then \
+			diff plain_out/$$f demux_out/barcode0001/$$f || exit 1; \
+		elif [[ "$$f" == "per_read.tsv" ]]; then \
+			$(call $(4),plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
+		else \
+			$(call COMPARE_TABLES_SKIP_FIRST,plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
+		fi; \
+	done && \
+	echo "Checking no unexpected files..." && \
+	printf "%s\n" $(2) | LC_ALL=C sort > expected_files.txt && \
+	find plain_out -type f ! -name "per_file.tsv" | sed 's|^plain_out/||' | LC_ALL=C sort > plain_files.txt && \
+	diff expected_files.txt plain_files.txt && \
+	find demux_out/barcode0001 -type f ! -name "*.fastq.gz" | sed 's|^demux_out/barcode0001/||' | LC_ALL=C sort > demux_files.txt && \
+	diff expected_files.txt demux_files.txt
+endef
+
+
+###
+# meta data tests (both fastcat and bamstats)
+
+# Test metadata extraction (runids and basecallers)
+# $(1) = command to run (e.g., $(RUN_FASTCAT) or $(RUN_BAMSTATS))
+# $(2) = fixtures path (e.g., $(TEST_FIXTURES_FASTQ)/metadata)
+# $(3) = symlink name (e.g., parse_rd or parse_rg)
+# $(4) = file glob pattern (e.g., *.fastq or *.bam)
+# $(5) = expected files path (e.g., $(TEST_EXPECTED_METADATA))
+define TEST_METADATA
+	ln -s $(2) $(3) && mkdir -p work && \
+	pushd work > /dev/null && \
+	set -e; \
+	for i in ../$(3)/$(4); do \
+		echo $$i; \
+		filename=$$(basename $$i); \
+		$(1) $$i --output out --per-read > /dev/null; \
+		diff out/runids.tsv $(5)/$$filename.runids || exit 1; \
+		diff out/basecallers.tsv $(5)/$$filename.callers || exit 1; \
+		rm -rf out; \
+	done; \
+	popd > /dev/null
+endef
+# Expected files to compare (excluding per_file.tsv which only exists at top level)
+FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv histograms/length.hist histograms/quality.hist
+BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
+
+
 ###
 # fastcat tests
 
@@ -562,45 +621,21 @@ comma := ,
 test_fastcat_demux_single_equiv: $(FASTCAT_BIN)
 	@$(call TEST_DESC,Fastcat demux vs non-demux (single barcode))
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/demux_single, \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output plain_out --per-read > /dev/null && \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output demux_out --per-read --demultiplex > /dev/null && \
-		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/runids.tsv,demux_out/runids.tsv,demux_single_runids) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/basecallers.tsv,demux_out/basecallers.tsv,demux_single_basecallers) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/per_file.tsv,demux_out/per_file.tsv,demux_single_perfile) && \
-		test $$(tail -n +2 plain_out/per_read.tsv | wc -l) -eq $$(tail -n +2 demux_out/barcode0001/per_read.tsv | wc -l))
+		$(call TEST_DEMUX_SINGLE_EQUIV,\
+			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output plain_out --per-read > /dev/null && \
+			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output demux_out --per-read --demultiplex > /dev/null,\
+			$(FASTCAT_EXPECTED_FILES),\
+			demux_single,\
+			COMPARE_TABLES_SKIP_FIRST))
 test_fastcat_demux: test_fastcat_demux_single_equiv
 
 
-.PHONY: mem_check_fastcat
-mem_check_fastcat: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Memcheck fastcat (fastq))
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/memcheck/fastq, \
-		$(GRIND) $(FASTCAT_BIN) fastq $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz > /dev/null)
-test_fastcat_memory: mem_check_fastcat
-
-
-.PHONY: mem_check_fastcat_bam
-mem_check_fastcat_bam: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Memcheck fastcat (bam))
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/memcheck/bam, \
-		$(GRIND) $(FASTCAT_BIN) fastq $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz -B > /dev/null)
-test_fastcat_memory: mem_check_fastcat_bam
-
-
-.PHONY: mem_check_fastcat_demultiplex
-mem_check_fastcat_demultiplex: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Memcheck fastcat demultiplex (fastq))
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/memcheck/demux, \
-		$(GRIND) $(FASTCAT_BIN) fastq $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz --demultiplex --output demultiplex > /dev/null)
-test_fastcat_memory: mem_check_fastcat_demultiplex
-
-
-.PHONY: mem_check_fastcat_demultiplex_bam
-mem_check_fastcat_demultiplex_bam: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Memcheck fastcat demultiplex (bam))
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/memcheck/demux_bam, \
-		$(GRIND) $(FASTCAT_BIN) fastq $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz --demultiplex --output demultiplex -B > /dev/null)
-test_fastcat_memory: mem_check_fastcat_demultiplex_bam
+.PHONY: test_meta_fastcat
+test_meta_fastcat: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Metadata fastcat)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/meta/fastq, \
+		$(call TEST_METADATA,$(RUN_FASTCAT),$(TEST_FIXTURES_FASTQ)/metadata,parse_rd,*.fastq,$(TEST_EXPECTED_METADATA)))
+test_meta: test_meta_fastcat
 
 
 .PHONY: test_fastcat_bam_equivalent
@@ -645,9 +680,9 @@ test_fastcat_demultiplex_outputs: $(FASTCAT_BIN)
 		$(call COMPARE_FASTQ,out_demux/unclassified/unclassified.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/unclassified.fastq.gz,demux_unclassified) && \
 		$(call COMPARE_FASTQ,out_demux/barcode0001/barcode0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001.fastq.gz,demux_barcode0001) && \
 		$(call COMPARE_FASTQ,out_demux/barcode0002/barcode0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0002.fastq.gz,demux_barcode0002) && \
-		test -f out_demux/unclassified/unclassified.length.hist && \
-		test -f out_demux/barcode0001/barcode0001.length.hist && \
-		test -f out_demux/barcode0001/barcode0001.quality.hist)
+		test -f out_demux/unclassified/histograms/length.hist && \
+		test -f out_demux/barcode0001/histograms/length.hist && \
+		test -f out_demux/barcode0001/histograms/quality.hist)
 test_fastcat_demux: test_fastcat_demultiplex_outputs
 
 
@@ -659,7 +694,7 @@ test_fastcat_demultiplex_split: $(FASTCAT_BIN)
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0000.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0000.fastq.gz,demux_split_0000) && \
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0001.fastq.gz,demux_split_0001) && \
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0002.fastq.gz,demux_split_0002) && \
-		test -f out_split/barcode0001/barcode0001.length.hist)
+		test -f out_split/barcode0001/histograms/length.hist)
 test_fastcat_demux: test_fastcat_demultiplex_split
 
 
@@ -816,6 +851,38 @@ test_fastcat_bam_input_rejects_mapped: $(FASTCAT_BIN)
 test_fastcat_inputs: test_fastcat_bam_input_rejects_mapped
 
 
+.PHONY: mem_check_fastcat
+mem_check_fastcat: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Memcheck fastcat (fastq))
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/memcheck/fastq, \
+		$(GRIND) $(FASTCAT_BIN) fastq $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz > /dev/null)
+test_fastcat_memory: mem_check_fastcat
+
+
+.PHONY: mem_check_fastcat_bam
+mem_check_fastcat_bam: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Memcheck fastcat (bam))
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/memcheck/bam, \
+		$(GRIND) $(FASTCAT_BIN) fastq $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz -B > /dev/null)
+test_fastcat_memory: mem_check_fastcat_bam
+
+
+.PHONY: mem_check_fastcat_demultiplex
+mem_check_fastcat_demultiplex: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Memcheck fastcat demultiplex (fastq))
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/memcheck/demux, \
+		$(GRIND) $(FASTCAT_BIN) fastq $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz --demultiplex --output demultiplex > /dev/null)
+test_fastcat_memory: mem_check_fastcat_demultiplex
+
+
+.PHONY: mem_check_fastcat_demultiplex_bam
+mem_check_fastcat_demultiplex_bam: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Memcheck fastcat demultiplex (bam))
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/memcheck/demux_bam, \
+		$(GRIND) $(FASTCAT_BIN) fastq $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz --demultiplex --output demultiplex -B > /dev/null)
+test_fastcat_memory: mem_check_fastcat_demultiplex_bam
+
+
 ###
 # bamstats tests
 
@@ -823,16 +890,22 @@ test_fastcat_inputs: test_fastcat_bam_input_rejects_mapped
 test_bamstats_demux_single_equiv: $(FASTCAT_BIN)
 	@$(call TEST_DESC,Bamstats demux vs non-demux (single barcode))
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/demux_single, \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output tmp_fc --per-read -B > bc1.bam && \
-		$(RUN_BAMSTATS) bc1.bam --per-read --output plain_out > /dev/null && \
-		$(RUN_BAMSTATS) bc1.bam --per-read --demultiplex --output demux_out > /dev/null && \
-		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/runids.tsv,demux_out/runids.tsv,bs_demux_single_runids) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/basecallers.tsv,demux_out/basecallers.tsv,bs_demux_single_basecallers) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,plain_out/per_file.tsv,demux_out/per_file.tsv,bs_demux_single_perfile) && \
-		$(call COMPARE_TABLES,plain_out/per_read.tsv,demux_out/barcode0001/per_read.tsv,bs_demux_single_perread) && \
-		diff plain_out/histograms/length.hist demux_out/barcode0001/barcode0001.length.hist && \
-		diff plain_out/histograms/quality.hist demux_out/barcode0001/barcode0001.quality.hist)
+		$(call TEST_DEMUX_SINGLE_EQUIV,\
+			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output tmp_fc --per-read -B > bc1.bam && \
+			$(RUN_BAMSTATS) bc1.bam --per-read --output plain_out > /dev/null && \
+			$(RUN_BAMSTATS) bc1.bam --per-read --demultiplex --output demux_out > /dev/null,\
+			$(BAMSTATS_EXPECTED_FILES),\
+			bs_demux_single,\
+			COMPARE_TABLES))
 test_bamstats_core: test_bamstats_demux_single_equiv
+
+
+.PHONY: test_meta_bamstats
+test_meta_bamstats: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Metadata bamstats)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/meta/bam, \
+		$(call TEST_METADATA,$(RUN_BAMSTATS),$(TEST_FIXTURES_BAM)/metadata,parse_rg,*.bam,$(TEST_EXPECTED_BAMSTATS)/metadata))
+test_meta: test_meta_bamstats
 
 
 .PHONY: test_bamstats_sample_column
@@ -1016,7 +1089,7 @@ mem_check_bamstats_good: $(FASTCAT_BIN)
 	@$(call TEST_DESC,Memcheck bamstats with good data)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/memcheck/good, \
 		$(GRIND) $(FASTCAT_BIN) bam $(TEST_FIXTURES_BAM)/metadata/dna_r10.4.1_e8.2_400bps_hac@v4.3.0.bam > /dev/null)
-mem_check_bamstats: mem_check_bamstats_good
+test_bamstats_memory: mem_check_bamstats_good
 
 
 .PHONY: mem_check_bamstats_bad
@@ -1024,7 +1097,7 @@ mem_check_bamstats_bad: $(FASTCAT_BIN)
 	@$(call TEST_DESC,Memcheck bamstats with bad data)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/memcheck/bad, \
 		$(GRIND) $(FASTCAT_BIN) bam $(TEST_FIXTURES_BAM)/metadata/bad-ones.bam > /dev/null)
-mem_check_bamstats: mem_check_bamstats_bad
+test_bamstats_memory: mem_check_bamstats_bad
 
 
 .PHONY: mem_check_bamstats_qcfail
@@ -1032,7 +1105,7 @@ mem_check_bamstats_qcfail: $(FASTCAT_BIN)
 	@$(call TEST_DESC,Memcheck bamstats qcfail)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/memcheck/qcfail, \
 		$(GRIND) $(FASTCAT_BIN) bam $(TEST_FIXTURES_BAM)/special/400ecoli-with-qcfail.bam > /dev/null)
-mem_check_bamstats: mem_check_bamstats_qcfail
+test_bamstats_memory: mem_check_bamstats_qcfail
 
 
 .PHONY: mem_check_bamstats_duplex
@@ -1040,7 +1113,7 @@ mem_check_bamstats_duplex: $(FASTCAT_BIN)
 	@$(call TEST_DESC,Memcheck bamstats duplex)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/memcheck/duplex, \
 		$(GRIND) $(FASTCAT_BIN) bam $(TEST_FIXTURES_BAM)/special/310dx.bam > /dev/null)
-mem_check_bamstats: mem_check_bamstats_duplex
+test_bamstats_memory: mem_check_bamstats_duplex
 
 
 .PHONY: mem_check_bamstats_coverage
@@ -1048,53 +1121,8 @@ mem_check_bamstats_coverage: $(FASTCAT_BIN)
 	@$(call TEST_DESC,Memcheck bamstats coverage)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/memcheck/coverage, \
 		$(GRIND) $(FASTCAT_BIN) bam --coverage $(TEST_FIXTURES_BAM)/basic/400ecoli.bam > /dev/null)
-mem_check_bamstats: mem_check_bamstats_coverage
+test_bamstats_memory: mem_check_bamstats_coverage
 
-test_bamstats_memory: mem_check_bamstats
-
-
-###
-# meta data tests (both fastcat and bamstats)
-
-.PHONY: test_meta_fastcat
-test_meta_fastcat: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Metadata fastcat)
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/meta/fastq, \
-		ln -s $(TEST_FIXTURES_FASTQ)/metadata parse_rd && mkdir -p work && \
-		pushd work > /dev/null && \
-		set -e; \
-		for i in ../parse_rd/*.fastq; do \
-			echo $$i; \
-			filename=$$(basename $$i); \
-			$(RUN_FASTCAT) $$i --output out --per-read > /dev/null; \
-			diff out/runids.tsv $(TEST_EXPECTED_METADATA)/$$filename.runids || exit 1; \
-			rm -rf out; \
-		done; \
-		popd > /dev/null)
-test_meta: test_meta_fastcat
-
-
-.PHONY: test_meta_bamstats
-test_meta_bamstats: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Metadata bamstats)
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/meta/bam, \
-		ln -s $(TEST_FIXTURES_BAM)/metadata parse_rg && mkdir -p work && \
-		pushd work > /dev/null && \
-		set -e; \
-		for i in ../parse_rg/*.bam; do \
-			filename=$$(basename $$i); \
-			$(RUN_BAMSTATS) $$i --output out > /dev/null; \
-			diff out/basecallers.tsv $(TEST_EXPECTED_BAMSTATS)/metadata/$$filename.callers || exit 1; \
-			rm -rf out; \
-		done; \
-		popd > /dev/null)
-test_meta: test_meta_bamstats
-
-
-.PHONY: regression_test_rg_parsing
-regression_test_rg_parsing: test/rg_parse
-	@$(call TEST_DESC,RG parsing regression)
-	$(PEPPER) ./test/rg_parse
 
 ###
 # bamindex tests

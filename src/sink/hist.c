@@ -23,17 +23,21 @@ static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t 
     if (plex_dir == NULL) {
         filepath = fc_asprintf("histogram output path", "%s/%s.%s", hist_dir, type, suff);
     } else {
-        char stem_buf[32] = { 0 };
-        const char *stem = fc_sink_barcode_stem(barcode, stem_buf, sizeof(stem_buf));
-        if (!stem) {
-            FC_LOG_FATAL("Could not format barcode stem for histogram output.");
-        }
-        char *dir = fc_sink_ensure_barcode_dir(plex_dir, barcode);
-        if (!dir) {
+        char *barcode_dir = fc_sink_ensure_barcode_dir(plex_dir, barcode);
+        if (!barcode_dir) {
             FC_LOG_FATAL("Failed to create barcode directory for histograms (barcode %zu).", barcode);
         }
-        filepath = fc_asprintf("histogram output path", "%s/%s.%s.%s", dir, stem, type, suff);
-        free(dir);
+        char *hist_subdir = fc_join_path(barcode_dir, "histograms");
+        free(barcode_dir);
+
+        // Ensure histograms subdirectory exists (allow if already exists)
+        if (mkdir_hier(hist_subdir, false) == -1) {
+            FC_LOG_FATAL("Failed to create histograms directory under barcode %zu.", barcode);
+        }
+
+        // Use same filename format as non-demux: just "type.hist", no barcode prefix
+        filepath = fc_asprintf("histogram output path", "%s/%s.%s", hist_subdir, type, suff);
+        free(hist_subdir);
     }
 
     ensure_parent_dir_exists(filepath);
@@ -120,7 +124,8 @@ fc_sink fc_hist_sink_create(const fc_hist_sink_opts *opts)
     state->cfg = *opts;
 
     if (state->cfg.use_barcodes) {
-        // Demultiplexed: write under <output_root>/<barcode>/...; no top-level hist_dir
+        // Demultiplexed: write under <output_root>/<barcode>/histograms/...
+        // Histogram subdirectories created per-barcode in hist_write_stats
         state->output_dir = fc_strip_path(opts->output_root);
         state->hist_dir = NULL;
     } else {
