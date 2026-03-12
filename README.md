@@ -7,19 +7,45 @@ It was originally written to santize and concatenate .fastq(.gz) files, hence th
 
 ### Conda
 
+A conda package is available through our conda channel:
+
 ```bash
 mamba create -n fastcat -c conda-forge -c bioconda -c nanoporetech fastcat
 ```
 
 ### Build from source
-When building from source with:
+
+`fastcat` depends on bundled third-party sources in git submodules (`third_party/htslib` and `third_party/zlib-ng`). Therefore when cloning be sure to also clone these submodules (or initialize them after clone) before building.
+
+Building requires several prerequisites:
+
+- `git` (with submodule support)
+- C toolchain: `gcc` (or `clang`), `make`, `bash`, `patch`
+- Autotools: `autoconf`, `automake` (provides `autoreconf`/`autoheader`)
+- Development libraries: `zlib`, `bzip2`, `xz/lzma`, `libcurl`, `openssl`
+- Cmake is required for the optional depenency of `libdeflate`
+
+For example on Debian or Ubuntu systems run:
 
 ```bash
+sudo apt update
+sudo apt install -y git gcc make bash patch autoconf automake \
+  zlib1g-dev libbz2-dev liblzma-dev libcurl4-gnutls-dev libssl-dev
+```
+
+Then to clone and build `fastcat` run:
+
+```bash
+git clone --recursive https://github.com/epi2me-labs/fastcat.git
+cd fastcat
 make fastcat
 ```
 
-several libraries are expected to be present on the system.
-Enquire within the `Makefile` for more details.
+If you already cloned without submodules, run the following to initialise them:
+
+```bash
+git submodule update --init --recursive
+```
 
 ## CLI overview
 
