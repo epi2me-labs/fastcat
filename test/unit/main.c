@@ -14,6 +14,9 @@ void qualcalcs_suite(void);
 void iter_suite(void);
 void iter_collect_suite(void);
 void bamcoverage_suite(void);
+void quantile_suite(void);
+void kll_suite(void);
+void quantile_stress_suite(void);
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -41,6 +44,9 @@ int main(void) {
     iter_suite();
     iter_collect_suite();
     bamcoverage_suite();
+    quantile_suite();
+    kll_suite();
+    quantile_stress_suite();
     int rc = UNITY_END();
 
     fc_log_destroy();

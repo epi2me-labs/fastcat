@@ -26,7 +26,7 @@ stages:
 
 check-changelog:
     stage: preflight
-    image: ${CWG_BUILD_REGISTRY}/build-image-x86:latest
+    image: ${WHALEFISH}/${CWG_GLEEOK_IMAGE}
     script:
         - !reference [.install, gleeok]
         - gleeok changelog validate CHANGELOG.md

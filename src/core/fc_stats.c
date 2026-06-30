@@ -9,26 +9,30 @@
 
 #include "core/fc_common.h"
 
-read_stats *create_length_stats(void)
+// Bin specification: array of {upper_bound, step_size} pairs
+typedef struct {
+    size_t upper;
+    size_t step;
+} bin_segment;
+
+// Create segmented length histogram from bin specification
+static read_stats *create_segmented_length_stats(const bin_segment *segments, size_t n_segments, const char *label)
 {
-    read_stats *stats = fc_alloc(1, sizeof(read_stats), "length_stats");
+    read_stats *stats = fc_alloc(1, sizeof(read_stats), label);
 
     bin_groups *bins = fc_alloc(1, sizeof(bin_groups), "bin_groups");
     stats->buckets = bins;
-    bins->n = 1;
-    bins->groups = fc_alloc(1, 3 * bins->n * sizeof(size_t), "groups");
-    size_t *grps = bins->groups;
-    // - end exclusive upper edges
-    // - 0 is first lower edge
-    // - final >x bucket
-    // grps[0] =   50000; grps[1] =     1;
-    // grps[3] =  100000; grps[4] =    10;
-    // grps[6] = 1000000; grps[7] = 1000;
-    // just do one massive bucket up to 10M - 76Mbytes
-    grps[0] = 10000000;
-    grps[1] = 1;
+    bins->n = n_segments;
+    bins->groups = fc_alloc(n_segments, 3 * sizeof(size_t), "groups");
 
-    // count the total number of bins across all groups
+    // Copy segment specification into groups array
+    for (size_t i = 0; i < n_segments; i++) {
+        bins->groups[3 * i] = segments[i].upper;
+        bins->groups[3 * i + 1] = segments[i].step;
+        bins->groups[3 * i + 2] = 0; // computed below
+    }
+
+    // Count the total number of bins across all groups
     stats->n = 0;
     size_t lower = 0;
     for (size_t i = 0; i < bins->n; i++) {
@@ -42,9 +46,9 @@ read_stats *create_length_stats(void)
         stats->n += nbins;
         lower = upper;
     }
-    stats->n++;
+    stats->n++; // overflow bin
 
-    // fill in all the edges
+    // Fill in all the edges
     stats->width = 0;
     // Keep n+1 edges so the overflow bucket [edges[n-1], edges[n]) is representable.
     stats->edges = fc_alloc(stats->n + 1, sizeof(size_t), "edges");
@@ -64,6 +68,34 @@ read_stats *create_length_stats(void)
     // Final edge for the overflow bucket upper bound.
     stats->edges[stats->n] = SIZE_MAX;
     return stats;
+}
+
+read_stats *create_length_stats(void)
+{
+    // Single massive bucket up to 10M (76MB per histogram)
+    bin_segment spec[] = {
+        { 10000000, 1 }
+    };
+    return create_segmented_length_stats(spec, 1, "length_stats");
+}
+
+read_stats *create_qc_length_bins(void)
+{
+    // QC-optimized segmented binning.
+    // The point here is that we may create many of these, one per time window,
+    // or qscore bin, so we can't have them all taking 76MB. Ultimately we are
+    // just going to be plotting a heatmap/boxplot so we don't need complete
+    // resolution.
+    // For quantiles, we could replace this with KLL sketch which has
+    // provable error bounds.
+    // Memory per histogram: 6,351 * 8 bytes = ~51 KB
+    bin_segment spec[] = {
+        { 5000, 1 }, // precise for short reads
+        { 10000, 10 }, // good for medium reads
+        { 50000, 50 }, // adequate for fat tail
+        { 100000, 1000 } // whateva bruv
+    };
+    return create_segmented_length_stats(spec, 4, "qc_length_stats");
 }
 
 void destroy_length_stats(read_stats *stats)
