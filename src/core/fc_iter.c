@@ -86,6 +86,15 @@ static inline bool fc_iter_filter_quality(float mean_q, float min_qscore, fc_fil
     return true;
 }
 
+static inline bool fc_iter_bam_quality_missing(const bam1_t *b)
+{
+    if (!b || b->core.l_qseq <= 0) {
+        return true;
+    }
+    const uint8_t *qual = bam_get_qual(b);
+    return (qual == NULL) || (qual[0] == 0xff);
+}
+
 static void fc_iter_opts_init(fc_iter_opts *dst, const fc_iter_opts *src)
 {
     if (!dst) {
@@ -138,7 +147,8 @@ static bool fc_iter_process_bam_record(
 {
     size_t len = (size_t)out->bam->core.l_qseq;
     float mean_q = fc_bam_ensure_mean_quality(out->bam, opts->force_recalc_qual);
-    // if mean_q not present then consider low quality and filter out
+    // non-finite qs/QS values are treated as low quality
+    // we've already filtered out reads with missing quality scores
     if (!isfinite(mean_q)) {
         stats->failures[R_LOW_QUALITY]++;
         return false;
@@ -533,6 +543,11 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
             if (!overlap) {
                 continue;
             }
+        }
+
+        if (fc_iter_bam_quality_missing(out->bam)) {
+            iter->stats.failures[F_QUAL_MISSING]++;
+            continue;
         }
 
         iter->stats.failures[R_RECORD_SEEN]++;

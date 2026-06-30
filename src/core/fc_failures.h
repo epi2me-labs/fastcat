@@ -3,7 +3,7 @@
 
 // F_ - file error
 // R_ - record error
-// missing quality is a file error -- we accept only FASTQ
+// missing quality is tracked as an input-format issue
 #define PARSE_CODES     \
     X(F_FILE_OK)        \
     X(F_STREAM_ERROR)   \

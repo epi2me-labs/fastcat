@@ -311,6 +311,12 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         }
     }
 
+    // Match fastq-mode semantics: seeing records without quality marks the run
+    // as failed unless caller opts out via the final non-force-error override.
+    if (global_stats.failures[F_QUAL_MISSING] > 0) {
+        status = EXIT_FAILURE;
+    }
+
     fc_writer_finish(writer);
 
     uint64_t seen_records = global_stats.failures[R_RECORD_SEEN];
