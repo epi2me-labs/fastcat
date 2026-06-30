@@ -23,6 +23,7 @@ typedef struct {
 } read_stats;
 
 read_stats *create_length_stats(void);
+read_stats *create_qc_length_bins(void); // QC-optimized: 6,351 segmented bins
 void destroy_length_stats(read_stats *stats);
 void add_length_count(read_stats *stats, size_t);
 
