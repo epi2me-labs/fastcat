@@ -110,7 +110,8 @@ static void _run_iter_and_assert(
     uint64_t exp_r_record_seen,
     uint64_t exp_r_record_ok,
     uint64_t exp_r_too_short,
-    uint64_t exp_r_low_quality
+    uint64_t exp_r_low_quality,
+    uint64_t exp_f_qual_missing
 ) {
     fc_iter iter = {0};
     char *paths[2] = { (char *)path, NULL };
@@ -166,6 +167,7 @@ static void _run_iter_and_assert(
     TEST_ASSERT_EQUAL_UINT64(exp_r_record_ok, stats->failures[R_RECORD_OK]);
     TEST_ASSERT_EQUAL_UINT64(exp_r_too_short, stats->failures[R_TOO_SHORT]);
     TEST_ASSERT_EQUAL_UINT64(exp_r_low_quality, stats->failures[R_LOW_QUALITY]);
+    TEST_ASSERT_EQUAL_UINT64(exp_f_qual_missing, stats->failures[F_QUAL_MISSING]);
     TEST_ASSERT_EQUAL_UINT64(0, stats->failures[F_UNKNOWN_ERROR]);
     uint64_t filtered_out = stats->failures[R_TOO_LONG]
         + stats->failures[R_TOO_SHORT]
@@ -187,14 +189,14 @@ static void _run_iter_and_assert(
 static void test_fastq_iter_stats_accumulate(void) {
     fc_iter_opts opts = fq_opts_defaults();
     _run_iter_and_assert("test/fixtures/fastq/basic/bc1.fastq.gz", &opts,
-        10, 5904, 281, 878, 12.8569, 10, 10, 0, 0);
+        10, 5904, 281, 878, 12.8569, 10, 10, 0, 0, 0);
 }
 
 
 // check stats in a controlled case
 
 static void _test_known_stats(const char *path) {
-    _run_iter_and_assert(path, NULL, 3, 15, 4, 6, 20.0, 3, 3, 0, 0);
+    _run_iter_and_assert(path, NULL, 3, 15, 4, 6, 20.0, 3, 3, 0, 0, 0);
 }
 
 static void test_iter_fastq_known_stats(void) {
@@ -219,7 +221,7 @@ static void _test_case_filters_length_and_quality(const char *path) {
     opts.min_length = 5;
     opts.min_qscore = 30.0f;
     _run_iter_and_assert(path, &opts,
-        1, 6, 6, 6, 40.0, 3, 1, 1, 1);
+        1, 6, 6, 6, 40.0, 3, 1, 1, 1, 0);
 }
 
 static void test_iter_fastq_filters_length_and_quality(void) {
@@ -241,15 +243,15 @@ static void test_iter_bam_lowercase_qs_used_for_quality_filtering(void) {
     make_temp_sam_contents(SAM_LOWER_QS_FIXTURE, sam_path, sizeof(sam_path));
     fc_iter_opts opts = fq_opts_defaults();
     opts.min_qscore = 30.0f;
-    _run_iter_and_assert(sam_path, &opts, 0, 0, 0, 0, 0.0, 1, 0, 0, 1);
+    _run_iter_and_assert(sam_path, &opts, 0, 0, 0, 0, 0.0, 1, 0, 0, 1, 0);
     remove(sam_path);
 }
 
-static void test_iter_bam_missing_quality_counts_as_low_quality(void) {
+static void test_iter_bam_missing_quality_matches_fastq_style_drop(void) {
     char sam_path[64];
     make_temp_sam_contents(SAM_MISSING_QUAL_FIXTURE, sam_path, sizeof(sam_path));
     fc_iter_opts opts = fq_opts_defaults();
-    _run_iter_and_assert(sam_path, &opts, 0, 0, 0, 0, 0.0, 1, 0, 0, 1);
+    _run_iter_and_assert(sam_path, &opts, 0, 0, 0, 0, 0.0, 0, 0, 0, 0, 1);
     remove(sam_path);
 }
 
@@ -259,7 +261,7 @@ static void test_iter_bam_missing_quality_counts_as_low_quality(void) {
 static void _test_case_all_filtered(const char *path) {
     fc_iter_opts opts = fq_opts_defaults();
     opts.min_length = 100;
-    _run_iter_and_assert(path, &opts, 0, 0, 0, 0, 0.0, 3, 0, 3, 0);
+    _run_iter_and_assert(path, &opts, 0, 0, 0, 0, 0.0, 3, 0, 3, 0, 0);
 }
 
 static void test_iter_fastq_all_filtered_sets_minmax_zero(void) {
@@ -312,7 +314,7 @@ void iter_suite(void) {
     RUN_TEST(test_iter_fastq_filters_length_and_quality);
     RUN_TEST(test_iter_bam_filters_length_and_quality);
     RUN_TEST(test_iter_bam_lowercase_qs_used_for_quality_filtering);
-    RUN_TEST(test_iter_bam_missing_quality_counts_as_low_quality);
+    RUN_TEST(test_iter_bam_missing_quality_matches_fastq_style_drop);
     // all filtered sets min/max length to zero
     RUN_TEST(test_iter_fastq_all_filtered_sets_minmax_zero);
     RUN_TEST(test_iter_bam_all_filtered_sets_minmax_zero);

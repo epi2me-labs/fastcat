@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased]
+
+### Changed
+- `fastcat bam` recorded records with missing quality as being low quality. The behaviour has been changed to be the same as `fastcat fastq`, where records with missing quality are dropped and the program will finish processing inputs but exit with a non-zero exit code.
+
 ## [v1.0.1]
 
 ### Fixed
