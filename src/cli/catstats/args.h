@@ -15,6 +15,7 @@ typedef struct {
     char *output_dir;
     bool demultiplex;
     bool per_read;
+    bool html_report;
     int threads;
     bool verbose;
     bool force_error;

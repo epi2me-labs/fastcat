@@ -36,3 +36,4 @@ mk26.01.fastq.spec.html
 /third_party/samtools-*/
 *.tar.gz
 *.tar.bz2
+__pycache__/

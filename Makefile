@@ -26,6 +26,16 @@ BUILD_DIR := $(REPO_ROOT)/build
 OBJ_DIR := $(BUILD_DIR)/obj
 DEP_DIR := $(BUILD_DIR)/dep
 FASTCAT_BIN := $(BUILD_DIR)/fastcat
+REPORT_DIR := $(BUILD_DIR)/report
+REPORT_VENV := $(BUILD_DIR)/report-venv
+REPORT_PY := $(REPORT_VENV)/bin/python
+REPORT_PIP := $(REPORT_VENV)/bin/pip
+REPORT_REQS := tools/requirements.txt
+REPORT_MPLCONFIGDIR := $(REPORT_DIR)/mpl-cache
+REPORT_EXAMPLE_N ?= 2000
+REPORT_DEMO_N ?= 50000
+DEV_TOOLS_SCRIPT := $(REPO_ROOT)/tools/dev-tools
+DEV_TOOLS := python3 $(DEV_TOOLS_SCRIPT)
 SHELL := /bin/bash
 
 .PHONY: default
@@ -219,6 +229,9 @@ CORE_SRCS := \
 	src/core/fc_kll.c \
 	src/core/fc_stats_engine.c \
 	src/core/fc_fastqcomments.c \
+	src/core/fc_report.c \
+	src/core/fc_report_arg_table.c \
+	src/core/fc_report_template_data.c \
 	src/core/fc_read.c \
 	src/core/fc_filter.c \
 	src/core/fc_bam_utils.c \
@@ -447,6 +460,72 @@ install_hooks:  ## install git hooks for the current repository
 
 
 ###
+# Developer report scaffold
+#
+
+$(REPORT_DIR):
+	mkdir -p $(REPORT_DIR)
+
+$(REPORT_MPLCONFIGDIR): | $(REPORT_DIR)
+	mkdir -p $(REPORT_MPLCONFIGDIR)
+
+$(REPORT_PY):
+	python3 -m venv $(REPORT_VENV)
+
+$(REPORT_VENV)/.deps: $(REPORT_REQS) $(REPORT_PY) | $(REPORT_MPLCONFIGDIR)
+	$(REPORT_PIP) install -r $(REPORT_REQS)
+	@touch $@
+
+.PHONY: report_venv
+report_venv: $(REPORT_VENV)/.deps  ## create the Python report venv
+
+$(REPORT_DIR)/template_example.fastq: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py | $(REPORT_DIR)
+	$(DEV_TOOLS) simulate_reads \
+		--n $(REPORT_EXAMPLE_N) \
+		--shape 2.6 \
+		--scale 30000 \
+		--q1 10 \
+		--q2 20 \
+		--q1-weight 0.55 \
+		--seed 42 \
+		> $@
+
+$(REPORT_DIR)/template_fastcat/histograms/length.hist: $(FASTCAT_BIN) $(REPORT_DIR)/template_example.fastq | $(REPORT_DIR)
+	rm -rf $(REPORT_DIR)/template_fastcat
+	$(FASTCAT_BIN) fastq $(REPORT_DIR)/template_example.fastq \
+		--sample __FASTCAT_SAMPLE_ALIAS_HTML__ \
+		--output $(REPORT_DIR)/template_fastcat \
+		> /dev/null
+
+$(REPORT_DIR)/template_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
+	$(DEV_TOOLS) write_wf_report_inputs --out-dir $(REPORT_DIR)/template_inputs
+
+$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
+		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
+		--stats $(REPORT_DIR)/template_fastcat/histograms \
+		--metadata $(REPORT_DIR)/template_inputs/metadata.json \
+		--versions $(REPORT_DIR)/template_inputs/versions \
+		--params $(REPORT_DIR)/template_inputs/params.json \
+		--wf_version __FASTCAT_VERSION_HTML__
+
+.PHONY: report_template
+report_template: report_vendor_template  ## build the wf-template-derived HTML report template
+
+.PHONY: report_vendor_template
+report_vendor_template: $(REPORT_DIR)/example_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py  ## vendor report template into C assets
+	$(DEV_TOOLS) vendor_report_template \
+		--input $(REPORT_DIR)/example_wf_report.html \
+		--template-output $(REPORT_DIR)/fastcat_report_template.html \
+		--header src/core/fc_report_template_data.h \
+		--source src/core/fc_report_template_data.c \
+		--symbol fc_report_template_html
+
+.PHONY: report_scaffold
+report_scaffold: report_vendor_template  ## rebuild the developer HTML report scaffold
+
+
+###
 # Testing!
 #
 
@@ -487,7 +566,7 @@ test_unit: | $(HTSLIB_PATCH_STAMP)
 # - Individual test-to-leaf-group registrations are inline next to each test implementation
 
 # Declare all test group targets as PHONY
-.PHONY: test test_functional test_memory test_unit
+.PHONY: test test_functional test_memory test_unit demo
 .PHONY: test_fastcat test_fastcat_memory test_fastcat_equivalence test_fastcat_demux test_fastcat_inputs test_fastcat_filters test_fastcat_output
 .PHONY: test_bamstats test_bamstats_memory test_bamstats_core test_bamstats_equivalence test_bamstats_coverage test_bamstats_inputs
 .PHONY: test_bamindex test_bamindex_memory
@@ -495,7 +574,7 @@ test_unit: | $(HTSLIB_PATCH_STAMP)
 .PHONY: test_meta
 
 .PHONY: test_functional
-test_functional: test_fastcat test_bamstats test_bamindex test_fastlint test_meta  ## run integration tests
+test_functional: test_fastcat test_bamstats test_bamindex test_fastlint test_meta demo  ## run integration tests
 
 .PHONY: test_memory
 test_memory: test_fastcat_memory test_bamstats_memory test_bamindex_memory test_fastlint_memory
@@ -537,9 +616,9 @@ COMPARE_TABLES_SKIP_FIRST = \
 	diff $(3).sorted $(3).expected.sorted
 COMPARE_FASTQ = \
 	case "$(1)" in *.gz) gunzip -c "$(1)" ;; *) cat "$(1)" ;; esac \
-		| $(TEST_HELPERS)/sort-fastq.py > $(3).sorted && \
+		| $(DEV_TOOLS) sort_fastq > $(3).sorted && \
 	case "$(2)" in *.gz) gunzip -c "$(2)" ;; *) cat "$(2)" ;; esac \
-		| $(TEST_HELPERS)/sort-fastq.py > $(3).expected.sorted && \
+		| $(DEV_TOOLS) sort_fastq > $(3).expected.sorted && \
 	diff $(3).sorted $(3).expected.sorted
 TEST_DESC = printf '\n%s\n' "$(1)"
 RUN_FASTCAT = $(PEPPER) $(FASTCAT_BIN) fastq
@@ -553,7 +632,6 @@ TEST_EXPECTED_FASTCAT := $(TEST_EXPECTED)/fastcat
 TEST_EXPECTED_BAMSTATS := $(TEST_EXPECTED)/bamstats
 TEST_EXPECTED_METADATA := $(TEST_EXPECTED)/metadata
 TEST_EXPECTED_DEMULTIPLEX := $(TEST_EXPECTED_FASTCAT)/demultiplex
-TEST_HELPERS := $(TEST_ROOT)/helpers
 TEST_TMP_DIR ?= $(TEST_ROOT)/tmp
 comma := ,
 
@@ -617,6 +695,44 @@ BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv histograms/len
 
 
 ###
+# report tests
+
+.PHONY: demo
+demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
+	@$(call TEST_DESC,HTML report demo)
+	rm -rf $(TEST_TMP_DIR)/report_html
+	mkdir -p $(TEST_TMP_DIR)/report_html
+	$(DEV_TOOLS) simulate_reads \
+		--n $(REPORT_DEMO_N) \
+		--shape 1.6 \
+		--scale 4000 \
+		--q1 8 \
+		--q2 25 \
+		--q1-weight 0.25 \
+		--max-len 80000 \
+		--seed 7 \
+		> $(TEST_TMP_DIR)/report_html/reads.fastq
+	$(RUN_FASTCAT) $(TEST_TMP_DIR)/report_html/reads.fastq \
+		--output $(TEST_TMP_DIR)/report_html/fastcat_out \
+		--html-report \
+		> $(TEST_TMP_DIR)/report_html/reads.out.fastq
+	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	grep -q "Fastcat Sequencing QC Report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	grep -q "Run configuration" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	! grep -q "Software versions" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	! grep -q "Workflow parameters" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	! grep -q "fastcat workflow provided by Oxford Nanopore Technologies" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	! grep -q "nextflow workflow" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	grep -q "Bokeh" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	$(RUN_FASTCAT) $(TEST_TMP_DIR)/report_html/reads.fastq \
+		--output $(TEST_TMP_DIR)/report_html/demux_out \
+		--demultiplex \
+		--html-report \
+		> /dev/null
+	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/fastcat_report.html
+
+
+###
 # fastcat tests
 
 .PHONY: test_fastcat_demux_single_equiv
@@ -644,8 +760,8 @@ test_meta: test_meta_fastcat
 test_fastcat_bam_equivalent: $(FASTCAT_BIN) samtools
 	@$(call TEST_DESC,Fastcat BAM equivalence)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/bam_equiv, \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz --output out_reheader -B | $(REPO_ROOT)/samtools view | $(TEST_HELPERS)/sort-sam.py > reheader.sam && \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz --output out_bam -B | $(REPO_ROOT)/samtools view | $(TEST_HELPERS)/sort-sam.py > bam.sam && \
+		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz --output out_reheader -B | $(REPO_ROOT)/samtools view | $(DEV_TOOLS) sort_sam > reheader.sam && \
+		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/*.fastq.gz --output out_bam -B | $(REPO_ROOT)/samtools view | $(DEV_TOOLS) sort_sam > bam.sam && \
 		diff reheader.sam bam.sam)
 test_fastcat_equivalence: test_fastcat_bam_equivalent
 
@@ -797,10 +913,10 @@ test_fastcat_bam_input_equiv: $(FASTCAT_BIN)
 		$(RUN_FASTCAT) --input-fmt bam b1.bam b2.bam --output out_bam > out_bam.fastq && \
 		cat out_fastq.fastq \
 			| sed -E 's/\t[qQ][sS]:f:[^\t[:space:]]+//g' \
-			| $(TEST_HELPERS)/sort-fastq.py > fc_bam_input_concat.sorted && \
+			| $(DEV_TOOLS) sort_fastq > fc_bam_input_concat.sorted && \
 		cat out_bam.fastq \
 			| sed -E 's/\t[qQ][sS]:f:[^\t[:space:]]+//g' \
-			| $(TEST_HELPERS)/sort-fastq.py > fc_bam_input_concat.expected.sorted && \
+			| $(DEV_TOOLS) sort_fastq > fc_bam_input_concat.expected.sorted && \
 		diff fc_bam_input_concat.sorted fc_bam_input_concat.expected.sorted && \
 		$(call COMPARE_TABLES_SKIP_FIRST,out_fastq/runids.tsv,out_bam/runids.tsv,fc_bam_input_runids) && \
 		$(call COMPARE_TABLES_SKIP_FIRST,out_fastq/basecallers.tsv,out_bam/basecallers.tsv,fc_bam_input_basecallers) && \

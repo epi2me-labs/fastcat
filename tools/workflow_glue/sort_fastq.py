@@ -1,6 +1,14 @@
-#!/usr/bin/env python3
 """Read FASTQ from stdin and write records sorted by read id."""
+
+import argparse
 import sys
+
+
+def argparser():
+    return argparse.ArgumentParser(
+        description="Read FASTQ from stdin and write records sorted by read id.",
+        add_help=False,
+    )
 
 
 def iter_records(stream):
@@ -22,12 +30,8 @@ def record_key(rec):
     return (read_id, header, rec[1], rec[3])
 
 
-def main():
+def main(args):
     records = list(iter_records(sys.stdin))
     records.sort(key=record_key)
     for header, seq, plus, qual in records:
         sys.stdout.write(f"{header}\n{seq}\n{plus}\n{qual}\n")
-
-
-if __name__ == "__main__":
-    main()

@@ -2,11 +2,11 @@
 
 #include <argp.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
-#include "core/fc_common.h"
 #include "core/fc_log.h"
 #include "version.h"
 
@@ -35,7 +35,8 @@ enum {
     KEY_LOG_LEVEL,
     KEY_LOG_FILE,
     KEY_LOG_MONO,
-    KEY_MAX_LENGTH_LONG
+    KEY_MAX_LENGTH_LONG,
+    KEY_HTML_REPORT
 };
 
 typedef struct {
@@ -80,6 +81,8 @@ static struct argp_option fastcat_options[] = {
         "Split reads into files with a set number of reads (default: single file).", 1 },
     { "bam-out", 'B', 0, 0, "Output data as unaligned BAM.", 1 },
     { "per-read", 'p', 0, 0, "Write per-read TSV (large). Disabled by default.", 1 },
+    { "html-report", KEY_HTML_REPORT, 0, 0,
+        "Write a single-sample HTML report using aggregate fastcat histograms.", 1 },
     { "demultiplex", 'd', 0, 0,
         "Separate barcoded samples using fastq header information; outputs go under <output>/barcodeXXXX/.", 1 },
 
@@ -132,6 +135,8 @@ static struct argp_option bamstats_options[] = {
     { "demultiplex", 'd', 0, 0, "Separate outputs per barcode under <output>/barcodeXXXX/.", 1 },
     { "sample", 's', "SAMPLE NAME", 0, "Sample name (if given, adds a 'sample_name' column).", 1 },
     { "per-read", 'p', 0, 0, "Write per-read TSV (large). Disabled by default.", 1 },
+    { "html-report", KEY_HTML_REPORT, 0, 0,
+        "Write single-sample HTML report(s) using aggregate fastcat histograms.", 1 },
 
     { 0, 0, 0, 0, "Read filtering options:", 2 },
     { "min-length", 'a', "MIN READ LENGTH", 0,
@@ -188,6 +193,7 @@ static fc_catstats_args default_args(void)
     args.sample = NULL;
     args.demultiplex = false;
     args.per_read = false;
+    args.html_report = false;
     args.threads = 1;
     args.verbose = false;
     args.force_error = false;
@@ -255,6 +261,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         break;
     case 'p':
         arguments->per_read = true;
+        break;
+    case KEY_HTML_REPORT:
+        arguments->html_report = true;
         break;
     case 'a':
         if (!fc_parse_size_strict(arg, &size_value)) {

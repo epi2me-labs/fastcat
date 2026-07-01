@@ -35,21 +35,23 @@ check-changelog:
     stage: test
     before_script:
         - *prep-image
-    artifacts:
-      when: always
-      paths:
-        - test/*
     script:
         - ./build/fastcat fastq --help
         - ./build/fastcat bam --help
         - ./build/fastcat index --help
 
-build:
+build_and_test:
     extends: .fastcat-test-base
     script:
         - make
         - !reference [.fastcat-test-base, script]
         - BUILD_MODE=valgrind make test
+        - rm test/tmp/report_html/reads.*fastq
+        - mv test/tmp/report_html/ demo
+    artifacts:
+      when: always
+      paths:
+        - demo/
 
 clang_format:
     image: ${UBUNTUIMAGE}:24.04
