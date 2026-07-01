@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `fastcat bam` recorded records with missing quality as being low quality. The behaviour has been changed to be the same as `fastcat fastq`, where records with missing quality are dropped and the program will finish processing inputs but exit with a non-zero exit code.
+### Added
+- HTML report outputs in the style of EPI2ME workflows, enabled by setting `--html-report` on the command line.
+
 
 ## [v1.0.1]
 

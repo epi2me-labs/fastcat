@@ -11,6 +11,8 @@
 #include "core/fc_filter.h"
 #include "core/fc_iter.h"
 #include "core/fc_log.h"
+#include "core/fc_report.h"
+#include "core/fc_report_arg_table.h"
 #include "core/fc_sinks.h"
 #include "core/fc_writer.h"
 
@@ -318,6 +320,26 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     }
 
     fc_writer_finish(writer);
+
+    if (args->html_report) {
+        fc_report_arg_table report_arg_table = fc_report_arg_table_from_catstats(program, args, nfile);
+        fc_report_opts report_opts = {
+            .output_root = args->output_dir,
+            .sample = args->sample,
+            .run_config = report_arg_table.entries,
+            .run_config_count = report_arg_table.n_entries,
+            .use_barcodes = args->demultiplex,
+            .barcode_count = writer->barcode_count,
+            .unmapped_override = (program == FC_PROGRAM_FASTCAT),
+            .engines = writer->stats_engines,
+            .engine_count = writer->stats_engine_count
+        };
+        if (fc_write_html_reports(&report_opts) != 0) {
+            hard_error = true;
+            status = EXIT_FAILURE;
+        }
+        fc_report_arg_table_destroy(&report_arg_table);
+    }
 
     uint64_t seen_records = global_stats.failures[R_RECORD_SEEN];
     uint64_t used_records = global_stats.failures[R_RECORD_OK];
