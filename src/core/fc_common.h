@@ -54,6 +54,9 @@ char *fc_strdup(const char *s, const char *msg);
 // comparison function for qsort of uint32_t
 int cmp_u32(const void *a, const void *b);
 
+// comparison function for qsort of double
+int cmp_double(const void *a, const void *b);
+
 /** check if a file exists.
  *
  * @param path path to file

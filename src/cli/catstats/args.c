@@ -36,6 +36,9 @@ enum {
     KEY_LOG_FILE,
     KEY_LOG_MONO,
     KEY_MAX_LENGTH_LONG,
+    KEY_LENGTH_QSCORE_K,
+    KEY_LENGTH_QSCORE_QGRID,
+    KEY_LENGTH_QSCORE_QSMOOTH,
     KEY_HTML_REPORT
 };
 
@@ -62,65 +65,73 @@ static struct argp_option fastcat_options[] = {
     { 0, 0, 0, 0, "General options:", 0 },
     { "recurse", 'x', 0, 0,
         "Search directories recursively for files matching the selected input format.", 0 },
-    { "threads", 't', "THREADS", 0,
-        "Number of threads for output compression (only with --bam-out).", 0 },
-    { "force-error", 'e', 0, 0,
-        "Exit with non-zero status if any files, or records, contained errors.", 0 },
     { "fofn", KEY_FOFN, 0, 0,
         "Treat each input as a file-of-filenames source (use '-' to read that list from stdin).", 0 },
     { "input-fmt", KEY_INPUT_FORMAT, "fastq|bam", 0,
         "Input format for fastq mode (default: fastq). Use 'bam' for unaligned BAM input.", 0 },
+    { "threads", 't', "THREADS", 0,
+        "Number of threads for output compression (only with --bam-out).", 0 },
+    { "force-error", 'e', 0, 0,
+        "Exit with non-zero status if any files, or records, contained errors.", 0 },
     { "verbose", 'v', 0, 0, "Verbose output.", 0 },
 
-    { 0, 0, 0, 0, "Output options:", 1 },
+    { 0, 0, 0, 0, "Output options:", 10 },
     { "output", 'o', "DIRECTORY", 0,
-        "Output root directory (default: fastcat-qc). Must not already exist.", 1 },
-    { "sample", 's', "SAMPLE NAME", 0,
-        "Sample name (if given, adds a 'sample_name' column).", 1 },
-    { "reads-per-file", 'c', "NUM", 0,
-        "Split reads into files with a set number of reads (default: single file).", 1 },
-    { "bam-out", 'B', 0, 0, "Output data as unaligned BAM.", 1 },
-    { "per-read", 'p', 0, 0, "Write per-read TSV (large). Disabled by default.", 1 },
-    { "html-report", KEY_HTML_REPORT, 0, 0,
-        "Write a single-sample HTML report using aggregate fastcat histograms.", 1 },
+        "Output root directory (default: fastcat-qc). Must not already exist.", 10 },
     { "demultiplex", 'd', 0, 0,
-        "Separate barcoded samples using fastq header information; outputs go under <output>/barcodeXXXX/.", 1 },
+        "Separate barcoded samples using fastq header information; outputs go under <output>/barcodeXXXX/.", 10 },
+    { "sample", 's', "SAMPLE NAME", 0,
+        "Sample name (if given, adds a 'sample_name' column).", 10 },
+    { "per-read", 'p', 0, 0, "Write per-read TSV (large). Disabled by default.", 10 },
+    { "html-report", KEY_HTML_REPORT, 0, 0,
+        "Write a single-sample HTML report using aggregate fastcat histograms.", 10 },
+    { "reads-per-file", 'c', "NUM", 0,
+        "Split reads into files with a set number of reads (default: single file).", 10 },
+    { "bam-out", 'B', 0, 0, "Output data as unaligned BAM.", 10 },
 
-    { 0, 0, 0, 0, "Read filtering options:", 2 },
+    { 0, 0, 0, 0, "Read filtering options:", 20 },
     { "min-length", 'a', "MIN READ LENGTH", 0,
-        "Minimum read length to output (excluded reads remain listed in summaries).", 2 },
+        "Minimum read length to output (excluded reads remain listed in summaries).", 20 },
     { "max-length", 'b', "MAX READ LENGTH", 0,
-        "Maximum read length to output (excluded reads remain listed in summaries).", 2 },
+        "Maximum read length to output (excluded reads remain listed in summaries).", 20 },
     { "min-qscore", 'q', "MIN READ QSCORE", 0,
-        "Minimum read Qscore to output (excluded reads remain listed in summaries).", 2 },
-    { "dust", KEY_DUST, 0, 0, "Enable DUST filtering of reads (default: disabled).", 2 },
+        "Minimum read Qscore to output (excluded reads remain listed in summaries).", 20 },
+    { "dust", KEY_DUST, 0, 0, "Enable DUST filtering of reads (default: disabled).", 20 },
     { "max-dust", KEY_MAX_DUST, "MAX DUST", 0,
-        "Maximum proportion of low-complexity regions to allow in reads (default: 0.95).", 2 },
-    { "dust-w", KEY_DUST_W, "DUST W", 0, "Window size for DUST filtering (default: 64).", 2 },
-    { "dust-t", KEY_DUST_T, "DUST T", 0, "Threshold for DUST filtering (default: 20).", 2 },
-    { "read-group", 'g', "RG", 0, "Only process reads from given read group.", 2 },
-    { "tag-name", KEY_TAG_NAME, "TN", 0, "Only process reads with a given tag (see --tag-value).", 2 },
-    { "tag-value", KEY_TAG_VALUE, "VAL", 0, "Only process reads with a given tag value.", 2 },
+        "Maximum proportion of low-complexity regions to allow in reads (default: 0.95).", 20 },
+    { "dust-w", KEY_DUST_W, "DUST W", 0, "Window size for DUST filtering (default: 64).", 20 },
+    { "dust-t", KEY_DUST_T, "DUST T", 0, "Threshold for DUST filtering (default: 20).", 20 },
+    { "read-group", 'g', "RG", 0, "Only process reads from given read group.", 20 },
+    { "tag-name", KEY_TAG_NAME, "TN", 0, "Only process reads with a given tag (see --tag-value).", 20 },
+    { "tag-value", KEY_TAG_VALUE, "VAL", 0, "Only process reads with a given tag value.", 20 },
     { "haplotype", KEY_HAPLOTYPE, "VAL", 0,
-        "Only process reads from a given haplotype. Equivalent to --tag-name HP --tag-value VAL.", 2 },
+        "Only process reads from a given haplotype. Equivalent to --tag-name HP --tag-value VAL.", 20 },
     { "recalc-qual", KEY_RECALC_QUAL, 0, 0,
-        "Force recomputing mean quality, else use 'qs' tag if present.", 2 },
+        "Force recomputing mean quality, else use 'qs' tag if present.", 20 },
 
-    { 0, 0, 0, 0, "Logging options:", 3 },
+    { 0, 0, 0, 0, "Histogram Sketch Options: controls length_qscore_2d.tsv detail vs smoothness.", 30 },
+    { "length-qscore-k", KEY_LENGTH_QSCORE_K, "K", 0,
+        "Sketch size for length modeling per qscore bin (higher => more memory, less sketch noise; default: 400).", 30 },
+    { "length-qscore-qgrid", KEY_LENGTH_QSCORE_QGRID, "N", 0,
+        "Quantile samples converted into each density curve (higher => finer detail, more CPU; default: 257).", 30 },
+    { "length-qscore-qsmooth", KEY_LENGTH_QSCORE_QSMOOTH, "W", 0,
+        "Odd moving-average window over quantile slopes (higher => smoother/less spiky, but flatter peaks; default: 5).", 30 },
+
+    { 0, 0, 0, 0, "Logging options:", 40 },
     { "log-level", KEY_LOG_LEVEL, "LEVEL", 0,
-        "Log level: error, warn, info, debug (default: info).", 3 },
-    { "log-file", KEY_LOG_FILE, "PATH", 0, "Write logs to PATH instead of stderr.", 3 },
-    { "log-mono", KEY_LOG_MONO, 0, 0, "Force monochrome logging output (disable ANSI colors).", 3 },
+        "Log level: error, warn, info, debug (default: info).", 40 },
+    { "log-file", KEY_LOG_FILE, "PATH", 0, "Write logs to PATH instead of stderr.", 40 },
+    { "log-mono", KEY_LOG_MONO, 0, 0, "Force monochrome logging output (disable ANSI colors).", 40 },
     { 0 }
 };
 
-static char bamstats_doc[] = "bamstats -- summarise reads/alignments in an input BAM file.\
-\vThe program creates summary files containing statistics for \
-each primary alignment stored within the input BAM file.";
+static char bam_doc[] = "fastcat bam -- summarise reads/alignments in an input BAM file.\
+\vCreates summary files containing statistics for reads and alignments in \
+the input BAM file.";
 
-static char bamstats_args_doc[] = "<reads.bam>";
+static char bam_args_doc[] = "<reads.bam>";
 
-static struct argp_option bamstats_options[] = {
+static struct argp_option bam_options[] = {
     { 0, 0, 0, 0, "General options:", 0 },
     { "region", 'r', "chr:start-end", 0, "Genomic region to process.", 0 },
     { "bed", 'b', "BEDFILE", 0, "BED file for regions to process.", 0 },
@@ -129,60 +140,68 @@ static struct argp_option bamstats_options[] = {
     { "force-error", 'e', 0, 0, "Exit with non-zero status if parsing/filtering errors occur.", 0 },
     { "verbose", 'v', 0, 0, "Verbose output.", 0 },
 
-    { 0, 0, 0, 0, "Output options:", 1 },
+    { 0, 0, 0, 0, "Output options:", 10 },
     { "output", 'o', "DIRECTORY", 0,
-        "Output root directory (default: fastcat-qc). Must not already exist.", 1 },
-    { "demultiplex", 'd', 0, 0, "Separate outputs per barcode under <output>/barcodeXXXX/.", 1 },
-    { "sample", 's', "SAMPLE NAME", 0, "Sample name (if given, adds a 'sample_name' column).", 1 },
-    { "per-read", 'p', 0, 0, "Write per-read TSV (large). Disabled by default.", 1 },
+        "Output root directory (default: fastcat-qc). Must not already exist.", 10 },
+    { "demultiplex", 'd', 0, 0, "Separate outputs per barcode under <output>/barcodeXXXX/.", 10 },
+    { "sample", 's', "SAMPLE NAME", 0, "Sample name (if given, adds a 'sample_name' column).", 10 },
+    { "per-read", 'p', 0, 0, "Write per-read TSV (large). Disabled by default.", 10 },
     { "html-report", KEY_HTML_REPORT, 0, 0,
-        "Write single-sample HTML report(s) using aggregate fastcat histograms.", 1 },
+        "Write single-sample HTML report(s) using aggregate fastcat histograms.", 10 },
 
-    { 0, 0, 0, 0, "Read filtering options:", 2 },
+    { 0, 0, 0, 0, "Read filtering options:", 20 },
     { "min-length", 'a', "MIN READ LENGTH", 0,
-        "Minimum read length to output (excluded reads remain listed in summaries).", 2 },
+        "Minimum read length to output (excluded reads remain listed in summaries).", 20 },
     { "max-length", KEY_MAX_LENGTH_LONG, "MAX READ LENGTH", 0,
-        "Maximum read length to output (excluded reads remain listed in summaries).", 2 },
+        "Maximum read length to output (excluded reads remain listed in summaries).", 20 },
     { "min-qscore", 'q', "MIN READ QSCORE", 0,
-        "Minimum read Qscore to output (excluded reads remain listed in summaries).", 2 },
-    { "dust", KEY_DUST, 0, 0, "Enable DUST filtering of reads (default: disabled).", 2 },
+        "Minimum read Qscore to output (excluded reads remain listed in summaries).", 20 },
+    { "dust", KEY_DUST, 0, 0, "Enable DUST filtering of reads (default: disabled).", 20 },
     { "max-dust", KEY_MAX_DUST, "MAX DUST", 0,
-        "Maximum proportion of low-complexity regions to allow in reads (default: 0.95).", 2 },
-    { "dust-w", KEY_DUST_W, "DUST W", 0, "Window size for DUST filtering (default: 64).", 2 },
-    { "dust-t", KEY_DUST_T, "DUST T", 0, "Threshold for DUST filtering (default: 20).", 2 },
-    { "read-group", 'g', "RG", 0, "Only process reads from given read group.", 2 },
-    { "tag-name", KEY_TAG_NAME, "TN", 0, "Only process reads with a given tag (see --tag-value).", 2 },
-    { "tag-value", KEY_TAG_VALUE, "VAL", 0, "Only process reads with a given tag value.", 2 },
+        "Maximum proportion of low-complexity regions to allow in reads (default: 0.95).", 20 },
+    { "dust-w", KEY_DUST_W, "DUST W", 0, "Window size for DUST filtering (default: 64).", 20 },
+    { "dust-t", KEY_DUST_T, "DUST T", 0, "Threshold for DUST filtering (default: 20).", 20 },
+    { "read-group", 'g', "RG", 0, "Only process reads from given read group.", 20 },
+    { "tag-name", KEY_TAG_NAME, "TN", 0, "Only process reads with a given tag (see --tag-value).", 20 },
+    { "tag-value", KEY_TAG_VALUE, "VAL", 0, "Only process reads with a given tag value.", 20 },
     { "haplotype", KEY_HAPLOTYPE, "VAL", 0,
-        "Only process reads from a given haplotype. Equivalent to --tag-name HP --tag-value VAL.", 2 },
+        "Only process reads from a given haplotype. Equivalent to --tag-name HP --tag-value VAL.", 20 },
     { "recalc-qual", KEY_RECALC_QUAL, 0, 0,
-        "Force recomputing mean quality, else use 'qs' tag in BAM if present.", 2 },
+        "Force recomputing mean quality, else use 'qs' tag in BAM if present.", 20 },
 
-    { 0, 0, 0, 0, "Coverage calculation options:", 3 },
-    { "coverage", KEY_COVERAGE, 0, 0, "Enable coverage calculations.", 3 },
+    { 0, 0, 0, 0, "Histogram Sketch Options: controls length_qscore_2d.tsv detail vs smoothness.", 30 },
+    { "length-qscore-k", KEY_LENGTH_QSCORE_K, "K", 0,
+        "Sketch size for length modeling per qscore bin (higher => more memory, less sketch noise; default: 400).", 30 },
+    { "length-qscore-qgrid", KEY_LENGTH_QSCORE_QGRID, "N", 0,
+        "Quantile samples converted into each density curve (higher => finer detail, more CPU; default: 257).", 30 },
+    { "length-qscore-qsmooth", KEY_LENGTH_QSCORE_QSMOOTH, "W", 0,
+        "Odd moving-average window over quantile slopes (higher => smoother/less spiky, but flatter peaks; default: 5).", 30 },
+
+    { 0, 0, 0, 0, "Coverage calculation options:", 40 },
+    { "coverage", KEY_COVERAGE, 0, 0, "Enable coverage calculations.", 40 },
     { "coverage-beds", KEY_COVERAGE_BEDS, "BEDFILE ...", 0,
-        "BED file(s) for calculating coverage (space-separated list).", 3 },
+        "BED file(s) for calculating coverage (space-separated list).", 40 },
     { "coverage-names", KEY_COVERAGE_NAMES, "NAME ...", 0,
-        "Name(s) for coverage BED file(s) (space-separated list).", 3 },
+        "Name(s) for coverage BED file(s) (space-separated list).", 40 },
     { "thresholds", KEY_THRESHOLDS, "VALUES ...", 0,
-        "Coverage thresholds to produce sparse cumulative distribution (space-separated integers).", 3 },
+        "Coverage thresholds to produce sparse cumulative distribution (space-separated integers).", 40 },
     { "segments", KEY_SEGMENTS, "LENGTH ...", 0,
-        "Segment length(s) for which to produce outputs (space-separated integers).", 3 },
+        "Segment length(s) for which to produce outputs (space-separated integers).", 40 },
 
-    { 0, 0, 0, 0, "Poly-A options:", 4 },
-    { "poly-a", KEY_POLYA, 0, 0, "Enable poly-A tail length histogram.", 4 },
+    { 0, 0, 0, 0, "Poly-A options:", 50 },
+    { "poly-a", KEY_POLYA, 0, 0, "Enable poly-A tail length histogram.", 50 },
     { "poly-a-cover", KEY_POLYA_COVER, "PCT_COVERAGE", 0,
-        "Reference alignment coverage for acceptance of read (default: 95).", 4 },
+        "Reference alignment coverage for acceptance of read (default: 95).", 50 },
     { "poly-a-qual", KEY_POLYA_QUAL, "QUAL", 0,
-        "Read mean Q score for acceptance of read (default: 10).", 4 },
+        "Read mean Q score for acceptance of read (default: 10).", 50 },
     { "poly-a-rev", KEY_POLYA_REV, 0, 0,
-        "Allow reverse alignments (useful for cDNA; default is direct RNA).", 4 },
+        "Allow reverse alignments (useful for cDNA; default is direct RNA).", 50 },
 
-    { 0, 0, 0, 0, "Logging options:", 5 },
+    { 0, 0, 0, 0, "Logging options:", 60 },
     { "log-level", KEY_LOG_LEVEL, "LEVEL", 0,
-        "Log level: error, warn, info, debug (default: info).", 5 },
-    { "log-file", KEY_LOG_FILE, "PATH", 0, "Write logs to PATH instead of stderr.", 5 },
-    { "log-mono", KEY_LOG_MONO, 0, 0, "Force monochrome logging output (disable ANSI colors).", 5 },
+        "Log level: error, warn, info, debug (default: info).", 60 },
+    { "log-file", KEY_LOG_FILE, "PATH", 0, "Write logs to PATH instead of stderr.", 60 },
+    { "log-mono", KEY_LOG_MONO, 0, 0, "Force monochrome logging output (disable ANSI colors).", 60 },
     { 0 }
 };
 
@@ -200,6 +219,9 @@ static fc_catstats_args default_args(void)
     args.log_level = FC_LOG_INFO;
     args.log_file = NULL;
     args.log_mono = false;
+    args.length_qscore_k = 400;
+    args.length_qscore_qgrid = 257;
+    args.length_qscore_qsmooth = 5;
 
     args.min_length = 0;
     args.max_length = (size_t)-1;
@@ -286,6 +308,33 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             argp_error(state, "Invalid --max-length value: '%s'.", arg);
         }
         arguments->max_length = size_value;
+        break;
+    case KEY_LENGTH_QSCORE_K:
+        if (!fc_parse_size_strict(arg, &size_value)) {
+            argp_error(state, "Invalid --length-qscore-k value: '%s'.", arg);
+        }
+        if (size_value < 8) {
+            argp_error(state, "--length-qscore-k must be >= 8.");
+        }
+        arguments->length_qscore_k = size_value;
+        break;
+    case KEY_LENGTH_QSCORE_QGRID:
+        if (!fc_parse_size_strict(arg, &size_value)) {
+            argp_error(state, "Invalid --length-qscore-qgrid value: '%s'.", arg);
+        }
+        if (size_value < 2) {
+            argp_error(state, "--length-qscore-qgrid must be >= 2.");
+        }
+        arguments->length_qscore_qgrid = size_value;
+        break;
+    case KEY_LENGTH_QSCORE_QSMOOTH:
+        if (!fc_parse_size_strict(arg, &size_value)) {
+            argp_error(state, "Invalid --length-qscore-qsmooth value: '%s'.", arg);
+        }
+        if (size_value == 0 || (size_value % 2) == 0) {
+            argp_error(state, "--length-qscore-qsmooth must be odd and >= 1.");
+        }
+        arguments->length_qscore_qsmooth = size_value;
         break;
     case 'c':
         if (!fc_parse_size_strict(arg, &size_value)) {
@@ -506,7 +555,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 }
 
 static struct argp fastcat_argp = { fastcat_options, parse_opt, fastcat_args_doc, fastcat_doc, 0, 0, 0 };
-static struct argp bamstats_argp = { bamstats_options, parse_opt, bamstats_args_doc, bamstats_doc, 0, 0, 0 };
+static struct argp bam_argp = { bam_options, parse_opt, bam_args_doc, bam_doc, 0, 0, 0 };
 
 fc_catstats_args fc_parse_catstats_args(fc_program_kind program, int argc, char **argv)
 {
@@ -518,7 +567,7 @@ fc_catstats_args fc_parse_catstats_args(fc_program_kind program, int argc, char 
         .tag_given = false,
         .hp_given = false
     };
-    struct argp *tool_argp = (program == FC_PROGRAM_FASTCAT) ? &fastcat_argp : &bamstats_argp;
+    struct argp *tool_argp = (program == FC_PROGRAM_FASTCAT) ? &fastcat_argp : &bam_argp;
     argp_parse(tool_argp, argc, argv, 0, 0, &ctx);
     return args;
 }

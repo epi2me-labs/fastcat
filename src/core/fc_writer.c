@@ -7,7 +7,10 @@
 #include "core/fc_filter.h"
 #include "core/fc_log.h"
 
-fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *stats_cfg)
+fc_writer *fc_writer_create(
+    bool use_barcodes,
+    const fc_stats_engine_config *stats_cfg,
+    const fc_length_qscore_2d_config *length_qscore_cfg)
 {
     fc_writer *writer = fc_alloc(1, sizeof(*writer), "writer");
 
@@ -29,6 +32,18 @@ fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *sta
                 writer->stats_cfg.polya_cover,
                 writer->stats_cfg.polya_qual,
                 writer->stats_cfg.polya_rev);
+        }
+    }
+    if (length_qscore_cfg != NULL) {
+        writer->length_qscore = fc_length_qscore_2d_create(
+            writer->barcode_count,
+            length_qscore_cfg->kll_k,
+            length_qscore_cfg->qgrid_points,
+            length_qscore_cfg->smoothing_points);
+        if (writer->length_qscore == NULL) {
+            FC_LOG_ERROR("Failed to create length/qscore 2D model.");
+            fc_writer_destroy(writer);
+            return NULL;
         }
     }
     return writer;
@@ -93,6 +108,15 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
         }
     }
 
+    if (writer->length_qscore != NULL) {
+        size_t barcode = writer->use_barcodes ? ctx.barcode : 0;
+        fc_length_qscore_2d_add_read(
+            writer->length_qscore,
+            barcode,
+            (double)read->bam->core.l_qseq,
+            read->meta->mean_q);
+    }
+
     for (size_t i = 0; i < writer->sink_count; i++) {
         if (writer->sinks[i].add_read) {
             writer->sinks[i].add_read(writer->sinks[i].ctx, read, &ctx, fname, hdr);
@@ -142,6 +166,7 @@ void fc_writer_destroy(fc_writer *writer)
         }
         free(writer->stats_engines);
     }
+    fc_length_qscore_2d_destroy(writer->length_qscore);
     free(writer->sinks);
     free(writer);
 }

@@ -19,6 +19,7 @@ made in `fc_writer` and encoded in `fc_read_ctx` for each read.
 - `perfile`: writes per-file TSV summary of read stats and failure counts.
 - `counter`: writes run-id/basecaller counts per input file.
 - `hist`: writes histogram tables from `fc_stats_engine` instances.
+- `length_qscore_2d`: writes length/qscore heatmap tables from the writer model.
 - `coverage`: forwards reads to the coverage writer.
 
 ## Example wiring
@@ -32,7 +33,16 @@ fc_stats_engine_config stats_cfg = {
     .polya_rev = false
 };
 
-fc_writer *writer = fc_writer_create(/*use_barcodes=*/false, &stats_cfg);
+fc_length_qscore_2d_config length_qscore_cfg = {
+    .kll_k = 400,
+    .qgrid_points = 257,
+    .smoothing_points = 5
+};
+
+fc_writer *writer = fc_writer_create(
+    /*use_barcodes=*/false,
+    &stats_cfg,
+    &length_qscore_cfg); // pass NULL only if length/qscore heatmap data is not needed
 
 fc_output_sink_opts out_opts = {
     .output_root = args.output_dir,   // NULL to stream FASTQ/BAM to stdout

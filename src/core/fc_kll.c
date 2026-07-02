@@ -29,20 +29,6 @@ struct fc_kll_sketch {
     uint32_t rng_state; // PRNG state for unbiased sampling during compaction
 };
 
-// compare function for qsort
-static int compare_doubles(const void *a, const void *b)
-{
-    double da = *(const double *)a;
-    double db = *(const double *)b;
-    if (da < db) {
-        return -1;
-    }
-    if (da > db) {
-        return 1;
-    }
-    return 0;
-}
-
 // temporary struct for sorting items with their weights
 typedef struct {
     double item;
@@ -140,7 +126,7 @@ static void compact_level(fc_kll_sketch *sketch, size_t level)
 
     // sort items in this level
     // if odd number of items, keep one random endpoint at this level
-    qsort(comp->items, comp->count, sizeof(double), compare_doubles);
+    qsort(comp->items, comp->count, sizeof(double), cmp_double);
     bool is_odd = (comp->count % 2) == 1;
     double saved_item = 0.0;
     size_t start_idx = 0;
@@ -197,6 +183,21 @@ void fc_kll_add(fc_kll_sketch *sketch, double value)
 size_t fc_kll_count(const fc_kll_sketch *sketch)
 {
     return sketch == NULL ? 0 : sketch->n;
+}
+
+size_t fc_kll_memory_bytes(const fc_kll_sketch *sketch)
+{
+    if (sketch == NULL) {
+        return 0;
+    }
+
+    size_t bytes = sizeof(fc_kll_sketch);
+    bytes += sketch->max_levels * sizeof(kll_compactor);
+    for (size_t i = 0; i < sketch->num_levels; i++) {
+        bytes += sketch->levels[i].capacity * sizeof(double);
+    }
+
+    return bytes;
 }
 
 // merge all levels into a sorted array with weights
@@ -274,6 +275,24 @@ fc_kll_quantile_triple fc_kll_compute_quantile_triple(const fc_kll_sketch *sketc
     return result;
 }
 
+// Find first index i such that cumsum[i] > order_idx (0-based order statistic)
+static size_t bisect(const size_t *cumsum, size_t n, size_t order_idx)
+{
+    size_t left = 0;
+    size_t right = n;
+
+    while (left < right) {
+        size_t mid = left + (right - left) / 2;
+        if (cumsum[mid] > order_idx) {
+            right = mid;
+        } else {
+            left = mid + 1;
+        }
+    }
+
+    return left;
+}
+
 int fc_kll_compute_quantiles(const fc_kll_sketch *sketch, const double *ps, size_t n, double *out)
 {
     if (sketch == NULL || ps == NULL || out == NULL || n == 0) {
@@ -306,29 +325,225 @@ int fc_kll_compute_quantiles(const fc_kll_sketch *sketch, const double *ps, size
         cumsum[i] = total_weight;
     }
 
-    // fetch each quantile through linear search,
-    // we could do bisection, or assume inputs are sorted but this
-    // is simple and fast enough for small numbers
+    if (total_weight == 0) {
+        for (size_t i = 0; i < n; i++) {
+            out[i] = NAN;
+        }
+        free(cumsum);
+        free(items);
+        free(weights);
+        return 0;
+    }
+
+    // interpolate quantiles between neighbouring items taking into
+    // account their weights.
+    // t = p * (W - 1); f = fract(t)
+    // x = (1-f) * x[floor(t)] + f * x[ceil(t)]
     for (size_t q = 0; q < n; q++) {
         if (ps[q] < 0.0 || ps[q] > 1.0) {
             out[q] = NAN;
             continue;
         }
-        double target_rank = ps[q] * (double)total_weight;
-        size_t i;
-        for (i = 0; i < count; i++) {
-            if ((double)cumsum[i] >= target_rank) {
-                out[q] = items[i];
-                break;
-            }
+
+        if (total_weight == 1 || ps[q] <= 0.0) {
+            out[q] = items[0];
+            continue;
         }
-        if (i == count) {
+
+        if (ps[q] >= 1.0) {
             out[q] = items[count - 1];
+            continue;
         }
+
+        double t = ps[q] * (double)(total_weight - 1);
+        size_t idx_lo = (size_t)t;
+        size_t idx_hi = idx_lo + (t > (double)idx_lo ? 1 : 0);
+        double frac = t - (double)idx_lo;
+
+        size_t lo_item_idx = bisect(cumsum, count, idx_lo);
+        size_t hi_item_idx = bisect(cumsum, count, idx_hi);
+
+        double x_lo = items[lo_item_idx];
+        double x_hi = items[hi_item_idx];
+        out[q] = x_lo + frac * (x_hi - x_lo);
     }
 
     free(cumsum);
     free(items);
     free(weights);
     return 0;
+}
+
+static void smooth_log_slope_box(const double *in, size_t n, size_t window_points, double *out)
+{
+    if (n == 0) {
+        return;
+    }
+
+    if (window_points <= 1 || n == 1) {
+        memcpy(out, in, n * sizeof(double));
+        return;
+    }
+
+    size_t half = window_points / 2;
+    for (size_t i = 0; i < n; i++) {
+        size_t start = i > half ? i - half : 0;
+        size_t end = i + half;
+        if (end >= n) {
+            end = n - 1;
+        }
+
+        double sum = 0.0;
+        for (size_t j = start; j <= end; j++) {
+            sum += in[j];
+        }
+
+        out[i] = sum / (double)(end - start + 1);
+    }
+}
+
+int fc_kll_compute_density_from_quantiles(
+    const fc_kll_sketch *sketch,
+    size_t grid_points,
+    fc_kll_density *out,
+    bool smooth,
+    size_t smoothing_points)
+{
+    if (sketch == NULL || out == NULL || grid_points < 2
+        || (smooth && (smoothing_points == 0 || (smoothing_points % 2) == 0))) {
+        return -1;
+    }
+
+    out->support = NULL;
+    out->values = NULL;
+    out->n = 0;
+
+    if (sketch->n == 0) {
+        return 0;
+    }
+
+    double *ps = fc_alloc(grid_points, sizeof(double), "kll_qgrid_ps");
+    double *xs = fc_alloc(grid_points, sizeof(double), "kll_qgrid_xs");
+    for (size_t i = 0; i < grid_points; i++) {
+        ps[i] = (double)i / (double)(grid_points - 1);
+    }
+
+    if (fc_kll_compute_quantiles(sketch, ps, grid_points, xs) != 0) {
+        free(ps);
+        free(xs);
+        return -1;
+    }
+    free(ps);
+
+    // remove duplicates in the quantile grid to avoid zero-width intervals
+    double *ux = fc_alloc(grid_points, sizeof(double), "kll_qgrid_ux");
+    double *up = fc_alloc(grid_points, sizeof(double), "kll_qgrid_up");
+    size_t unique = 0;
+    for (size_t i = 0; i < grid_points; i++) {
+        double p = (double)i / (double)(grid_points - 1);
+        if (unique == 0) {
+            ux[unique] = xs[i];
+            up[unique] = p;
+            unique = 1;
+            continue;
+        }
+
+        if (xs[i] > ux[unique - 1]) {
+            ux[unique] = xs[i];
+            up[unique] = p;
+            unique++;
+        } else {
+            up[unique - 1] = p;
+        }
+    }
+    free(xs);
+
+    if (unique == 0) {
+        free(ux);
+        free(up);
+        return 0;
+    }
+
+    if (unique == 1) {
+        out->support = fc_alloc(1, sizeof(double), "kll_qgrid_density_support_single");
+        out->values = fc_alloc(1, sizeof(double), "kll_qgrid_density_values_single");
+        out->support[0] = ux[0];
+        out->values[0] = 1.0;
+        out->n = 1;
+        free(ux);
+        free(up);
+        return 0;
+    }
+
+    // compute density values for each interval between unique quantiles
+    // we do smoothing in log-space of the derivative to avoid negative densities
+    size_t max_intervals = unique - 1;
+    out->support = fc_alloc(max_intervals, sizeof(double), "kll_qgrid_density_support");
+    out->values = fc_alloc(max_intervals, sizeof(double), "kll_qgrid_density_values");
+    double *widths = fc_alloc(max_intervals, sizeof(double), "kll_qgrid_density_widths");
+    double *log_slope = smooth ? fc_alloc(max_intervals, sizeof(double), "kll_qgrid_density_log_slope") : NULL;
+    double *log_slope_smoothed = smooth ? fc_alloc(max_intervals, sizeof(double), "kll_qgrid_density_log_slope_smooth") : NULL;
+
+    size_t n_out = 0;
+    for (size_t i = 0; i < max_intervals; i++) {
+        double dp = up[i + 1] - up[i];
+        double dx = ux[i + 1] - ux[i];
+        if (!(dp > 0.0) || !(dx > 0.0)) {
+            continue;
+        }
+
+        out->support[n_out] = 0.5 * (ux[i] + ux[i + 1]);
+        widths[n_out] = dx;
+        if (smooth) {
+            log_slope[n_out] = log(dx / dp);
+        } else {
+            out->values[n_out] = dp / dx;
+        }
+        n_out++;
+    }
+
+    if (smooth && n_out > 0) {
+        // smoothing is just moving average in log-space of the slope (dx/dp)
+        // Tried fancier filters, but they weren't visually better for final result.
+        // In practice the user may want to smooth end result with a kernel of their choice.
+        smooth_log_slope_box(log_slope, n_out, smoothing_points, log_slope_smoothed);
+        for (size_t i = 0; i < n_out; i++) {
+            out->values[i] = exp(-log_slope_smoothed[i]);
+        }
+    }
+
+    // normalize density values
+    if (n_out > 0) {
+        double mass = 0.0;
+        for (size_t i = 0; i < n_out; i++) {
+            mass += out->values[i] * widths[i];
+        }
+        if (mass > 0.0) {
+            double inv_mass = 1.0 / mass;
+            for (size_t i = 0; i < n_out; i++) {
+                out->values[i] *= inv_mass;
+            }
+        }
+    }
+
+    out->n = n_out;
+
+    free(log_slope_smoothed);
+    free(log_slope);
+    free(widths);
+    free(ux);
+    free(up);
+    return 0;
+}
+
+void fc_kll_density_destroy(fc_kll_density *density)
+{
+    if (density == NULL) {
+        return;
+    }
+    free(density->support);
+    free(density->values);
+    density->support = NULL;
+    density->values = NULL;
+    density->n = 0;
 }

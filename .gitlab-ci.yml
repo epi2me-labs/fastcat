@@ -45,8 +45,14 @@ build_and_test:
     script:
         - make
         - !reference [.fastcat-test-base, script]
-        - BUILD_MODE=valgrind make test
-        - rm test/tmp/report_html/reads.*fastq
+        - BUILD_MODE=valgrind REPORT_DEMO_N=100 make test
+
+report_demo:
+    extends: .fastcat-test-base
+    script:
+        - make
+        - REPORT_DEMO_N=50000 make demo
+        - rm -f test/tmp/report_html/reads.*fastq*
         - mv test/tmp/report_html/ demo
     artifacts:
       when: always

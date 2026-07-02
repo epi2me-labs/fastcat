@@ -191,7 +191,12 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .polya_qual = (program == FC_PROGRAM_BAMSTATS) ? args->poly_a_qual : 0.0f,
         .polya_rev = (program == FC_PROGRAM_BAMSTATS) ? args->poly_a_rev : false
     };
-    writer = fc_writer_create(args->demultiplex, &stats_cfg);
+    fc_length_qscore_2d_config length_qscore_cfg = {
+        .kll_k = args->length_qscore_k,
+        .qgrid_points = args->length_qscore_qgrid,
+        .smoothing_points = args->length_qscore_qsmooth
+    };
+    writer = fc_writer_create(args->demultiplex, &stats_cfg, &length_qscore_cfg);
     if (!writer) {
         status = EXIT_FAILURE;
         goto cleanup;
@@ -220,6 +225,15 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .barcode_count = writer->barcode_count
     };
     fc_writer_add_sink(writer, fc_counter_sink_create(&counter_opts));
+
+    // read-length vs qscore 2D density table derived from writer-owned KLL sketches
+    fc_length_qscore_2d_sink_opts lq2d_opts = {
+        .output_root = args->output_dir,
+        .use_barcodes = args->demultiplex,
+        .barcode_count = writer->barcode_count,
+        .model = writer->length_qscore
+    };
+    fc_writer_add_sink(writer, fc_length_qscore_2d_sink_create(&lq2d_opts));
 
     // alignment specific flags/statistics (BAMSTATS only)
     if (program == FC_PROGRAM_BAMSTATS) {
@@ -332,7 +346,8 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .barcode_count = writer->barcode_count,
             .unmapped_override = (program == FC_PROGRAM_FASTCAT),
             .engines = writer->stats_engines,
-            .engine_count = writer->stats_engine_count
+            .engine_count = writer->stats_engine_count,
+            .length_qscore = writer->length_qscore
         };
         if (fc_write_html_reports(&report_opts) != 0) {
             hard_error = true;

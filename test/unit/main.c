@@ -16,6 +16,7 @@ void iter_collect_suite(void);
 void bamcoverage_suite(void);
 void quantile_suite(void);
 void kll_suite(void);
+void length_qscore_2d_suite(void);
 void quantile_stress_suite(void);
 
 void setUp(void) {}
@@ -46,6 +47,7 @@ int main(void) {
     bamcoverage_suite();
     quantile_suite();
     kll_suite();
+    length_qscore_2d_suite();
     quantile_stress_suite();
     int rc = UNITY_END();
 

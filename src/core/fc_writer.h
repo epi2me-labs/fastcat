@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "core/fc_iter.h"
+#include "core/fc_length_qscore_2d.h"
 #include "core/fc_stats_engine.h"
 
 // NOTE: The fc_writer, fc_sink, and fc_stats_engine interfaces are designed
@@ -49,9 +50,13 @@ typedef struct {
     fc_stats_engine **stats_engines;
     size_t stats_engine_count;
     fc_stats_engine_config stats_cfg;
+    fc_length_qscore_2d *length_qscore;
 } fc_writer;
 
-fc_writer *fc_writer_create(bool use_barcodes, const fc_stats_engine_config *stats_cfg);
+fc_writer *fc_writer_create(
+    bool use_barcodes,
+    const fc_stats_engine_config *stats_cfg,
+    const fc_length_qscore_2d_config *length_qscore_cfg);
 void fc_writer_add_sink(fc_writer *writer, fc_sink sink);
 
 void fc_writer_begin_file(fc_writer *writer, const char *fname);

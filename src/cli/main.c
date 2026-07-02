@@ -13,7 +13,7 @@ static void print_usage(const char *prog)
     fprintf(stderr, "Usage: %s <subcommand> [options]\n", prog);
     fprintf(stderr, "Subcommands:\n");
     fprintf(stderr, "  fastq   FASTQ concatenation/statistics/filtering mode (fastcat)\n");
-    fprintf(stderr, "  bam     BAM stats/filtering mode (bamstats)\n");
+    fprintf(stderr, "  bam     BAM alignment statistics/filtering mode\n");
     fprintf(stderr, "  lint    Standalone FASTQ low-complexity filter (fastlint)\n");
     fprintf(stderr, "  index   BAM chunk index tools (bamindex)\n");
     fprintf(stderr, "Try '%s <subcommand> --help' for subcommand options.\n", prog);
