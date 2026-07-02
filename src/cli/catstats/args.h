@@ -22,6 +22,9 @@ typedef struct {
     fc_log_level log_level;
     char *log_file;
     bool log_mono;
+    size_t length_qscore_k;
+    size_t length_qscore_qgrid;
+    size_t length_qscore_qsmooth;
 
     // common filtering
     size_t min_length;

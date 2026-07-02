@@ -11,19 +11,25 @@ import re
 # data sources at report-open time, avoiding surgery on Bokeh internals during
 # the C runtime. This patch function is injected into the Bokeh embed_document().
 PATCH_FUNCTION = r"""
+        window.fc_fastcat_report_data = __FASTCAT_REPORT_DATA__;
+
         function fc_fastcat_map(entries) {
           return {"type": "map", "entries": entries};
         }
 
-        function fc_fastcat_set_source(fig, entries) {
-          if (!fig || !fig.attributes || !fig.attributes.renderers || fig.attributes.renderers.length === 0) {
+        function fc_fastcat_set_renderer_source(fig, renderer_index, entries) {
+          if (!fig || !fig.attributes || !fig.attributes.renderers || fig.attributes.renderers.length <= renderer_index) {
             return;
           }
-          const renderer = fig.attributes.renderers[0];
+          const renderer = fig.attributes.renderers[renderer_index];
           const source = renderer.attributes && renderer.attributes.data_source;
           if (source && source.attributes) {
             source.attributes.data = fc_fastcat_map(entries);
           }
+        }
+
+        function fc_fastcat_set_source(fig, entries) {
+          fc_fastcat_set_renderer_source(fig, 0, entries);
         }
 
         function fc_fastcat_set_subtitle(fig, text) {
@@ -31,6 +37,64 @@ PATCH_FUNCTION = r"""
           if (above && above.length > 0 && above[0].attributes) {
             above[0].attributes.text = text;
           }
+        }
+
+        function fc_fastcat_set_color_high(fig, high) {
+          if (!fig || !fig.attributes || !fig.attributes.renderers || fig.attributes.renderers.length === 0) {
+            return;
+          }
+          const renderer = fig.attributes.renderers[0];
+          const glyph = renderer.attributes && renderer.attributes.glyph;
+          const color_mapper = glyph && glyph.attributes && glyph.attributes.color_mapper;
+          const fill = glyph && glyph.attributes && glyph.attributes.fill_color;
+          const mapper = color_mapper || (fill && fill.transform);
+          if (mapper && mapper.attributes) {
+            mapper.attributes.low = 0;
+            mapper.attributes.high = Math.max(1, high || 1);
+          }
+        }
+
+        function fc_fastcat_set_range(range, start, end) {
+          if (!range || !range.attributes) {
+            return;
+          }
+          const low = Number.isFinite(start) ? start : 0;
+          let high = Number.isFinite(end) ? end : low + 1;
+          if (high <= low) {
+            high = low + 1;
+          }
+          range.attributes.start = low;
+          range.attributes.end = high;
+          const bounds = [low, high];
+          range.attributes.bounds = bounds;
+        }
+
+        function fc_fastcat_set_heatmap_ranges(fig, data) {
+          if (!fig || !fig.attributes || !data) {
+            return;
+          }
+          fc_fastcat_set_range(fig.attributes.x_range, data.x, data.x + data.dw);
+          fc_fastcat_set_range(fig.attributes.y_range, data.y, data.y + data.dh);
+        }
+
+        function fc_fastcat_build_heatmap_image(data) {
+          if (!data || !data.image) {
+            return [
+              ["image", []],
+              ["x", []],
+              ["y", []],
+              ["dw", []],
+              ["dh", []],
+            ];
+          }
+
+          return [
+            ["image", [data.image]],
+            ["x", [Number.isFinite(data.x) ? data.x : 0]],
+            ["y", [Number.isFinite(data.y) ? data.y : 0]],
+            ["dw", [Number.isFinite(data.dw) && data.dw > 0 ? data.dw : 1]],
+            ["dh", [Number.isFinite(data.dh) && data.dh > 0 ? data.dh : 1]],
+          ];
         }
 
         function fc_patch_fastcat_report(docs, data) {
@@ -61,6 +125,14 @@ PATCH_FUNCTION = r"""
             ["y", data.yield.y],
           ]);
           fc_fastcat_set_subtitle(figures[2], data.yield.subtitle);
+
+          if (figures.length >= 4 && data.length_qscore) {
+            fc_fastcat_set_renderer_source(
+              figures[3], 0, fc_fastcat_build_heatmap_image(data.length_qscore));
+            fc_fastcat_set_subtitle(figures[3], data.length_qscore.subtitle);
+            fc_fastcat_set_color_high(figures[3], data.length_qscore.color_high);
+            fc_fastcat_set_heatmap_ranges(figures[3], data.length_qscore);
+          }
         }
 """
 
@@ -87,9 +159,8 @@ def replace_embed_call(html):
     # document is still plain JSON rather than live browser objects
     old = "        root.Bokeh.embed.embed_items(docs_json, render_items);"
     new = (
-        "        const fastcat_report_data = __FASTCAT_REPORT_DATA__;\n"
         "        const fastcat_docs = JSON.parse(docs_json);\n"
-        "        fc_patch_fastcat_report(fastcat_docs, fastcat_report_data);\n"
+        "        fc_patch_fastcat_report(fastcat_docs, window.fc_fastcat_report_data);\n"
         "        root.Bokeh.embed.embed_items(JSON.stringify(fastcat_docs), render_items);"
     )
     if old not in html:

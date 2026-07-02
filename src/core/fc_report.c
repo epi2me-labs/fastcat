@@ -26,6 +26,7 @@
 #define FC_REPORT_QUALITY_WIDTH 0.2
 #define FC_REPORT_QUALITY_BINS 130
 #define FC_REPORT_YIELD_THINNING 100
+#define FC_REPORT_LQ2D_COLOR_QUANTILE 0.995
 #define FC_REPORT_NAME "fastcat_report.html"
 
 typedef struct {
@@ -378,6 +379,147 @@ static void append_number_array(kstring_t *ks, const double *values, size_t n)
     report_kputs(ks, "]");
 }
 
+static void append_base64(kstring_t *ks, const uint8_t *data, size_t n)
+{
+    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    for (size_t i = 0; i < n; i += 3) {
+        uint32_t a = data[i];
+        uint32_t b = (i + 1 < n) ? data[i + 1] : 0;
+        uint32_t c = (i + 2 < n) ? data[i + 2] : 0;
+        uint32_t triple = (a << 16) | (b << 8) | c;
+
+        report_kputc(ks, table[(triple >> 18) & 0x3f]);
+        report_kputc(ks, table[(triple >> 12) & 0x3f]);
+        report_kputc(ks, (i + 1 < n) ? table[(triple >> 6) & 0x3f] : '=');
+        report_kputc(ks, (i + 2 < n) ? table[triple & 0x3f] : '=');
+    }
+}
+
+static void append_lq2d_empty_plot_json(kstring_t *json)
+{
+    report_kputs(json, "\"length_qscore\":{");
+    report_kputs(json, "\"image\":null,\"x\":0,\"y\":0,\"dw\":1,\"dh\":1,");
+    report_kputs(json, "\"color_high\":1,\"subtitle\":");
+    append_json_string(json, "No length/qscore data available");
+    report_kputs(json, "}");
+}
+
+static void append_lq2d_image_ndarray_json(
+    kstring_t *json,
+    const fc_length_qscore_2d_matrix *matrix)
+{
+    if (matrix->length_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->length_bins) {
+        FC_LOG_FATAL("Length/qscore report image is too large.");
+    }
+    size_t n = matrix->length_bins * matrix->qscore_bins;
+    if (n > SIZE_MAX / sizeof(double)) {
+        FC_LOG_FATAL("Length/qscore report image is too large.");
+    }
+
+    size_t byte_count = n * sizeof(double);
+    uint8_t *bytes = fc_alloc(byte_count, sizeof(*bytes), "report length/qscore image bytes");
+    size_t out = 0;
+    for (size_t len_bin = 0; len_bin < matrix->length_bins; len_bin++) {
+        for (size_t q = 0; q < matrix->qscore_bins; q++) {
+            double count = matrix->counts[q * matrix->length_bins + len_bin];
+            if (!isfinite(count) || count < 0.0) {
+                count = 0.0;
+            }
+
+            uint64_t bits = 0;
+            memcpy(&bits, &count, sizeof(bits));
+            for (size_t byte = 0; byte < sizeof(bits); byte++) {
+                bytes[out++] = (uint8_t)((bits >> (8 * byte)) & 0xff);
+            }
+        }
+    }
+
+    report_kputs(json, "{\"type\":\"ndarray\",\"array\":{\"type\":\"bytes\",\"data\":\"");
+    append_base64(json, bytes, byte_count);
+    report_kputs(json, "\"},\"shape\":[");
+    report_ksprintf(json, "%zu,%zu", matrix->length_bins, matrix->qscore_bins);
+    report_kputs(json, "],\"dtype\":\"float64\",\"order\":\"little\"}");
+    free(bytes);
+}
+
+static double lq2d_color_high_quantile(const fc_length_qscore_2d_matrix *matrix)
+{
+    if (matrix->length_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->length_bins) {
+        FC_LOG_FATAL("Length/qscore report image is too large.");
+    }
+    size_t n = matrix->length_bins * matrix->qscore_bins;
+    if (n == 0) {
+        return 1.0;
+    }
+
+    double *values = fc_alloc(n, sizeof(*values), "report length/qscore color range");
+    for (size_t i = 0; i < n; i++) {
+        double value = matrix->counts[i];
+        values[i] = (isfinite(value) && value > 0.0) ? value : 0.0;
+    }
+
+    qsort(values, n, sizeof(*values), cmp_double);
+    size_t idx = (size_t)llround((double)(n - 1) * FC_REPORT_LQ2D_COLOR_QUANTILE);
+    if (idx >= n) {
+        idx = n - 1;
+    }
+
+    double high = values[idx];
+    if (!isfinite(high) || high <= 0.0) {
+        high = values[n - 1];
+    }
+    free(values);
+
+    return (isfinite(high) && high > 0.0) ? high : 1.0;
+}
+
+static void build_length_qscore_plot_json(
+    kstring_t *json,
+    const fc_length_qscore_2d *model,
+    size_t barcode)
+{
+    if (!model || !fc_length_qscore_2d_active(model, barcode)) {
+        append_lq2d_empty_plot_json(json);
+        return;
+    }
+
+    fc_length_qscore_2d_matrix matrix = { 0 };
+    if (fc_length_qscore_2d_materialize(model, barcode, &matrix) != 0 || !matrix.counts) {
+        fc_length_qscore_2d_matrix_destroy(&matrix);
+        append_lq2d_empty_plot_json(json);
+        return;
+    }
+
+    double total = 0.0;
+    size_t n = matrix.length_bins * matrix.qscore_bins;
+    for (size_t i = 0; i < n; i++) {
+        if (isfinite(matrix.counts[i]) && matrix.counts[i] > 0.0) {
+            total += matrix.counts[i];
+        }
+    }
+
+    char subtitle[160];
+    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "Estimated counts, n=%.0f, length cap %.3gkb",
+        total, matrix.length_upper / 1000.0);
+
+    double color_high = lq2d_color_high_quantile(&matrix);
+    report_kputs(json, "\"length_qscore\":{");
+    report_kputs(json, "\"image\":");
+    append_lq2d_image_ndarray_json(json, &matrix);
+    report_kputs(json, ",\"x\":0,\"y\":0,\"dw\":");
+    report_ksprintf(json, "%.17g", matrix.qscore_width * (double)matrix.qscore_bins);
+    report_kputs(json, ",\"dh\":");
+    report_ksprintf(json, "%.17g", matrix.length_upper / 1000.0);
+    report_kputs(json, ",\"color_high\":");
+    report_ksprintf(json, "%.17g", color_high > 0.0 ? color_high : 1.0);
+    report_kputs(json, ",\"subtitle\":");
+    append_json_string(json, subtitle);
+    report_kputs(json, "}");
+
+    fc_length_qscore_2d_matrix_destroy(&matrix);
+}
+
 static void build_quality_plot_json(kstring_t *json, const report_hist *quality)
 {
     double top[FC_REPORT_QUALITY_BINS] = { 0 };
@@ -539,7 +681,11 @@ static void build_yield_plot_json(kstring_t *json, const report_hist *length)
     free(y);
 }
 
-static char *build_report_data_json(const report_hist *length, const report_hist *quality)
+static char *build_report_data_json(
+    const report_hist *length,
+    const report_hist *quality,
+    const fc_length_qscore_2d *length_qscore,
+    size_t barcode)
 {
     kstring_t json = { 0, 0, NULL };
     report_kputs(&json, "{");
@@ -548,6 +694,8 @@ static char *build_report_data_json(const report_hist *length, const report_hist
     build_length_plot_json(&json, length);
     report_kputs(&json, ",");
     build_yield_plot_json(&json, length);
+    report_kputs(&json, ",");
+    build_length_qscore_plot_json(&json, length_qscore, barcode);
     report_kputs(&json, "}");
     return report_steal(&json);
 }
@@ -614,7 +762,9 @@ static int write_report_for_output_dir(
     const read_stats *length_stats,
     const read_stats *quality_stats,
     const fc_report_config_entry *run_config,
-    size_t run_config_count)
+    size_t run_config_count,
+    const fc_length_qscore_2d *length_qscore,
+    size_t barcode_index)
 {
     int rc = -1;
     report_hist length = { 0 };
@@ -628,7 +778,7 @@ static int write_report_for_output_dir(
         goto cleanup;
     }
 
-    char *data_json = build_report_data_json(&length, &quality);
+    char *data_json = build_report_data_json(&length, &quality, length_qscore, barcode_index);
     char *html = render_report_html(data_json, sample, sample_type, barcode, run_config, run_config_count);
     if (html && write_text_file(report_path, html) == 0) {
         FC_LOG_INFO("Wrote HTML report '%s'.", report_path);
@@ -667,7 +817,9 @@ int fc_write_html_reports(const fc_report_opts *opts)
             length,
             quality,
             opts->run_config,
-            opts->run_config_count);
+            opts->run_config_count,
+            opts->length_qscore,
+            0);
     }
 
     int status = 0;
@@ -702,7 +854,9 @@ int fc_write_html_reports(const fc_report_opts *opts)
                 length,
                 quality,
                 opts->run_config,
-                opts->run_config_count)
+                opts->run_config_count,
+                opts->length_qscore,
+                barcode)
             != 0) {
             status = -1;
         }

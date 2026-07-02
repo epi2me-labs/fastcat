@@ -3,12 +3,35 @@ import json
 
 from dominate.tags import b, p
 from ezcharts.components import fastcat
+from ezcharts.components.ezchart import EZChart
 from ezcharts.components.reports import labs
 from ezcharts.layout.snippets import Tabs
 from ezcharts.layout.snippets.table import DataTable
 import pandas as pd
 
+from . import bokeh_matrix
 from .util import get_main_logger, get_named_logger, wf_parser  # noqa: ABS101
+
+
+def load_length_qscore_heatmap(path):
+    """Load fastcat length/qscore TSV into a Bokeh heatmap matrix."""
+    df = pd.read_csv(path, sep="\t")
+    df["qscore"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
+    df["read length (kb)"] = (df["length_bin_start"] + df["length_bin_end"]) * 0.0005
+
+    data = df.pivot(
+        index="qscore",
+        columns="read length (kb)",
+        values="count")
+    data = data.rename_axis("qscore")
+    data = data.rename_axis("read length (kb)", axis=1)
+
+    return bokeh_matrix.heatmap(
+        data,
+        annot=False,
+        vmax_quantile=0.995,
+        cbar_kws={"title": "count"},
+        subtitle="Estimated counts")
 
 
 def main(args):
@@ -83,6 +106,20 @@ def main(args):
                 samples_with_stats = samples_with_stats[0]
             fastcat.SeqSummary(stats, sample_names=samples_with_stats)
 
+    if args.length_qscore_2d:
+        heatmap_samples = samples_with_stats
+        if isinstance(heatmap_samples, str):
+            heatmap_samples = (heatmap_samples,)
+
+        with report.add_section("Read length vs qscore", "Read length vs qscore"):
+            if len(args.length_qscore_2d) == 1:
+                EZChart(load_length_qscore_heatmap(args.length_qscore_2d[0]), height="650px")
+            else:
+                tabs = Tabs()
+                for sample, path in zip(heatmap_samples, args.length_qscore_2d):
+                    with tabs.add_tab(sample):
+                        EZChart(load_length_qscore_heatmap(path), height="650px")
+
     with report.add_section("Sample Metadata", "Sample Metadata"):
         tabs = Tabs()
         for d in sample_details:
@@ -106,6 +143,9 @@ def argparser():
     parser.add_argument(
         "--metadata", required=True,
         help="sample metadata")
+    parser.add_argument(
+        "--length-qscore-2d", nargs="+",
+        help="Fastcat length_qscore_2d.tsv files, ordered as per entries in --metadata.")
     parser.add_argument(
         "--versions", required=True,
         help="directory containing CSVs containing name,version.")

@@ -32,6 +32,20 @@ int cmp_u32(const void *a, const void *b)
     return 0;
 }
 
+// used with qsort to sort an array of double
+int cmp_double(const void *a, const void *b)
+{
+    double va = *(const double *)a;
+    double vb = *(const double *)b;
+    if (va < vb) {
+        return -1;
+    }
+    if (va > vb) {
+        return 1;
+    }
+    return 0;
+}
+
 /** check if a file exists.
  *
  * @param path path to file

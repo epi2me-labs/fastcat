@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "core/fc_length_qscore_2d.h"
 #include "core/fc_stats_engine.h"
 
 typedef struct {
@@ -21,6 +22,7 @@ typedef struct {
     bool unmapped_override;
     fc_stats_engine **engines;
     size_t engine_count;
+    const fc_length_qscore_2d *length_qscore;
 } fc_report_opts;
 
 int fc_write_html_reports(const fc_report_opts *opts);

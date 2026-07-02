@@ -125,7 +125,7 @@ static void _run_iter_and_assert(
     TEST_ASSERT_TRUE(fc_iter_next_file(&iter, &f));
     TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, opts));
 
-    fc_writer *writer = fc_writer_create(false, NULL);
+    fc_writer *writer = fc_writer_create(false, NULL, NULL);
     TEST_ASSERT_NOT_NULL(writer);
     read_count_sink_state count_state = { 0 };
     fc_sink count_sink = {
