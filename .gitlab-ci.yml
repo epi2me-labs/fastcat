@@ -59,6 +59,21 @@ report_demo:
       paths:
         - demo/
 
+pages:
+    stage: release
+    needs:
+        - job: report_demo
+          artifacts: true
+    script:
+        - rm -rf public
+        - mkdir -p public
+        - cp -a demo/fastcat_out/fastcat_report.html public/index.html
+    artifacts:
+        paths:
+            - public
+    rules:
+        - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
 clang_format:
     image: ${UBUNTUIMAGE}:24.04
     stage: test
