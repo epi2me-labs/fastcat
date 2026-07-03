@@ -16,14 +16,28 @@ Example:
 """
 
 import argparse
+import bisect
+import csv
 import datetime as dt
 import math
+from pathlib import Path
 import random
 import sys
 
 
 DEFAULT_RUNID = "12345678-1234-1234-1234-123456789abc"
 DEFAULT_MODEL = "dna_r10.4.1_e8.2_400bps_hac@v5.0.0"
+CHANNEL_MAP_ROOT = Path(__file__).resolve().parent / "data"
+CHANNEL_MAP_PATHS = {
+    "flongle": CHANNEL_MAP_ROOT / "asicb512fx_flongle_channel_map.csv",
+    "minion": CHANNEL_MAP_ROOT / "asicb512fx_channel_map.csv",
+    "promethion": CHANNEL_MAP_ROOT / "3000_opx_channel_map.csv",
+}
+DEVICE_CHANNELS = {
+    "flongle": 128,
+    "minion": 512,
+    "promethion": 3000,
+}
 
 
 class RunningStats:
@@ -94,6 +108,67 @@ def sample_length(
     if length > max_len:
         return max_len
     return length
+
+
+def load_channel_centres(device, channels):
+    centres = []
+    path = CHANNEL_MAP_PATHS[device]
+    with open(path, newline="") as handle:
+        reader = csv.DictReader(handle, skipinitialspace=True)
+        for row in reader:
+            channel = int(row["name"])
+            if channel > channels:
+                continue
+            xs = []
+            ys = []
+            for mux in range(1, 5):
+                x_key = f"mux_{mux}_phys_x"
+                y_key = f"mux_{mux}_phys_y"
+                if x_key not in row or y_key not in row:
+                    x_key = "mux_1_phys_x"
+                    y_key = "mux_1_phys_y"
+                xs.append(float(row[x_key]))
+                ys.append(float(row[y_key]))
+            x = sum(xs) / len(xs)
+            y = sum(ys) / len(ys)
+            if device == "minion":
+                x, y = y, x
+            centres.append((channel, x, y))
+    if not centres:
+        centres.append((1, 0.0, 0.0))
+    return centres
+
+
+def build_channel_sampler(device, channels):
+    centres = load_channel_centres(device, channels)
+    xs = [x for _, x, _ in centres]
+    ys = [y for _, _, y in centres]
+    x_mid = 0.5 * (min(xs) + max(xs))
+    y_mid = 0.5 * (min(ys) + max(ys))
+    x_radius = max(1e-6, 0.46 * (max(xs) - min(xs)))
+    y_radius = max(1e-6, 0.46 * (max(ys) - min(ys)))
+
+    cumulative = []
+    channel_ids = []
+    total = 0.0
+    for channel, x, y in centres:
+        dx = (x - x_mid) / x_radius
+        dy = (y - y_mid) / y_radius
+        r2 = dx * dx + dy * dy
+        weight = 1.0 + 0.35 * math.exp(-0.75 * r2)
+        total += weight
+        cumulative.append(total)
+        channel_ids.append(channel)
+    return channel_ids, cumulative, total
+
+
+def sample_channel(rng, channel_sampler):
+    channel_ids, cumulative, total = channel_sampler
+    target = rng.random() * total
+    idx = bisect.bisect_left(cumulative, target)
+    if idx >= len(channel_ids):
+        idx = len(channel_ids) - 1
+    return channel_ids[idx]
 
 
 def phred_char(q):
@@ -170,7 +245,13 @@ def argparser():
     metadata.add_argument("--runid", default=DEFAULT_RUNID, help=f"Run ID for RG composition (default: {DEFAULT_RUNID})")
     metadata.add_argument("--model", default=DEFAULT_MODEL, help=f"Basecaller model in RG (default: {DEFAULT_MODEL})")
     metadata.add_argument("--id-prefix", default="simread", help="Read ID prefix (default: simread)")
-    metadata.add_argument("--channels", type=int, default=512, help="Channel range 1..N (default: 512)")
+    metadata.add_argument(
+        "--device", choices=["flongle", "minion", "promethion"], default="minion",
+        help="Flowcell layout to simulate (default: minion)")
+    metadata.add_argument(
+        "--channels", type=int, default=None,
+        help="Channel range 1..N; defaults to the full range for --device")
+    metadata.add_argument("--muxes", type=int, default=4, help="Mux range 1..N (default: 4)")
     metadata.add_argument("--start-time", default="2026-01-01T00:00:00Z", help="Base start_time tag (default: 2026-01-01T00:00:00Z)")
     metadata.add_argument(
         "--time-profile", choices=["saturating", "linear"], default="saturating",
@@ -206,8 +287,14 @@ def validate_args(p, args):
         p.error("--q1-sd and --q2-sd must be > 0")
     if args.q_min > args.q_max:
         p.error("--q-min must be <= --q-max")
+    if args.channels is None:
+        args.channels = DEVICE_CHANNELS[args.device]
     if args.channels <= 0:
         p.error("--channels must be > 0")
+    if args.channels > DEVICE_CHANNELS[args.device]:
+        p.error("--channels must not exceed the selected device capacity")
+    if args.muxes <= 0:
+        p.error("--muxes must be > 0")
     if args.seconds_step < 0:
         p.error("--seconds-step must be >= 0")
     if args.run_duration_s is not None and (
@@ -245,6 +332,8 @@ def main(args):
     validate_args(argparser(), args)
     rng = random.Random(args.seed)
     time_rng = random.Random(args.seed + 1_000_003)
+    channel_rng = random.Random(args.seed + 2_000_003)
+    channel_sampler = build_channel_sampler(args.device, args.channels)
 
     out = sys.stdout
     err = sys.stderr
@@ -269,7 +358,8 @@ def main(args):
             args.q_max,
         )
         barcode = draw_from_mix(rng, args.barcode_mix)
-        channel = rng.randint(1, args.channels)
+        channel = sample_channel(channel_rng, channel_sampler)
+        mux = rng.randint(1, args.muxes)
         is_duplex = 1 if rng.random() < args.duplex_rate else 0
         if is_duplex:
             duplex_n += 1
@@ -297,6 +387,7 @@ def main(args):
             f"qs:f:{mean_q:.4f}\t"
             f"rn:i:{i}\t"
             f"ch:i:{channel}\t"
+            f"mx:i:{mux}\t"
             f"st:Z:{st}\t"
             f"SM:Z:{barcode}\t"
             f"RG:Z:{rg}\t"

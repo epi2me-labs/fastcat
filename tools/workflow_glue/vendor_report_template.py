@@ -110,6 +110,14 @@ def add_source_binding(bindings, name, fig):
     add_binding(bindings, f"{name}.source.data", first_embedded_source(fig), "data")
 
 
+def add_embedded_source_binding(bindings, name, fig, index, field):
+    sources = embedded_sources(fig)
+    if index >= len(sources):
+        raise RuntimeError(
+            f"could not find embedded ColumnDataSource[{index}] for {fig.get('id')}")
+    add_binding(bindings, f"{name}.{field}.data", sources[index], "data")
+
+
 def add_subtitle_binding(bindings, name, fig):
     add_binding(bindings, f"{name}.subtitle.text", subtitle_model(fig), "text")
 
@@ -166,8 +174,8 @@ def extract_bokeh_document(html):
 
     docs = json.loads(match.group(1))
     figures = bokeh_figures(docs)
-    if len(figures) < 8:
-        raise RuntimeError(f"expected at least 8 Bokeh figures, found {len(figures)}")
+    if len(figures) < 10:
+        raise RuntimeError(f"expected at least 10 Bokeh figures, found {len(figures)}")
 
     bindings = []
 
@@ -212,6 +220,20 @@ def extract_bokeh_document(html):
     add_source_binding(bindings, "time_qscore", figures[7])
     add_factor_range_binding(bindings, "time_qscore", figures[7])
     add_numeric_range_bindings(bindings, "time_qscore", figures[7], "y")
+
+    add_source_binding(bindings, "channel_reads", figures[8])
+    add_embedded_source_binding(bindings, "channel_reads", figures[8], 1, "hover_source")
+    add_subtitle_binding(bindings, "channel_reads", figures[8])
+    add_heatmap_color_bindings(bindings, "channel_reads", figures[8])
+    add_numeric_range_bindings(bindings, "channel_reads", figures[8], "x")
+    add_numeric_range_bindings(bindings, "channel_reads", figures[8], "y")
+
+    add_source_binding(bindings, "channel_bases", figures[9])
+    add_embedded_source_binding(bindings, "channel_bases", figures[9], 1, "hover_source")
+    add_subtitle_binding(bindings, "channel_bases", figures[9])
+    add_heatmap_color_bindings(bindings, "channel_bases", figures[9])
+    add_numeric_range_bindings(bindings, "channel_bases", figures[9], "x")
+    add_numeric_range_bindings(bindings, "channel_bases", figures[9], "y")
 
     scrub_bound_values(docs, bindings)
     docs_json = json.dumps(docs, separators=(",", ":"))

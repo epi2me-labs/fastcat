@@ -11,6 +11,7 @@ fc_writer *fc_writer_create(const fc_writer_config *cfg)
 {
     fc_writer *writer = fc_alloc(1, sizeof(*writer), "writer");
     const fc_stats_engine_config *stats_cfg = cfg ? cfg->stats : NULL;
+    bool channel_summary_enabled = cfg ? cfg->channel_summary : false;
     const fc_length_qscore_2d_config *length_qscore_cfg = cfg ? cfg->length_qscore : NULL;
     const fc_time_bin_config *time_bin_cfg = cfg ? cfg->time_bin : NULL;
     bool use_barcodes = cfg ? cfg->use_barcodes : false;
@@ -43,6 +44,14 @@ fc_writer *fc_writer_create(const fc_writer_config *cfg)
             length_qscore_cfg->smoothing_points);
         if (writer->length_qscore == NULL) {
             FC_LOG_ERROR("Failed to create length/qscore 2D model.");
+            fc_writer_destroy(writer);
+            return NULL;
+        }
+    }
+    if (channel_summary_enabled) {
+        writer->channel_summary = fc_channel_summary_create(writer->barcode_count);
+        if (writer->channel_summary == NULL) {
+            FC_LOG_ERROR("Failed to create channel-summary model.");
             fc_writer_destroy(writer);
             return NULL;
         }
@@ -129,6 +138,11 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
             read->meta->mean_q);
     }
 
+    if (writer->channel_summary != NULL) {
+        size_t barcode = writer->use_barcodes ? ctx.barcode : 0;
+        fc_channel_summary_add_read(writer->channel_summary, barcode, read);
+    }
+
     if (writer->time_bin != NULL) {
         size_t barcode = writer->use_barcodes ? ctx.barcode : 0;
         fc_time_bin_add_read(writer->time_bin, barcode, read);
@@ -183,6 +197,7 @@ void fc_writer_destroy(fc_writer *writer)
         }
         free(writer->stats_engines);
     }
+    fc_channel_summary_destroy(writer->channel_summary);
     fc_length_qscore_2d_destroy(writer->length_qscore);
     fc_time_bin_destroy(writer->time_bin);
     free(writer->sinks);

@@ -105,13 +105,14 @@ static void test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open(void) {
     TEST_ASSERT_NOT_NULL(read);
     read_from_comment(read,
         "runid=12345678-1234-1234-1234-123456789012 empty= no_equals barcode=barcode07 "
-        "fubar= read=7 unknown=foo ch=42");
+        "fubar= read=7 unknown=foo ch=42 mux=3");
     read_meta *meta = read->meta;
     TEST_ASSERT_EQUAL_STRING(runid, meta->runid);
     TEST_ASSERT_EQUAL_STRING("barcode07", meta->barcode);
     TEST_ASSERT_EQUAL_INT(7, meta->ibarcode);
     TEST_ASSERT_EQUAL_UINT64(7, meta->read_number);
     TEST_ASSERT_EQUAL_UINT64(42, meta->channel);
+    TEST_ASSERT_EQUAL_UINT64(3, meta->mux);
 
     uint8_t* co_aux = bam_aux_get(read->bam, "CO");
     TEST_ASSERT_NOT_NULL(co_aux);
@@ -128,6 +129,10 @@ static void test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open(void) {
     uint8_t* ch_aux = bam_aux_get(read->bam, "ch");
     TEST_ASSERT_NOT_NULL(ch_aux);
     TEST_ASSERT_EQUAL_INT(42, bam_aux2i(ch_aux));
+
+    uint8_t* mx_aux = bam_aux_get(read->bam, "mx");
+    TEST_ASSERT_NOT_NULL(mx_aux);
+    TEST_ASSERT_EQUAL_INT(3, bam_aux2i(mx_aux));
     destroy_read(read);
 }
 

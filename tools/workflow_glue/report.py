@@ -1,5 +1,6 @@
 """Create workflow report."""
 import json
+from pathlib import Path
 
 from dominate.tags import b, p
 import ezcharts as ezc
@@ -8,11 +9,20 @@ from ezcharts.components.ezchart import EZChart
 from ezcharts.components.reports import labs
 from ezcharts.layout.snippets import Tabs
 from ezcharts.layout.snippets.table import DataTable
+import numpy as np
 import pandas as pd
 
 from . import bokeh_boxplot
 from . import bokeh_matrix
 from .util import get_main_logger, get_named_logger, wf_parser  # noqa: ABS101
+
+
+CHANNEL_MAP_ROOT = Path(__file__).resolve().parent / "data"
+CHANNEL_MAP_PATHS = {
+    "flongle": CHANNEL_MAP_ROOT / "asicb512fx_flongle_channel_map.csv",
+    "minion": CHANNEL_MAP_ROOT / "asicb512fx_channel_map.csv",
+    "promethion": CHANNEL_MAP_ROOT / "3000_opx_channel_map.csv",
+}
 
 
 def load_length_qscore_heatmap(path):
@@ -73,6 +83,103 @@ def load_time_bin_summary(path):
         df[f"length_plot_{col}"] = df[f"length_{col}"] / 1000.0
         df[f"qscore_plot_{col}"] = df[f"qscore_{col}"]
     return df
+
+
+def channel_map_name(max_channel):
+    if max_channel <= 128:
+        return "flongle"
+    if max_channel <= 512:
+        return "minion"
+    return "promethion"
+
+
+def orient_channel_cells(device, cells):
+    if device == "minion":
+        cells["x"] = cells["y_raw"]
+        cells["y"] = -cells["x_raw"]
+    else:
+        cells["x"] = cells["x_raw"]
+        cells["y"] = -cells["y_raw"]
+    return cells
+
+
+def load_channel_map(name):
+    df = pd.read_csv(CHANNEL_MAP_PATHS[name], skipinitialspace=True)
+    cells = []
+    for row in df.to_dict("records"):
+        channel = int(row["name"])
+        for mux in range(1, 5):
+            x_col = f"mux_{mux}_phys_x"
+            y_col = f"mux_{mux}_phys_y"
+            if x_col not in df.columns or y_col not in df.columns:
+                x_col = "mux_1_phys_x"
+                y_col = "mux_1_phys_y"
+            cells.append({
+                "channel": channel,
+                "mux": mux,
+                "x_raw": float(row[x_col]),
+                "y_raw": float(row[y_col]),
+            })
+    return orient_channel_cells(name, pd.DataFrame(cells))
+
+
+def load_channel_summary_heatmap(path, metric):
+    df = pd.read_csv(path, sep="\t")
+    if df.empty:
+        max_channel = 1
+    else:
+        df["channel"] = pd.to_numeric(df["channel"], errors="coerce").fillna(0).astype(int)
+        df["mux"] = pd.to_numeric(df["mux"], errors="coerce").fillna(0).astype(int)
+        df["read_count"] = pd.to_numeric(df["read_count"], errors="coerce").fillna(0.0)
+        df["base_count"] = pd.to_numeric(df["base_count"], errors="coerce").fillna(0.0)
+        max_channel = int(df["channel"].max()) if not df.empty else 1
+        unknown = df[df["mux"] == 0].copy()
+        known = df[df["mux"] != 0].copy()
+        if not unknown.empty:
+            spread = []
+            for mux in range(1, 5):
+                chunk = unknown.copy()
+                chunk["mux"] = mux
+                chunk["read_count"] = chunk["read_count"] / 4.0
+                chunk["base_count"] = chunk["base_count"] / 4.0
+                spread.append(chunk)
+            df = pd.concat([known] + spread, ignore_index=True)
+        else:
+            df = known
+
+    cells = load_channel_map(channel_map_name(max_channel))
+    merged = cells.merge(df, on=["channel", "mux"], how="left")
+    merged["read_count"] = merged["read_count"].fillna(0.0)
+    merged["base_count"] = merged["base_count"].fillna(0.0)
+    merged["count"] = merged[metric]
+    merged["width"] = 1.0
+    merged["height"] = 1.0
+    data = merged.pivot(index="x", columns="y", values=metric)
+    data = data.reindex(
+        index=np.arange(data.index.min(), data.index.max() + 1.0, 1.0),
+        columns=np.arange(data.columns.min(), data.columns.max() + 1.0, 1.0))
+    data = data.rename_axis(None)
+    data = data.rename_axis(None, axis=1)
+
+    subtitle = (
+        f"{int(merged['read_count'].sum())} reads across "
+        f"{int((merged['read_count'] > 0).sum())} occupied channel/mux cells")
+
+    return bokeh_matrix.heatmap(
+        data,
+        annot=False,
+        vmax_quantile=0.995,
+        cbar_kws={"title": metric.replace("_", " ")},
+        subtitle=subtitle,
+        hide_axes=True,
+        match_aspect=True,
+        hide_toolbar=True,
+        hover_data=merged[["x", "y", "width", "height", "channel", "mux", "count"]],
+        hover_items=[
+            ("channel", "@channel{0}"),
+            ("mux", "@mux{0}"),
+            ("count", "@count{0}"),
+        ])
 
 
 def time_lineplot(df, y, ylabel, color="#2f7f6f"):
@@ -162,6 +269,39 @@ def add_time_bin_plots(path):
             p("No qscore quartiles were available.")
         else:
             EZChart(qscore_plot, height="420px")
+
+
+def add_channel_summary_plots(path):
+    """Add channel occupancy plots for one sample."""
+    reads_plot = load_channel_summary_heatmap(path, "read_count")
+    bases_plot = load_channel_summary_heatmap(path, "base_count")
+    reads_aspect = f"{reads_plot._fig.width} / {reads_plot._fig.height}"
+    bases_aspect = f"{bases_plot._fig.width} / {bases_plot._fig.height}"
+    reads_max_width = f"{int(round(500 * reads_plot._fig.width / reads_plot._fig.height))}px"
+    bases_max_width = f"{int(round(500 * bases_plot._fig.width / bases_plot._fig.height))}px"
+    tabs = Tabs()
+    with tabs.add_tab("Read counts"):
+        EZChart(
+            reads_plot,
+            height="auto",
+            additional_styles={
+                "aspect-ratio": reads_aspect,
+                "max-width": reads_max_width,
+                "max-height": "500px",
+                "margin-left": "auto",
+                "margin-right": "auto",
+            })
+    with tabs.add_tab("Base counts"):
+        EZChart(
+            bases_plot,
+            height="auto",
+            additional_styles={
+                "aspect-ratio": bases_aspect,
+                "max-width": bases_max_width,
+                "max-height": "500px",
+                "margin-left": "auto",
+                "margin-right": "auto",
+            })
 
 
 def main(args):
@@ -264,6 +404,20 @@ def main(args):
                     with tabs.add_tab(sample):
                         add_time_bin_plots(path)
 
+    if args.channel_summary:
+        channel_samples = samples_with_stats
+        if isinstance(channel_samples, str):
+            channel_samples = (channel_samples,)
+
+        with report.add_section("Channel occupancy", "Channel occupancy"):
+            if len(args.channel_summary) == 1:
+                add_channel_summary_plots(args.channel_summary[0])
+            else:
+                tabs = Tabs()
+                for sample, path in zip(channel_samples, args.channel_summary):
+                    with tabs.add_tab(sample):
+                        add_channel_summary_plots(path)
+
     with report.add_section("Sample Metadata", "Sample Metadata"):
         tabs = Tabs()
         for d in sample_details:
@@ -294,6 +448,9 @@ def argparser():
         "--time-bin-summary", nargs="+",
         help="Fastcat time_bin_summary.tsv files, ordered as per entries in --metadata.")
     parser.add_argument(
+        "--channel-summary", nargs="+",
+        help="Fastcat channel_summary.tsv files, ordered as per entries in --metadata.")
+    parser.add_argument(
         "--versions", required=True,
         help="directory containing CSVs containing name,version.")
     parser.add_argument(
@@ -306,7 +463,3 @@ def argparser():
         "--wf_version", default='unknown',
         help="version of the executed workflow")
     return parser
-
-
-if __name__ == "__main__":
-    raise SystemExit(main(argparser().parse_args()))

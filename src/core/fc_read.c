@@ -138,6 +138,7 @@ static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment)
     meta->mean_q = -1.0f;
     meta->read_number = 0;
     meta->channel = 0;
+    meta->mux = 0;
     if (meta->tags_str) {
         ks_clear(meta->tags_str);
     }
@@ -198,6 +199,8 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             meta->read_number = (ival >= 0) ? (size_t)ival : 0;
         } else if (strcmp(tag, "CH") == 0 && !ierr) {
             meta->channel = (ival >= 0) ? (size_t)ival : 0;
+        } else if (strcmp(tag, "MX") == 0 && !ierr) {
+            meta->mux = (ival >= 0) ? (size_t)ival : 0;
         } else if (strcmp(tag, "NM") == 0 && !ierr) {
             meta->edit_distance = ival;
         } else if ((strcmp(tag, "PI") == 0) && type == 'Z') {

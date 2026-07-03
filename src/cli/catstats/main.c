@@ -203,6 +203,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     fc_writer_config writer_cfg = {
         .use_barcodes = args->demultiplex,
         .stats = &stats_cfg,
+        .channel_summary = true,
         .length_qscore = &length_qscore_cfg,
         .time_bin = &time_bin_cfg
     };
@@ -235,6 +236,14 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .barcode_count = writer->barcode_count
     };
     fc_writer_add_sink(writer, fc_counter_sink_create(&counter_opts));
+
+    fc_channel_summary_sink_opts channel_opts = {
+        .output_root = args->output_dir,
+        .use_barcodes = args->demultiplex,
+        .barcode_count = writer->barcode_count,
+        .model = writer->channel_summary
+    };
+    fc_writer_add_sink(writer, fc_channel_summary_sink_create(&channel_opts));
 
     // read-length vs qscore 2D density table derived from writer-owned KLL sketches
     fc_length_qscore_2d_sink_opts lq2d_opts = {
@@ -366,6 +375,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .unmapped_override = (program == FC_PROGRAM_FASTCAT),
             .engines = writer->stats_engines,
             .engine_count = writer->stats_engine_count,
+            .channel_summary = writer->channel_summary,
             .length_qscore = writer->length_qscore,
             .time_bin = writer->time_bin
         };

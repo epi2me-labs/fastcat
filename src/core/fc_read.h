@@ -27,6 +27,7 @@ typedef struct read_meta {
     float mean_q; // qs:f
     size_t read_number; // rn:i
     size_t channel; // ch:i
+    size_t mux; // mx:i
     kstring_t *tags_str; // lazily materialized string form of aux tags
     bool tags_ready;
 } read_meta;

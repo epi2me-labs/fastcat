@@ -14,6 +14,9 @@ def heatmap(
         annot=True, fmt='.2g', annot_kws=None, linewidths=0, linecolor='white',
         cbar=True, cbar_kws=None, cbar_ax=None, square=False, xticklabels='auto',
         yticklabels='auto', mask=None, ax=None, vmax_quantile=None,
+        hide_axes=False, match_aspect=False,
+        hide_toolbar=False,
+        hover_data=None, hover_items=None,
         title=None, subtitle=None, **kwargs):
     """Plot rectangular data as a Bokeh heatmap.
 
@@ -75,7 +78,7 @@ def heatmap(
         high = low + 1.0
 
     palette = cmap if cmap is not None else Viridis256
-    mapper = LinearColorMapper(palette=palette, low=low, high=high)
+    mapper = LinearColorMapper(palette=palette, low=low, high=high, nan_color="#ffffff")
 
     # get plotted
     plt = BokehPlot(title="", output_backend="canvas")
@@ -91,19 +94,46 @@ def heatmap(
     plt._fig.x_range.end = x1
     plt._fig.y_range.start = y0
     plt._fig.y_range.end = y1
+    plt._fig.x_range.range_padding = 0
+    plt._fig.y_range.range_padding = 0
+
+    if match_aspect:
+        x_span = max(x1 - x0, 1e-12)
+        y_span = max(y1 - y0, 1e-12)
+        aspect = x_span / y_span
+        plt._fig.match_aspect = True
+        plt._fig.aspect_ratio = aspect
+        plt._fig.sizing_mode = "stretch_both"
 
     if xticklabels is False:
         plt._fig.xaxis.major_label_text_font_size = "0pt"
     if yticklabels is False:
         plt._fig.yaxis.major_label_text_font_size = "0pt"
+    if hide_axes:
+        plt._fig.xaxis.visible = False
+        plt._fig.yaxis.visible = False
+    if hide_toolbar:
+        plt._fig.toolbar_location = None
 
     # add tools and colorbar
     hover = plt._fig.select(dict(type=HoverTool))
-    hover.renderers = [image_renderer]
-    hover.tooltips = [
-        (x_name, "$x{0.0}"),
-        (y_name, "$y{0.000}"),
-    ]
+    hover_renderer = image_renderer
+    hover.tooltips = [(x_name, "$x{0.0}"), (y_name, "$y{0.000}")]
+
+    if hover_data is not None:
+        hover_frame = pd.DataFrame(hover_data).copy()
+        hover_source = ColumnDataSource(hover_frame)
+        hover_renderer = plt._fig.rect(
+            x="x",
+            y="y",
+            width="width",
+            height="height",
+            source=hover_source,
+            line_alpha=0.0,
+            fill_alpha=0.0)
+        hover.tooltips = hover_items or [(col, f"@{col}") for col in hover_frame.columns]
+
+    hover.renderers = [hover_renderer]
 
     if cbar:
         colorbar_options = dict(cbar_kws or {})

@@ -13,6 +13,7 @@
 
 #include "htslib/kstring.h"
 
+#include "core/fc_channel_map.h"
 #include "core/fc_common.h"
 #include "core/fc_json.h"
 #include "core/fc_log.h"
@@ -28,6 +29,7 @@
 #define FC_REPORT_QUALITY_BINS 130
 #define FC_REPORT_YIELD_THINNING 100
 #define FC_REPORT_LQ2D_COLOR_QUANTILE 0.995
+#define FC_REPORT_CHANNEL_COLOR_QUANTILE 0.995
 #define FC_REPORT_TIME_BOX_MAX_BINS 24
 #define FC_REPORT_NAME "fastcat_report.html"
 
@@ -468,6 +470,80 @@ static double hist_median_start(const report_hist *hist)
 }
 
 //
+// heatmap image helpers
+//
+
+static void append_base64(kstring_t *ks, const uint8_t *data, size_t n)
+{
+    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    for (size_t i = 0; i < n; i += 3) {
+        uint32_t a = data[i];
+        uint32_t b = (i + 1 < n) ? data[i + 1] : 0;
+        uint32_t c = (i + 2 < n) ? data[i + 2] : 0;
+        uint32_t triple = (a << 16) | (b << 8) | c;
+
+        report_kputc(ks, table[(triple >> 18) & 0x3f]);
+        report_kputc(ks, table[(triple >> 12) & 0x3f]);
+        report_kputc(ks, (i + 1 < n) ? table[(triple >> 6) & 0x3f] : '=');
+        report_kputc(ks, (i + 2 < n) ? table[triple & 0x3f] : '=');
+    }
+}
+
+static char *build_image_base64(const double *values, size_t rows, size_t cols)
+{
+    if (rows != 0 && cols > SIZE_MAX / rows) {
+        FC_LOG_FATAL("Report image is too large.");
+    }
+    size_t n = rows * cols;
+    if (n > SIZE_MAX / sizeof(double)) {
+        FC_LOG_FATAL("Report image is too large.");
+    }
+
+    size_t byte_count = n * sizeof(double);
+    uint8_t *bytes = fc_alloc(byte_count, sizeof(*bytes), "report image bytes");
+    size_t out = 0;
+    for (size_t row = 0; row < rows; row++) {
+        for (size_t col = 0; col < cols; col++) {
+            double count = values[row * cols + col];
+            uint64_t bits = 0;
+            memcpy(&bits, &count, sizeof(bits));
+            for (size_t byte = 0; byte < sizeof(bits); byte++) {
+                bytes[out++] = (uint8_t)((bits >> (8 * byte)) & 0xff);
+            }
+        }
+    }
+
+    kstring_t b64 = { 0, 0, NULL };
+    append_base64(&b64, bytes, byte_count);
+    free(bytes);
+    return report_steal(&b64);
+}
+
+static fc_json_value_t *build_image_ndarray_value(const double *values, size_t rows, size_t cols)
+{
+    char *b64 = build_image_base64(values, rows, cols);
+
+    fc_json_value_t *value = fc_json_object_value();
+    fc_json_object_t *object = fc_json_get_object(value);
+    fc_json_object_set_string(object, "type", "ndarray");
+
+    fc_json_object_t *array = fc_json_object_set_object(object, "array");
+    fc_json_object_set_string(array, "type", "bytes");
+    fc_json_object_set_string(array, "data", b64);
+
+    fc_json_array_t *shape = fc_json_object_set_array(object, "shape");
+    fc_json_array_append_number(shape, (double)rows);
+    fc_json_array_append_number(shape, (double)cols);
+
+    fc_json_object_set_string(object, "dtype", "float64");
+    fc_json_object_set_string(object, "order", "little");
+
+    free(b64);
+    return value;
+}
+
+//
 // quality plot
 //
 
@@ -711,23 +787,6 @@ static void update_yield_plot(JSON_Value *docs, const report_hist *length)
 // length/qscore heatmap
 //
 
-static void append_base64(kstring_t *ks, const uint8_t *data, size_t n)
-{
-    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    for (size_t i = 0; i < n; i += 3) {
-        uint32_t a = data[i];
-        uint32_t b = (i + 1 < n) ? data[i + 1] : 0;
-        uint32_t c = (i + 2 < n) ? data[i + 2] : 0;
-        uint32_t triple = (a << 16) | (b << 8) | c;
-
-        report_kputc(ks, table[(triple >> 18) & 0x3f]);
-        report_kputc(ks, table[(triple >> 12) & 0x3f]);
-        report_kputc(ks, (i + 1 < n) ? table[(triple >> 6) & 0x3f] : '=');
-        report_kputc(ks, (i + 2 < n) ? table[triple & 0x3f] : '=');
-    }
-}
-
 static fc_json_value_t *build_lq2d_empty_source_data_value(void)
 {
     report_source source = bokeh_source_create();
@@ -739,60 +798,27 @@ static fc_json_value_t *build_lq2d_empty_source_data_value(void)
     return source.value;
 }
 
-static char *build_lq2d_image_base64(const fc_length_qscore_2d_matrix *matrix)
+static fc_json_value_t *build_lq2d_image_ndarray_value(const fc_length_qscore_2d_matrix *matrix)
 {
     if (matrix->length_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->length_bins) {
         FC_LOG_FATAL("Length/qscore report image is too large.");
     }
-    size_t n = matrix->length_bins * matrix->qscore_bins;
-    if (n > SIZE_MAX / sizeof(double)) {
-        FC_LOG_FATAL("Length/qscore report image is too large.");
-    }
 
-    size_t byte_count = n * sizeof(double);
-    uint8_t *bytes = fc_alloc(byte_count, sizeof(*bytes), "report length/qscore image bytes");
-    size_t out = 0;
+    size_t n = matrix->length_bins * matrix->qscore_bins;
+    double *values = fc_alloc(n, sizeof(*values), "report length/qscore image values");
     for (size_t len_bin = 0; len_bin < matrix->length_bins; len_bin++) {
         for (size_t q = 0; q < matrix->qscore_bins; q++) {
             double count = matrix->counts[q * matrix->length_bins + len_bin];
             if (!isfinite(count) || count < 0.0) {
                 count = 0.0;
             }
-
-            uint64_t bits = 0;
-            memcpy(&bits, &count, sizeof(bits));
-            for (size_t byte = 0; byte < sizeof(bits); byte++) {
-                bytes[out++] = (uint8_t)((bits >> (8 * byte)) & 0xff);
-            }
+            values[len_bin * matrix->qscore_bins + q] = count;
         }
     }
 
-    kstring_t b64 = { 0, 0, NULL };
-    append_base64(&b64, bytes, byte_count);
-    free(bytes);
-    return report_steal(&b64);
-}
-
-static fc_json_value_t *build_lq2d_image_ndarray_value(const fc_length_qscore_2d_matrix *matrix)
-{
-    char *b64 = build_lq2d_image_base64(matrix);
-
-    fc_json_value_t *value = fc_json_object_value();
-    fc_json_object_t *object = fc_json_get_object(value);
-    fc_json_object_set_string(object, "type", "ndarray");
-
-    fc_json_object_t *array = fc_json_object_set_object(object, "array");
-    fc_json_object_set_string(array, "type", "bytes");
-    fc_json_object_set_string(array, "data", b64);
-
-    fc_json_array_t *shape = fc_json_object_set_array(object, "shape");
-    fc_json_array_append_number(shape, (double)matrix->length_bins);
-    fc_json_array_append_number(shape, (double)matrix->qscore_bins);
-
-    fc_json_object_set_string(object, "dtype", "float64");
-    fc_json_object_set_string(object, "order", "little");
-
-    free(b64);
+    fc_json_value_t *value = build_image_ndarray_value(
+        values, matrix->length_bins, matrix->qscore_bins);
+    free(values);
     return value;
 }
 
@@ -1174,12 +1200,349 @@ static void update_time_qscore_box_plot(JSON_Value *docs, const fc_time_bin_tabl
 }
 
 //
+// channel occupancy plots
+//
+
+static size_t report_channel_cell_index(size_t channel, size_t mux)
+{
+    return ((channel - 1) * FC_CHANNEL_SUMMARY_MUX_SLOTS) + mux;
+}
+
+static void report_channel_accumulate_lookup(
+    double *read_lookup,
+    double *base_lookup,
+    const fc_channel_summary_row *row)
+{
+    if (row->channel == 0 || row->channel > FC_CHANNEL_SUMMARY_MAX_CHANNEL
+        || row->mux > FC_CHANNEL_SUMMARY_MAX_MUX) {
+        return;
+    }
+
+    if (row->mux == FC_CHANNEL_SUMMARY_UNKNOWN_MUX) {
+        double read_share = (double)row->read_count / (double)FC_CHANNEL_SUMMARY_MAX_MUX;
+        double base_share = (double)row->base_count / (double)FC_CHANNEL_SUMMARY_MAX_MUX;
+        for (size_t mux = 1; mux <= FC_CHANNEL_SUMMARY_MAX_MUX; mux++) {
+            size_t idx = report_channel_cell_index(row->channel, mux);
+            read_lookup[idx] += read_share;
+            base_lookup[idx] += base_share;
+        }
+        return;
+    }
+
+    size_t idx = report_channel_cell_index(row->channel, row->mux);
+    read_lookup[idx] += (double)row->read_count;
+    base_lookup[idx] += (double)row->base_count;
+}
+
+static fc_json_value_t *build_channel_empty_source_data_value(void)
+{
+    report_source source = bokeh_source_create();
+    bokeh_source_add_array_column(&source, "image");
+    bokeh_source_add_array_column(&source, "x");
+    bokeh_source_add_array_column(&source, "y");
+    bokeh_source_add_array_column(&source, "dw");
+    bokeh_source_add_array_column(&source, "dh");
+    return source.value;
+}
+
+static fc_json_value_t *build_channel_empty_hover_source_data_value(void)
+{
+    report_source source = bokeh_source_create();
+    bokeh_source_add_array_column(&source, "x");
+    bokeh_source_add_array_column(&source, "y");
+    bokeh_source_add_array_column(&source, "width");
+    bokeh_source_add_array_column(&source, "height");
+    bokeh_source_add_array_column(&source, "channel");
+    bokeh_source_add_array_column(&source, "mux");
+    bokeh_source_add_array_column(&source, "count");
+    return source.value;
+}
+
+static double channel_color_high_quantile(const double *values, size_t n)
+{
+    if (n == 0) {
+        return 1.0;
+    }
+
+    double *sorted = fc_alloc(n, sizeof(*sorted), "report channel color range");
+    memcpy(sorted, values, n * sizeof(*sorted));
+    qsort(sorted, n, sizeof(*sorted), cmp_double);
+
+    size_t idx = (size_t)llround((double)(n - 1) * FC_REPORT_CHANNEL_COLOR_QUANTILE);
+    if (idx >= n) {
+        idx = n - 1;
+    }
+
+    double high = sorted[idx];
+    if (!isfinite(high) || high <= 0.0) {
+        high = sorted[n - 1];
+    }
+    free(sorted);
+    return (isfinite(high) && high > 0.0) ? high : 1.0;
+}
+
+static void update_channel_reads_plot(
+    JSON_Value *docs,
+    const fc_channel_summary *model,
+    size_t barcode)
+{
+    if (!model || !fc_channel_summary_seen(model, barcode)) {
+        bokeh_set_value(docs, "channel_reads.source.data", build_channel_empty_source_data_value());
+        bokeh_set_value(docs, "channel_reads.hover_source.data", build_channel_empty_hover_source_data_value());
+        bokeh_set_string(docs, "channel_reads.subtitle.text", "No channel occupancy data available");
+        bokeh_set_number(docs, "channel_reads.color_mapper.high", 1.0);
+        bokeh_set_range(docs, "channel_reads.x_range", 0.0, 1.0);
+        bokeh_set_range(docs, "channel_reads.y_range", 0.0, 1.0);
+        return;
+    }
+
+    fc_channel_summary_table table = { 0 };
+    if (fc_channel_summary_materialize_sparse(model, barcode, &table) != 0 || table.n == 0) {
+        fc_channel_summary_table_destroy(&table);
+        update_channel_reads_plot(docs, NULL, barcode);
+        return;
+    }
+
+    const fc_channel_map *map = fc_channel_map_get(
+        fc_channel_map_device_for_channel(table.highest_channel));
+    if (!map || !map->rows || map->row_count == 0) {
+        fc_channel_summary_table_destroy(&table);
+        update_channel_reads_plot(docs, NULL, barcode);
+        return;
+    }
+
+    size_t lookup_n = FC_CHANNEL_SUMMARY_MAX_CHANNEL * FC_CHANNEL_SUMMARY_MUX_SLOTS;
+    double *read_lookup = fc_alloc(lookup_n, sizeof(*read_lookup), "report channel read lookup");
+    double *base_lookup = fc_alloc(lookup_n, sizeof(*base_lookup), "report channel base lookup");
+    for (size_t i = 0; i < table.n; i++) {
+        report_channel_accumulate_lookup(read_lookup, base_lookup, &table.rows[i]);
+    }
+
+    size_t n_cells = map->row_count * FC_CHANNEL_SUMMARY_MAX_MUX;
+    double *color_values = fc_alloc(n_cells, sizeof(*color_values), "report channel read colors");
+    size_t x_bins = (size_t)llround(map->x_max - map->x_min) + 1;
+    size_t y_bins = (size_t)llround(map->y_max - map->y_min) + 1;
+    if (x_bins != 0 && y_bins > SIZE_MAX / x_bins) {
+        FC_LOG_FATAL("Channel occupancy report image is too large.");
+    }
+    size_t image_n = x_bins * y_bins;
+    double *image = fc_alloc(image_n, sizeof(*image), "report channel read image");
+    for (size_t i = 0; i < image_n; i++) {
+        image[i] = NAN;
+    }
+    report_source hover_source = bokeh_source_create();
+    report_column hover_x = bokeh_source_add_array_column(&hover_source, "x");
+    report_column hover_y = bokeh_source_add_array_column(&hover_source, "y");
+    report_column hover_width = bokeh_source_add_array_column(&hover_source, "width");
+    report_column hover_height = bokeh_source_add_array_column(&hover_source, "height");
+    report_column hover_channel = bokeh_source_add_array_column(&hover_source, "channel");
+    report_column hover_mux = bokeh_source_add_array_column(&hover_source, "mux");
+    report_column hover_count = bokeh_source_add_array_column(&hover_source, "count");
+
+    size_t occupied = 0;
+    double total_reads = 0.0;
+    size_t out_i = 0;
+    for (size_t i = 0; i < map->row_count; i++) {
+        const fc_channel_map_channel_row *row = &map->rows[i];
+        for (size_t mx = 1; mx <= FC_CHANNEL_SUMMARY_MAX_MUX; mx++) {
+            size_t idx = report_channel_cell_index((size_t)row->channel, mx);
+            double value = read_lookup[idx];
+            double plot_x = 0.0;
+            double plot_y = 0.0;
+            fc_channel_map_project(
+                map,
+                (double)row->x[mx - 1],
+                (double)row->y[mx - 1],
+                &plot_x,
+                &plot_y);
+            size_t x_idx = (size_t)llround(plot_x - map->x_min);
+            size_t y_idx = (size_t)llround(plot_y - map->y_min);
+            image[y_idx * x_bins + x_idx] = value;
+            fc_json_array_append_number(hover_x.array, plot_x);
+            fc_json_array_append_number(hover_y.array, plot_y);
+            fc_json_array_append_number(hover_width.array, 1.0);
+            fc_json_array_append_number(hover_height.array, 1.0);
+            fc_json_array_append_number(hover_channel.array, (double)row->channel);
+            fc_json_array_append_number(hover_mux.array, (double)mx);
+            fc_json_array_append_number(hover_count.array, value);
+
+            color_values[out_i++] = value;
+            total_reads += value;
+            if (value > 0.0) {
+                occupied++;
+            }
+        }
+    }
+
+    char subtitle[160];
+    FC_SNPRINTF_CHECK(
+        subtitle,
+        sizeof(subtitle),
+        "%.0f reads across %zu occupied channel/mux cells",
+        total_reads,
+        occupied);
+
+    report_source source = bokeh_source_create();
+    report_column image_col = bokeh_source_add_array_column(&source, "image");
+    report_column x = bokeh_source_add_array_column(&source, "x");
+    report_column y = bokeh_source_add_array_column(&source, "y");
+    report_column dw = bokeh_source_add_array_column(&source, "dw");
+    report_column dh = bokeh_source_add_array_column(&source, "dh");
+    fc_json_array_append_value(image_col.array, build_image_ndarray_value(image, y_bins, x_bins));
+    fc_json_array_append_number(x.array, map->x_min - 0.5);
+    fc_json_array_append_number(y.array, map->y_min - 0.5);
+    fc_json_array_append_number(dw.array, (double)x_bins);
+    fc_json_array_append_number(dh.array, (double)y_bins);
+
+    bokeh_set_value(docs, "channel_reads.source.data", source.value);
+    bokeh_set_value(docs, "channel_reads.hover_source.data", hover_source.value);
+    bokeh_set_string(docs, "channel_reads.subtitle.text", subtitle);
+    bokeh_set_number(docs, "channel_reads.color_mapper.high", channel_color_high_quantile(color_values, n_cells));
+    bokeh_set_range(docs, "channel_reads.x_range", map->x_min - 0.5, map->x_max + 0.5);
+    bokeh_set_range(docs, "channel_reads.y_range", map->y_min - 0.5, map->y_max + 0.5);
+
+    free(image);
+    free(color_values);
+    free(read_lookup);
+    free(base_lookup);
+    fc_channel_summary_table_destroy(&table);
+}
+
+static void update_channel_bases_plot(
+    JSON_Value *docs,
+    const fc_channel_summary *model,
+    size_t barcode)
+{
+    if (!model || !fc_channel_summary_seen(model, barcode)) {
+        bokeh_set_value(docs, "channel_bases.source.data", build_channel_empty_source_data_value());
+        bokeh_set_value(docs, "channel_bases.hover_source.data", build_channel_empty_hover_source_data_value());
+        bokeh_set_string(docs, "channel_bases.subtitle.text", "No channel occupancy data available");
+        bokeh_set_number(docs, "channel_bases.color_mapper.high", 1.0);
+        bokeh_set_range(docs, "channel_bases.x_range", 0.0, 1.0);
+        bokeh_set_range(docs, "channel_bases.y_range", 0.0, 1.0);
+        return;
+    }
+
+    fc_channel_summary_table table = { 0 };
+    if (fc_channel_summary_materialize_sparse(model, barcode, &table) != 0 || table.n == 0) {
+        fc_channel_summary_table_destroy(&table);
+        update_channel_bases_plot(docs, NULL, barcode);
+        return;
+    }
+
+    const fc_channel_map *map = fc_channel_map_get(
+        fc_channel_map_device_for_channel(table.highest_channel));
+    if (!map || !map->rows || map->row_count == 0) {
+        fc_channel_summary_table_destroy(&table);
+        update_channel_bases_plot(docs, NULL, barcode);
+        return;
+    }
+
+    size_t lookup_n = FC_CHANNEL_SUMMARY_MAX_CHANNEL * FC_CHANNEL_SUMMARY_MUX_SLOTS;
+    double *read_lookup = fc_alloc(lookup_n, sizeof(*read_lookup), "report channel read lookup");
+    double *base_lookup = fc_alloc(lookup_n, sizeof(*base_lookup), "report channel base lookup");
+    for (size_t i = 0; i < table.n; i++) {
+        report_channel_accumulate_lookup(read_lookup, base_lookup, &table.rows[i]);
+    }
+
+    size_t n_cells = map->row_count * FC_CHANNEL_SUMMARY_MAX_MUX;
+    double *color_values = fc_alloc(n_cells, sizeof(*color_values), "report channel base colors");
+    size_t x_bins = (size_t)llround(map->x_max - map->x_min) + 1;
+    size_t y_bins = (size_t)llround(map->y_max - map->y_min) + 1;
+    if (x_bins != 0 && y_bins > SIZE_MAX / x_bins) {
+        FC_LOG_FATAL("Channel occupancy report image is too large.");
+    }
+    size_t image_n = x_bins * y_bins;
+    double *image = fc_alloc(image_n, sizeof(*image), "report channel base image");
+    for (size_t i = 0; i < image_n; i++) {
+        image[i] = NAN;
+    }
+    report_source hover_source = bokeh_source_create();
+    report_column hover_x = bokeh_source_add_array_column(&hover_source, "x");
+    report_column hover_y = bokeh_source_add_array_column(&hover_source, "y");
+    report_column hover_width = bokeh_source_add_array_column(&hover_source, "width");
+    report_column hover_height = bokeh_source_add_array_column(&hover_source, "height");
+    report_column hover_channel = bokeh_source_add_array_column(&hover_source, "channel");
+    report_column hover_mux = bokeh_source_add_array_column(&hover_source, "mux");
+    report_column hover_count = bokeh_source_add_array_column(&hover_source, "count");
+
+    size_t occupied = 0;
+    double total_bases = 0.0;
+    size_t out_i = 0;
+    for (size_t i = 0; i < map->row_count; i++) {
+        const fc_channel_map_channel_row *row = &map->rows[i];
+        for (size_t mx = 1; mx <= FC_CHANNEL_SUMMARY_MAX_MUX; mx++) {
+            size_t idx = report_channel_cell_index((size_t)row->channel, mx);
+            double value = base_lookup[idx];
+            double plot_x = 0.0;
+            double plot_y = 0.0;
+            fc_channel_map_project(
+                map,
+                (double)row->x[mx - 1],
+                (double)row->y[mx - 1],
+                &plot_x,
+                &plot_y);
+            size_t x_idx = (size_t)llround(plot_x - map->x_min);
+            size_t y_idx = (size_t)llround(plot_y - map->y_min);
+            image[y_idx * x_bins + x_idx] = value;
+            fc_json_array_append_number(hover_x.array, plot_x);
+            fc_json_array_append_number(hover_y.array, plot_y);
+            fc_json_array_append_number(hover_width.array, 1.0);
+            fc_json_array_append_number(hover_height.array, 1.0);
+            fc_json_array_append_number(hover_channel.array, (double)row->channel);
+            fc_json_array_append_number(hover_mux.array, (double)mx);
+            fc_json_array_append_number(hover_count.array, value);
+
+            color_values[out_i++] = value;
+            total_bases += value;
+            if (value > 0.0) {
+                occupied++;
+            }
+        }
+    }
+
+    char subtitle[160];
+    FC_SNPRINTF_CHECK(
+        subtitle,
+        sizeof(subtitle),
+        "%.0f bases across %zu occupied channel/mux cells",
+        total_bases,
+        occupied);
+
+    report_source source = bokeh_source_create();
+    report_column image_col = bokeh_source_add_array_column(&source, "image");
+    report_column x = bokeh_source_add_array_column(&source, "x");
+    report_column y = bokeh_source_add_array_column(&source, "y");
+    report_column dw = bokeh_source_add_array_column(&source, "dw");
+    report_column dh = bokeh_source_add_array_column(&source, "dh");
+    fc_json_array_append_value(image_col.array, build_image_ndarray_value(image, y_bins, x_bins));
+    fc_json_array_append_number(x.array, map->x_min - 0.5);
+    fc_json_array_append_number(y.array, map->y_min - 0.5);
+    fc_json_array_append_number(dw.array, (double)x_bins);
+    fc_json_array_append_number(dh.array, (double)y_bins);
+
+    bokeh_set_value(docs, "channel_bases.source.data", source.value);
+    bokeh_set_value(docs, "channel_bases.hover_source.data", hover_source.value);
+    bokeh_set_string(docs, "channel_bases.subtitle.text", subtitle);
+    bokeh_set_number(docs, "channel_bases.color_mapper.high", channel_color_high_quantile(color_values, n_cells));
+    bokeh_set_range(docs, "channel_bases.x_range", map->x_min - 0.5, map->x_max + 0.5);
+    bokeh_set_range(docs, "channel_bases.y_range", map->y_min - 0.5, map->y_max + 0.5);
+
+    free(image);
+    free(color_values);
+    free(read_lookup);
+    free(base_lookup);
+    fc_channel_summary_table_destroy(&table);
+}
+
+//
 // report assembly
 //
 
 static JSON_Value *build_report_bokeh_docs(
     const report_hist *length,
     const report_hist *quality,
+    const fc_channel_summary *channel_summary,
     const fc_length_qscore_2d *length_qscore,
     const fc_time_bin *time_bin,
     size_t barcode)
@@ -1218,6 +1581,8 @@ static JSON_Value *build_report_bokeh_docs(
     update_time_reads_plot(docs, &time_table);
     update_time_length_box_plot(docs, &time_boxes);
     update_time_qscore_box_plot(docs, &time_boxes);
+    update_channel_reads_plot(docs, channel_summary, barcode);
+    update_channel_bases_plot(docs, channel_summary, barcode);
 
     fc_time_bin_table_destroy(&time_boxes);
     fc_time_bin_table_destroy(&time_table);
@@ -1295,6 +1660,7 @@ static int write_report_for_output_dir(
     const read_stats *quality_stats,
     const fc_report_config_entry *run_config,
     size_t run_config_count,
+    const fc_channel_summary *channel_summary,
     const fc_length_qscore_2d *length_qscore,
     const fc_time_bin *time_bin,
     size_t barcode_index)
@@ -1311,7 +1677,13 @@ static int write_report_for_output_dir(
         goto cleanup;
     }
 
-    JSON_Value *docs = build_report_bokeh_docs(&length, &quality, length_qscore, time_bin, barcode_index);
+    JSON_Value *docs = build_report_bokeh_docs(
+        &length,
+        &quality,
+        channel_summary,
+        length_qscore,
+        time_bin,
+        barcode_index);
     char *docs_json = docs ? fc_json_serialize_to_string(docs) : NULL;
     char *html = render_report_html(docs_json, sample, sample_type, barcode, run_config, run_config_count);
     if (html && write_text_file(report_path, html) == 0) {
@@ -1355,6 +1727,7 @@ int fc_write_html_reports(const fc_report_opts *opts)
             quality,
             opts->run_config,
             opts->run_config_count,
+            opts->channel_summary,
             opts->length_qscore,
             opts->time_bin,
             0);
@@ -1393,6 +1766,7 @@ int fc_write_html_reports(const fc_report_opts *opts)
                 quality,
                 opts->run_config,
                 opts->run_config_count,
+                opts->channel_summary,
                 opts->length_qscore,
                 opts->time_bin,
                 barcode)

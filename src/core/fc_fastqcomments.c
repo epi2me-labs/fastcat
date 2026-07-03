@@ -139,6 +139,13 @@ static int parse_key_value_comment_to_bam(const kstring_t *comment, bam1_t *b)
             } else if (bam_aux_update_int(b, "ch", ival) < 0) {
                 goto err;
             }
+        } else if (!strcmp(key, "mux") || !strcmp(key, "mx")) {
+            int64_t ival = 0;
+            if (!parse_int64(value, &ival) || ival < 0 || ival > UINT32_MAX) {
+                ksprintf_with_opt_delim(&rest, " ", "%s=%s", key, value);
+            } else if (bam_aux_update_int(b, "mx", ival) < 0) {
+                goto err;
+            }
         } else if (!strcmp(key, "start_time")) {
             if (bam_aux_update_str(b, "st", (int)strlen(value), value) < 0) {
                 goto err;
