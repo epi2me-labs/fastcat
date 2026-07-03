@@ -33,7 +33,8 @@ REPORT_PIP := $(REPORT_VENV)/bin/pip
 REPORT_REQS := tools/requirements.txt
 REPORT_MPLCONFIGDIR := $(REPORT_DIR)/mpl-cache
 REPORT_EXAMPLE_N ?= 2000
-REPORT_DEMO_N ?= 50000
+REPORT_DEMO_N ?= 100000
+REPORT_DEMO_DURATION_S ?= 172800
 DEV_TOOLS_SCRIPT := $(REPO_ROOT)/tools/dev-tools
 DEV_TOOLS := python3 $(DEV_TOOLS_SCRIPT)
 SHELL := /bin/bash
@@ -227,6 +228,9 @@ CORE_SRCS := \
 	src/core/fc_stats.c \
 	src/core/fc_quantile.c \
 	src/core/fc_kll.c \
+	src/core/fc_channel_summary.c \
+	src/core/fc_channel_map.c \
+	src/core/fc_channel_map_data.c \
 	src/core/fc_length_qscore_2d.c \
 	src/core/fc_time_bin.c \
 	src/core/fc_stats_engine.c \
@@ -252,6 +256,7 @@ CORE_SRCS := \
 	src/sink/perread.c \
 	src/sink/perfile.c \
 	src/sink/counter.c \
+	src/sink/channel.c \
 	src/sink/length_qscore_2d.c \
 	src/sink/time_bin.c \
 	src/sink/hist.c \
@@ -512,29 +517,34 @@ $(REPORT_DIR)/template_fastcat/histograms/length.hist: $(REPORT_DIR)/template_fa
 $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv: $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv
 	test -s $@
 
+$(REPORT_DIR)/template_fastcat/channel_summary.tsv: $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv
+	test -s $@
+
 $(REPORT_DIR)/template_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --template --out-dir $(REPORT_DIR)/template_inputs
 
 $(REPORT_DIR)/example_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --out-dir $(REPORT_DIR)/example_inputs
 
-$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/template_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/template_fastcat/histograms \
 		--length-qscore-2d $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv \
 		--time-bin-summary $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv \
+		--channel-summary $(REPORT_DIR)/template_fastcat/channel_summary.tsv \
 		--metadata $(REPORT_DIR)/template_inputs/metadata.json \
 		--versions $(REPORT_DIR)/template_inputs/versions \
 		--params $(REPORT_DIR)/template_inputs/params.json \
 		--wf_version __FASTCAT_VERSION_HTML__
 
-$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/template_fastcat/histograms \
 		--length-qscore-2d $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv \
 		--time-bin-summary $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv \
+		--channel-summary $(REPORT_DIR)/template_fastcat/channel_summary.tsv \
 		--metadata $(REPORT_DIR)/example_inputs/metadata.json \
 		--versions $(REPORT_DIR)/example_inputs/versions \
 		--params $(REPORT_DIR)/example_inputs/params.json \
@@ -548,12 +558,13 @@ $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv: $(FASTCAT_BIN) $(REPORT
 		--output $(REPORT_DIR)/time_preview_fastcat \
 		> /dev/null
 
-$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv $(REPORT_DIR)/time_preview_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/time_preview_fastcat/histograms \
 		--length-qscore-2d $(REPORT_DIR)/time_preview_fastcat/length_qscore_2d.tsv \
 		--time-bin-summary $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv \
+		--channel-summary $(REPORT_DIR)/time_preview_fastcat/channel_summary.tsv \
 		--metadata $(REPORT_DIR)/example_inputs/metadata.json \
 		--versions $(REPORT_DIR)/example_inputs/versions \
 		--params $(REPORT_DIR)/example_inputs/params.json \
@@ -587,7 +598,7 @@ test: test_functional test_unit  ## run all tests
 
 # unit tests use unity framework
 
-UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unit/test_bamcoverage.c test/unit/test_quantile.c test/unit/test_kll.c test/unit/test_length_qscore_2d.c test/unit/test_time_bin.c test/unit/test_kll_dists.c test/unity/unity.c
+UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unit/test_bamcoverage.c test/unit/test_quantile.c test/unit/test_kll.c test/unit/test_length_qscore_2d.c test/unit/test_time_bin.c test/unit/test_channel_summary.c test/unit/test_kll_dists.c test/unity/unity.c
 UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
 
@@ -743,8 +754,8 @@ define TEST_METADATA
 	popd > /dev/null
 endef
 # Expected files to compare (excluding per_file.tsv which only exists at top level)
-FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv length_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist
-BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv length_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
+FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv channel_summary.tsv length_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist
+BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv channel_summary.tsv length_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
 
 
 ###
@@ -757,6 +768,7 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	mkdir -p $(TEST_TMP_DIR)/report_html
 	set -o pipefail; $(DEV_TOOLS) simulate_reads \
 		--n $(REPORT_DEMO_N) \
+		--run-duration-s $(REPORT_DEMO_DURATION_S) \
 		--shape 2.6 \
 		--scale 30000 \
 		--q1 10 \
@@ -772,9 +784,11 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/length_qscore_2d.tsv
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/time_bin_summary.tsv
+	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/channel_summary.tsv
 	grep -q "Fastcat Sequencing QC Report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Read length vs qscore" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Sequencing over time" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	grep -q "Channel occupancy" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "__FASTCAT_" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "fc_patch_fastcat_report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Run configuration" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
@@ -791,6 +805,7 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/fastcat_report.html
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/length_qscore_2d.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/time_bin_summary.tsv
+	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/channel_summary.tsv
 	rm -f $(TEST_TMP_DIR)/report_html/reads.fastq.gz
 
 
@@ -868,7 +883,10 @@ test_fastcat_demultiplex_outputs: $(FASTCAT_BIN)
 		test -f out_demux/barcode0002/length_qscore_2d.tsv && \
 		test -f out_demux/unclassified/time_bin_summary.tsv && \
 		test -f out_demux/barcode0001/time_bin_summary.tsv && \
-		test -f out_demux/barcode0002/time_bin_summary.tsv)
+		test -f out_demux/barcode0002/time_bin_summary.tsv && \
+		test -f out_demux/unclassified/channel_summary.tsv && \
+		test -f out_demux/barcode0001/channel_summary.tsv && \
+		test -f out_demux/barcode0002/channel_summary.tsv)
 test_fastcat_demux: test_fastcat_demultiplex_outputs
 
 
@@ -882,7 +900,8 @@ test_fastcat_demultiplex_split: $(FASTCAT_BIN)
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0002.fastq.gz,demux_split_0002) && \
 		test -f out_split/barcode0001/histograms/length.hist && \
 		test -f out_split/barcode0001/length_qscore_2d.tsv && \
-		test -f out_split/barcode0001/time_bin_summary.tsv)
+		test -f out_split/barcode0001/time_bin_summary.tsv && \
+		test -f out_split/barcode0001/channel_summary.tsv)
 test_fastcat_demux: test_fastcat_demultiplex_split
 
 
@@ -945,6 +964,35 @@ test_fastcat_time_bin_summary: $(FASTCAT_BIN)
 		test -f demux_out/unclassified/time_bin_summary.tsv && \
 		test -f demux_out/barcode0001/time_bin_summary.tsv)
 test_fastcat_output: test_fastcat_time_bin_summary
+
+
+.PHONY: test_fastcat_channel_summary
+test_fastcat_channel_summary: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Fastcat channel_summary output shape and totals)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/channel_summary, \
+		printf "@r1 ch=12 mux=1\nACGT\n+\nIIII\n@r2 ch=12 mux=1\nAAAAAA\n+\nIIIIII\n@r3 ch=12 mux=3\nGGG\n+\nIII\n@r4 ch=0 mux=2\nTT\n+\nII\n@r5 ch=7 mux=0\nCC\n+\nII\n" > tiny.fastq && \
+		$(RUN_FASTCAT) tiny.fastq --output out > /dev/null && \
+		test -f out/channel_summary.tsv && \
+		awk 'BEGIN { FS = OFS = "\t"; rows = 0; reads = 0; bases = 0; } \
+			NR == 1 { if (NF != 4 || $$1 != "channel" || $$4 != "base_count") exit 1; next; } \
+			{ \
+				if (NF != 4) exit 1; \
+				if ($$1 < prev_channel || ($$1 == prev_channel && $$2 < prev_mux)) exit 1; \
+				prev_channel = $$1; prev_mux = $$2; \
+				rows++; reads += $$3; bases += $$4; \
+				if ($$1 == 7 && $$2 == 0 && $$3 != 1) exit 1; \
+				if ($$1 == 7 && $$2 == 0 && $$4 != 2) exit 1; \
+				if ($$1 == 12 && $$2 == 1 && $$3 != 2) exit 1; \
+				if ($$1 == 12 && $$2 == 1 && $$4 != 10) exit 1; \
+				if ($$1 == 12 && $$2 == 3 && $$3 != 1) exit 1; \
+				if ($$1 == 12 && $$2 == 3 && $$4 != 3) exit 1; \
+			} \
+			END { if (rows != 3 || reads != 4 || bases != 15) exit 1; }' out/channel_summary.tsv && \
+		printf "@u ch=1 mux=1\nACGT\n+\nIIII\n@b barcode=barcode0001 ch=2 mux=4\nAAAA\n+\nIIII\n" > demux.fastq && \
+		$(RUN_FASTCAT) demux.fastq --output demux_out --demultiplex > /dev/null && \
+		test -f demux_out/unclassified/channel_summary.tsv && \
+		test -f demux_out/barcode0001/channel_summary.tsv)
+test_fastcat_output: test_fastcat_channel_summary
 
 
 .PHONY: test_fastcat_regression_results

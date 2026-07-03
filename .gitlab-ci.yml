@@ -8,6 +8,16 @@ include:
 
 image: ${UBUNTUIMAGE}:22.04
 
+default:
+    tags:
+        - linux
+        - prod
+        - amd64
+        - x86_64
+        - eks
+        - small
+        - standard
+
 variables:
     GIT_SUBMODULE_STRATEGY: recursive
 
@@ -51,7 +61,7 @@ report_demo:
     extends: .fastcat-test-base
     script:
         - make
-        - REPORT_DEMO_N=50000 make demo
+        - REPORT_DEMO_N=100000 REPORT_DEMO_DURATION_S=172800 make demo
         - rm -f test/tmp/report_html/reads.*fastq*
         - mv test/tmp/report_html/ demo
     artifacts:
