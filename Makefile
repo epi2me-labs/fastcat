@@ -228,8 +228,10 @@ CORE_SRCS := \
 	src/core/fc_quantile.c \
 	src/core/fc_kll.c \
 	src/core/fc_length_qscore_2d.c \
+	src/core/fc_time_bin.c \
 	src/core/fc_stats_engine.c \
 	src/core/fc_fastqcomments.c \
+	src/core/fc_json.c \
 	src/core/fc_report.c \
 	src/core/fc_report_arg_table.c \
 	src/core/fc_report_template_data.c \
@@ -251,9 +253,11 @@ CORE_SRCS := \
 	src/sink/perfile.c \
 	src/sink/counter.c \
 	src/sink/length_qscore_2d.c \
+	src/sink/time_bin.c \
 	src/sink/hist.c \
 	src/sink/coverage.c \
 	src/sink/flagstats.c \
+	src/vendor/parson/parson.c \
 	src/vendor/sdust/sdust.c \
 	src/vendor/sdust/kalloc.c
 
@@ -396,9 +400,9 @@ clean_all: clean clean_htslib clean_zlib  ## clean all build artifacts including
 	rm -rf third_party/libdeflate-* third_party/samtools-*
 
 .PHONY: format format_check
-format:  ## run clang-format on all source files
+format:  ## run clang-format on first-party source files
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
-	@find src -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 $(CLANG_FORMAT) -i \
+	@find src -type f \( -name '*.c' -o -name '*.h' \) ! -path 'src/vendor/*' -print0 | xargs -0 $(CLANG_FORMAT) -i \
 		-style='$(CLANG_FORMAT_STYLE)'
 
 .PHONY: format_staged
@@ -406,7 +410,7 @@ format_staged:  ## run clang-format on staged source files
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
 	@tmp=$$(mktemp); \
 	trap 'rm -f "$$tmp"' EXIT; \
-	git diff --cached --name-only --diff-filter=ACMR -z -- ':(glob)src/**/*.c' ':(glob)src/**/*.h' > "$$tmp"; \
+	git diff --cached --name-only --diff-filter=ACMR -z -- ':(glob)src/**/*.c' ':(glob)src/**/*.h' ':(exclude)src/vendor/**' > "$$tmp"; \
 	if [ ! -s "$$tmp" ]; then \
 		exit 0; \
 	fi; \
@@ -416,7 +420,7 @@ format_staged:  ## run clang-format on staged source files
 .PHONY: format_check
 format_check:
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
-	@find src -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 $(CLANG_FORMAT) --dry-run -Werror \
+	@find src -type f \( -name '*.c' -o -name '*.h' \) ! -path 'src/vendor/*' -print0 | xargs -0 $(CLANG_FORMAT) --dry-run -Werror \
 		-style='$(CLANG_FORMAT_STYLE)'
 
 .PHONY: clang_tidy
@@ -425,7 +429,7 @@ clang_tidy: $(HTSLIB_PATCH_STAMP)  ## run clang-tidy static analysis
 	@echo "Running clang-tidy static analysis..."
 	@failed_files=$$(mktemp); \
 	trap 'rm -f "$$failed_files"' EXIT; \
-		find src -type f -name '*.c' ! -path 'src/vendor/sdust/*' -print0 | \
+		find src -type f -name '*.c' ! -path 'src/vendor/*' -print0 | \
 		xargs -0 -I{} sh -c '$(CLANG_TIDY) --quiet --warnings-as-errors="*" --header-filter="(^|.*/)src/.*" "$$1" -- $(INCLUDES) $(CFLAGS) || echo "$$1" >> "$$2"' sh {} "$$failed_files"; \
 	xargs_status=$$?; \
 	if [ $$xargs_status -ne 0 ]; then \
@@ -450,6 +454,9 @@ scan_build: clean  ## run scan-build static analysis
 		--exclude ./third_party/zlib-ng \
 		--exclude $(CURDIR)/third_party/zlib-ng \
 		--exclude third_party/zlib-ng/ \
+		--exclude ./src/vendor \
+		--exclude $(CURDIR)/src/vendor \
+		--exclude src/vendor/ \
 		make $(FASTCAT_BIN)
 	@echo "Results saved to scan-build-results/"
 
@@ -502,26 +509,66 @@ $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv: $(FASTCAT_BIN) $(REPORT_DIR
 $(REPORT_DIR)/template_fastcat/histograms/length.hist: $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv
 	test -s $@
 
-$(REPORT_DIR)/template_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
-	$(DEV_TOOLS) write_wf_report_inputs --out-dir $(REPORT_DIR)/template_inputs
+$(REPORT_DIR)/template_fastcat/time_bin_summary.tsv: $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv
+	test -s $@
 
-$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/template_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
+	$(DEV_TOOLS) write_wf_report_inputs --template --out-dir $(REPORT_DIR)/template_inputs
+
+$(REPORT_DIR)/example_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
+	$(DEV_TOOLS) write_wf_report_inputs --out-dir $(REPORT_DIR)/example_inputs
+
+$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/template_fastcat/histograms \
 		--length-qscore-2d $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv \
+		--time-bin-summary $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv \
 		--metadata $(REPORT_DIR)/template_inputs/metadata.json \
 		--versions $(REPORT_DIR)/template_inputs/versions \
 		--params $(REPORT_DIR)/template_inputs/params.json \
 		--wf_version __FASTCAT_VERSION_HTML__
 
+$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
+		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
+		--stats $(REPORT_DIR)/template_fastcat/histograms \
+		--length-qscore-2d $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv \
+		--time-bin-summary $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv \
+		--metadata $(REPORT_DIR)/example_inputs/metadata.json \
+		--versions $(REPORT_DIR)/example_inputs/versions \
+		--params $(REPORT_DIR)/example_inputs/params.json \
+		--wf_version dev
+
+$(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv: $(FASTCAT_BIN) $(REPORT_DIR)/template_example.fastq | $(REPORT_DIR)
+	rm -rf $(REPORT_DIR)/time_preview_fastcat
+	$(FASTCAT_BIN) fastq $(REPORT_DIR)/template_example.fastq \
+		--sample __FASTCAT_SAMPLE_ALIAS_HTML__ \
+		--time-bin-size 60 \
+		--output $(REPORT_DIR)/time_preview_fastcat \
+		> /dev/null
+
+$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
+		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
+		--stats $(REPORT_DIR)/time_preview_fastcat/histograms \
+		--length-qscore-2d $(REPORT_DIR)/time_preview_fastcat/length_qscore_2d.tsv \
+		--time-bin-summary $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv \
+		--metadata $(REPORT_DIR)/example_inputs/metadata.json \
+		--versions $(REPORT_DIR)/example_inputs/versions \
+		--params $(REPORT_DIR)/example_inputs/params.json \
+		--wf_version dev
+
+.PHONY: report_time_plots_preview
+report_time_plots_preview: $(REPORT_DIR)/time_plots_report.html  ## build Python-only report preview with time-bin plots
+
 .PHONY: report_template
 report_template: report_vendor_template  ## build the wf-template-derived HTML report template
 
 .PHONY: report_vendor_template
-report_vendor_template: $(REPORT_DIR)/example_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py  ## vendor report template into C assets
+report_vendor_template: $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py  ## vendor report template into C assets
 	$(DEV_TOOLS) vendor_report_template \
-		--input $(REPORT_DIR)/example_wf_report.html \
+		--input $(REPORT_DIR)/template_wf_report.html \
 		--template-output $(REPORT_DIR)/fastcat_report_template.html \
 		--header src/core/fc_report_template_data.h \
 		--source src/core/fc_report_template_data.c \
@@ -540,7 +587,7 @@ test: test_functional test_unit  ## run all tests
 
 # unit tests use unity framework
 
-UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unit/test_bamcoverage.c test/unit/test_quantile.c test/unit/test_kll.c test/unit/test_length_qscore_2d.c test/unit/test_kll_dists.c test/unity/unity.c
+UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unit/test_bamcoverage.c test/unit/test_quantile.c test/unit/test_kll.c test/unit/test_length_qscore_2d.c test/unit/test_time_bin.c test/unit/test_kll_dists.c test/unity/unity.c
 UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
 
@@ -696,8 +743,8 @@ define TEST_METADATA
 	popd > /dev/null
 endef
 # Expected files to compare (excluding per_file.tsv which only exists at top level)
-FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv length_qscore_2d.tsv histograms/length.hist histograms/quality.hist
-BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv length_qscore_2d.tsv histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
+FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv length_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist
+BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv length_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
 
 
 ###
@@ -724,8 +771,12 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/length_qscore_2d.tsv
+	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/time_bin_summary.tsv
 	grep -q "Fastcat Sequencing QC Report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Read length vs qscore" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	grep -q "Sequencing over time" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	! grep -q "__FASTCAT_" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	! grep -q "fc_patch_fastcat_report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Run configuration" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "Software versions" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "Workflow parameters" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
@@ -739,6 +790,7 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/fastcat_report.html
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/length_qscore_2d.tsv
+	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/time_bin_summary.tsv
 	rm -f $(TEST_TMP_DIR)/report_html/reads.fastq.gz
 
 
@@ -813,7 +865,10 @@ test_fastcat_demultiplex_outputs: $(FASTCAT_BIN)
 		test -f out_demux/barcode0001/histograms/quality.hist && \
 		test -f out_demux/unclassified/length_qscore_2d.tsv && \
 		test -f out_demux/barcode0001/length_qscore_2d.tsv && \
-		test -f out_demux/barcode0002/length_qscore_2d.tsv)
+		test -f out_demux/barcode0002/length_qscore_2d.tsv && \
+		test -f out_demux/unclassified/time_bin_summary.tsv && \
+		test -f out_demux/barcode0001/time_bin_summary.tsv && \
+		test -f out_demux/barcode0002/time_bin_summary.tsv)
 test_fastcat_demux: test_fastcat_demultiplex_outputs
 
 
@@ -826,7 +881,8 @@ test_fastcat_demultiplex_split: $(FASTCAT_BIN)
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0001.fastq.gz,demux_split_0001) && \
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0002.fastq.gz,demux_split_0002) && \
 		test -f out_split/barcode0001/histograms/length.hist && \
-		test -f out_split/barcode0001/length_qscore_2d.tsv)
+		test -f out_split/barcode0001/length_qscore_2d.tsv && \
+		test -f out_split/barcode0001/time_bin_summary.tsv)
 test_fastcat_demux: test_fastcat_demultiplex_split
 
 
@@ -857,6 +913,38 @@ test_fastcat_length_qscore_2d: $(FASTCAT_BIN)
 				if (sqrt((sum - 3.0) * (sum - 3.0)) > 1e-3) exit 1; \
 			}' out/length_qscore_2d.tsv)
 test_fastcat_output: test_fastcat_length_qscore_2d
+
+
+.PHONY: test_fastcat_time_bin_summary
+test_fastcat_time_bin_summary: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Fastcat time_bin_summary output shape and totals)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/time_bin_summary, \
+		printf "@r1 start_time=1970-01-01T00:00:00Z\nACGT\n+\nIIII\n@r2 start_time=1970-01-01T00:00:05Z\nAAAAAA\n+\nIIIIII\n@r3 start_time=1970-01-01T00:00:10Z\nGGGGGGGG\n+\n55555555\n" > tiny.fastq && \
+		$(RUN_FASTCAT) tiny.fastq --output out --time-bin-size 10 --time-bin-k 64 > /dev/null && \
+		test -f out/time_bin_summary.tsv && \
+		test $$(wc -l < out/time_bin_summary.tsv) -eq 3 && \
+		awk 'BEGIN { FS = OFS = "\t"; prev_reads = -1; prev_bases = -1; } \
+			NR == 1 { if (NF != 18 || $$1 != "time_bin_start_s" || $$18 != "qscore_q95") exit 1; next; } \
+			{ \
+				if (NF != 18) exit 1; \
+				if ($$1 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$2 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/) exit 1; \
+				if ($$3 < 0 || $$4 < 0 || $$5 < 0 || $$6 < 0) exit 1; \
+				if (prev_reads >= 0 && ($$5 < prev_reads || $$6 < prev_bases)) exit 1; \
+				prev_reads = $$5; prev_bases = $$6; \
+				reads += $$3; bases += $$4; rows++; \
+			} \
+			END { \
+				if (rows != 2) exit 1; \
+				if (reads != 3) exit 1; \
+				if (bases != 18) exit 1; \
+				if (prev_reads != 3) exit 1; \
+				if (prev_bases != 18) exit 1; \
+			}' out/time_bin_summary.tsv && \
+		printf "@u start_time=1970-01-01T00:00:00Z\nACGT\n+\nIIII\n@b barcode=barcode0001 start_time=1970-01-01T00:00:05Z\nAAAA\n+\nIIII\n" > demux.fastq && \
+		$(RUN_FASTCAT) demux.fastq --output demux_out --demultiplex --time-bin-size 10 --time-bin-k 64 > /dev/null && \
+		test -f demux_out/unclassified/time_bin_summary.tsv && \
+		test -f demux_out/barcode0001/time_bin_summary.tsv)
+test_fastcat_output: test_fastcat_time_bin_summary
 
 
 .PHONY: test_fastcat_regression_results

@@ -6,6 +6,7 @@
 
 #include "core/fc_length_qscore_2d.h"
 #include "core/fc_stats_engine.h"
+#include "core/fc_time_bin.h"
 
 typedef struct {
     const char *key;
@@ -23,6 +24,7 @@ typedef struct {
     fc_stats_engine **engines;
     size_t engine_count;
     const fc_length_qscore_2d *length_qscore;
+    const fc_time_bin *time_bin;
 } fc_report_opts;
 
 int fc_write_html_reports(const fc_report_opts *opts);

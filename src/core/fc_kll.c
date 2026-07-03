@@ -180,6 +180,41 @@ void fc_kll_add(fc_kll_sketch *sketch, double value)
     sketch->levels[0].items[sketch->levels[0].count++] = value;
 }
 
+static void add_retained_item_to_level(fc_kll_sketch *sketch, size_t level, double value)
+{
+    ensure_level_exists(sketch, level);
+
+    while (sketch->levels[level].count >= sketch->levels[level].capacity) {
+        compact_level(sketch, level);
+        ensure_level_exists(sketch, level);
+    }
+    sketch->levels[level].items[sketch->levels[level].count++] = value;
+}
+
+void fc_kll_merge(fc_kll_sketch *dst, const fc_kll_sketch *src)
+{
+    if (dst == NULL || src == NULL || src->n == 0) {
+        return;
+    }
+    if (dst == src) {
+        FC_LOG_FATAL("Cannot merge a KLL sketch into itself.");
+    }
+    if (dst->k != src->k) {
+        FC_LOG_FATAL("Cannot merge KLL sketches with different k values (%zu != %zu).", dst->k, src->k);
+    }
+    if (dst->n > SIZE_MAX - src->n) {
+        FC_LOG_FATAL("KLL sketch count overflow during merge.");
+    }
+
+    for (size_t level = 0; level < src->num_levels; level++) {
+        const kll_compactor *comp = &src->levels[level];
+        for (size_t i = 0; i < comp->count; i++) {
+            add_retained_item_to_level(dst, level, comp->items[i]);
+        }
+    }
+    dst->n += src->n;
+}
+
 size_t fc_kll_count(const fc_kll_sketch *sketch)
 {
     return sketch == NULL ? 0 : sketch->n;
@@ -260,17 +295,19 @@ double fc_kll_compute_quantile(const fc_kll_sketch *sketch, double p)
     return result;
 }
 
-fc_kll_quantile_triple fc_kll_compute_quantile_triple(const fc_kll_sketch *sketch)
+fc_kll_quantile_quintuple fc_kll_compute_quantile_quintuple(const fc_kll_sketch *sketch)
 {
-    double p[3] = { 0.25, 0.50, 0.75 };
-    double out[3] = { NAN, NAN, NAN };
-    fc_kll_quantile_triple result;
+    double p[5] = { 0.05, 0.25, 0.50, 0.75, 0.95 };
+    double out[5] = { NAN, NAN, NAN, NAN, NAN };
+    fc_kll_quantile_quintuple result;
 
-    fc_kll_compute_quantiles(sketch, p, 3, out);
+    fc_kll_compute_quantiles(sketch, p, 5, out);
 
-    result.q25 = out[0];
-    result.q50 = out[1];
-    result.q75 = out[2];
+    result.q05 = out[0];
+    result.q25 = out[1];
+    result.q50 = out[2];
+    result.q75 = out[3];
+    result.q95 = out[4];
 
     return result;
 }

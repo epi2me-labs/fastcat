@@ -196,7 +196,17 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .qgrid_points = args->length_qscore_qgrid,
         .smoothing_points = args->length_qscore_qsmooth
     };
-    writer = fc_writer_create(args->demultiplex, &stats_cfg, &length_qscore_cfg);
+    fc_time_bin_config time_bin_cfg = {
+        .bin_size_s = args->time_bin_size_s,
+        .kll_k = args->time_bin_k
+    };
+    fc_writer_config writer_cfg = {
+        .use_barcodes = args->demultiplex,
+        .stats = &stats_cfg,
+        .length_qscore = &length_qscore_cfg,
+        .time_bin = &time_bin_cfg
+    };
+    writer = fc_writer_create(&writer_cfg);
     if (!writer) {
         status = EXIT_FAILURE;
         goto cleanup;
@@ -234,6 +244,15 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .model = writer->length_qscore
     };
     fc_writer_add_sink(writer, fc_length_qscore_2d_sink_create(&lq2d_opts));
+
+    // time-binned summaries for yield and boxplot-style temporal QC
+    fc_time_bin_sink_opts time_bin_opts = {
+        .output_root = args->output_dir,
+        .use_barcodes = args->demultiplex,
+        .barcode_count = writer->barcode_count,
+        .model = writer->time_bin
+    };
+    fc_writer_add_sink(writer, fc_time_bin_sink_create(&time_bin_opts));
 
     // alignment specific flags/statistics (BAMSTATS only)
     if (program == FC_PROGRAM_BAMSTATS) {
@@ -347,7 +366,8 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .unmapped_override = (program == FC_PROGRAM_FASTCAT),
             .engines = writer->stats_engines,
             .engine_count = writer->stats_engine_count,
-            .length_qscore = writer->length_qscore
+            .length_qscore = writer->length_qscore,
+            .time_bin = writer->time_bin
         };
         if (fc_write_html_reports(&report_opts) != 0) {
             hard_error = true;

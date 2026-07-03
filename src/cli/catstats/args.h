@@ -25,6 +25,8 @@ typedef struct {
     size_t length_qscore_k;
     size_t length_qscore_qgrid;
     size_t length_qscore_qsmooth;
+    double time_bin_size_s;
+    size_t time_bin_k;
 
     // common filtering
     size_t min_length;

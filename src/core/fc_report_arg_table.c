@@ -153,6 +153,8 @@ fc_report_arg_table fc_report_arg_table_from_catstats(
         config_add_str(&builder, "tag filter value", NULL);
     }
     config_add_bool(&builder, "force quality recalculation", args->force_recalc_qual);
+    config_add_strf(&builder, "time bin size seconds", "%.10g", args->time_bin_size_s);
+    config_add_strf(&builder, "time bin sketch size", "%zu", args->time_bin_k);
 
     if (program == FC_PROGRAM_FASTCAT) {
         char *input_paths = join_string_values((const char *const *)args->input_paths.paths, args->input_paths.n_paths);

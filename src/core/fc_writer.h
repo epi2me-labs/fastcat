@@ -6,6 +6,7 @@
 #include "core/fc_iter.h"
 #include "core/fc_length_qscore_2d.h"
 #include "core/fc_stats_engine.h"
+#include "core/fc_time_bin.h"
 
 // NOTE: The fc_writer, fc_sink, and fc_stats_engine interfaces are designed
 // for single-threaded record processing only. They are NOT thread-safe.
@@ -40,6 +41,13 @@ typedef struct {
 } fc_stats_engine_config;
 
 typedef struct {
+    bool use_barcodes;
+    const fc_stats_engine_config *stats;
+    const fc_length_qscore_2d_config *length_qscore;
+    const fc_time_bin_config *time_bin;
+} fc_writer_config;
+
+typedef struct {
     fc_sink *sinks;
     size_t sink_count;
     size_t sink_capacity;
@@ -51,12 +59,10 @@ typedef struct {
     size_t stats_engine_count;
     fc_stats_engine_config stats_cfg;
     fc_length_qscore_2d *length_qscore;
+    fc_time_bin *time_bin;
 } fc_writer;
 
-fc_writer *fc_writer_create(
-    bool use_barcodes,
-    const fc_stats_engine_config *stats_cfg,
-    const fc_length_qscore_2d_config *length_qscore_cfg);
+fc_writer *fc_writer_create(const fc_writer_config *cfg);
 void fc_writer_add_sink(fc_writer *writer, fc_sink sink);
 
 void fc_writer_begin_file(fc_writer *writer, const char *fname);

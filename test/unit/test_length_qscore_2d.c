@@ -114,16 +114,16 @@ static void test_length_qscore_barcode_state_is_isolated(void)
     fc_length_qscore_2d *model = create_model(3, 1);
     TEST_ASSERT_NOT_NULL(model);
 
-    TEST_ASSERT_FALSE(fc_length_qscore_2d_active(model, 0));
-    TEST_ASSERT_FALSE(fc_length_qscore_2d_active(model, 1));
-    TEST_ASSERT_FALSE(fc_length_qscore_2d_active(model, 3));
+    TEST_ASSERT_FALSE(fc_length_qscore_2d_seen(model, 0));
+    TEST_ASSERT_FALSE(fc_length_qscore_2d_seen(model, 1));
+    TEST_ASSERT_FALSE(fc_length_qscore_2d_seen(model, 3));
 
     fc_length_qscore_2d_add_read(model, 1, 100.0, 12.0f);
 
-    TEST_ASSERT_FALSE(fc_length_qscore_2d_active(model, 0));
-    TEST_ASSERT_TRUE(fc_length_qscore_2d_active(model, 1));
-    TEST_ASSERT_FALSE(fc_length_qscore_2d_active(model, 2));
-    TEST_ASSERT_FALSE(fc_length_qscore_2d_active(model, 3));
+    TEST_ASSERT_FALSE(fc_length_qscore_2d_seen(model, 0));
+    TEST_ASSERT_TRUE(fc_length_qscore_2d_seen(model, 1));
+    TEST_ASSERT_FALSE(fc_length_qscore_2d_seen(model, 2));
+    TEST_ASSERT_FALSE(fc_length_qscore_2d_seen(model, 3));
 
     fc_length_qscore_2d_matrix matrix0 = { 0 };
     fc_length_qscore_2d_matrix matrix1 = { 0 };

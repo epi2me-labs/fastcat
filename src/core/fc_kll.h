@@ -15,12 +15,14 @@
 
 typedef struct fc_kll_sketch fc_kll_sketch;
 
-// Quantile triple (Q25, Q50, Q75) for distribution summary
+// Quantile quintuple (Q05, Q25, Q50, Q75, Q95) for distribution summary
 typedef struct {
+    double q05;
     double q25;
     double q50;
     double q75;
-} fc_kll_quantile_triple;
+    double q95;
+} fc_kll_quantile_quintuple;
 
 // Density estimate with explicit support/value arrays.
 // support[i] is the i-th support location.
@@ -40,6 +42,9 @@ fc_kll_sketch *fc_kll_create(size_t k);
 // Add a value to the sketch
 void fc_kll_add(fc_kll_sketch *sketch, double value);
 
+// Merge another sketch into this one. Sketches must use the same k.
+void fc_kll_merge(fc_kll_sketch *dst, const fc_kll_sketch *src);
+
 // Compute one or more quantiles from sketch
 // sketch: KLL sketch to query
 // ps: array of quantile values (each in [0, 1])
@@ -52,9 +57,9 @@ int fc_kll_compute_quantiles(const fc_kll_sketch *sketch, const double *ps, size
 // Returns: interpolated quantile value, or NAN if sketch is empty or p is invalid
 double fc_kll_compute_quantile(const fc_kll_sketch *sketch, double p);
 
-// Convenience wrapper: compute Q25/Q50/Q75 in one pass
-// Returns: quantile triple, or NAN values if sketch is empty
-fc_kll_quantile_triple fc_kll_compute_quantile_triple(const fc_kll_sketch *sketch);
+// Convenience wrapper: compute Q05/Q25/Q50/Q75/Q95 in one pass
+// Returns: quantile quintuple, or NAN values if sketch is empty
+fc_kll_quantile_quintuple fc_kll_compute_quantile_quintuple(const fc_kll_sketch *sketch);
 
 // Compute density from a uniform quantile-probability grid.
 // grid_points controls resolution in probability space (must be >= 2).
