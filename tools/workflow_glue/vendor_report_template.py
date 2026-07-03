@@ -2,139 +2,17 @@
 
 import argparse
 import gzip
+import json
 from pathlib import Path
 import re
 
 
-# ezcharts emits a complete static Bokeh document with example plot data baked
-# into the JSON blob. fastcat keeps that plot/layout JSON and swaps only the
-# data sources at report-open time, avoiding surgery on Bokeh internals during
-# the C runtime. This patch function is injected into the Bokeh embed_document().
-PATCH_FUNCTION = r"""
-        window.fc_fastcat_report_data = __FASTCAT_REPORT_DATA__;
-
-        function fc_fastcat_map(entries) {
-          return {"type": "map", "entries": entries};
-        }
-
-        function fc_fastcat_set_renderer_source(fig, renderer_index, entries) {
-          if (!fig || !fig.attributes || !fig.attributes.renderers || fig.attributes.renderers.length <= renderer_index) {
-            return;
-          }
-          const renderer = fig.attributes.renderers[renderer_index];
-          const source = renderer.attributes && renderer.attributes.data_source;
-          if (source && source.attributes) {
-            source.attributes.data = fc_fastcat_map(entries);
-          }
-        }
-
-        function fc_fastcat_set_source(fig, entries) {
-          fc_fastcat_set_renderer_source(fig, 0, entries);
-        }
-
-        function fc_fastcat_set_subtitle(fig, text) {
-          const above = fig && fig.attributes && fig.attributes.above;
-          if (above && above.length > 0 && above[0].attributes) {
-            above[0].attributes.text = text;
-          }
-        }
-
-        function fc_fastcat_set_color_high(fig, high) {
-          if (!fig || !fig.attributes || !fig.attributes.renderers || fig.attributes.renderers.length === 0) {
-            return;
-          }
-          const renderer = fig.attributes.renderers[0];
-          const glyph = renderer.attributes && renderer.attributes.glyph;
-          const color_mapper = glyph && glyph.attributes && glyph.attributes.color_mapper;
-          const fill = glyph && glyph.attributes && glyph.attributes.fill_color;
-          const mapper = color_mapper || (fill && fill.transform);
-          if (mapper && mapper.attributes) {
-            mapper.attributes.low = 0;
-            mapper.attributes.high = Math.max(1, high || 1);
-          }
-        }
-
-        function fc_fastcat_set_range(range, start, end) {
-          if (!range || !range.attributes) {
-            return;
-          }
-          const low = Number.isFinite(start) ? start : 0;
-          let high = Number.isFinite(end) ? end : low + 1;
-          if (high <= low) {
-            high = low + 1;
-          }
-          range.attributes.start = low;
-          range.attributes.end = high;
-          const bounds = [low, high];
-          range.attributes.bounds = bounds;
-        }
-
-        function fc_fastcat_set_heatmap_ranges(fig, data) {
-          if (!fig || !fig.attributes || !data) {
-            return;
-          }
-          fc_fastcat_set_range(fig.attributes.x_range, data.x, data.x + data.dw);
-          fc_fastcat_set_range(fig.attributes.y_range, data.y, data.y + data.dh);
-        }
-
-        function fc_fastcat_build_heatmap_image(data) {
-          if (!data || !data.image) {
-            return [
-              ["image", []],
-              ["x", []],
-              ["y", []],
-              ["dw", []],
-              ["dh", []],
-            ];
-          }
-
-          return [
-            ["image", [data.image]],
-            ["x", [Number.isFinite(data.x) ? data.x : 0]],
-            ["y", [Number.isFinite(data.y) ? data.y : 0]],
-            ["dw", [Number.isFinite(data.dw) && data.dw > 0 ? data.dw : 1]],
-            ["dh", [Number.isFinite(data.dh) && data.dh > 0 ? data.dh : 1]],
-          ];
-        }
-
-        function fc_patch_fastcat_report(docs, data) {
-          const doc = docs[Object.keys(docs)[0]];
-          if (!doc || !Array.isArray(doc.roots)) {
-            return;
-          }
-          const figures = doc.roots.filter((root) => root && root.type === "object" && root.name === "Figure");
-          if (figures.length < 3) {
-            return;
-          }
-          fc_fastcat_set_source(figures[0], [
-            ["top", data.quality.top],
-            ["left", data.quality.left],
-            ["right", data.quality.right],
-          ]);
-          fc_fastcat_set_subtitle(figures[0], data.quality.subtitle);
-
-          fc_fastcat_set_source(figures[1], [
-            ["top", data.length.top],
-            ["left", data.length.left],
-            ["right", data.length.right],
-          ]);
-          fc_fastcat_set_subtitle(figures[1], data.length.subtitle);
-
-          fc_fastcat_set_source(figures[2], [
-            ["x", data.yield.x],
-            ["y", data.yield.y],
-          ]);
-          fc_fastcat_set_subtitle(figures[2], data.yield.subtitle);
-
-          if (figures.length >= 4 && data.length_qscore) {
-            fc_fastcat_set_renderer_source(
-              figures[3], 0, fc_fastcat_build_heatmap_image(data.length_qscore));
-            fc_fastcat_set_subtitle(figures[3], data.length_qscore.subtitle);
-            fc_fastcat_set_color_high(figures[3], data.length_qscore.color_high);
-            fc_fastcat_set_heatmap_ranges(figures[3], data.length_qscore);
-          }
-        }
-"""
+DOCS_JSON_RE = re.compile(
+    r"const docs_json = '(.*?)';\n        const render_items",
+    flags=re.DOTALL,
+)
+DOCS_JSON_PLACEHOLDER = "__FASTCAT_BOKEH_DOCS_JSON__"
+BOUND_VALUE_SENTINEL = "__FASTCAT_DEADBEEF__"
 
 
 def argparser():
@@ -149,23 +27,197 @@ def argparser():
     return parser
 
 
-def replace_embed_call(html):
-    needle = "        function embed_document(root) {\n"
-    if needle not in html:
-        raise RuntimeError("could not find Bokeh embed_document function")
-    html = html.replace(needle, PATCH_FUNCTION + needle, 1)
+def bokeh_figures(docs):
+    doc = next(iter(docs.values()))
+    return [
+        root for root in doc.get("roots", [])
+        if root.get("type") == "object" and root.get("name") == "Figure"
+    ]
 
-    # patch the Bokeh document immediately before Bokeh embeds it, while the
-    # document is still plain JSON rather than live browser objects
-    old = "        root.Bokeh.embed.embed_items(docs_json, render_items);"
-    new = (
-        "        const fastcat_docs = JSON.parse(docs_json);\n"
-        "        fc_patch_fastcat_report(fastcat_docs, window.fc_fastcat_report_data);\n"
-        "        root.Bokeh.embed.embed_items(JSON.stringify(fastcat_docs), render_items);"
-    )
-    if old not in html:
-        raise RuntimeError("could not find Bokeh embed_items call")
-    return html.replace(old, new, 1)
+
+def embedded_sources(fig):
+    sources = []
+    for renderer in fig.get("attributes", {}).get("renderers", []):
+        source = renderer.get("attributes", {}).get("data_source")
+        if (
+                isinstance(source, dict)
+                and source.get("type") == "object"
+                and source.get("name") == "ColumnDataSource"):
+            sources.append(source)
+    return sources
+
+
+def first_embedded_source(fig):
+    sources = embedded_sources(fig)
+    if sources:
+        return sources[0]
+    raise RuntimeError(f"could not find embedded ColumnDataSource for {fig.get('id')}")
+
+
+def remove_lineplot_marker_renderers(fig):
+    """Drop ezcharts' unconditional lineplot scatter markers from the template."""
+    renderers = fig.get("attributes", {}).get("renderers", [])
+    fig.get("attributes", {})["renderers"] = [
+        renderer for renderer in renderers
+        if renderer.get("attributes", {}).get("glyph", {}).get("name") != "Scatter"
+    ]
+
+
+def add_binding(bindings, name, model, attr):
+    bindings.append({
+        "name": name,
+        "model_id": model["id"],
+        "attr": attr,
+    })
+
+
+def subtitle_model(fig):
+    above = fig.get("attributes", {}).get("above") or []
+    for item in above:
+        if item.get("type") == "object" and item.get("name") == "Title":
+            return item
+    raise RuntimeError(f"could not find subtitle Title for {fig.get('id')}")
+
+
+def numeric_range_model(fig, axis):
+    range_obj = fig.get("attributes", {}).get(f"{axis}_range")
+    if not isinstance(range_obj, dict):
+        raise RuntimeError(f"could not find {axis}_range for {fig.get('id')}")
+    return range_obj
+
+
+def factor_range_model(fig):
+    range_obj = fig.get("attributes", {}).get("x_range")
+    if not isinstance(range_obj, dict) or range_obj.get("name") != "FactorRange":
+        raise RuntimeError(f"could not find FactorRange for {fig.get('id')}")
+    return range_obj
+
+
+def heatmap_color_mapper_model(fig):
+    renderer = fig.get("attributes", {}).get("renderers", [])[0]
+    glyph = renderer.get("attributes", {}).get("glyph", {})
+    attrs = glyph.get("attributes", {})
+    mapper = attrs.get("color_mapper")
+    if not isinstance(mapper, dict):
+        fill = attrs.get("fill_color", {})
+        mapper = fill.get("transform") if isinstance(fill, dict) else None
+    if not isinstance(mapper, dict):
+        raise RuntimeError(f"could not find heatmap color mapper for {fig.get('id')}")
+    return mapper
+
+
+def add_source_binding(bindings, name, fig):
+    add_binding(bindings, f"{name}.source.data", first_embedded_source(fig), "data")
+
+
+def add_subtitle_binding(bindings, name, fig):
+    add_binding(bindings, f"{name}.subtitle.text", subtitle_model(fig), "text")
+
+
+def add_numeric_range_bindings(bindings, name, fig, axis):
+    range_obj = numeric_range_model(fig, axis)
+    add_binding(bindings, f"{name}.{axis}_range.start", range_obj, "start")
+    add_binding(bindings, f"{name}.{axis}_range.end", range_obj, "end")
+    add_binding(bindings, f"{name}.{axis}_range.bounds", range_obj, "bounds")
+
+
+def add_factor_range_binding(bindings, name, fig):
+    add_binding(bindings, f"{name}.x_range.factors", factor_range_model(fig), "factors")
+
+
+def add_heatmap_color_bindings(bindings, name, fig):
+    mapper = heatmap_color_mapper_model(fig)
+    add_binding(bindings, f"{name}.color_mapper.high", mapper, "high")
+
+
+def scrub_bound_values(docs, bindings):
+    """Make runtime-filled Bokeh values obvious if C misses a replacement."""
+    by_id = {}
+
+    def walk(value):
+        if isinstance(value, dict):
+            model_id = value.get("id")
+            if model_id is not None:
+                # Bokeh may include lightweight references and full model objects
+                # with the same id; only the full objects carry attributes
+                if model_id not in by_id or "attributes" in value:
+                    by_id[model_id] = value
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(docs)
+    for binding in bindings:
+        model = by_id.get(binding["model_id"])
+        if model is None:
+            raise RuntimeError(f"could not find model {binding['model_id']}")
+        attrs = model.get("attributes")
+        if not isinstance(attrs, dict):
+            raise RuntimeError(f"model {binding['model_id']} has no attributes")
+        attrs[binding["attr"]] = BOUND_VALUE_SENTINEL
+
+
+def extract_bokeh_document(html):
+    match = DOCS_JSON_RE.search(html)
+    if not match:
+        raise RuntimeError("could not find Bokeh docs_json")
+
+    docs = json.loads(match.group(1))
+    figures = bokeh_figures(docs)
+    if len(figures) < 8:
+        raise RuntimeError(f"expected at least 8 Bokeh figures, found {len(figures)}")
+
+    bindings = []
+
+    add_source_binding(bindings, "quality", figures[0])
+    add_subtitle_binding(bindings, "quality", figures[0])
+    add_numeric_range_bindings(bindings, "quality", figures[0], "x")
+    add_numeric_range_bindings(bindings, "quality", figures[0], "y")
+
+    add_source_binding(bindings, "length", figures[1])
+    add_subtitle_binding(bindings, "length", figures[1])
+    add_numeric_range_bindings(bindings, "length", figures[1], "x")
+    add_numeric_range_bindings(bindings, "length", figures[1], "y")
+
+    add_source_binding(bindings, "yield", figures[2])
+    add_subtitle_binding(bindings, "yield", figures[2])
+    add_numeric_range_bindings(bindings, "yield", figures[2], "x")
+    add_numeric_range_bindings(bindings, "yield", figures[2], "y")
+
+    add_source_binding(bindings, "length_qscore", figures[3])
+    add_subtitle_binding(bindings, "length_qscore", figures[3])
+    add_heatmap_color_bindings(bindings, "length_qscore", figures[3])
+    add_numeric_range_bindings(bindings, "length_qscore", figures[3], "x")
+    add_numeric_range_bindings(bindings, "length_qscore", figures[3], "y")
+
+    # ezcharts lineplot emits Scatter renderers even when markers are disabled
+    # remove them here so runtime C only has to replace real plot data
+    remove_lineplot_marker_renderers(figures[4])
+    remove_lineplot_marker_renderers(figures[5])
+
+    add_source_binding(bindings, "time_yield", figures[4])
+    add_numeric_range_bindings(bindings, "time_yield", figures[4], "x")
+    add_numeric_range_bindings(bindings, "time_yield", figures[4], "y")
+
+    add_source_binding(bindings, "time_reads", figures[5])
+    add_numeric_range_bindings(bindings, "time_reads", figures[5], "x")
+    add_numeric_range_bindings(bindings, "time_reads", figures[5], "y")
+
+    add_source_binding(bindings, "time_length", figures[6])
+    add_factor_range_binding(bindings, "time_length", figures[6])
+    add_numeric_range_bindings(bindings, "time_length", figures[6], "y")
+
+    add_source_binding(bindings, "time_qscore", figures[7])
+    add_factor_range_binding(bindings, "time_qscore", figures[7])
+    add_numeric_range_bindings(bindings, "time_qscore", figures[7], "y")
+
+    scrub_bound_values(docs, bindings)
+    docs_json = json.dumps(docs, separators=(",", ":"))
+    assignment = f"const docs_json = {DOCS_JSON_PLACEHOLDER};\n        const render_items"
+    html = html[:match.start()] + assignment + html[match.end():]
+    return html, docs_json, bindings
 
 
 def remove_tag_block_containing(html, tag, marker):
@@ -240,10 +292,35 @@ def bytes_to_c_array(data, width=16):
     return ",\n".join(lines)
 
 
-def emit_c_assets(html, header_path, source_path, symbol):
+def c_string(text):
+    return json.dumps(text)
+
+
+def emit_bindings(bindings, symbol):
+    lines = [
+        f"const fc_report_template_binding {symbol}_bindings[] = {{",
+    ]
+    for binding in bindings:
+        lines.append(
+            "    { "
+            f"{c_string(binding['name'])}, "
+            f"{c_string(binding['model_id'])}, "
+            f"{c_string(binding['attr'])} "
+            "},")
+    lines.append("};")
+    lines.append("")
+    lines.append(f"const size_t {symbol}_binding_count = {len(bindings)};")
+    return "\n".join(lines)
+
+
+def emit_c_assets(html, docs_json, bindings, header_path, source_path, symbol):
     raw = html.encode("utf-8")
     compressed = gzip.compress(raw, compresslevel=9, mtime=0)
     array_payload = bytes_to_c_array(compressed)
+
+    docs_raw = docs_json.encode("utf-8")
+    docs_compressed = gzip.compress(docs_raw, compresslevel=9, mtime=0)
+    docs_array_payload = bytes_to_c_array(docs_compressed)
 
     guard = f"{symbol.upper()}_DATA_H"
     header_text = f"""#ifndef {guard}
@@ -251,9 +328,22 @@ def emit_c_assets(html, header_path, source_path, symbol):
 
 #include <stddef.h>
 
+typedef struct {{
+    const char *name;
+    const char *model_id;
+    const char *attr;
+}} fc_report_template_binding;
+
 extern const unsigned char {symbol}_gz[];
 extern const size_t {symbol}_gz_len;
 extern const size_t {symbol}_len;
+
+extern const unsigned char {symbol}_docs_json_gz[];
+extern const size_t {symbol}_docs_json_gz_len;
+extern const size_t {symbol}_docs_json_len;
+
+extern const fc_report_template_binding {symbol}_bindings[];
+extern const size_t {symbol}_binding_count;
 
 #endif
 """
@@ -269,9 +359,17 @@ extern const size_t {symbol}_len;
 
 const size_t {symbol}_gz_len = {len(compressed)};
 const size_t {symbol}_len = {len(raw)};
+const size_t {symbol}_docs_json_gz_len = {len(docs_compressed)};
+const size_t {symbol}_docs_json_len = {len(docs_raw)};
+
+{emit_bindings(bindings, symbol)}
 
 const unsigned char {symbol}_gz[] = {{
 {array_payload}
+}};
+
+const unsigned char {symbol}_docs_json_gz[] = {{
+{docs_array_payload}
 }};
 """
 
@@ -286,12 +384,12 @@ const unsigned char {symbol}_gz[] = {{
 def main(args):
     html = Path(args.input).read_text(encoding="utf-8")
     html = apply_fastcat_template_wording(html)
-    html = replace_embed_call(html)
+    html, docs_json, bindings = extract_bokeh_document(html)
 
     if args.template_output:
         template_path = Path(args.template_output)
         template_path.parent.mkdir(parents=True, exist_ok=True)
         template_path.write_text(html, encoding="utf-8")
 
-    emit_c_assets(html, Path(args.header), Path(args.source), args.symbol)
+    emit_c_assets(html, docs_json, bindings, Path(args.header), Path(args.source), args.symbol)
     return 0

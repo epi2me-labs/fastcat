@@ -38,7 +38,7 @@ void fc_length_qscore_2d_add_read(
     double length,
     float mean_q);
 
-bool fc_length_qscore_2d_active(const fc_length_qscore_2d *model, size_t barcode);
+bool fc_length_qscore_2d_seen(const fc_length_qscore_2d *model, size_t barcode);
 
 int fc_length_qscore_2d_materialize(
     const fc_length_qscore_2d *model,

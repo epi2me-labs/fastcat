@@ -1,6 +1,7 @@
 #include "cli/catstats/args.h"
 
 #include <argp.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +9,7 @@
 #include <strings.h>
 
 #include "core/fc_log.h"
+#include "core/fc_time_bin.h"
 #include "version.h"
 
 const char *argp_program_bug_address = "support@nanoporetech.com";
@@ -39,6 +41,8 @@ enum {
     KEY_LENGTH_QSCORE_K,
     KEY_LENGTH_QSCORE_QGRID,
     KEY_LENGTH_QSCORE_QSMOOTH,
+    KEY_TIME_BIN_SIZE,
+    KEY_TIME_BIN_K,
     KEY_HTML_REPORT
 };
 
@@ -117,6 +121,12 @@ static struct argp_option fastcat_options[] = {
     { "length-qscore-qsmooth", KEY_LENGTH_QSCORE_QSMOOTH, "W", 0,
         "Odd moving-average window over quantile slopes (higher => smoother/less spiky, but flatter peaks; default: 5).", 30 },
 
+    { 0, 0, 0, 0, "Time Summary Options: controls time_bin_summary.tsv resolution and quantile accuracy.", 35 },
+    { "time-bin-size", KEY_TIME_BIN_SIZE, "SECONDS", 0,
+        "Width of each time bin in seconds (higher => coarser time plots, lower => more rows; default: 3600).", 35 },
+    { "time-bin-k", KEY_TIME_BIN_K, "K", 0,
+        "Sketch size for per-bin length/qscore quantiles (higher => more memory, less sketch noise; default: 200).", 35 },
+
     { 0, 0, 0, 0, "Logging options:", 40 },
     { "log-level", KEY_LOG_LEVEL, "LEVEL", 0,
         "Log level: error, warn, info, debug (default: info).", 40 },
@@ -177,6 +187,12 @@ static struct argp_option bam_options[] = {
     { "length-qscore-qsmooth", KEY_LENGTH_QSCORE_QSMOOTH, "W", 0,
         "Odd moving-average window over quantile slopes (higher => smoother/less spiky, but flatter peaks; default: 5).", 30 },
 
+    { 0, 0, 0, 0, "Time Summary Options: controls time_bin_summary.tsv resolution and quantile accuracy.", 35 },
+    { "time-bin-size", KEY_TIME_BIN_SIZE, "SECONDS", 0,
+        "Width of each time bin in seconds (higher => coarser time plots, lower => more rows; default: 3600).", 35 },
+    { "time-bin-k", KEY_TIME_BIN_K, "K", 0,
+        "Sketch size for per-bin length/qscore quantiles (higher => more memory, less sketch noise; default: 200).", 35 },
+
     { 0, 0, 0, 0, "Coverage calculation options:", 40 },
     { "coverage", KEY_COVERAGE, 0, 0, "Enable coverage calculations.", 40 },
     { "coverage-beds", KEY_COVERAGE_BEDS, "BEDFILE ...", 0,
@@ -222,6 +238,8 @@ static fc_catstats_args default_args(void)
     args.length_qscore_k = 400;
     args.length_qscore_qgrid = 257;
     args.length_qscore_qsmooth = 5;
+    args.time_bin_size_s = FC_TIME_BIN_DEFAULT_SIZE_S;
+    args.time_bin_k = FC_TIME_BIN_DEFAULT_K;
 
     args.min_length = 0;
     args.max_length = (size_t)-1;
@@ -335,6 +353,24 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             argp_error(state, "--length-qscore-qsmooth must be odd and >= 1.");
         }
         arguments->length_qscore_qsmooth = size_value;
+        break;
+    case KEY_TIME_BIN_SIZE:
+        if (!fc_parse_double_strict(arg, &double_value)) {
+            argp_error(state, "Invalid --time-bin-size value: '%s'.", arg);
+        }
+        if (!isfinite(double_value) || double_value <= 0.0) {
+            argp_error(state, "--time-bin-size must be positive.");
+        }
+        arguments->time_bin_size_s = double_value;
+        break;
+    case KEY_TIME_BIN_K:
+        if (!fc_parse_size_strict(arg, &size_value)) {
+            argp_error(state, "Invalid --time-bin-k value: '%s'.", arg);
+        }
+        if (size_value < 8) {
+            argp_error(state, "--time-bin-k must be >= 8.");
+        }
+        arguments->time_bin_k = size_value;
         break;
     case 'c':
         if (!fc_parse_size_strict(arg, &size_value)) {

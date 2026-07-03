@@ -113,6 +113,30 @@ def iso8601_with_seconds(base, seconds):
     return (base + dt.timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def timestamp_duration_seconds(args):
+    if args.run_duration_s is not None:
+        return args.run_duration_s
+    if args.n <= 1:
+        return 0.0
+    return float(args.n - 1) * float(args.seconds_step)
+
+
+def sample_timestamp_offset_seconds(rng, args, read_index):
+    if args.time_profile == "linear":
+        if read_index <= 1:
+            return 0.0
+        return float(read_index - 1) * float(args.seconds_step)
+
+    duration = timestamp_duration_seconds(args)
+    if duration <= 0.0:
+        return 0.0
+
+    u = rng.random()
+    tau = duration * args.time_tau_fraction
+    cutoff = 1.0 - math.exp(-duration / tau)
+    return -tau * math.log1p(-u * cutoff)
+
+
 def argparser():
     p = argparse.ArgumentParser(
         description="Stream synthetic FASTQ with gamma lengths and bimodal mean-q; emits qs:f tag.",
@@ -148,7 +172,18 @@ def argparser():
     metadata.add_argument("--id-prefix", default="simread", help="Read ID prefix (default: simread)")
     metadata.add_argument("--channels", type=int, default=512, help="Channel range 1..N (default: 512)")
     metadata.add_argument("--start-time", default="2026-01-01T00:00:00Z", help="Base start_time tag (default: 2026-01-01T00:00:00Z)")
-    metadata.add_argument("--seconds-step", type=int, default=1, help="Seconds increment between read start_time values (default: 1)")
+    metadata.add_argument(
+        "--time-profile", choices=["saturating", "linear"], default="saturating",
+        help="Timestamp spacing profile (default: saturating)")
+    metadata.add_argument(
+        "--seconds-step", type=int, default=1,
+        help="Linear timestamp step, and default run-duration basis for saturating profile (default: 1)")
+    metadata.add_argument(
+        "--run-duration-s", type=float, default=None,
+        help="Final timestamp offset for saturating profile; defaults to (n - 1) * seconds-step")
+    metadata.add_argument(
+        "--time-tau-fraction", type=float, default=0.2,
+        help="Truncated-exponential timestamp time constant as a fraction of run duration (default: 0.2)")
     metadata.add_argument("--duplex-rate", type=float, default=0.0, help="Fraction tagged as duplex via dx:i:1 (default: 0)")
 
     output = p.add_argument_group("output")
@@ -175,6 +210,12 @@ def validate_args(p, args):
         p.error("--channels must be > 0")
     if args.seconds_step < 0:
         p.error("--seconds-step must be >= 0")
+    if args.run_duration_s is not None and (
+        not math.isfinite(args.run_duration_s) or args.run_duration_s < 0.0
+    ):
+        p.error("--run-duration-s must be finite and >= 0")
+    if not math.isfinite(args.time_tau_fraction) or args.time_tau_fraction <= 0.0:
+        p.error("--time-tau-fraction must be finite and > 0")
     if not (0.0 <= args.duplex_rate <= 1.0):
         p.error("--duplex-rate must be in [0,1]")
     if args.progress_every < 0:
@@ -203,6 +244,7 @@ def validate_args(p, args):
 def main(args):
     validate_args(argparser(), args)
     rng = random.Random(args.seed)
+    time_rng = random.Random(args.seed + 1_000_003)
 
     out = sys.stdout
     err = sys.stderr
@@ -211,6 +253,7 @@ def main(args):
     qpeak1 = 0
     qpeak2 = 0
     duplex_n = 0
+    max_time_s = 0.0
     barcode_counts = {name: 0 for name, _ in args.barcode_mix}
 
     for i in range(1, args.n + 1):
@@ -243,7 +286,10 @@ def main(args):
         qual = qchar * length
 
         # Keep tags SAM-like so fastcat ingest reads them as BAM aux fields directly.
-        st = iso8601_with_seconds(args.start_dt, (i - 1) * args.seconds_step)
+        time_s = sample_timestamp_offset_seconds(time_rng, args, i)
+        if time_s > max_time_s:
+            max_time_s = time_s
+        st = iso8601_with_seconds(args.start_dt, time_s)
         rg = f"{args.runid}_{args.model}"
         if barcode and barcode != "unclassified":
             rg = f"{rg}_{barcode}"
@@ -267,13 +313,16 @@ def main(args):
     if stats.count > 0:
         mean_len = stats.sum_len / stats.count
         mean_q = stats.sum_q / stats.count
+        duration_s = timestamp_duration_seconds(args)
     else:
         mean_len = 0.0
         mean_q = 0.0
+        duration_s = 0.0
         stats.min_len = 0
     err.write(
         "[simulate-reads] "
         f"n={stats.count} seed={args.seed} "
+        f"time_profile={args.time_profile} duration_s={duration_s:.1f} max_time_s={max_time_s:.1f} "
         f"len(min/mean/max)={stats.min_len}/{mean_len:.1f}/{stats.max_len} "
         f"q_mean={mean_q:.3f} qpeak1={qpeak1} qpeak2={qpeak2} duplex={duplex_n}\n"
     )

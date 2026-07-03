@@ -14,7 +14,7 @@ typedef struct {
     fc_kll_sketch *global_length;
     fc_kll_sketch *qscore_lengths[FC_LQ2D_QSCORE_BINS];
     size_t qscore_counts[FC_LQ2D_QSCORE_BINS];
-    bool active;
+    bool seen;
 } fc_lq2d_barcode_state;
 
 struct fc_length_qscore_2d {
@@ -431,15 +431,15 @@ void fc_length_qscore_2d_add_read(
     }
     fc_kll_add(bc->qscore_lengths[qbin], length);
     bc->qscore_counts[qbin]++;
-    bc->active = true;
+    bc->seen = true;
 }
 
-bool fc_length_qscore_2d_active(const fc_length_qscore_2d *model, size_t barcode)
+bool fc_length_qscore_2d_seen(const fc_length_qscore_2d *model, size_t barcode)
 {
     if (!model || barcode >= model->barcode_count || !model->barcode_states[barcode]) {
         return false;
     }
-    return model->barcode_states[barcode]->active;
+    return model->barcode_states[barcode]->seen;
 }
 
 int fc_length_qscore_2d_materialize(

@@ -16,6 +16,13 @@ def argparser():
         description="write report scaffold inputs",
         add_help=False)
     parser.add_argument("--out-dir", required=True, help="output input directory")
+    parser.add_argument(
+        "--template", action="store_true",
+        help="write placeholder values used when vendoring the report template")
+    parser.add_argument("--alias", default="Synthetic reads", help="sample alias")
+    parser.add_argument("--sample-type", default="synthetic", help="sample type")
+    parser.add_argument("--barcode", default="unclassified", help="sample barcode")
+    parser.add_argument("--version", default="dev", help="fastcat/report version")
     return parser
 
 
@@ -24,15 +31,20 @@ def main(args):
     versions_dir = out_dir / "versions"
     versions_dir.mkdir(parents=True, exist_ok=True)
 
+    alias = TEMPLATE_ALIAS if args.template else args.alias
+    sample_type = TEMPLATE_TYPE if args.template else args.sample_type
+    barcode = TEMPLATE_BARCODE if args.template else args.barcode
+    version = TEMPLATE_VERSION if args.template else args.version
+
     metadata = [{
-        "alias": TEMPLATE_ALIAS,
-        "type": TEMPLATE_TYPE,
-        "barcode": TEMPLATE_BARCODE,
+        "alias": alias,
+        "type": sample_type,
+        "barcode": barcode,
         "has_stats": True,
     }]
     params = {
         "input": "synthetic",
-        "report_template": True,
+        "report_template": args.template,
     }
 
     (out_dir / "metadata.json").write_text(
@@ -40,8 +52,8 @@ def main(args):
     (out_dir / "params.json").write_text(
         json.dumps(params, indent=2) + "\n", encoding="utf-8")
     (versions_dir / "versions.txt").write_text(
-        f"fastcat,{TEMPLATE_VERSION}\n"
-        f"workflow,{TEMPLATE_VERSION}\n",
+        f"fastcat,{version}\n"
+        f"workflow,{version}\n",
         encoding="utf-8",
     )
     return 0

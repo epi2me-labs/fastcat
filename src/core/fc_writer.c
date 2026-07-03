@@ -7,12 +7,13 @@
 #include "core/fc_filter.h"
 #include "core/fc_log.h"
 
-fc_writer *fc_writer_create(
-    bool use_barcodes,
-    const fc_stats_engine_config *stats_cfg,
-    const fc_length_qscore_2d_config *length_qscore_cfg)
+fc_writer *fc_writer_create(const fc_writer_config *cfg)
 {
     fc_writer *writer = fc_alloc(1, sizeof(*writer), "writer");
+    const fc_stats_engine_config *stats_cfg = cfg ? cfg->stats : NULL;
+    const fc_length_qscore_2d_config *length_qscore_cfg = cfg ? cfg->length_qscore : NULL;
+    const fc_time_bin_config *time_bin_cfg = cfg ? cfg->time_bin : NULL;
+    bool use_barcodes = cfg ? cfg->use_barcodes : false;
 
     writer->use_barcodes = use_barcodes;
     writer->barcode_count = use_barcodes ? FC_MAX_BARCODES : 1;
@@ -42,6 +43,17 @@ fc_writer *fc_writer_create(
             length_qscore_cfg->smoothing_points);
         if (writer->length_qscore == NULL) {
             FC_LOG_ERROR("Failed to create length/qscore 2D model.");
+            fc_writer_destroy(writer);
+            return NULL;
+        }
+    }
+    if (time_bin_cfg != NULL) {
+        writer->time_bin = fc_time_bin_create(
+            writer->barcode_count,
+            time_bin_cfg->bin_size_s,
+            time_bin_cfg->kll_k);
+        if (writer->time_bin == NULL) {
+            FC_LOG_ERROR("Failed to create time-bin model.");
             fc_writer_destroy(writer);
             return NULL;
         }
@@ -117,6 +129,11 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
             read->meta->mean_q);
     }
 
+    if (writer->time_bin != NULL) {
+        size_t barcode = writer->use_barcodes ? ctx.barcode : 0;
+        fc_time_bin_add_read(writer->time_bin, barcode, read);
+    }
+
     for (size_t i = 0; i < writer->sink_count; i++) {
         if (writer->sinks[i].add_read) {
             writer->sinks[i].add_read(writer->sinks[i].ctx, read, &ctx, fname, hdr);
@@ -167,6 +184,7 @@ void fc_writer_destroy(fc_writer *writer)
         free(writer->stats_engines);
     }
     fc_length_qscore_2d_destroy(writer->length_qscore);
+    fc_time_bin_destroy(writer->time_bin);
     free(writer->sinks);
     free(writer);
 }

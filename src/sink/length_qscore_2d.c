@@ -72,13 +72,13 @@ static void lq2d_write_barcode_output(const length_qscore_2d_sink *sink, size_t 
     fc_length_qscore_2d_matrix_destroy(&matrix);
 }
 
-// flush outputs for active barcode states
+// flush outputs for seen barcode states
 static void length_qscore_2d_sink_finish(void *ctx)
 {
     length_qscore_2d_sink *sink = (length_qscore_2d_sink *)ctx;
     if (sink->cfg.use_barcodes) {
         for (size_t b = 0; b < sink->cfg.barcode_count; b++) {
-            if (fc_length_qscore_2d_active(sink->cfg.model, b)) {
+            if (fc_length_qscore_2d_seen(sink->cfg.model, b)) {
                 lq2d_write_barcode_output(sink, b);
             }
         }

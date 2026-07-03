@@ -2,6 +2,7 @@
 import json
 
 from dominate.tags import b, p
+import ezcharts as ezc
 from ezcharts.components import fastcat
 from ezcharts.components.ezchart import EZChart
 from ezcharts.components.reports import labs
@@ -9,6 +10,7 @@ from ezcharts.layout.snippets import Tabs
 from ezcharts.layout.snippets.table import DataTable
 import pandas as pd
 
+from . import bokeh_boxplot
 from . import bokeh_matrix
 from .util import get_main_logger, get_named_logger, wf_parser  # noqa: ABS101
 
@@ -32,6 +34,134 @@ def load_length_qscore_heatmap(path):
         vmax_quantile=0.995,
         cbar_kws={"title": "count"},
         subtitle="Estimated counts")
+
+
+def format_hours(value):
+    """Format a time in hours for compact categorical bin labels."""
+    if abs(value - round(value)) < 1e-9:
+        return str(int(round(value)))
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def load_time_bin_summary(path):
+    """Load fastcat time_bin_summary.tsv and add plotting columns."""
+    df = pd.read_csv(path, sep="\t")
+    numeric_cols = (
+        "time_bin_start_s", "time_bin_end_s", "read_count", "base_count",
+        "cumulative_read_count", "cumulative_base_count",
+        "length_mean", "length_q05", "length_q25", "length_q50",
+        "length_q75", "length_q95",
+        "qscore_mean", "qscore_q05", "qscore_q25", "qscore_q50",
+        "qscore_q75", "qscore_q95")
+    for col in numeric_cols:
+        if col in df:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.sort_values("time_bin_start_s").reset_index(drop=True)
+    df["time_mid_h"] = (
+        df["time_bin_start_s"] + df["time_bin_end_s"]) / 7200.0
+    labels = [
+        f"{format_hours(row.time_bin_start_s / 3600.0)}-"
+        f"{format_hours(row.time_bin_end_s / 3600.0)}"
+        for row in df.itertuples()
+    ]
+    df["time_bin"] = pd.Categorical(labels, categories=labels, ordered=True)
+    df["base_yield_mbp"] = df["base_count"] / 1e6
+    df["cumulative_base_yield_gbp"] = df["cumulative_base_count"] / 1e9
+    df["length_mean_kb"] = df["length_mean"] / 1000.0
+    for col in ("q05", "q25", "q50", "q75", "q95"):
+        df[f"length_plot_{col}"] = df[f"length_{col}"] / 1000.0
+        df[f"qscore_plot_{col}"] = df[f"qscore_{col}"]
+    return df
+
+
+def time_lineplot(df, y, ylabel, color="#2f7f6f"):
+    """Create a line plot against elapsed run time in hours."""
+    plot = ezc.lineplot(
+        data=df,
+        x="time_mid_h",
+        y=y,
+        estimator=None,
+        errorbar=None,
+        color=color)
+    plot._fig.xaxis.axis_label = "elapsed time (hours)"
+    plot._fig.yaxis.axis_label = ylabel
+    return plot
+
+
+def quantile_boxplot(df, prefix, ylabel):
+    """Create a box-style plot from KLL-estimated Q05-Q95 values."""
+    x = "time bin (hours)"
+    y = ylabel
+    cols = {
+        "time_bin": x,
+        "read_count": "read_count",
+        f"{prefix}_plot_q05": "q05",
+        f"{prefix}_plot_q25": "q25",
+        f"{prefix}_plot_q50": y,
+        f"{prefix}_plot_q75": "q75",
+        f"{prefix}_plot_q95": "q95",
+    }
+    plot_df = df[list(cols)].rename(columns=cols)
+    return bokeh_boxplot.boxplot(
+        plot_df,
+        x=x,
+        y=y,
+        lower="q05",
+        q1="q25",
+        q2=y,
+        q3="q75",
+        upper="q95",
+        linecolor="#222222",
+        color="#2f7f6f",
+        hover_items=[
+            ("time bin", f"@{{{x}}}"),
+            ("reads", "@read_count{0}"),
+            ("Q05", "@q05{0.00}"),
+            ("Q25", "@q25{0.00}"),
+            ("Q50", f"@{{{y}}}{{0.00}}"),
+            ("Q75", "@q75{0.00}"),
+            ("Q95", "@q95{0.00}"),
+        ])
+
+
+def add_time_bin_plots(path):
+    """Add time-bin plots for one sample to the current report section."""
+    df = load_time_bin_summary(path)
+    if df.empty or df["read_count"].sum() == 0:
+        p("No timestamped reads were available for time-based plots.")
+        return
+
+    tabs = Tabs()
+    with tabs.add_tab("Yield"):
+        p("Cumulative base output through the run.")
+        EZChart(
+            time_lineplot(
+                df, "cumulative_base_yield_gbp",
+                "cumulative base yield (Gbp)"),
+            height="360px")
+    with tabs.add_tab("Reads"):
+        p("Cumulative accepted read output through the run.")
+        EZChart(
+            time_lineplot(
+                df, "cumulative_read_count",
+                "cumulative read count",
+                color="#1f6f9f"),
+            height="360px")
+    with tabs.add_tab("Read length"):
+        p("KLL-estimated read length quartile boxes by time bin.")
+        length_plot = quantile_boxplot(df, "length", "read length (kb)")
+        if length_plot is None:
+            p("No read length quartiles were available.")
+        else:
+            EZChart(length_plot, height="420px")
+    with tabs.add_tab("Qscore"):
+        p("KLL-estimated qscore quartile boxes by time bin.")
+        qscore_plot = quantile_boxplot(df, "qscore", "qscore")
+        if qscore_plot is None:
+            p("No qscore quartiles were available.")
+        else:
+            EZChart(qscore_plot, height="420px")
 
 
 def main(args):
@@ -120,6 +250,20 @@ def main(args):
                     with tabs.add_tab(sample):
                         EZChart(load_length_qscore_heatmap(path), height="650px")
 
+    if args.time_bin_summary:
+        time_samples = samples_with_stats
+        if isinstance(time_samples, str):
+            time_samples = (time_samples,)
+
+        with report.add_section("Sequencing over time", "Sequencing over time"):
+            if len(args.time_bin_summary) == 1:
+                add_time_bin_plots(args.time_bin_summary[0])
+            else:
+                tabs = Tabs()
+                for sample, path in zip(time_samples, args.time_bin_summary):
+                    with tabs.add_tab(sample):
+                        add_time_bin_plots(path)
+
     with report.add_section("Sample Metadata", "Sample Metadata"):
         tabs = Tabs()
         for d in sample_details:
@@ -146,6 +290,9 @@ def argparser():
     parser.add_argument(
         "--length-qscore-2d", nargs="+",
         help="Fastcat length_qscore_2d.tsv files, ordered as per entries in --metadata.")
+    parser.add_argument(
+        "--time-bin-summary", nargs="+",
+        help="Fastcat time_bin_summary.tsv files, ordered as per entries in --metadata.")
     parser.add_argument(
         "--versions", required=True,
         help="directory containing CSVs containing name,version.")

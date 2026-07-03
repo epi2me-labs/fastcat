@@ -20,6 +20,7 @@ made in `fc_writer` and encoded in `fc_read_ctx` for each read.
 - `counter`: writes run-id/basecaller counts per input file.
 - `hist`: writes histogram tables from `fc_stats_engine` instances.
 - `length_qscore_2d`: writes length/qscore heatmap tables from the writer model.
+- `time_bin`: writes time-binned summaries from the writer model.
 - `coverage`: forwards reads to the coverage writer.
 
 ## Example wiring
@@ -39,10 +40,19 @@ fc_length_qscore_2d_config length_qscore_cfg = {
     .smoothing_points = 5
 };
 
-fc_writer *writer = fc_writer_create(
-    /*use_barcodes=*/false,
-    &stats_cfg,
-    &length_qscore_cfg); // pass NULL only if length/qscore heatmap data is not needed
+fc_time_bin_config time_bin_cfg = {
+    .bin_size_s = 3600.0,
+    .kll_k = 200
+};
+
+fc_writer_config writer_cfg = {
+    .use_barcodes = false,
+    .stats = &stats_cfg,
+    .length_qscore = &length_qscore_cfg,
+    .time_bin = &time_bin_cfg
+};
+
+fc_writer *writer = fc_writer_create(&writer_cfg);
 
 fc_output_sink_opts out_opts = {
     .output_root = args.output_dir,   // NULL to stream FASTQ/BAM to stdout

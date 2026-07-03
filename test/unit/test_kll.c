@@ -115,7 +115,7 @@ static void test_infinity_input(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_quantile_triple(void)
+static void test_quantile_quintuple(void)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
@@ -124,32 +124,60 @@ static void test_quantile_triple(void)
         fc_kll_add(sketch, (double)i);
     }
 
-    fc_kll_quantile_triple triple = fc_kll_compute_quantile_triple(sketch);
+    fc_kll_quantile_quintuple quintuple = fc_kll_compute_quantile_quintuple(sketch);
 
     // verify ordering
-    TEST_ASSERT_TRUE(triple.q25 <= triple.q50);
-    TEST_ASSERT_TRUE(triple.q50 <= triple.q75);
+    TEST_ASSERT_TRUE(quintuple.q05 <= quintuple.q25);
+    TEST_ASSERT_TRUE(quintuple.q25 <= quintuple.q50);
+    TEST_ASSERT_TRUE(quintuple.q50 <= quintuple.q75);
+    TEST_ASSERT_TRUE(quintuple.q75 <= quintuple.q95);
 
     // verify rough correctness (exact mode with 100 items)
-    TEST_ASSERT_FLOAT_WITHIN(2.0, 25.0, triple.q25);
-    TEST_ASSERT_FLOAT_WITHIN(2.0, 50.0, triple.q50);
-    TEST_ASSERT_FLOAT_WITHIN(2.0, 75.0, triple.q75);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 5.0, quintuple.q05);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 25.0, quintuple.q25);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 50.0, quintuple.q50);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 75.0, quintuple.q75);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 95.0, quintuple.q95);
 
     fc_kll_destroy(sketch);
 }
 
-static void test_quantile_triple_empty(void)
+static void test_quantile_quintuple_empty(void)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
-    fc_kll_quantile_triple triple = fc_kll_compute_quantile_triple(sketch);
+    fc_kll_quantile_quintuple quintuple = fc_kll_compute_quantile_quintuple(sketch);
 
     // empty sketch should return NaN
-    TEST_ASSERT_TRUE(isnan(triple.q25));
-    TEST_ASSERT_TRUE(isnan(triple.q50));
-    TEST_ASSERT_TRUE(isnan(triple.q75));
+    TEST_ASSERT_TRUE(isnan(quintuple.q05));
+    TEST_ASSERT_TRUE(isnan(quintuple.q25));
+    TEST_ASSERT_TRUE(isnan(quintuple.q50));
+    TEST_ASSERT_TRUE(isnan(quintuple.q75));
+    TEST_ASSERT_TRUE(isnan(quintuple.q95));
 
     fc_kll_destroy(sketch);
+}
+
+static void test_merge_sketches(void)
+{
+    fc_kll_sketch *left = fc_kll_create(200);
+    fc_kll_sketch *right = fc_kll_create(200);
+
+    for (int i = 0; i < 50; i++) {
+        fc_kll_add(left, (double)i);
+    }
+    for (int i = 50; i < 100; i++) {
+        fc_kll_add(right, (double)i);
+    }
+
+    fc_kll_merge(left, right);
+
+    TEST_ASSERT_EQUAL_size_t(100, fc_kll_count(left));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6, 49.5, fc_kll_compute_quantile(left, 0.5));
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 94.05, fc_kll_compute_quantile(left, 0.95));
+
+    fc_kll_destroy(left);
+    fc_kll_destroy(right);
 }
 
 static void test_density_from_quantiles_basic(void)
@@ -273,8 +301,9 @@ void kll_suite(void)
     RUN_TEST(test_quantile_linear_interpolation);
     RUN_TEST(test_nan_input);
     RUN_TEST(test_infinity_input);
-    RUN_TEST(test_quantile_triple);
-    RUN_TEST(test_quantile_triple_empty);
+    RUN_TEST(test_quantile_quintuple);
+    RUN_TEST(test_quantile_quintuple_empty);
+    RUN_TEST(test_merge_sketches);
     RUN_TEST(test_density_from_quantiles_basic);
     RUN_TEST(test_density_from_quantiles_smooth_changes_values);
     RUN_TEST(test_density_from_quantiles_all_equal);
