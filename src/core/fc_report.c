@@ -1057,7 +1057,7 @@ static void update_speed_qscore_plot(
 // time plots
 //
 
-static void format_report_hours(double hours, char *buf, size_t size)
+static void __attribute__((unused)) format_report_hours(double hours, char *buf, size_t size)
 {
     double rounded = round(hours);
     if (fabs(hours - rounded) < 1e-9) {
@@ -1081,7 +1081,7 @@ static void format_report_hours(double hours, char *buf, size_t size)
     }
 }
 
-static void format_time_bin_label(const fc_time_bin_row *row, char *buf, size_t size)
+static void __attribute__((unused)) format_time_bin_label(const fc_time_bin_row *row, char *buf, size_t size)
 {
     char start[32] = { 0 };
     char end[32] = { 0 };
@@ -1211,24 +1211,18 @@ static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *ta
     bokeh_set_range(docs, "time_reads.y_range", 0.0, y_end);
 }
 
-static void update_time_length_box_plot(JSON_Value *docs, const fc_time_bin_table *table)
+static void update_time_length_ribbon_plot(JSON_Value *docs, const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
-    report_column index = bokeh_source_add_array_column(&source, "index");
-    report_column labels = bokeh_source_add_array_column(&source, "time bin (hours)");
+    report_column x = bokeh_source_add_array_column(&source, "elapsed time (hours)");
     report_column read_count = bokeh_source_add_array_column(&source, "read_count");
     report_column q05 = bokeh_source_add_array_column(&source, "q05");
     report_column q25 = bokeh_source_add_array_column(&source, "q25");
     report_column q50 = bokeh_source_add_array_column(&source, "read length (kb)");
     report_column q75 = bokeh_source_add_array_column(&source, "q75");
     report_column q95 = bokeh_source_add_array_column(&source, "q95");
-    report_column mean = bokeh_source_add_array_column(&source, "mean");
-    report_column cap_left = bokeh_source_add_array_column(&source, "cap_left");
-    report_column cap_right = bokeh_source_add_array_column(&source, "cap_right");
-    fc_json_value_t *factors = fc_json_array_value();
-    fc_json_array_t *factors_array = fc_json_get_array(factors);
+    bool seeded_origin = false;
 
-    size_t out_i = 0;
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
         if (!time_box_row_valid(row, true)) {
@@ -1236,62 +1230,56 @@ static void update_time_length_box_plot(JSON_Value *docs, const fc_time_bin_tabl
         }
 
         const fc_time_bin_quantiles *q = &row->length_quantiles;
+        double end_h = row->time_bin_end_s / 3600.0;
         double scaled_q05 = q->q05 / 1000.0;
         double scaled_q25 = q->q25 / 1000.0;
         double scaled_q50 = q->q50 / 1000.0;
         double scaled_q75 = q->q75 / 1000.0;
         double scaled_q95 = q->q95 / 1000.0;
-        double scaled_mean = (isfinite(row->length_mean) ? row->length_mean : q->q50) / 1000.0;
-        char label[64] = { 0 };
-        format_time_bin_label(row, label, sizeof(label));
+        if (!seeded_origin && end_h > 0.0) {
+            fc_json_array_append_number(x.array, 0.0);
+            fc_json_array_append_number(read_count.array, (double)row->read_count);
+            fc_json_array_append_number(q05.array, scaled_q05);
+            fc_json_array_append_number(q25.array, scaled_q25);
+            fc_json_array_append_number(q50.array, scaled_q50);
+            fc_json_array_append_number(q75.array, scaled_q75);
+            fc_json_array_append_number(q95.array, scaled_q95);
+            seeded_origin = true;
+        }
 
-        fc_json_array_append_number(index.array, (double)out_i);
-        fc_json_array_append_string(labels.array, label);
-        fc_json_array_append_string(factors_array, label);
+        fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(read_count.array, (double)row->read_count);
         fc_json_array_append_number(q05.array, scaled_q05);
         fc_json_array_append_number(q25.array, scaled_q25);
         fc_json_array_append_number(q50.array, scaled_q50);
         fc_json_array_append_number(q75.array, scaled_q75);
         fc_json_array_append_number(q95.array, scaled_q95);
-        fc_json_array_append_number(mean.array, scaled_mean);
-
-        fc_json_array_t *left = fc_json_array_append_array(cap_left.array);
-        fc_json_array_append_string(left, label);
-        fc_json_array_append_number(left, -0.15);
-        fc_json_array_t *right = fc_json_array_append_array(cap_right.array);
-        fc_json_array_append_string(right, label);
-        fc_json_array_append_number(right, 0.15);
-
-        out_i++;
     }
 
+    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
     double y_start = 0.0;
     double y_end = 1.0;
     time_box_y_range(table, true, &y_start, &y_end);
+    if (!isfinite(x_end) || x_end <= 0.0) {
+        x_end = 1.0;
+    }
     bokeh_set_value(docs, "time_length.source.data", source.value);
-    bokeh_set_value(docs, "time_length.x_range.factors", factors);
+    bokeh_set_range(docs, "time_length.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_length.y_range", y_start, y_end);
 }
 
-static void update_time_qscore_box_plot(JSON_Value *docs, const fc_time_bin_table *table)
+static void update_time_qscore_ribbon_plot(JSON_Value *docs, const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
-    report_column index = bokeh_source_add_array_column(&source, "index");
-    report_column labels = bokeh_source_add_array_column(&source, "time bin (hours)");
+    report_column x = bokeh_source_add_array_column(&source, "elapsed time (hours)");
     report_column read_count = bokeh_source_add_array_column(&source, "read_count");
     report_column q05 = bokeh_source_add_array_column(&source, "q05");
     report_column q25 = bokeh_source_add_array_column(&source, "q25");
     report_column q50 = bokeh_source_add_array_column(&source, "qscore");
     report_column q75 = bokeh_source_add_array_column(&source, "q75");
     report_column q95 = bokeh_source_add_array_column(&source, "q95");
-    report_column mean = bokeh_source_add_array_column(&source, "mean");
-    report_column cap_left = bokeh_source_add_array_column(&source, "cap_left");
-    report_column cap_right = bokeh_source_add_array_column(&source, "cap_right");
-    fc_json_value_t *factors = fc_json_array_value();
-    fc_json_array_t *factors_array = fc_json_get_array(factors);
+    bool seeded_origin = false;
 
-    size_t out_i = 0;
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
         if (!time_box_row_valid(row, false)) {
@@ -1299,36 +1287,36 @@ static void update_time_qscore_box_plot(JSON_Value *docs, const fc_time_bin_tabl
         }
 
         const fc_time_bin_quantiles *q = &row->qscore_quantiles;
-        double scaled_mean = isfinite(row->qscore_mean) ? row->qscore_mean : q->q50;
-        char label[64] = { 0 };
-        format_time_bin_label(row, label, sizeof(label));
+        double end_h = row->time_bin_end_s / 3600.0;
+        if (!seeded_origin && end_h > 0.0) {
+            fc_json_array_append_number(x.array, 0.0);
+            fc_json_array_append_number(read_count.array, (double)row->read_count);
+            fc_json_array_append_number(q05.array, q->q05);
+            fc_json_array_append_number(q25.array, q->q25);
+            fc_json_array_append_number(q50.array, q->q50);
+            fc_json_array_append_number(q75.array, q->q75);
+            fc_json_array_append_number(q95.array, q->q95);
+            seeded_origin = true;
+        }
 
-        fc_json_array_append_number(index.array, (double)out_i);
-        fc_json_array_append_string(labels.array, label);
-        fc_json_array_append_string(factors_array, label);
+        fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(read_count.array, (double)row->read_count);
         fc_json_array_append_number(q05.array, q->q05);
         fc_json_array_append_number(q25.array, q->q25);
         fc_json_array_append_number(q50.array, q->q50);
         fc_json_array_append_number(q75.array, q->q75);
         fc_json_array_append_number(q95.array, q->q95);
-        fc_json_array_append_number(mean.array, scaled_mean);
-
-        fc_json_array_t *left = fc_json_array_append_array(cap_left.array);
-        fc_json_array_append_string(left, label);
-        fc_json_array_append_number(left, -0.15);
-        fc_json_array_t *right = fc_json_array_append_array(cap_right.array);
-        fc_json_array_append_string(right, label);
-        fc_json_array_append_number(right, 0.15);
-
-        out_i++;
     }
 
+    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
     double y_start = 0.0;
     double y_end = 1.0;
     time_box_y_range(table, false, &y_start, &y_end);
+    if (!isfinite(x_end) || x_end <= 0.0) {
+        x_end = 1.0;
+    }
     bokeh_set_value(docs, "time_qscore.source.data", source.value);
-    bokeh_set_value(docs, "time_qscore.x_range.factors", factors);
+    bokeh_set_range(docs, "time_qscore.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_qscore.y_range", y_start, y_end);
 }
 
@@ -1382,24 +1370,18 @@ static void time_speed_box_y_range(
     }
 }
 
-static void update_time_speed_box_plot(JSON_Value *docs, const fc_time_bin_table *table)
+static void update_time_speed_ribbon_plot(JSON_Value *docs, const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
-    report_column index = bokeh_source_add_array_column(&source, "index");
-    report_column labels = bokeh_source_add_array_column(&source, "time bin (hours)");
+    report_column x = bokeh_source_add_array_column(&source, "elapsed time (hours)");
     report_column read_count = bokeh_source_add_array_column(&source, "read_count");
     report_column q05 = bokeh_source_add_array_column(&source, "q05");
     report_column q25 = bokeh_source_add_array_column(&source, "q25");
     report_column q50 = bokeh_source_add_array_column(&source, "translocation speed (nt/s)");
     report_column q75 = bokeh_source_add_array_column(&source, "q75");
     report_column q95 = bokeh_source_add_array_column(&source, "q95");
-    report_column mean = bokeh_source_add_array_column(&source, "mean");
-    report_column cap_left = bokeh_source_add_array_column(&source, "cap_left");
-    report_column cap_right = bokeh_source_add_array_column(&source, "cap_right");
-    fc_json_value_t *factors = fc_json_array_value();
-    fc_json_array_t *factors_array = fc_json_get_array(factors);
+    bool seeded_origin = false;
 
-    size_t out_i = 0;
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
         if (!time_speed_box_row_valid(row)) {
@@ -1407,38 +1389,36 @@ static void update_time_speed_box_plot(JSON_Value *docs, const fc_time_bin_table
         }
 
         const fc_time_bin_quantiles *q = &row->speed_quantiles;
-        double scaled_mean = isfinite(row->speed_mean)
-            ? row->speed_mean
-            : q->q50;
-        char label[64] = { 0 };
-        format_time_bin_label(row, label, sizeof(label));
+        double end_h = row->time_bin_end_s / 3600.0;
+        if (!seeded_origin && end_h > 0.0) {
+            fc_json_array_append_number(x.array, 0.0);
+            fc_json_array_append_number(read_count.array, (double)row->read_count);
+            fc_json_array_append_number(q05.array, q->q05);
+            fc_json_array_append_number(q25.array, q->q25);
+            fc_json_array_append_number(q50.array, q->q50);
+            fc_json_array_append_number(q75.array, q->q75);
+            fc_json_array_append_number(q95.array, q->q95);
+            seeded_origin = true;
+        }
 
-        fc_json_array_append_number(index.array, (double)out_i);
-        fc_json_array_append_string(labels.array, label);
-        fc_json_array_append_string(factors_array, label);
+        fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(read_count.array, (double)row->read_count);
         fc_json_array_append_number(q05.array, q->q05);
         fc_json_array_append_number(q25.array, q->q25);
         fc_json_array_append_number(q50.array, q->q50);
         fc_json_array_append_number(q75.array, q->q75);
         fc_json_array_append_number(q95.array, q->q95);
-        fc_json_array_append_number(mean.array, scaled_mean);
-
-        fc_json_array_t *left = fc_json_array_append_array(cap_left.array);
-        fc_json_array_append_string(left, label);
-        fc_json_array_append_number(left, -0.15);
-        fc_json_array_t *right = fc_json_array_append_array(cap_right.array);
-        fc_json_array_append_string(right, label);
-        fc_json_array_append_number(right, 0.15);
-
-        out_i++;
     }
 
+    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
     double y_start = 0.0;
     double y_end = 1.0;
     time_speed_box_y_range(table, &y_start, &y_end);
+    if (!isfinite(x_end) || x_end <= 0.0) {
+        x_end = 1.0;
+    }
     bokeh_set_value(docs, "time_speed.source.data", source.value);
-    bokeh_set_value(docs, "time_speed.x_range.factors", factors);
+    bokeh_set_range(docs, "time_speed.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_speed.y_range", y_start, y_end);
 }
 
@@ -1824,9 +1804,9 @@ static JSON_Value *build_report_bokeh_docs(
     update_speed_qscore_plot(docs, speed_qscore, barcode);
     update_time_yield_plot(docs, &time_table);
     update_time_reads_plot(docs, &time_table);
-    update_time_length_box_plot(docs, &time_boxes);
-    update_time_qscore_box_plot(docs, &time_boxes);
-    update_time_speed_box_plot(docs, &time_boxes);
+    update_time_length_ribbon_plot(docs, &time_boxes);
+    update_time_qscore_ribbon_plot(docs, &time_boxes);
+    update_time_speed_ribbon_plot(docs, &time_boxes);
     update_channel_reads_plot(docs, channel_summary, barcode);
     update_channel_bases_plot(docs, channel_summary, barcode);
 
