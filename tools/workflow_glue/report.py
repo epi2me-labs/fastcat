@@ -12,8 +12,8 @@ from ezcharts.layout.snippets.table import DataTable
 import numpy as np
 import pandas as pd
 
-from . import bokeh_boxplot
 from . import bokeh_matrix
+from . import bokeh_ribbon
 from .util import get_main_logger, get_named_logger, wf_parser  # noqa: ABS101
 
 
@@ -96,6 +96,7 @@ def load_time_bin_summary(path):
     df = df.sort_values("time_bin_start_s").reset_index(drop=True)
     df["time_mid_h"] = (
         df["time_bin_start_s"] + df["time_bin_end_s"]) / 7200.0
+    df["time_end_h"] = df["time_bin_end_s"] / 3600.0
     labels = [
         f"{format_hours(row.time_bin_start_s / 3600.0)}-"
         f"{format_hours(row.time_bin_end_s / 3600.0)}"
@@ -224,12 +225,12 @@ def time_lineplot(df, y, ylabel, color="#2f7f6f"):
     return plot
 
 
-def quantile_boxplot(df, prefix, ylabel):
-    """Create a box-style plot from KLL-estimated Q05-Q95 values."""
-    x = "time bin (hours)"
+def quantile_ribbonplot(df, prefix, ylabel):
+    """Create a ribbon plot from KLL-estimated Q05-Q95 values."""
+    x = "elapsed time (hours)"
     y = ylabel
     cols = {
-        "time_bin": x,
+        "time_end_h": x,
         "read_count": "read_count",
         f"{prefix}_plot_q05": "q05",
         f"{prefix}_plot_q25": "q25",
@@ -238,7 +239,11 @@ def quantile_boxplot(df, prefix, ylabel):
         f"{prefix}_plot_q95": "q95",
     }
     plot_df = df[list(cols)].rename(columns=cols)
-    return bokeh_boxplot.boxplot(
+    if not plot_df.empty and plot_df.iloc[0][x] > 0.0:
+        first = plot_df.iloc[[0]].copy()
+        first[x] = 0.0
+        plot_df = pd.concat([first, plot_df], ignore_index=True)
+    return bokeh_ribbon.ribbonplot(
         plot_df,
         x=x,
         y=y,
@@ -248,9 +253,9 @@ def quantile_boxplot(df, prefix, ylabel):
         q3="q75",
         upper="q95",
         linecolor="#222222",
-        color="#2f7f6f",
+        color="#6aa6f8",
         hover_items=[
-            ("time bin", f"@{{{x}}}"),
+            ("time (h)", f"@{{{x}}}{{0.00}}"),
             ("reads", "@read_count{0}"),
             ("Q05", "@q05{0.00}"),
             ("Q25", "@q25{0.00}"),
@@ -284,22 +289,22 @@ def add_time_bin_plots(path):
                 color="#1f6f9f"),
             height="360px")
     with tabs.add_tab("Read length"):
-        p("KLL-estimated read length quartile boxes by time bin.")
-        length_plot = quantile_boxplot(df, "length", "read length (kb)")
+        p("KLL-estimated read length quantile ribbons by time bin.")
+        length_plot = quantile_ribbonplot(df, "length", "read length (kb)")
         if length_plot is None:
             p("No read length quartiles were available.")
         else:
             EZChart(length_plot, height="420px")
     with tabs.add_tab("Qscore"):
-        p("KLL-estimated qscore quartile boxes by time bin.")
-        qscore_plot = quantile_boxplot(df, "qscore", "qscore")
+        p("KLL-estimated qscore quantile ribbons by time bin.")
+        qscore_plot = quantile_ribbonplot(df, "qscore", "qscore")
         if qscore_plot is None:
             p("No qscore quartiles were available.")
         else:
             EZChart(qscore_plot, height="420px")
     with tabs.add_tab("Translocation speed"):
-        p("KLL-estimated translocation speed quartile boxes by time bin.")
-        speed_plot = quantile_boxplot(
+        p("KLL-estimated translocation speed quantile ribbons by time bin.")
+        speed_plot = quantile_ribbonplot(
             df, "speed", "translocation speed (nt/s)")
         if speed_plot is None:
             p("No translocation speed quartiles were available.")

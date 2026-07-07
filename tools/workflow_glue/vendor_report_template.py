@@ -235,15 +235,15 @@ def extract_bokeh_document(html):
     add_numeric_range_bindings(bindings, "time_reads", figures[FIG_TIME_READS], "y")
 
     add_source_binding(bindings, "time_length", figures[FIG_TIME_LENGTH])
-    add_factor_range_binding(bindings, "time_length", figures[FIG_TIME_LENGTH])
+    add_numeric_range_bindings(bindings, "time_length", figures[FIG_TIME_LENGTH], "x")
     add_numeric_range_bindings(bindings, "time_length", figures[FIG_TIME_LENGTH], "y")
 
     add_source_binding(bindings, "time_qscore", figures[FIG_TIME_QSCORE])
-    add_factor_range_binding(bindings, "time_qscore", figures[FIG_TIME_QSCORE])
+    add_numeric_range_bindings(bindings, "time_qscore", figures[FIG_TIME_QSCORE], "x")
     add_numeric_range_bindings(bindings, "time_qscore", figures[FIG_TIME_QSCORE], "y")
 
     add_source_binding(bindings, "time_speed", figures[FIG_TIME_SPEED])
-    add_factor_range_binding(bindings, "time_speed", figures[FIG_TIME_SPEED])
+    add_numeric_range_bindings(bindings, "time_speed", figures[FIG_TIME_SPEED], "x")
     add_numeric_range_bindings(bindings, "time_speed", figures[FIG_TIME_SPEED], "y")
 
     add_source_binding(bindings, "channel_reads", figures[FIG_CHANNEL_READS])
