@@ -1,22 +1,17 @@
 include:
     - project: "epi2melabs/ci-templates"
-      file: "push-github.yaml"
-    - project: "epi2melabs/ci-templates"
-      file: "push-conda.yaml"
-    - project: "epi2melabs/ci-templates"
-      file: "snippets.yaml"
+      file:
+          - "push-github.yaml"
+          - "push-conda.yaml"
+          - "snippets.yaml"
+          - ".eks-tags.yaml"
 
 image: ${UBUNTUIMAGE}:22.04
 
 default:
-    tags:
-        - linux
-        - prod
-        - amd64
-        - x86_64
-        - eks
-        - small
-        - standard
+  tags: !reference [.eks-small-standard-tags, tags]
+
+.parallel-makeflags: &parallel-makeflags 'export MAKEFLAGS="-j$(nproc) --output-sync=target --no-print-directory"'
 
 variables:
     GIT_SUBMODULE_STRATEGY: recursive
@@ -52,7 +47,9 @@ check-changelog:
 
 build_and_test:
     extends: .fastcat-test-base
+    tags: !reference [.eks-large-standard-tags, tags]
     script:
+        - *parallel-makeflags
         - make
         - !reference [.fastcat-test-base, script]
         - BUILD_MODE=valgrind REPORT_DEMO_N=100 make test
@@ -103,9 +100,11 @@ clang_tidy:
 scan_build:
     image: ${UBUNTUIMAGE}:24.04
     stage: test
+    tags: !reference [.eks-large-standard-tags, tags]
     before_script:
         - *prep-image
     script:
+        - *parallel-makeflags
         - BUILD_MODE=debug make scan_build
     artifacts:
         when: always
@@ -115,7 +114,9 @@ scan_build:
 
 sanitize:
     extends: .fastcat-test-base
+    tags: !reference [.eks-large-standard-tags, tags]
     script:
+        - *parallel-makeflags
         - BUILD_MODE=sanitize make
         - !reference [.fastcat-test-base, script]
         - BUILD_MODE=sanitize make test

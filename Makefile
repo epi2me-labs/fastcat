@@ -316,7 +316,7 @@ third_party/htslib/libhts.a: $(STATIC_LIBDEFLATE) | $(HTSLIB_PATCH_STAMP)
 		&& autoconf \
 		&& autoreconf --install \
 		&& $(HTS_BUILD_FLAGS) CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" ./configure $(HTS_CONF_ARGS) \
-		&& make -j 4 libhts.a
+		&& $(MAKE) libhts.a
 
 third_party/libdeflate-$(DEFLATEVER)/build/libdeflate.a:
 	@echo "\x1b[1;33mMaking $(@F)\x1b[0m"
@@ -336,7 +336,7 @@ third_party/zlib-ng/zlib.h:
 third_party/zlib-ng/libz.a: third_party/zlib-ng/zlib.h
 	@echo Compiling $(@F)
 	cd third_party/zlib-ng/ \
-		&& make -j 4 libz.a
+		&& $(MAKE) libz.a
 
 # just for testing
 SAMVER=1.21
@@ -345,7 +345,7 @@ samtools:
 	curl -L -o samtools-${SAMVER}.tar.bz2 https://github.com/samtools/samtools/releases/download/${SAMVER}/samtools-${SAMVER}.tar.bz2 && \
 	tar -xjf samtools-${SAMVER}.tar.bz2 && \
 	rm samtools-${SAMVER}.tar.bz2 && \
-	cd samtools-${SAMVER} && make -j 4 && \
+	cd samtools-${SAMVER} && $(MAKE) && \
 	cp samtools ../../$@
 
 # outputs to build/obj/ mirroring src/ structure
@@ -394,13 +394,13 @@ clean:  ## clean first-party build artifacts
 
 .PHONY: clean_htslib
 clean_htslib:
-	cd third_party/htslib && [ -f Makefile ] && make clean || true
+	cd third_party/htslib && [ -f Makefile ] && $(MAKE) clean || true
 	rm -f third_party/htslib/config.h third_party/htslib/config.log third_party/htslib/config.status
 	rm -f third_party/htslib/config.mk third_party/htslib/htslib.pc third_party/htslib/htslib_static.mk
 
 .PHONY: clean_zlib
 clean_zlib:
-	cd third_party/zlib-ng && [ -f Makefile ] && make clean || true
+	cd third_party/zlib-ng && [ -f Makefile ] && $(MAKE) clean || true
 	rm -f third_party/zlib-ng/zlib.h third_party/zlib-ng/Makefile
 
 .PHONY: clean_all
@@ -465,7 +465,7 @@ scan_build: clean  ## run scan-build static analysis
 		--exclude ./src/vendor \
 		--exclude $(CURDIR)/src/vendor \
 		--exclude src/vendor/ \
-		make $(FASTCAT_BIN)
+		$(MAKE) $(FASTCAT_BIN)
 	@echo "Results saved to scan-build-results/"
 
 .PHONY: install_hooks
