@@ -35,6 +35,8 @@ typedef struct {
     size_t weight;
 } item_weight_pair;
 
+static size_t get_sorted_items(const fc_kll_sketch *sketch, double **items_out, size_t **weights_out);
+
 // compare function for sorting item-weight pairs
 static int compare_item_weight_pairs(const void *a, const void *b)
 {
@@ -218,6 +220,31 @@ void fc_kll_merge(fc_kll_sketch *dst, const fc_kll_sketch *src)
 size_t fc_kll_count(const fc_kll_sketch *sketch)
 {
     return sketch == NULL ? 0 : sketch->n;
+}
+
+size_t fc_kll_count_in_range(const fc_kll_sketch *sketch, double lower, double upper)
+{
+    if (sketch == NULL || !isfinite(lower) || !isfinite(upper) || upper < lower) {
+        return 0;
+    }
+
+    double *items = NULL;
+    size_t *weights = NULL;
+    size_t count = get_sorted_items(sketch, &items, &weights);
+    if (count == 0) {
+        return 0;
+    }
+
+    size_t total = 0;
+    for (size_t i = 0; i < count; i++) {
+        if (items[i] >= lower && items[i] <= upper) {
+            total += weights[i];
+        }
+    }
+
+    free(items);
+    free(weights);
+    return total;
 }
 
 size_t fc_kll_memory_bytes(const fc_kll_sketch *sketch)

@@ -95,7 +95,7 @@ static void test_fc_read_reset_from_kseq_sam_comment_consistency(void) {
     read_from_comment(fr,
         "RG:Z:12345678-1234-1234-1234-123456789012_sup@v1_barcode07\t"
         "SM:Z:barcode07\tpi:Z:parent-uuid\tML:B:C,1,2\t"
-        "st:Z:2023-01-01T00:00:00Z\trn:i:7\tch:i:42\t"
+        "st:Z:2023-01-01T00:00:00Z\tdu:f:1.25\trn:i:7\tch:i:42\t"
         "PU:Z:FLO-MIN114\tLB:Z:sample123\tal:Z:alias1\tDS:Z:gpu:gpu0");
 
     uint8_t* aux_rg = bam_aux_get(fr->bam, "RG");
@@ -119,6 +119,10 @@ static void test_fc_read_reset_from_kseq_sam_comment_consistency(void) {
     uint8_t* aux_st = bam_aux_get(fr->bam, "st");
     TEST_ASSERT_NOT_NULL(aux_st);
     TEST_ASSERT_EQUAL_STRING("2023-01-01T00:00:00Z", bam_aux2Z(aux_st));
+
+    uint8_t* aux_du = bam_aux_get(fr->bam, "du");
+    TEST_ASSERT_NOT_NULL(aux_du);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 1.25, bam_aux2f(aux_du));
 
     uint8_t* aux_rn = bam_aux_get(fr->bam, "rn");
     TEST_ASSERT_NOT_NULL(aux_rn);
@@ -152,6 +156,7 @@ static void test_fc_read_reset_from_kseq_sam_comment_consistency(void) {
     TEST_ASSERT_EQUAL_STRING("FLO-MIN114", fr->meta->flow_cell_id);
     TEST_ASSERT_EQUAL_STRING("alias1", fr->meta->barcode_alias);
     TEST_ASSERT_EQUAL_STRING("2023-01-01T00:00:00Z", fr->meta->start_time);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 1.25, fr->meta->duration_s);
     TEST_ASSERT_EQUAL_UINT64(7, fr->meta->read_number);
     TEST_ASSERT_EQUAL_UINT64(42, fr->meta->channel);
     TEST_ASSERT_NOT_NULL(fr->meta->rg_info);
@@ -176,7 +181,7 @@ static void test_fc_read_reset_from_kseq_key_value_fallback_consistency(void) {
         "basecall_model_version_id=rna004_130bps_fast@v5.1.0 "
         "flow_cell_id=FLO-MIN114 sample_id=sample123 "
         "barcode=barcode01 barcode_alias=alias1 read=7 ch=42 "
-        "start_time=2023-01-01T00:00:00Z parent_read_id=pr-001 "
+        "start_time=2023-01-01T00:00:00Z du=2.5 parent_read_id=pr-001 "
         "basecall_gpu=gpu0 empty= unknown=foo");
 
     uint8_t* aux_rg = bam_aux_get(fr->bam, "RG");
@@ -216,6 +221,10 @@ static void test_fc_read_reset_from_kseq_key_value_fallback_consistency(void) {
     TEST_ASSERT_NOT_NULL(aux_st);
     TEST_ASSERT_EQUAL_STRING("2023-01-01T00:00:00Z", bam_aux2Z(aux_st));
 
+    uint8_t* aux_du = bam_aux_get(fr->bam, "du");
+    TEST_ASSERT_NOT_NULL(aux_du);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 2.5, bam_aux2f(aux_du));
+
     uint8_t* aux_ds = bam_aux_get(fr->bam, "DS");
     TEST_ASSERT_NOT_NULL(aux_ds);
     TEST_ASSERT_EQUAL_STRING("gpu:gpu0", bam_aux2Z(aux_ds));
@@ -231,6 +240,7 @@ static void test_fc_read_reset_from_kseq_key_value_fallback_consistency(void) {
     TEST_ASSERT_EQUAL_STRING("barcode01", fr->meta->barcode);
     TEST_ASSERT_EQUAL_INT(1, fr->meta->ibarcode);
     TEST_ASSERT_EQUAL_STRING("2023-01-01T00:00:00Z", fr->meta->start_time);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 2.5, fr->meta->duration_s);
     TEST_ASSERT_EQUAL_UINT64(7, fr->meta->read_number);
     TEST_ASSERT_EQUAL_UINT64(42, fr->meta->channel);
     TEST_ASSERT_EQUAL_STRING("alias1", fr->meta->barcode_alias);

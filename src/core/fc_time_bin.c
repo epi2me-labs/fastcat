@@ -19,8 +19,11 @@ typedef struct {
     size_t base_count;
     double sum_length;
     double sum_qscore;
+    double sum_speed;
+    size_t speed_count;
     fc_kll_sketch *length;
     fc_kll_sketch *qscore;
+    fc_kll_sketch *speed;
 } fc_time_bin_accum;
 
 typedef struct {
@@ -32,6 +35,8 @@ typedef struct {
     size_t n_bins;
     size_t skipped_missing;
     size_t skipped_invalid;
+    size_t skipped_duration_missing;
+    size_t skipped_duration_invalid;
 } fc_time_bin_barcode_state;
 
 struct fc_time_bin {
@@ -42,6 +47,8 @@ struct fc_time_bin {
     double origin_s;
     size_t skipped_missing;
     size_t skipped_invalid;
+    size_t skipped_duration_missing;
+    size_t skipped_duration_invalid;
     fc_time_bin_barcode_state **barcode_states;
 };
 
@@ -99,6 +106,7 @@ static void time_bin_destroy_accum(fc_time_bin_accum *bin)
     }
     fc_kll_destroy(bin->length);
     fc_kll_destroy(bin->qscore);
+    fc_kll_destroy(bin->speed);
 }
 
 static void time_bin_destroy_barcode_state(fc_time_bin_barcode_state *state)
@@ -153,6 +161,9 @@ static fc_time_bin_accum *time_bin_ensure_accum(
     }
     if (NULL == bin->qscore) {
         bin->qscore = fc_kll_create(model->kll_k);
+    }
+    if (NULL == bin->speed) {
+        bin->speed = fc_kll_create(model->kll_k);
     }
     return bin;
 }
@@ -230,6 +241,7 @@ void fc_time_bin_add_read(fc_time_bin *model, size_t barcode, const fc_read *rea
 
     double length = (double)read->bam->core.l_qseq;
     double mean_q = read->meta->mean_q;
+    double duration_s = read->meta->duration_s;
     if (!isfinite(mean_q)) {
         mean_q = 0.0;
     }
@@ -240,6 +252,24 @@ void fc_time_bin_add_read(fc_time_bin *model, size_t barcode, const fc_read *rea
     bin->sum_qscore += mean_q;
     fc_kll_add(bin->length, length);
     fc_kll_add(bin->qscore, mean_q);
+
+    if (!isfinite(duration_s)) {
+        state->skipped_duration_missing++;
+        model->skipped_duration_missing++;
+    } else if (duration_s <= 0.0) {
+        state->skipped_duration_invalid++;
+        model->skipped_duration_invalid++;
+    } else {
+        double speed = length / duration_s;
+        if (!isfinite(speed)) {
+            state->skipped_duration_invalid++;
+            model->skipped_duration_invalid++;
+        } else {
+            bin->sum_speed += speed;
+            bin->speed_count++;
+            fc_kll_add(bin->speed, speed);
+        }
+    }
     state->has_data = true;
 }
 
@@ -260,6 +290,8 @@ fc_time_bin_skip_counts fc_time_bin_skipped_counts(const fc_time_bin *model)
     }
     counts.missing = model->skipped_missing;
     counts.invalid = model->skipped_invalid;
+    counts.duration_missing = model->skipped_duration_missing;
+    counts.duration_invalid = model->skipped_duration_invalid;
     return counts;
 }
 
@@ -280,6 +312,8 @@ static void time_bin_set_empty_distribution(fc_time_bin_row *row)
     row->length_quantiles = time_bin_nan_quantiles();
     row->qscore_mean = NAN;
     row->qscore_quantiles = time_bin_nan_quantiles();
+    row->speed_mean = NAN;
+    row->speed_quantiles = time_bin_nan_quantiles();
 }
 
 int fc_time_bin_materialize(const fc_time_bin *model, size_t barcode, fc_time_bin_table *out)
@@ -321,6 +355,13 @@ int fc_time_bin_materialize(const fc_time_bin *model, size_t barcode, fc_time_bi
         row->qscore_mean = bin->sum_qscore / (double)bin->read_count;
         row->length_quantiles = fc_kll_compute_quantile_quintuple(bin->length);
         row->qscore_quantiles = fc_kll_compute_quantile_quintuple(bin->qscore);
+        if (bin->speed_count == 0) {
+            row->speed_mean = NAN;
+            row->speed_quantiles = time_bin_nan_quantiles();
+        } else {
+            row->speed_mean = bin->sum_speed / (double)bin->speed_count;
+            row->speed_quantiles = fc_kll_compute_quantile_quintuple(bin->speed);
+        }
     }
 
     return 0;
@@ -360,8 +401,11 @@ int fc_time_bin_materialize_merged(
 
         double sum_length = 0.0;
         double sum_qscore = 0.0;
+        double sum_speed = 0.0;
+        size_t speed_count = 0;
         fc_kll_sketch *length = fc_kll_create(model->kll_k);
         fc_kll_sketch *qscore = fc_kll_create(model->kll_k);
+        fc_kll_sketch *speed = fc_kll_create(model->kll_k);
 
         for (size_t j = start; j < end; j++) {
             const fc_time_bin_accum *bin = &state->bins[j];
@@ -369,8 +413,11 @@ int fc_time_bin_materialize_merged(
             row->base_count += bin->base_count;
             sum_length += bin->sum_length;
             sum_qscore += bin->sum_qscore;
+            sum_speed += bin->sum_speed;
+            speed_count += bin->speed_count;
             fc_kll_merge(length, bin->length);
             fc_kll_merge(qscore, bin->qscore);
+            fc_kll_merge(speed, bin->speed);
         }
 
         cumulative_reads += row->read_count;
@@ -385,10 +432,18 @@ int fc_time_bin_materialize_merged(
             row->qscore_mean = sum_qscore / (double)row->read_count;
             row->length_quantiles = fc_kll_compute_quantile_quintuple(length);
             row->qscore_quantiles = fc_kll_compute_quantile_quintuple(qscore);
+            if (speed_count == 0) {
+                row->speed_mean = NAN;
+                row->speed_quantiles = time_bin_nan_quantiles();
+            } else {
+                row->speed_mean = sum_speed / (double)speed_count;
+                row->speed_quantiles = fc_kll_compute_quantile_quintuple(speed);
+            }
         }
 
         fc_kll_destroy(length);
         fc_kll_destroy(qscore);
+        fc_kll_destroy(speed);
     }
 
     return 0;

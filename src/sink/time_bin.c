@@ -39,12 +39,15 @@ static void time_bin_write_table(const fc_time_bin_table *table, FILE *fp)
         "time_bin_start_s\ttime_bin_end_s\tread_count\tbase_count\t"
         "cumulative_read_count\tcumulative_base_count\t"
         "length_mean\tlength_q05\tlength_q25\tlength_q50\tlength_q75\tlength_q95\t"
-        "qscore_mean\tqscore_q05\tqscore_q25\tqscore_q50\tqscore_q75\tqscore_q95\n");
+        "qscore_mean\tqscore_q05\tqscore_q25\tqscore_q50\tqscore_q75\tqscore_q95\t"
+        "translocation_speed_mean\ttranslocation_speed_q05\ttranslocation_speed_q25\t"
+        "translocation_speed_q50\ttranslocation_speed_q75\ttranslocation_speed_q95\n");
 
     for (size_t i = 0; i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
         fprintf(fp,
             "%.12g\t%.12g\t%zu\t%zu\t%zu\t%zu\t"
+            "%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t"
             "%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t"
             "%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\n",
             row->time_bin_start_s,
@@ -64,7 +67,13 @@ static void time_bin_write_table(const fc_time_bin_table *table, FILE *fp)
             row->qscore_quantiles.q25,
             row->qscore_quantiles.q50,
             row->qscore_quantiles.q75,
-            row->qscore_quantiles.q95);
+            row->qscore_quantiles.q95,
+            row->speed_mean,
+            row->speed_quantiles.q05,
+            row->speed_quantiles.q25,
+            row->speed_quantiles.q50,
+            row->speed_quantiles.q75,
+            row->speed_quantiles.q95);
     }
 }
 
@@ -88,6 +97,10 @@ static void time_bin_sink_finish(void *ctx)
     if (skipped.missing || skipped.invalid) {
         FC_LOG_WARN("Skipped %zu reads without start_time and %zu reads with invalid start_time for time_bin_summary.",
             skipped.missing, skipped.invalid);
+    }
+    if (skipped.duration_missing || skipped.duration_invalid) {
+        FC_LOG_WARN("Skipped %zu reads without du and %zu reads with invalid du for time_bin_summary speed.",
+            skipped.duration_missing, skipped.duration_invalid);
     }
 
     if (sink->cfg.use_barcodes) {

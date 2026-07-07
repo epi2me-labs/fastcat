@@ -196,6 +196,11 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .qgrid_points = args->length_qscore_qgrid,
         .smoothing_points = args->length_qscore_qsmooth
     };
+    fc_speed_qscore_2d_config speed_qscore_cfg = {
+        .kll_k = args->length_qscore_k,
+        .qgrid_points = args->length_qscore_qgrid,
+        .smoothing_points = args->length_qscore_qsmooth
+    };
     fc_time_bin_config time_bin_cfg = {
         .bin_size_s = args->time_bin_size_s,
         .kll_k = args->time_bin_k
@@ -205,6 +210,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .stats = &stats_cfg,
         .channel_summary = true,
         .length_qscore = &length_qscore_cfg,
+        .speed_qscore = &speed_qscore_cfg,
         .time_bin = &time_bin_cfg
     };
     writer = fc_writer_create(&writer_cfg);
@@ -253,6 +259,14 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .model = writer->length_qscore
     };
     fc_writer_add_sink(writer, fc_length_qscore_2d_sink_create(&lq2d_opts));
+
+    fc_speed_qscore_2d_sink_opts qts2d_opts = {
+        .output_root = args->output_dir,
+        .use_barcodes = args->demultiplex,
+        .barcode_count = writer->barcode_count,
+        .model = writer->speed_qscore
+    };
+    fc_writer_add_sink(writer, fc_speed_qscore_2d_sink_create(&qts2d_opts));
 
     // time-binned summaries for yield and boxplot-style temporal QC
     fc_time_bin_sink_opts time_bin_opts = {
@@ -377,6 +391,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .engine_count = writer->stats_engine_count,
             .channel_summary = writer->channel_summary,
             .length_qscore = writer->length_qscore,
+            .speed_qscore = writer->speed_qscore,
             .time_bin = writer->time_bin
         };
         if (fc_write_html_reports(&report_opts) != 0) {

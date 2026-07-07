@@ -7,6 +7,7 @@
 #include "core/fc_channel_summary.h"
 #include "core/fc_coverage.h"
 #include "core/fc_length_qscore_2d.h"
+#include "core/fc_speed_qscore_2d.h"
 #include "core/fc_stats_engine.h"
 #include "core/fc_time_bin.h"
 #include "core/fc_writer.h"
@@ -93,6 +94,16 @@ typedef struct {
 } fc_length_qscore_2d_sink_opts;
 
 fc_sink fc_length_qscore_2d_sink_create(const fc_length_qscore_2d_sink_opts *opts);
+
+typedef struct {
+    const char *output_root;
+    bool use_barcodes;
+    size_t barcode_count;
+    fc_speed_qscore_2d *model;
+} fc_speed_qscore_2d_sink_opts;
+
+fc_sink fc_speed_qscore_2d_sink_create(
+    const fc_speed_qscore_2d_sink_opts *opts);
 
 typedef struct {
     const char *output_root;
