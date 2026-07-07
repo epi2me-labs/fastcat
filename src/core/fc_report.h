@@ -6,6 +6,7 @@
 
 #include "core/fc_channel_summary.h"
 #include "core/fc_length_qscore_2d.h"
+#include "core/fc_speed_qscore_2d.h"
 #include "core/fc_stats_engine.h"
 #include "core/fc_time_bin.h"
 
@@ -26,6 +27,7 @@ typedef struct {
     size_t engine_count;
     const fc_channel_summary *channel_summary;
     const fc_length_qscore_2d *length_qscore;
+    const fc_speed_qscore_2d *speed_qscore;
     const fc_time_bin *time_bin;
 } fc_report_opts;
 

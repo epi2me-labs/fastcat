@@ -25,25 +25,48 @@ CHANNEL_MAP_PATHS = {
 }
 
 
-def load_length_qscore_heatmap(path):
-    """Load fastcat length/qscore TSV into a Bokeh heatmap matrix."""
-    df = pd.read_csv(path, sep="\t")
-    df["qscore"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
-    df["read length (kb)"] = (df["length_bin_start"] + df["length_bin_end"]) * 0.0005
-
+def load_dense_heatmap(df, x, y, value, subtitle):
+    """Load a dense rectangular TSV into a Bokeh heatmap matrix."""
     data = df.pivot(
-        index="qscore",
-        columns="read length (kb)",
-        values="count")
-    data = data.rename_axis("qscore")
-    data = data.rename_axis("read length (kb)", axis=1)
+        index=x,
+        columns=y,
+        values=value)
+    data = data.rename_axis(x)
+    data = data.rename_axis(y, axis=1)
 
     return bokeh_matrix.heatmap(
         data,
         annot=False,
         vmax_quantile=0.995,
         cbar_kws={"title": "count"},
-        subtitle="Estimated counts")
+        subtitle=subtitle)
+
+
+def load_length_qscore_heatmap(path):
+    """Load fastcat length/qscore TSV into a Bokeh heatmap matrix."""
+    df = pd.read_csv(path, sep="\t")
+    df["read length (kb)"] = (df["length_bin_start"] + df["length_bin_end"]) * 0.0005
+    df["qscore"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
+    return load_dense_heatmap(
+        df,
+        "read length (kb)",
+        "qscore",
+        "count",
+        "Estimated counts")
+
+
+def load_speed_qscore_heatmap(path):
+    """Load fastcat qscore/translocation-speed TSV into a Bokeh heatmap matrix."""
+    df = pd.read_csv(path, sep="\t")
+    df["translocation speed (nt/s)"] = (
+        df["speed_bin_start"] + df["speed_bin_end"]) * 0.5
+    df["qscore"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
+    return load_dense_heatmap(
+        df,
+        "translocation speed (nt/s)",
+        "qscore",
+        "count",
+        "Estimated counts")
 
 
 def format_hours(value):
@@ -62,7 +85,10 @@ def load_time_bin_summary(path):
         "length_mean", "length_q05", "length_q25", "length_q50",
         "length_q75", "length_q95",
         "qscore_mean", "qscore_q05", "qscore_q25", "qscore_q50",
-        "qscore_q75", "qscore_q95")
+        "qscore_q75", "qscore_q95",
+        "translocation_speed_mean",
+        "translocation_speed_q05", "translocation_speed_q25", "translocation_speed_q50",
+        "translocation_speed_q75", "translocation_speed_q95")
     for col in numeric_cols:
         if col in df:
             df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -79,9 +105,11 @@ def load_time_bin_summary(path):
     df["base_yield_mbp"] = df["base_count"] / 1e6
     df["cumulative_base_yield_gbp"] = df["cumulative_base_count"] / 1e9
     df["length_mean_kb"] = df["length_mean"] / 1000.0
+    df["speed_mean"] = df["translocation_speed_mean"]
     for col in ("q05", "q25", "q50", "q75", "q95"):
         df[f"length_plot_{col}"] = df[f"length_{col}"] / 1000.0
         df[f"qscore_plot_{col}"] = df[f"qscore_{col}"]
+        df[f"speed_plot_{col}"] = df[f"translocation_speed_{col}"]
     return df
 
 
@@ -269,6 +297,14 @@ def add_time_bin_plots(path):
             p("No qscore quartiles were available.")
         else:
             EZChart(qscore_plot, height="420px")
+    with tabs.add_tab("Translocation speed"):
+        p("KLL-estimated translocation speed quartile boxes by time bin.")
+        speed_plot = quantile_boxplot(
+            df, "speed", "translocation speed (nt/s)")
+        if speed_plot is None:
+            p("No translocation speed quartiles were available.")
+        else:
+            EZChart(speed_plot, height="420px")
 
 
 def add_channel_summary_plots(path):
@@ -302,6 +338,15 @@ def add_channel_summary_plots(path):
                 "margin-left": "auto",
                 "margin-right": "auto",
             })
+
+
+def add_quality_diagnostics_plots(length_qscore_path, speed_qscore_path):
+    """Add the two quality diagnostic heatmaps to a shared tab set."""
+    tabs = Tabs()
+    with tabs.add_tab("Read length"):
+        EZChart(load_length_qscore_heatmap(length_qscore_path), height="650px")
+    with tabs.add_tab("Translocation speed"):
+        EZChart(load_speed_qscore_heatmap(speed_qscore_path), height="650px")
 
 
 def main(args):
@@ -376,19 +421,24 @@ def main(args):
                 samples_with_stats = samples_with_stats[0]
             fastcat.SeqSummary(stats, sample_names=samples_with_stats)
 
-    if args.length_qscore_2d:
+    if args.length_qscore_2d and args.speed_qscore_2d:
         heatmap_samples = samples_with_stats
         if isinstance(heatmap_samples, str):
             heatmap_samples = (heatmap_samples,)
 
-        with report.add_section("Read length vs qscore", "Read length vs qscore"):
-            if len(args.length_qscore_2d) == 1:
-                EZChart(load_length_qscore_heatmap(args.length_qscore_2d[0]), height="650px")
+        with report.add_section("Quality diagnostics", "Quality diagnostics"):
+            if len(args.length_qscore_2d) == 1 and len(args.speed_qscore_2d) == 1:
+                add_quality_diagnostics_plots(
+                    args.length_qscore_2d[0],
+                    args.speed_qscore_2d[0])
             else:
                 tabs = Tabs()
-                for sample, path in zip(heatmap_samples, args.length_qscore_2d):
+                for sample, length_path, speed_path in zip(
+                        heatmap_samples,
+                        args.length_qscore_2d,
+                        args.speed_qscore_2d):
                     with tabs.add_tab(sample):
-                        EZChart(load_length_qscore_heatmap(path), height="650px")
+                        add_quality_diagnostics_plots(length_path, speed_path)
 
     if args.time_bin_summary:
         time_samples = samples_with_stats
@@ -444,6 +494,9 @@ def argparser():
     parser.add_argument(
         "--length-qscore-2d", nargs="+",
         help="Fastcat length_qscore_2d.tsv files, ordered as per entries in --metadata.")
+    parser.add_argument(
+        "--speed-qscore-2d", nargs="+",
+        help="Fastcat speed_qscore_2d.tsv files, ordered as per entries in --metadata.")
     parser.add_argument(
         "--time-bin-summary", nargs="+",
         help="Fastcat time_bin_summary.tsv files, ordered as per entries in --metadata.")

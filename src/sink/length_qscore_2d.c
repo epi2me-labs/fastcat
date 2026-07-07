@@ -40,16 +40,16 @@ static void lq2d_write_matrix(const fc_length_qscore_2d_matrix *matrix, FILE *fp
 {
     fprintf(fp, "length_bin_start\tlength_bin_end\tqscore_bin_start\tqscore_bin_end\tcount\n");
 
-    double row_width = matrix->length_upper / (double)matrix->length_bins;
-    for (size_t len_bin = 0; len_bin < matrix->length_bins; len_bin++) {
+    double row_width = matrix->x_upper / (double)matrix->x_bins;
+    for (size_t len_bin = 0; len_bin < matrix->x_bins; len_bin++) {
         double len_start = (double)len_bin * row_width;
-        double len_end = (len_bin + 1 == matrix->length_bins)
-            ? matrix->length_upper
+        double len_end = (len_bin + 1 == matrix->x_bins)
+            ? matrix->x_upper
             : (double)(len_bin + 1) * row_width;
         for (size_t q = 0; q < matrix->qscore_bins; q++) {
             double q_start = (double)q * matrix->qscore_width;
             double q_end = q_start + matrix->qscore_width;
-            double count = matrix->counts[q * matrix->length_bins + len_bin];
+            double count = matrix->counts[q * matrix->x_bins + len_bin];
             if (!isfinite(count) || count < 0.0) {
                 count = 0.0;
             }

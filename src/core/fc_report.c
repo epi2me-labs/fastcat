@@ -784,10 +784,10 @@ static void update_yield_plot(JSON_Value *docs, const report_hist *length)
 }
 
 //
-// length/qscore heatmap
+// 2D heatmaps
 //
 
-static fc_json_value_t *build_lq2d_empty_source_data_value(void)
+static fc_json_value_t *build_image_heatmap_empty_source_data_value(void)
 {
     report_source source = bokeh_source_create();
     bokeh_source_add_array_column(&source, "image");
@@ -800,34 +800,32 @@ static fc_json_value_t *build_lq2d_empty_source_data_value(void)
 
 static fc_json_value_t *build_lq2d_image_ndarray_value(const fc_length_qscore_2d_matrix *matrix)
 {
-    if (matrix->length_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->length_bins) {
+    if (matrix->x_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->x_bins) {
         FC_LOG_FATAL("Length/qscore report image is too large.");
     }
 
-    size_t n = matrix->length_bins * matrix->qscore_bins;
+    size_t n = matrix->x_bins * matrix->qscore_bins;
     double *values = fc_alloc(n, sizeof(*values), "report length/qscore image values");
-    for (size_t len_bin = 0; len_bin < matrix->length_bins; len_bin++) {
-        for (size_t q = 0; q < matrix->qscore_bins; q++) {
-            double count = matrix->counts[q * matrix->length_bins + len_bin];
-            if (!isfinite(count) || count < 0.0) {
-                count = 0.0;
-            }
-            values[len_bin * matrix->qscore_bins + q] = count;
+    for (size_t i = 0; i < n; i++) {
+        double count = matrix->counts[i];
+        if (!isfinite(count) || count < 0.0) {
+            count = 0.0;
         }
+        values[i] = count;
     }
 
     fc_json_value_t *value = build_image_ndarray_value(
-        values, matrix->length_bins, matrix->qscore_bins);
+        values, matrix->qscore_bins, matrix->x_bins);
     free(values);
     return value;
 }
 
 static double lq2d_color_high_quantile(const fc_length_qscore_2d_matrix *matrix)
 {
-    if (matrix->length_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->length_bins) {
+    if (matrix->x_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->x_bins) {
         FC_LOG_FATAL("Length/qscore report image is too large.");
     }
-    size_t n = matrix->length_bins * matrix->qscore_bins;
+    size_t n = matrix->x_bins * matrix->qscore_bins;
     if (n == 0) {
         return 1.0;
     }
@@ -862,7 +860,7 @@ static void update_length_qscore_plot(
         bokeh_set_value(
             docs,
             "length_qscore.source.data",
-            build_lq2d_empty_source_data_value());
+            build_image_heatmap_empty_source_data_value());
         bokeh_set_string(
             docs,
             "length_qscore.subtitle.text",
@@ -881,7 +879,7 @@ static void update_length_qscore_plot(
     }
 
     double total = 0.0;
-    size_t n = matrix.length_bins * matrix.qscore_bins;
+    size_t n = matrix.x_bins * matrix.qscore_bins;
     for (size_t i = 0; i < n; i++) {
         if (isfinite(matrix.counts[i]) && matrix.counts[i] > 0.0) {
             total += matrix.counts[i];
@@ -890,13 +888,13 @@ static void update_length_qscore_plot(
 
     char subtitle[160];
     FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "Estimated counts, n=%.0f, length cap %.3gkb",
-        total, matrix.length_upper / 1000.0);
+        total, matrix.x_upper / 1000.0);
 
     double color_high = lq2d_color_high_quantile(&matrix);
     double x_start = 0.0;
     double y_start = 0.0;
-    double x_end = matrix.qscore_width * (double)matrix.qscore_bins;
-    double y_end = matrix.length_upper / 1000.0;
+    double x_end = matrix.x_upper / 1000.0;
+    double y_end = matrix.qscore_width * (double)matrix.qscore_bins;
 
     report_source source = bokeh_source_create();
     report_column image = bokeh_source_add_array_column(&source, "image");
@@ -918,6 +916,141 @@ static void update_length_qscore_plot(
     bokeh_set_range(docs, "length_qscore.y_range", y_start, y_end);
 
     fc_length_qscore_2d_matrix_destroy(&matrix);
+}
+
+static fc_json_value_t *build_qts2d_image_ndarray_value(
+    const fc_speed_qscore_2d_matrix *matrix)
+{
+    if (matrix->x_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->x_bins) {
+        FC_LOG_FATAL("Qscore/translocation-speed report image is too large.");
+    }
+
+    size_t n = matrix->x_bins * matrix->qscore_bins;
+    double *values = fc_alloc(n, sizeof(*values), "report qscore/translocation-speed image values");
+    for (size_t i = 0; i < n; i++) {
+        double count = matrix->counts[i];
+        if (!isfinite(count) || count < 0.0) {
+            count = 0.0;
+        }
+        values[i] = count;
+    }
+
+    fc_json_value_t *value = build_image_ndarray_value(
+        values, matrix->qscore_bins, matrix->x_bins);
+    free(values);
+    return value;
+}
+
+static double qts2d_color_high_quantile(const fc_speed_qscore_2d_matrix *matrix)
+{
+    if (matrix->x_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->x_bins) {
+        FC_LOG_FATAL("Qscore/translocation-speed report image is too large.");
+    }
+    size_t n = matrix->x_bins * matrix->qscore_bins;
+    if (n == 0) {
+        return 1.0;
+    }
+
+    double *values = fc_alloc(n, sizeof(*values), "report qscore/translocation-speed color range");
+    for (size_t i = 0; i < n; i++) {
+        double value = matrix->counts[i];
+        values[i] = (isfinite(value) && value > 0.0) ? value : 0.0;
+    }
+
+    qsort(values, n, sizeof(*values), cmp_double);
+    size_t idx = (size_t)llround((double)(n - 1) * FC_REPORT_LQ2D_COLOR_QUANTILE);
+    if (idx >= n) {
+        idx = n - 1;
+    }
+
+    double high = values[idx];
+    if (!isfinite(high) || high <= 0.0) {
+        high = values[n - 1];
+    }
+    free(values);
+
+    return (isfinite(high) && high > 0.0) ? high : 1.0;
+}
+
+static void update_speed_qscore_plot(
+    JSON_Value *docs,
+    const fc_speed_qscore_2d *model,
+    size_t barcode)
+{
+    if (!model || !fc_speed_qscore_2d_seen(model, barcode)) {
+        bokeh_set_value(
+            docs,
+            "speed_qscore.source.data",
+            build_image_heatmap_empty_source_data_value());
+        bokeh_set_string(
+            docs,
+            "speed_qscore.subtitle.text",
+            "No qscore/translocation-speed data available");
+        bokeh_set_number(docs, "speed_qscore.color_mapper.high", 1.0);
+        bokeh_set_range(docs, "speed_qscore.x_range", 0.0, 1.0);
+        bokeh_set_range(docs, "speed_qscore.y_range", 0.0, 1.0);
+        return;
+    }
+
+    fc_speed_qscore_2d_matrix matrix = { 0 };
+    if (fc_speed_qscore_2d_materialize(model, barcode, &matrix) != 0
+        || !matrix.counts) {
+        fc_speed_qscore_2d_matrix_destroy(&matrix);
+        update_speed_qscore_plot(docs, NULL, barcode);
+        return;
+    }
+
+    double total = 0.0;
+    size_t n = matrix.x_bins * matrix.qscore_bins;
+    for (size_t i = 0; i < n; i++) {
+        if (isfinite(matrix.counts[i]) && matrix.counts[i] > 0.0) {
+            total += matrix.counts[i];
+        }
+    }
+
+    if (!(total > 0.0)) {
+        fc_speed_qscore_2d_matrix_destroy(&matrix);
+        update_speed_qscore_plot(docs, NULL, barcode);
+        return;
+    }
+
+    char subtitle[160];
+    FC_SNPRINTF_CHECK(
+        subtitle,
+        sizeof(subtitle),
+        "Estimated counts, n=%.0f, speed range %.0f-%.0f nt/s",
+        total,
+        matrix.x_lower,
+        matrix.x_upper);
+
+    double color_high = qts2d_color_high_quantile(&matrix);
+    double x_start = matrix.x_lower;
+    double y_start = 0.0;
+    double x_end = matrix.x_upper;
+    double y_end = matrix.qscore_width * (double)matrix.qscore_bins;
+
+    report_source source = bokeh_source_create();
+    report_column image = bokeh_source_add_array_column(&source, "image");
+    report_column x = bokeh_source_add_array_column(&source, "x");
+    report_column y = bokeh_source_add_array_column(&source, "y");
+    report_column dw = bokeh_source_add_array_column(&source, "dw");
+    report_column dh = bokeh_source_add_array_column(&source, "dh");
+    fc_json_array_append_value(image.array, build_qts2d_image_ndarray_value(&matrix));
+    fc_json_array_append_number(x.array, x_start);
+    fc_json_array_append_number(y.array, y_start);
+    fc_json_array_append_number(dw.array, x_end - x_start);
+    fc_json_array_append_number(dh.array, y_end - y_start);
+
+    bokeh_set_value(docs, "speed_qscore.source.data", source.value);
+    bokeh_set_string(docs, "speed_qscore.subtitle.text", subtitle);
+    bokeh_set_number(
+        docs,
+        "speed_qscore.color_mapper.high",
+        color_high > 0.0 ? color_high : 1.0);
+    bokeh_set_range(docs, "speed_qscore.x_range", x_start, x_end);
+    bokeh_set_range(docs, "speed_qscore.y_range", y_start, y_end);
+
+    fc_speed_qscore_2d_matrix_destroy(&matrix);
 }
 
 //
@@ -1197,6 +1330,116 @@ static void update_time_qscore_box_plot(JSON_Value *docs, const fc_time_bin_tabl
     bokeh_set_value(docs, "time_qscore.source.data", source.value);
     bokeh_set_value(docs, "time_qscore.x_range.factors", factors);
     bokeh_set_range(docs, "time_qscore.y_range", y_start, y_end);
+}
+
+static bool time_speed_box_row_valid(const fc_time_bin_row *row)
+{
+    return row && row->read_count > 0 && time_quantiles_valid(&row->speed_quantiles);
+}
+
+static void time_speed_box_y_range(
+    const fc_time_bin_table *table,
+    double *start,
+    double *end)
+{
+    double y_min = INFINITY;
+    double y_max = -INFINITY;
+    for (size_t i = 0; table && i < table->n; i++) {
+        const fc_time_bin_row *row = &table->rows[i];
+        if (!time_speed_box_row_valid(row)) {
+            continue;
+        }
+        const fc_time_bin_quantiles *q = &row->speed_quantiles;
+        if (q->q05 < y_min) {
+            y_min = q->q05;
+        }
+        if (q->q95 > y_max) {
+            y_max = q->q95;
+        }
+    }
+
+    if (!isfinite(y_min) || !isfinite(y_max)) {
+        *start = 0.0;
+        *end = 1.0;
+        return;
+    }
+
+    double padding = (y_max - y_min) * 0.1;
+    if (padding == 0.0) {
+        padding = fabs(y_max) * 0.1;
+    }
+    if (padding == 0.0) {
+        padding = 1.0;
+    }
+
+    *start = y_min - padding;
+    if (y_min >= 0.0 && *start < 0.0) {
+        *start = 0.0;
+    }
+    *end = y_max + padding;
+    if (*end <= *start) {
+        *end = *start + 1.0;
+    }
+}
+
+static void update_time_speed_box_plot(JSON_Value *docs, const fc_time_bin_table *table)
+{
+    report_source source = bokeh_source_create();
+    report_column index = bokeh_source_add_array_column(&source, "index");
+    report_column labels = bokeh_source_add_array_column(&source, "time bin (hours)");
+    report_column read_count = bokeh_source_add_array_column(&source, "read_count");
+    report_column q05 = bokeh_source_add_array_column(&source, "q05");
+    report_column q25 = bokeh_source_add_array_column(&source, "q25");
+    report_column q50 = bokeh_source_add_array_column(&source, "translocation speed (nt/s)");
+    report_column q75 = bokeh_source_add_array_column(&source, "q75");
+    report_column q95 = bokeh_source_add_array_column(&source, "q95");
+    report_column mean = bokeh_source_add_array_column(&source, "mean");
+    report_column cap_left = bokeh_source_add_array_column(&source, "cap_left");
+    report_column cap_right = bokeh_source_add_array_column(&source, "cap_right");
+    fc_json_value_t *factors = fc_json_array_value();
+    fc_json_array_t *factors_array = fc_json_get_array(factors);
+
+    size_t out_i = 0;
+    for (size_t i = 0; table && i < table->n; i++) {
+        const fc_time_bin_row *row = &table->rows[i];
+        if (!time_speed_box_row_valid(row)) {
+            continue;
+        }
+
+        const fc_time_bin_quantiles *q = &row->speed_quantiles;
+        double scaled_mean = isfinite(row->speed_mean)
+            ? row->speed_mean
+            : q->q50;
+        char label[64] = { 0 };
+        format_time_bin_label(row, label, sizeof(label));
+
+        fc_json_array_append_number(index.array, (double)out_i);
+        fc_json_array_append_string(labels.array, label);
+        fc_json_array_append_string(factors_array, label);
+        fc_json_array_append_number(read_count.array, (double)row->read_count);
+        fc_json_array_append_number(q05.array, q->q05);
+        fc_json_array_append_number(q25.array, q->q25);
+        fc_json_array_append_number(q50.array, q->q50);
+        fc_json_array_append_number(q75.array, q->q75);
+        fc_json_array_append_number(q95.array, q->q95);
+        fc_json_array_append_number(mean.array, scaled_mean);
+
+        fc_json_array_t *left = fc_json_array_append_array(cap_left.array);
+        fc_json_array_append_string(left, label);
+        fc_json_array_append_number(left, -0.15);
+        fc_json_array_t *right = fc_json_array_append_array(cap_right.array);
+        fc_json_array_append_string(right, label);
+        fc_json_array_append_number(right, 0.15);
+
+        out_i++;
+    }
+
+    double y_start = 0.0;
+    double y_end = 1.0;
+    time_speed_box_y_range(table, &y_start, &y_end);
+    bokeh_set_value(docs, "time_speed.source.data", source.value);
+    bokeh_set_value(docs, "time_speed.x_range.factors", factors);
+    bokeh_set_range(docs, "time_speed.y_range", y_start, y_end);
 }
 
 //
@@ -1544,6 +1787,7 @@ static JSON_Value *build_report_bokeh_docs(
     const report_hist *quality,
     const fc_channel_summary *channel_summary,
     const fc_length_qscore_2d *length_qscore,
+    const fc_speed_qscore_2d *speed_qscore,
     const fc_time_bin *time_bin,
     size_t barcode)
 {
@@ -1577,10 +1821,12 @@ static JSON_Value *build_report_bokeh_docs(
     update_length_plot(docs, length);
     update_yield_plot(docs, length);
     update_length_qscore_plot(docs, length_qscore, barcode);
+    update_speed_qscore_plot(docs, speed_qscore, barcode);
     update_time_yield_plot(docs, &time_table);
     update_time_reads_plot(docs, &time_table);
     update_time_length_box_plot(docs, &time_boxes);
     update_time_qscore_box_plot(docs, &time_boxes);
+    update_time_speed_box_plot(docs, &time_boxes);
     update_channel_reads_plot(docs, channel_summary, barcode);
     update_channel_bases_plot(docs, channel_summary, barcode);
 
@@ -1662,6 +1908,7 @@ static int write_report_for_output_dir(
     size_t run_config_count,
     const fc_channel_summary *channel_summary,
     const fc_length_qscore_2d *length_qscore,
+    const fc_speed_qscore_2d *speed_qscore,
     const fc_time_bin *time_bin,
     size_t barcode_index)
 {
@@ -1682,6 +1929,7 @@ static int write_report_for_output_dir(
         &quality,
         channel_summary,
         length_qscore,
+        speed_qscore,
         time_bin,
         barcode_index);
     char *docs_json = docs ? fc_json_serialize_to_string(docs) : NULL;
@@ -1729,6 +1977,7 @@ int fc_write_html_reports(const fc_report_opts *opts)
             opts->run_config_count,
             opts->channel_summary,
             opts->length_qscore,
+            opts->speed_qscore,
             opts->time_bin,
             0);
     }
@@ -1768,6 +2017,7 @@ int fc_write_html_reports(const fc_report_opts *opts)
                 opts->run_config_count,
                 opts->channel_summary,
                 opts->length_qscore,
+                opts->speed_qscore,
                 opts->time_bin,
                 barcode)
             != 0) {

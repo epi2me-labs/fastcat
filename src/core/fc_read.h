@@ -25,6 +25,7 @@ typedef struct read_meta {
     int poly_tail_length; // pt:i
     int duplex_code; // dx:i
     float mean_q; // qs:f
+    double duration_s; // du:f
     size_t read_number; // rn:i
     size_t channel; // ch:i
     size_t mux; // mx:i

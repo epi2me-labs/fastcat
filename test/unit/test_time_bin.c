@@ -56,12 +56,14 @@ static void add_time_bin_test_read(
     size_t barcode,
     const char *timestamp,
     size_t length,
-    double mean_q)
+    double mean_q,
+    double duration_s)
 {
     bam1_t bam = { 0 };
     read_meta meta = {
         .start_time = (char *)timestamp,
-        .mean_q = mean_q
+        .mean_q = mean_q,
+        .duration_s = duration_s
     };
     fc_read read = {
         .bam = &bam,
@@ -92,9 +94,9 @@ static void test_time_bin_counts_means_quantiles_and_cumulative_totals(void)
     fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
 
-    add_time_bin_test_read(model, 0, "100", 100, 10.0);
-    add_time_bin_test_read(model, 0, "105", 200, 20.0);
-    add_time_bin_test_read(model, 0, "110", 300, 30.0);
+    add_time_bin_test_read(model, 0, "100", 100, 10.0, 2.0);
+    add_time_bin_test_read(model, 0, "105", 200, 20.0, 4.0);
+    add_time_bin_test_read(model, 0, "110", 300, 30.0, 3.0);
 
     fc_time_bin_table table = { 0 };
     TEST_ASSERT_EQUAL_INT(0, fc_time_bin_materialize(model, 0, &table));
@@ -119,6 +121,12 @@ static void test_time_bin_counts_means_quantiles_and_cumulative_totals(void)
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 15.0, table.rows[0].qscore_quantiles.q50);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 17.5, table.rows[0].qscore_quantiles.q75);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 19.5, table.rows[0].qscore_quantiles.q95);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_mean);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q05);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q25);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q50);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q75);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q95);
 
     TEST_ASSERT_EQUAL_size_t(1, table.rows[1].read_count);
     TEST_ASSERT_EQUAL_size_t(300, table.rows[1].base_count);
@@ -126,6 +134,7 @@ static void test_time_bin_counts_means_quantiles_and_cumulative_totals(void)
     TEST_ASSERT_EQUAL_size_t(600, table.rows[1].cumulative_base_count);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 300.0, table.rows[1].length_mean);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 30.0, table.rows[1].qscore_mean);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 100.0, table.rows[1].speed_mean);
 
     fc_time_bin_table_destroy(&table);
     fc_time_bin_destroy(model);
@@ -136,8 +145,8 @@ static void test_time_bin_dynamic_backward_growth_preserves_empty_bins(void)
     fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
 
-    add_time_bin_test_read(model, 0, "100", 100, 10.0);
-    add_time_bin_test_read(model, 0, "80", 80, 8.0);
+    add_time_bin_test_read(model, 0, "100", 100, 10.0, 2.0);
+    add_time_bin_test_read(model, 0, "80", 80, 8.0, 2.0);
 
     fc_time_bin_table table = { 0 };
     TEST_ASSERT_EQUAL_INT(0, fc_time_bin_materialize(model, 0, &table));
@@ -155,6 +164,9 @@ static void test_time_bin_dynamic_backward_growth_preserves_empty_bins(void)
     TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_mean));
     TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_quantiles.q05));
     TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_quantiles.q95));
+    TEST_ASSERT_TRUE(isnan(table.rows[1].speed_mean));
+    TEST_ASSERT_TRUE(isnan(table.rows[1].speed_quantiles.q05));
+    TEST_ASSERT_TRUE(isnan(table.rows[1].speed_quantiles.q95));
     TEST_ASSERT_EQUAL_size_t(1, table.rows[1].cumulative_read_count);
     TEST_ASSERT_EQUAL_size_t(80, table.rows[1].cumulative_base_count);
 
@@ -175,7 +187,7 @@ static void test_time_bin_materialize_merged_limits_rows_and_merges_sketches(voi
     char timestamp[32];
     for (size_t i = 0; i < 48; i++) {
         snprintf(timestamp, sizeof(timestamp), "%zu", i * 10);
-        add_time_bin_test_read(model, 0, timestamp, 100 + i, 10.0 + (double)i);
+        add_time_bin_test_read(model, 0, timestamp, 100 + i, 10.0 + (double)i, 2.0);
     }
 
     fc_time_bin_table table = { 0 };
@@ -192,6 +204,7 @@ static void test_time_bin_materialize_merged_limits_rows_and_merges_sketches(voi
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 100.5, table.rows[0].length_quantiles.q50);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 10.5, table.rows[0].qscore_mean);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 10.5, table.rows[0].qscore_quantiles.q50);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.25, table.rows[0].speed_quantiles.q50);
 
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 460.0, table.rows[23].time_bin_start_s);
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 480.0, table.rows[23].time_bin_end_s);
@@ -201,6 +214,7 @@ static void test_time_bin_materialize_merged_limits_rows_and_merges_sketches(voi
     TEST_ASSERT_EQUAL_size_t(5928, table.rows[23].cumulative_base_count);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 146.5, table.rows[23].length_quantiles.q50);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 56.5, table.rows[23].qscore_quantiles.q50);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 73.25, table.rows[23].speed_quantiles.q50);
 
     fc_time_bin_table_destroy(&table);
     fc_time_bin_destroy(model);
@@ -211,8 +225,8 @@ static void test_time_bin_barcode_state_is_isolated(void)
     fc_time_bin *model = fc_time_bin_create(3, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
 
-    add_time_bin_test_read(model, 1, "0", 100, 10.0);
-    add_time_bin_test_read(model, 2, "0", 200, 20.0);
+    add_time_bin_test_read(model, 1, "0", 100, 10.0, 2.0);
+    add_time_bin_test_read(model, 2, "0", 200, 20.0, 4.0);
 
     TEST_ASSERT_FALSE(fc_time_bin_seen(model, 0));
     TEST_ASSERT_TRUE(fc_time_bin_seen(model, 1));
@@ -261,6 +275,8 @@ static void test_time_bin_missing_and_invalid_timestamps_are_counted(void)
     fc_time_bin_skip_counts skipped = fc_time_bin_skipped_counts(model);
     TEST_ASSERT_EQUAL_size_t(1, skipped.missing);
     TEST_ASSERT_EQUAL_size_t(1, skipped.invalid);
+    TEST_ASSERT_EQUAL_size_t(0, skipped.duration_missing);
+    TEST_ASSERT_EQUAL_size_t(0, skipped.duration_invalid);
 
     fc_time_bin_table table = { 0 };
     TEST_ASSERT_EQUAL_INT(0, fc_time_bin_materialize(model, 0, &table));
@@ -279,14 +295,17 @@ static void test_time_bin_add_read_uses_bam_st_z_timestamp_tags(void)
     fc_read *read1 = make_time_bin_test_read("r1");
     const char *time1 = "1970-01-01T00:01:40Z";
     TEST_ASSERT_TRUE(bam_aux_update_str(read1->bam, "st", (int)strlen(time1), time1) >= 0);
+    TEST_ASSERT_TRUE(bam_aux_update_float(read1->bam, "du", 2.0f) >= 0);
     TEST_ASSERT_TRUE(bam_aux_update_float(read1->bam, "qs", 10.0f) >= 0);
     fc_read_reset_from_bam(read1, NULL, NULL);
     TEST_ASSERT_EQUAL_STRING(time1, read1->meta->start_time);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 2.0, read1->meta->duration_s);
     fc_time_bin_add_read(model, 0, read1);
 
     fc_read *read2 = make_time_bin_test_read("r2");
     const char *time2 = "1970-01-01T00:01:45.5Z";
     TEST_ASSERT_TRUE(bam_aux_update_str(read2->bam, "st", (int)strlen(time2), time2) >= 0);
+    TEST_ASSERT_TRUE(bam_aux_update_float(read2->bam, "du", 4.0f) >= 0);
     TEST_ASSERT_TRUE(bam_aux_update_float(read2->bam, "qs", 20.0f) >= 0);
     fc_read_reset_from_bam(read2, NULL, NULL);
     double parsed = 0.0;
@@ -301,10 +320,40 @@ static void test_time_bin_add_read_uses_bam_st_z_timestamp_tags(void)
     TEST_ASSERT_EQUAL_size_t(8, table.rows[0].base_count);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 4.0, table.rows[0].length_mean);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 15.0, table.rows[0].qscore_mean);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 1.5, table.rows[0].speed_mean);
 
     fc_time_bin_table_destroy(&table);
     fc_read_destroy(read1);
     fc_read_destroy(read2);
+    fc_time_bin_destroy(model);
+}
+
+static void test_time_bin_speed_skips_invalid_durations_only(void)
+{
+    fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
+    TEST_ASSERT_NOT_NULL(model);
+
+    add_time_bin_test_read(model, 0, "100", 100, 10.0, 2.0);
+    add_time_bin_test_read(model, 0, "101", 200, 20.0, NAN);
+    add_time_bin_test_read(model, 0, "102", 300, 30.0, 0.0);
+
+    fc_time_bin_table table = { 0 };
+    TEST_ASSERT_EQUAL_INT(0, fc_time_bin_materialize(model, 0, &table));
+    TEST_ASSERT_EQUAL_size_t(1, table.n);
+    TEST_ASSERT_EQUAL_size_t(3, table.rows[0].read_count);
+    TEST_ASSERT_EQUAL_size_t(600, table.rows[0].base_count);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 200.0, table.rows[0].length_mean);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 20.0, table.rows[0].qscore_mean);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_mean);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q50);
+
+    fc_time_bin_skip_counts skipped = fc_time_bin_skipped_counts(model);
+    TEST_ASSERT_EQUAL_size_t(0, skipped.missing);
+    TEST_ASSERT_EQUAL_size_t(0, skipped.invalid);
+    TEST_ASSERT_EQUAL_size_t(1, skipped.duration_missing);
+    TEST_ASSERT_EQUAL_size_t(1, skipped.duration_invalid);
+
+    fc_time_bin_table_destroy(&table);
     fc_time_bin_destroy(model);
 }
 
@@ -317,4 +366,5 @@ void time_bin_suite(void)
     RUN_TEST(test_time_bin_barcode_state_is_isolated);
     RUN_TEST(test_time_bin_missing_and_invalid_timestamps_are_counted);
     RUN_TEST(test_time_bin_add_read_uses_bam_st_z_timestamp_tags);
+    RUN_TEST(test_time_bin_speed_skips_invalid_durations_only);
 }

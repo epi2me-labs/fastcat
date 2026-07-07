@@ -30,6 +30,8 @@ typedef struct {
     fc_time_bin_quantiles length_quantiles;
     double qscore_mean;
     fc_time_bin_quantiles qscore_quantiles;
+    double speed_mean;
+    fc_time_bin_quantiles speed_quantiles;
 } fc_time_bin_row;
 
 typedef struct {
@@ -40,6 +42,8 @@ typedef struct {
 typedef struct {
     size_t missing;
     size_t invalid;
+    size_t duration_missing;
+    size_t duration_invalid;
 } fc_time_bin_skip_counts;
 
 fc_time_bin *fc_time_bin_create(size_t barcode_count, double bin_size_s, size_t kll_k);

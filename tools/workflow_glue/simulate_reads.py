@@ -27,6 +27,13 @@ import sys
 
 DEFAULT_RUNID = "12345678-1234-1234-1234-123456789abc"
 DEFAULT_MODEL = "dna_r10.4.1_e8.2_400bps_hac@v5.0.0"
+DEFAULT_SPEED_MEAN = 400.0
+DEFAULT_SPEED_IQR = 40.0
+DEFAULT_SPEED_FINAL_MEAN = 340.0
+SPEED_QSCORE_BAND_MIN = 390.0
+SPEED_QSCORE_BAND_MAX = 420.0
+SPEED_QSCORE_MAX_PENALTY = 5.0
+SPEED_QSCORE_PENALTY_SPAN = 60.0
 CHANNEL_MAP_ROOT = Path(__file__).resolve().parent / "data"
 CHANNEL_MAP_PATHS = {
     "flongle": CHANNEL_MAP_ROOT / "asicb512fx_flongle_channel_map.csv",
@@ -184,6 +191,28 @@ def make_seq(rng, length, random_seq):
     return "".join(bases[rng.getrandbits(2)] for _ in range(length))
 
 
+def sample_speed(rng, mean, sd):
+    return max(1e-3, rng.gauss(mean, sd))
+
+
+def speed_profile_mean(start_mean, final_mean, time_s, run_duration_s):
+    if run_duration_s <= 0.0:
+        return start_mean
+    frac = clamp(time_s / run_duration_s, 0.0, 1.0)
+    return start_mean + frac * (final_mean - start_mean)
+
+
+def qscore_speed_penalty(speed_nt_s):
+    if SPEED_QSCORE_BAND_MIN <= speed_nt_s <= SPEED_QSCORE_BAND_MAX:
+        return 0.0
+    if speed_nt_s < SPEED_QSCORE_BAND_MIN:
+        distance = SPEED_QSCORE_BAND_MIN - speed_nt_s
+    else:
+        distance = speed_nt_s - SPEED_QSCORE_BAND_MAX
+    penalty = SPEED_QSCORE_MAX_PENALTY * (distance / SPEED_QSCORE_PENALTY_SPAN) ** 2
+    return min(SPEED_QSCORE_MAX_PENALTY, penalty)
+
+
 def iso8601_with_seconds(base, seconds):
     return (base + dt.timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -267,6 +296,20 @@ def argparser():
         help="Truncated-exponential timestamp time constant as a fraction of run duration (default: 0.2)")
     metadata.add_argument("--duplex-rate", type=float, default=0.0, help="Fraction tagged as duplex via dx:i:1 (default: 0)")
 
+    speed = p.add_argument_group("translocation speed")
+    speed.add_argument(
+        "--speed-mean", type=float, default=DEFAULT_SPEED_MEAN,
+        help=f"Initial mean translocation speed in nt/s for du:f generation (default: {DEFAULT_SPEED_MEAN})")
+    speed.add_argument(
+        "--speed-final-mean", type=float, default=DEFAULT_SPEED_FINAL_MEAN,
+        help=f"Final mean translocation speed in nt/s at the end of the run (default: {DEFAULT_SPEED_FINAL_MEAN})")
+    speed.add_argument(
+        "--speed-iqr", type=float, default=DEFAULT_SPEED_IQR,
+        help=f"Interquartile spread of translocation speed in nt/s (default: {DEFAULT_SPEED_IQR})")
+    speed.add_argument(
+        "--speed-sd", type=float, default=None,
+        help="Optional stddev of translocation speed in nt/s; overrides --speed-iqr if set")
+
     output = p.add_argument_group("output")
     output.add_argument("--random-seq", action="store_true", help="Emit random A/C/G/T instead of homopolymer A")
     output.add_argument("--progress-every", type=int, default=0, help="If >0, print progress to stderr every N reads")
@@ -305,6 +348,14 @@ def validate_args(p, args):
         p.error("--time-tau-fraction must be finite and > 0")
     if not (0.0 <= args.duplex_rate <= 1.0):
         p.error("--duplex-rate must be in [0,1]")
+    if not math.isfinite(args.speed_mean) or args.speed_mean <= 0.0:
+        p.error("--speed-mean must be finite and > 0")
+    if not math.isfinite(args.speed_final_mean) or args.speed_final_mean <= 0.0:
+        p.error("--speed-final-mean must be finite and > 0")
+    if not math.isfinite(args.speed_iqr) or args.speed_iqr <= 0.0:
+        p.error("--speed-iqr must be finite and > 0")
+    if args.speed_sd is not None and (not math.isfinite(args.speed_sd) or args.speed_sd <= 0.0):
+        p.error("--speed-sd must be finite and > 0")
     if args.progress_every < 0:
         p.error("--progress-every must be >= 0")
 
@@ -327,6 +378,9 @@ def validate_args(p, args):
     except ValueError:
         p.error("--start-time must be UTC ISO8601 like 2026-01-01T00:00:00Z")
 
+    if args.speed_sd is None:
+        args.speed_sd = args.speed_iqr / 1.3489795003921634
+
 
 def main(args):
     validate_args(argparser(), args)
@@ -343,10 +397,23 @@ def main(args):
     qpeak2 = 0
     duplex_n = 0
     max_time_s = 0.0
+    sum_speed = 0.0
     barcode_counts = {name: 0 for name, _ in args.barcode_mix}
+    run_duration_s = timestamp_duration_seconds(args)
 
     for i in range(1, args.n + 1):
         length = sample_length(rng, args.shape, args.scale, args.min_len, args.max_len)
+        time_s = sample_timestamp_offset_seconds(time_rng, args, i)
+        if time_s > max_time_s:
+            max_time_s = time_s
+        speed_mean = speed_profile_mean(
+            args.speed_mean,
+            args.speed_final_mean,
+            time_s,
+            run_duration_s)
+        speed_nt_s = sample_speed(rng, speed_mean, args.speed_sd)
+        sum_speed += speed_nt_s
+
         mean_q, peak = sample_qscore(
             rng,
             args.q1,
@@ -357,6 +424,7 @@ def main(args):
             args.q_min,
             args.q_max,
         )
+        mean_q = clamp(mean_q - qscore_speed_penalty(speed_nt_s), args.q_min, args.q_max)
         barcode = draw_from_mix(rng, args.barcode_mix)
         channel = sample_channel(channel_rng, channel_sampler)
         mux = rng.randint(1, args.muxes)
@@ -374,17 +442,16 @@ def main(args):
         seq = make_seq(rng, length, args.random_seq)
         qchar = phred_char(mean_q)
         qual = qchar * length
+        duration_s = float(length) / speed_nt_s
 
         # Keep tags SAM-like so fastcat ingest reads them as BAM aux fields directly.
-        time_s = sample_timestamp_offset_seconds(time_rng, args, i)
-        if time_s > max_time_s:
-            max_time_s = time_s
         st = iso8601_with_seconds(args.start_dt, time_s)
         rg = f"{args.runid}_{args.model}"
         if barcode and barcode != "unclassified":
             rg = f"{rg}_{barcode}"
         tags = (
             f"qs:f:{mean_q:.4f}\t"
+            f"du:f:{duration_s:.6f}\t"
             f"rn:i:{i}\t"
             f"ch:i:{channel}\t"
             f"mx:i:{mux}\t"
@@ -404,10 +471,12 @@ def main(args):
     if stats.count > 0:
         mean_len = stats.sum_len / stats.count
         mean_q = stats.sum_q / stats.count
-        duration_s = timestamp_duration_seconds(args)
+        mean_speed = sum_speed / stats.count
+        duration_s = run_duration_s
     else:
         mean_len = 0.0
         mean_q = 0.0
+        mean_speed = 0.0
         duration_s = 0.0
         stats.min_len = 0
     err.write(
@@ -415,7 +484,8 @@ def main(args):
         f"n={stats.count} seed={args.seed} "
         f"time_profile={args.time_profile} duration_s={duration_s:.1f} max_time_s={max_time_s:.1f} "
         f"len(min/mean/max)={stats.min_len}/{mean_len:.1f}/{stats.max_len} "
-        f"q_mean={mean_q:.3f} qpeak1={qpeak1} qpeak2={qpeak2} duplex={duplex_n}\n"
+        f"q_mean={mean_q:.3f} speed_mean={mean_speed:.2f} "
+        f"qpeak1={qpeak1} qpeak2={qpeak2} duplex={duplex_n}\n"
     )
     if barcode_counts:
         parts = [f"{k}:{v}" for k, v in sorted(barcode_counts.items())]

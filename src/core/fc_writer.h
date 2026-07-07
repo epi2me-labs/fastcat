@@ -6,6 +6,7 @@
 #include "core/fc_channel_summary.h"
 #include "core/fc_iter.h"
 #include "core/fc_length_qscore_2d.h"
+#include "core/fc_speed_qscore_2d.h"
 #include "core/fc_stats_engine.h"
 #include "core/fc_time_bin.h"
 
@@ -46,6 +47,7 @@ typedef struct {
     const fc_stats_engine_config *stats;
     bool channel_summary;
     const fc_length_qscore_2d_config *length_qscore;
+    const fc_speed_qscore_2d_config *speed_qscore;
     const fc_time_bin_config *time_bin;
 } fc_writer_config;
 
@@ -62,6 +64,7 @@ typedef struct {
     fc_stats_engine_config stats_cfg;
     fc_channel_summary *channel_summary;
     fc_length_qscore_2d *length_qscore;
+    fc_speed_qscore_2d *speed_qscore;
     fc_time_bin *time_bin;
 } fc_writer;
 

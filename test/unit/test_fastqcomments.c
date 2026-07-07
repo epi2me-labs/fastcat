@@ -62,7 +62,7 @@ static void test_parse_simple_comment(void) {
     const char* model = "rna004_130bps_fast@v5.1.0";
     char comment[256];
     FC_SNPRINTF_CHECK(comment, sizeof(comment),
-        "runid=%s basecall_model_version_id=%s barcode=barcode12 start_time=2023-01-01T00:00:00Z",
+        "runid=%s basecall_model_version_id=%s barcode=barcode12 start_time=2023-01-01T00:00:00Z du=1.25",
         runid, model);
     fc_read *read = fc_read_init();
     TEST_ASSERT_NOT_NULL(read);
@@ -72,10 +72,12 @@ static void test_parse_simple_comment(void) {
     TEST_ASSERT_EQUAL_STRING("barcode12", meta->barcode);
     TEST_ASSERT_EQUAL_INT(12, meta->ibarcode);
     TEST_ASSERT_EQUAL_STRING("2023-01-01T00:00:00Z", meta->start_time);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 1.25, meta->duration_s);
     const char *tags = get_tags(read);
     TEST_ASSERT_NOT_NULL(strstr(tags, "RG:Z:e4994c62-93f9-439a-bc8f-d20c95a137a5_rna004_130bps_fast@v5.1.0_barcode12"));
     TEST_ASSERT_NOT_NULL(strstr(tags, "SM:Z:barcode12"));
     TEST_ASSERT_NOT_NULL(strstr(tags, "st:Z:2023-01-01T00:00:00Z"));
+    TEST_ASSERT_NOT_NULL(strstr(tags, "du:f:1.25"));
     destroy_read(read);
 }
 
@@ -105,7 +107,7 @@ static void test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open(void) {
     TEST_ASSERT_NOT_NULL(read);
     read_from_comment(read,
         "runid=12345678-1234-1234-1234-123456789012 empty= no_equals barcode=barcode07 "
-        "fubar= read=7 unknown=foo ch=42 mux=3");
+        "fubar= read=7 unknown=foo ch=42 mux=3 du=2.5");
     read_meta *meta = read->meta;
     TEST_ASSERT_EQUAL_STRING(runid, meta->runid);
     TEST_ASSERT_EQUAL_STRING("barcode07", meta->barcode);
@@ -113,6 +115,7 @@ static void test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open(void) {
     TEST_ASSERT_EQUAL_UINT64(7, meta->read_number);
     TEST_ASSERT_EQUAL_UINT64(42, meta->channel);
     TEST_ASSERT_EQUAL_UINT64(3, meta->mux);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 2.5, meta->duration_s);
 
     uint8_t* co_aux = bam_aux_get(read->bam, "CO");
     TEST_ASSERT_NOT_NULL(co_aux);
@@ -133,6 +136,10 @@ static void test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open(void) {
     uint8_t* mx_aux = bam_aux_get(read->bam, "mx");
     TEST_ASSERT_NOT_NULL(mx_aux);
     TEST_ASSERT_EQUAL_INT(3, bam_aux2i(mx_aux));
+
+    uint8_t* du_aux = bam_aux_get(read->bam, "du");
+    TEST_ASSERT_NOT_NULL(du_aux);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 2.5, bam_aux2f(du_aux));
     destroy_read(read);
 }
 

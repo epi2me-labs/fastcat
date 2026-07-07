@@ -80,6 +80,9 @@ void fc_kll_density_destroy(fc_kll_density *density);
 // Get total number of items added to sketch
 size_t fc_kll_count(const fc_kll_sketch *sketch);
 
+// Return the weighted number of sketch items whose value lies in [lower, upper].
+size_t fc_kll_count_in_range(const fc_kll_sketch *sketch, double lower, double upper);
+
 // Return bytes allocated by the sketch data structure itself.
 // Includes the sketch struct, level array capacity, and per-level item buffers.
 // Excludes allocator bookkeeping overhead.

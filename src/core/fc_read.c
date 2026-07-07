@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -136,6 +137,7 @@ static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment)
     meta->poly_tail_length = -1;
     meta->duplex_code = 0;
     meta->mean_q = -1.0f;
+    meta->duration_s = NAN;
     meta->read_number = 0;
     meta->channel = 0;
     meta->mux = 0;
@@ -209,6 +211,20 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             meta->poly_tail_length = ival;
         } else if (strcmp(tag, "DX") == 0 && !ierr) {
             meta->duplex_code = ival;
+        } else if (strcmp(tag, "DU") == 0) {
+            double duration_s = NAN;
+            if (!ierr && (type == 'i' || type == 'I' || type == 'c' || type == 'C' || type == 's' || type == 'S')) {
+                duration_s = (double)ival;
+            } else {
+                errno = 0;
+                duration_s = bam_aux2f(aux);
+                if (duration_s == 0.0 && errno == EINVAL) {
+                    duration_s = NAN;
+                }
+            }
+            if (isfinite(duration_s)) {
+                meta->duration_s = duration_s;
+            }
         } else if (strcmp(tag, "QS") == 0) {
             errno = 0;
             float qs = (float)bam_aux2f(aux);

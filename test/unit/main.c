@@ -17,6 +17,7 @@ void bamcoverage_suite(void);
 void quantile_suite(void);
 void kll_suite(void);
 void length_qscore_2d_suite(void);
+void speed_qscore_2d_suite(void);
 void time_bin_suite(void);
 void channel_summary_suite(void);
 void quantile_stress_suite(void);
@@ -50,6 +51,7 @@ int main(void) {
     quantile_suite();
     kll_suite();
     length_qscore_2d_suite();
+    speed_qscore_2d_suite();
     time_bin_suite();
     channel_summary_suite();
     quantile_stress_suite();

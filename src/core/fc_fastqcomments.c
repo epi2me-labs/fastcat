@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -53,6 +54,21 @@ static bool parse_int64(const char *value, int64_t *out)
     char *end = NULL;
     long long v = strtoll(value, &end, 10);
     if (errno != 0 || end == value || *end != '\0') {
+        return false;
+    }
+    *out = v;
+    return true;
+}
+
+static bool parse_double(const char *value, double *out)
+{
+    if (!value || value[0] == '\0') {
+        return false;
+    }
+    errno = 0;
+    char *end = NULL;
+    double v = strtod(value, &end);
+    if (errno != 0 || end == value || *end != '\0' || !isfinite(v)) {
         return false;
     }
     *out = v;
@@ -144,6 +160,13 @@ static int parse_key_value_comment_to_bam(const kstring_t *comment, bam1_t *b)
             if (!parse_int64(value, &ival) || ival < 0 || ival > UINT32_MAX) {
                 ksprintf_with_opt_delim(&rest, " ", "%s=%s", key, value);
             } else if (bam_aux_update_int(b, "mx", ival) < 0) {
+                goto err;
+            }
+        } else if (!strcmp(key, "du")) {
+            double fval = 0.0;
+            if (!parse_double(value, &fval)) {
+                ksprintf_with_opt_delim(&rest, " ", "%s=%s", key, value);
+            } else if (bam_aux_update_float(b, "du", (float)fval) < 0) {
                 goto err;
             }
         } else if (!strcmp(key, "start_time")) {
