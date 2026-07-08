@@ -6,6 +6,7 @@
 #include "core/fc_channel_summary.h"
 #include "core/fc_iter.h"
 #include "core/fc_length_qscore_2d.h"
+#include "core/fc_run_summary.h"
 #include "core/fc_speed_qscore_2d.h"
 #include "core/fc_stats_engine.h"
 #include "core/fc_time_bin.h"
@@ -45,6 +46,7 @@ typedef struct {
 typedef struct {
     bool use_barcodes;
     const fc_stats_engine_config *stats;
+    bool run_summary;
     bool channel_summary;
     const fc_length_qscore_2d_config *length_qscore;
     const fc_speed_qscore_2d_config *speed_qscore;
@@ -62,6 +64,7 @@ typedef struct {
     fc_stats_engine **stats_engines;
     size_t stats_engine_count;
     fc_stats_engine_config stats_cfg;
+    fc_run_summary *run_summary;
     fc_channel_summary *channel_summary;
     fc_length_qscore_2d *length_qscore;
     fc_speed_qscore_2d *speed_qscore;

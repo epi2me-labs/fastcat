@@ -30,7 +30,7 @@
 #define FC_REPORT_YIELD_THINNING 100
 #define FC_REPORT_LQ2D_COLOR_QUANTILE 0.995
 #define FC_REPORT_CHANNEL_COLOR_QUANTILE 0.995
-#define FC_REPORT_TIME_BOX_MAX_BINS 24
+#define FC_REPORT_TIME_BOX_MAX_BINS SIZE_MAX
 #define FC_REPORT_NAME "fastcat_report.html"
 
 typedef struct {
@@ -242,6 +242,52 @@ static char *build_run_config_rows_html(const fc_report_config_entry *entries, s
         report_kputs(&ks, "</td></tr>\n");
     }
     return report_steal(&ks);
+}
+
+static char *format_report_count(size_t value)
+{
+    return fc_asprintf("report count", "%zu", value);
+}
+
+static char *format_report_bp(size_t value)
+{
+    if (value == 0) {
+        return fc_strdup("(not set)", "report bp");
+    }
+    return fc_asprintf("report bp", "%zu bp", value);
+}
+
+static char *format_report_yield(size_t bases)
+{
+    if (bases == 0) {
+        return fc_strdup("0 bp", "report yield");
+    }
+    if (bases >= 1000000000ULL) {
+        return fc_asprintf("report yield", "%.3g Gbp", (double)bases / 1e9);
+    }
+    if (bases >= 1000000ULL) {
+        return fc_asprintf("report yield", "%.3g Mbp", (double)bases / 1e6);
+    }
+    if (bases >= 1000ULL) {
+        return fc_asprintf("report yield", "%.3g kbp", (double)bases / 1e3);
+    }
+    return fc_asprintf("report yield", "%zu bp", bases);
+}
+
+static char *format_report_duration(double seconds)
+{
+    if (seconds < 0.0) {
+        return fc_strdup("(not meaningful)", "report duration");
+    }
+    if (!isfinite(seconds)) {
+        return fc_strdup("(not set)", "report duration");
+    }
+
+    size_t total = (size_t)llround(seconds);
+    size_t hours = total / 3600;
+    size_t minutes = (total % 3600) / 60;
+    size_t secs = total % 60;
+    return fc_asprintf("report duration", "%zuh %zum %zus", hours, minutes, secs);
 }
 
 static void replace_all(char **html, const char *needle, const char *replacement)
@@ -887,7 +933,7 @@ static void update_length_qscore_plot(
     }
 
     char subtitle[160];
-    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "Estimated counts, n=%.0f, length cap %.3gkb",
+    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "Estimated counts, n=%.0f, length cap %.3g kb",
         total, matrix.x_upper / 1000.0);
 
     double color_high = lq2d_color_high_quantile(&matrix);
@@ -985,7 +1031,7 @@ static void update_speed_qscore_plot(
         bokeh_set_string(
             docs,
             "speed_qscore.subtitle.text",
-            "No qscore/translocation-speed data available");
+            "No quality/translocation-speed data available");
         bokeh_set_number(docs, "speed_qscore.color_mapper.high", 1.0);
         bokeh_set_range(docs, "speed_qscore.x_range", 0.0, 1.0);
         bokeh_set_range(docs, "speed_qscore.y_range", 0.0, 1.0);
@@ -1018,7 +1064,7 @@ static void update_speed_qscore_plot(
     FC_SNPRINTF_CHECK(
         subtitle,
         sizeof(subtitle),
-        "Estimated counts, n=%.0f, speed range %.0f-%.0f nt/s",
+        "Estimated counts, n=%.0f, speed range %.0f-%.0f bp/s",
         total,
         matrix.x_lower,
         matrix.x_upper);
@@ -1158,11 +1204,16 @@ static void update_time_yield_plot(JSON_Value *docs, const fc_time_bin_table *ta
     report_column y = bokeh_source_add_array_column(&source, "y");
     double y_end = 0.0;
 
+    if (table && table->n > 0) {
+        fc_json_array_append_number(x.array, 0.0);
+        fc_json_array_append_number(y.array, 0.0);
+    }
+
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
-        double mid_h = (row->time_bin_start_s + row->time_bin_end_s) / 7200.0;
+        double end_h = row->time_bin_end_s / 3600.0;
         y_end = (double)row->cumulative_base_count / 1e9;
-        fc_json_array_append_number(x.array, mid_h);
+        fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(y.array, y_end);
     }
 
@@ -1181,6 +1232,46 @@ static void update_time_yield_plot(JSON_Value *docs, const fc_time_bin_table *ta
     bokeh_set_range(docs, "time_yield.y_range", 0.0, y_end);
 }
 
+static void update_time_yield_bin_plot(JSON_Value *docs, const fc_time_bin_table *table)
+{
+    report_source source = bokeh_source_create();
+    report_column x = bokeh_source_add_array_column(&source, "x");
+    report_column y = bokeh_source_add_array_column(&source, "y");
+    double y_max = 0.0;
+
+    for (size_t i = 0; table && i < table->n; i++) {
+        const fc_time_bin_row *row = &table->rows[i];
+        double start_h = row->time_bin_start_s / 3600.0;
+        double y_value = (double)row->base_count / 1e9;
+        if (y_value > y_max) {
+            y_max = y_value;
+        }
+        fc_json_array_append_number(x.array, start_h);
+        fc_json_array_append_number(y.array, y_value);
+    }
+
+    if (table && table->n > 0) {
+        double end_h = table->rows[table->n - 1].time_bin_end_s / 3600.0;
+        double y_value = (double)table->rows[table->n - 1].base_count / 1e9;
+        fc_json_array_append_number(x.array, end_h);
+        fc_json_array_append_number(y.array, y_value);
+    }
+
+    bokeh_set_value(docs, "time_yield_bin.source.data", source.value);
+
+    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
+    if (!isfinite(x_end) || x_end <= 0.0) {
+        x_end = 1.0;
+    }
+    if (!isfinite(y_max) || y_max <= 0.0) {
+        y_max = 1.0;
+    } else {
+        y_max *= 1.1;
+    }
+    bokeh_set_range(docs, "time_yield_bin.x_range", 0.0, x_end);
+    bokeh_set_range(docs, "time_yield_bin.y_range", 0.0, y_max);
+}
+
 static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
@@ -1190,9 +1281,13 @@ static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *ta
 
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
-        double mid_h = (row->time_bin_start_s + row->time_bin_end_s) / 7200.0;
+        double end_h = row->time_bin_end_s / 3600.0;
         y_end = (double)row->cumulative_read_count;
-        fc_json_array_append_number(x.array, mid_h);
+        if (i == 0 && end_h > 0.0) {
+            fc_json_array_append_number(x.array, 0.0);
+            fc_json_array_append_number(y.array, 0.0);
+        }
+        fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(y.array, y_end);
     }
 
@@ -1211,6 +1306,46 @@ static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *ta
     bokeh_set_range(docs, "time_reads.y_range", 0.0, y_end);
 }
 
+static void update_time_reads_bin_plot(JSON_Value *docs, const fc_time_bin_table *table)
+{
+    report_source source = bokeh_source_create();
+    report_column x = bokeh_source_add_array_column(&source, "x");
+    report_column y = bokeh_source_add_array_column(&source, "y");
+    double y_max = 0.0;
+
+    for (size_t i = 0; table && i < table->n; i++) {
+        const fc_time_bin_row *row = &table->rows[i];
+        double start_h = row->time_bin_start_s / 3600.0;
+        double y_value = (double)row->read_count;
+        if (y_value > y_max) {
+            y_max = y_value;
+        }
+        fc_json_array_append_number(x.array, start_h);
+        fc_json_array_append_number(y.array, y_value);
+    }
+
+    if (table && table->n > 0) {
+        double end_h = table->rows[table->n - 1].time_bin_end_s / 3600.0;
+        double y_value = (double)table->rows[table->n - 1].read_count;
+        fc_json_array_append_number(x.array, end_h);
+        fc_json_array_append_number(y.array, y_value);
+    }
+
+    bokeh_set_value(docs, "time_reads_bin.source.data", source.value);
+
+    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
+    if (!isfinite(x_end) || x_end <= 0.0) {
+        x_end = 1.0;
+    }
+    if (!isfinite(y_max) || y_max <= 0.0) {
+        y_max = 1.0;
+    } else {
+        y_max *= 1.1;
+    }
+    bokeh_set_range(docs, "time_reads_bin.x_range", 0.0, x_end);
+    bokeh_set_range(docs, "time_reads_bin.y_range", 0.0, y_max);
+}
+
 static void update_time_length_ribbon_plot(JSON_Value *docs, const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
@@ -1218,7 +1353,7 @@ static void update_time_length_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
     report_column read_count = bokeh_source_add_array_column(&source, "read_count");
     report_column q05 = bokeh_source_add_array_column(&source, "q05");
     report_column q25 = bokeh_source_add_array_column(&source, "q25");
-    report_column q50 = bokeh_source_add_array_column(&source, "read length (kb)");
+    report_column q50 = bokeh_source_add_array_column(&source, "Read length / kb");
     report_column q75 = bokeh_source_add_array_column(&source, "q75");
     report_column q95 = bokeh_source_add_array_column(&source, "q95");
     bool seeded_origin = false;
@@ -1275,7 +1410,7 @@ static void update_time_qscore_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
     report_column read_count = bokeh_source_add_array_column(&source, "read_count");
     report_column q05 = bokeh_source_add_array_column(&source, "q05");
     report_column q25 = bokeh_source_add_array_column(&source, "q25");
-    report_column q50 = bokeh_source_add_array_column(&source, "qscore");
+    report_column q50 = bokeh_source_add_array_column(&source, "Quality");
     report_column q75 = bokeh_source_add_array_column(&source, "q75");
     report_column q95 = bokeh_source_add_array_column(&source, "q95");
     bool seeded_origin = false;
@@ -1377,7 +1512,7 @@ static void update_time_speed_ribbon_plot(JSON_Value *docs, const fc_time_bin_ta
     report_column read_count = bokeh_source_add_array_column(&source, "read_count");
     report_column q05 = bokeh_source_add_array_column(&source, "q05");
     report_column q25 = bokeh_source_add_array_column(&source, "q25");
-    report_column q50 = bokeh_source_add_array_column(&source, "translocation speed (nt/s)");
+    report_column q50 = bokeh_source_add_array_column(&source, "Translocation speed / bp/s");
     report_column q75 = bokeh_source_add_array_column(&source, "q75");
     report_column q95 = bokeh_source_add_array_column(&source, "q95");
     bool seeded_origin = false;
@@ -1803,7 +1938,9 @@ static JSON_Value *build_report_bokeh_docs(
     update_length_qscore_plot(docs, length_qscore, barcode);
     update_speed_qscore_plot(docs, speed_qscore, barcode);
     update_time_yield_plot(docs, &time_table);
+    update_time_yield_bin_plot(docs, &time_table);
     update_time_reads_plot(docs, &time_table);
+    update_time_reads_bin_plot(docs, &time_table);
     update_time_length_ribbon_plot(docs, &time_boxes);
     update_time_qscore_ribbon_plot(docs, &time_boxes);
     update_time_speed_ribbon_plot(docs, &time_boxes);
@@ -1822,8 +1959,8 @@ static JSON_Value *build_report_bokeh_docs(
 static char *render_report_html(
     const char *docs_json,
     const char *sample,
-    const char *sample_type,
     const char *barcode,
+    const fc_run_summary_row *summary,
     const fc_report_config_entry *run_config,
     size_t run_config_count)
 {
@@ -1836,22 +1973,80 @@ static char *render_report_html(
         return NULL;
     }
 
-    char *sample_html = html_escape(sample ? sample : "fastcat");
-    char *type_html = html_escape(sample_type ? sample_type : "fastcat");
-    char *barcode_html = html_escape(barcode ? barcode : "unclassified");
+    char *sample_html = html_escape(
+        (summary && summary->sample_id && summary->sample_id[0] != '\0')
+            ? summary->sample_id
+            : (sample ? sample : "fastcat"));
+    char *barcode_html = html_escape(
+        (summary && summary->barcode_id && summary->barcode_id[0] != '\0')
+            ? summary->barcode_id
+            : (barcode ? barcode : "unclassified"));
     char *version_html = html_escape(argp_program_version ? argp_program_version : "unknown");
     char *run_config_rows_html = build_run_config_rows_html(run_config, run_config_count);
+    char *run_duration_text = summary ? format_report_duration(summary->run_duration_s) : fc_strdup("(not set)", "report duration");
+    char *yield_text = summary ? format_report_yield(summary->base_count) : fc_strdup("(not set)", "report yield");
+    char *read_count_text = summary ? format_report_count(summary->read_count) : fc_strdup("(not set)", "report read count");
+    char *n50_text = summary ? format_report_bp(summary->n50_bp) : fc_strdup("(not set)", "report n50");
+    char *l50_text = summary ? format_report_count(summary->l50) : fc_strdup("(not set)", "report l50");
+    char *barcode_alias_html = html_escape(
+        (summary && summary->barcode_alias && summary->barcode_alias[0] != '\0')
+            ? summary->barcode_alias
+            : "(not set)");
+    char *run_id_html = html_escape(
+        (summary && summary->run_id && summary->run_id[0] != '\0')
+            ? summary->run_id
+            : "(not set)");
+    char *basecaller_html = html_escape(
+        (summary && summary->basecaller_model && summary->basecaller_model[0] != '\0')
+            ? summary->basecaller_model
+            : "(not set)");
+    char *flow_cell_html = html_escape(
+        (summary && summary->flow_cell_id && summary->flow_cell_id[0] != '\0')
+            ? summary->flow_cell_id
+            : "(not set)");
+    char *run_date_html = html_escape(
+        (summary && summary->run_date && summary->run_date[0] != '\0')
+            ? summary->run_date
+            : "(not set)");
+    char *run_duration_html = html_escape(run_duration_text);
+    char *yield_html = html_escape(yield_text);
+    char *read_count_html = html_escape(read_count_text);
+    char *n50_html = html_escape(n50_text);
+    char *l50_html = html_escape(l50_text);
 
     replace_all(&html, "__FASTCAT_BOKEH_DOCS_JSON__", docs_json ? docs_json : "{}");
     replace_all(&html, "__FASTCAT_SAMPLE_ALIAS_HTML__", sample_html);
-    replace_all(&html, "__FASTCAT_SAMPLE_TYPE_HTML__", type_html);
     replace_all(&html, "__FASTCAT_SAMPLE_BARCODE_HTML__", barcode_html);
+    replace_all(&html, "__FASTCAT_BARCODE_ALIAS_HTML__", barcode_alias_html);
+    replace_all(&html, "__FASTCAT_RUN_ID_HTML__", run_id_html);
+    replace_all(&html, "__FASTCAT_BASECALLER_HTML__", basecaller_html);
+    replace_all(&html, "__FASTCAT_FLOW_CELL_ID_HTML__", flow_cell_html);
+    replace_all(&html, "__FASTCAT_RUN_DATE_HTML__", run_date_html);
+    replace_all(&html, "__FASTCAT_RUN_DURATION_HTML__", run_duration_html);
+    replace_all(&html, "__FASTCAT_YIELD_HTML__", yield_html);
+    replace_all(&html, "__FASTCAT_READ_COUNT_HTML__", read_count_html);
+    replace_all(&html, "__FASTCAT_N50_HTML__", n50_html);
+    replace_all(&html, "__FASTCAT_L50_HTML__", l50_html);
     replace_all(&html, "__FASTCAT_VERSION_HTML__", version_html);
     replace_all(&html, "__FASTCAT_RUN_CONFIG_ROWS__", run_config_rows_html);
 
     free(sample_html);
-    free(type_html);
     free(barcode_html);
+    free(barcode_alias_html);
+    free(run_id_html);
+    free(basecaller_html);
+    free(flow_cell_html);
+    free(run_date_html);
+    free(run_duration_text);
+    free(yield_text);
+    free(read_count_text);
+    free(n50_text);
+    free(l50_text);
+    free(run_duration_html);
+    free(yield_html);
+    free(read_count_html);
+    free(n50_html);
+    free(l50_html);
     free(version_html);
     free(run_config_rows_html);
     return html;
@@ -1880,12 +2075,12 @@ static int write_text_file(const char *path, const char *text)
 static int write_report_for_output_dir(
     const char *output_dir,
     const char *sample,
-    const char *sample_type,
     const char *barcode,
     const read_stats *length_stats,
     const read_stats *quality_stats,
     const fc_report_config_entry *run_config,
     size_t run_config_count,
+    const fc_run_summary *run_summary,
     const fc_channel_summary *channel_summary,
     const fc_length_qscore_2d *length_qscore,
     const fc_speed_qscore_2d *speed_qscore,
@@ -1895,12 +2090,18 @@ static int write_report_for_output_dir(
     int rc = -1;
     report_hist length = { 0 };
     report_hist quality = { 0 };
+    fc_run_summary_row summary = { 0 };
     char *report_path = fc_join_path(output_dir, FC_REPORT_NAME);
 
     if (!report_hist_from_read_stats(length_stats, &length)
         || !report_hist_from_read_stats(quality_stats, &quality)
         || length.total_count <= 0.0 || quality.total_count <= 0.0) {
         FC_LOG_ERROR("Cannot write HTML report: no in-memory length/quality histograms for '%s'.", output_dir);
+        goto cleanup;
+    }
+
+    if (fc_run_summary_materialize(run_summary, barcode_index, length_stats, sample, barcode, &summary) != 0) {
+        FC_LOG_ERROR("Cannot write HTML report: failed to materialize run summary for '%s'.", output_dir);
         goto cleanup;
     }
 
@@ -1913,7 +2114,7 @@ static int write_report_for_output_dir(
         time_bin,
         barcode_index);
     char *docs_json = docs ? fc_json_serialize_to_string(docs) : NULL;
-    char *html = render_report_html(docs_json, sample, sample_type, barcode, run_config, run_config_count);
+    char *html = render_report_html(docs_json, sample, barcode, &summary, run_config, run_config_count);
     if (html && write_text_file(report_path, html) == 0) {
         FC_LOG_INFO("Wrote HTML report '%s'.", report_path);
         rc = 0;
@@ -1937,7 +2138,6 @@ int fc_write_html_reports(const fc_report_opts *opts)
         return -1;
     }
 
-    const char *sample_type = "fastcat";
     if (!opts->use_barcodes) {
         if (!opts->engines || opts->engine_count == 0) {
             FC_LOG_ERROR("Cannot write HTML report: no stats engine available.");
@@ -1949,12 +2149,12 @@ int fc_write_html_reports(const fc_report_opts *opts)
         return write_report_for_output_dir(
             opts->output_root,
             opts->sample,
-            sample_type,
             "unclassified",
             length,
             quality,
             opts->run_config,
             opts->run_config_count,
+            opts->run_summary,
             opts->channel_summary,
             opts->length_qscore,
             opts->speed_qscore,
@@ -1989,12 +2189,12 @@ int fc_write_html_reports(const fc_report_opts *opts)
         if (write_report_for_output_dir(
                 barcode_dir,
                 opts->sample ? opts->sample : barcode_name,
-                sample_type,
                 barcode_name,
                 length,
                 quality,
                 opts->run_config,
                 opts->run_config_count,
+                opts->run_summary,
                 opts->channel_summary,
                 opts->length_qscore,
                 opts->speed_qscore,

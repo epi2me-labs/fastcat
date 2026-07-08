@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from dominate.tags import b, p
+from dominate.tags import b, p, table, tbody, td, th, thead, tr
 import ezcharts as ezc
 from ezcharts.components import fastcat
 from ezcharts.components.ezchart import EZChart
@@ -12,12 +12,14 @@ from ezcharts.layout.snippets.table import DataTable
 import numpy as np
 import pandas as pd
 
+from . import bokeh_relational
 from . import bokeh_matrix
 from . import bokeh_ribbon
 from .util import get_main_logger, get_named_logger, wf_parser  # noqa: ABS101
 
 
 CHANNEL_MAP_ROOT = Path(__file__).resolve().parent / "data"
+FASTCAT_BLUE = "#0173b2"
 CHANNEL_MAP_PATHS = {
     "flongle": CHANNEL_MAP_ROOT / "asicb512fx_flongle_channel_map.csv",
     "minion": CHANNEL_MAP_ROOT / "asicb512fx_channel_map.csv",
@@ -42,15 +44,88 @@ def load_dense_heatmap(df, x, y, value, subtitle):
         subtitle=subtitle)
 
 
+def simple_kv_table(rows):
+    """Render a plain key/value table."""
+    with table(cls="table table-sm"):
+        with thead():
+            with tr():
+                th("Property")
+                th("Value")
+        with tbody():
+            for key, value in rows:
+                with tr():
+                    td(str(key))
+                    td("" if value is None else str(value))
+
+
+def _summary_display_text(value, formatter=str):
+    if value is None:
+        return "(not set)"
+    text = str(value)
+    if text == "" or text.lower() == "nan":
+        return "(not set)"
+    if text.startswith("__FASTCAT_"):
+        return text
+    return formatter(value)
+
+
+def _format_duration_seconds(value):
+    total = int(round(float(value)))
+    if total < 0:
+        return "(not meaningful)"
+    hours = total // 3600
+    minutes = (total % 3600) // 60
+    seconds = total % 60
+    return f"{hours}h {minutes}m {seconds}s"
+
+
+def _format_yield_bases(value):
+    value = float(value)
+    if value >= 1e9:
+        return f"{value / 1e9:.3g} Gbp"
+    if value >= 1e6:
+        return f"{value / 1e6:.3g} Mbp"
+    if value >= 1e3:
+        return f"{value / 1e3:.3g} kbp"
+    return f"{int(round(value))} bp"
+
+
+def load_run_summary(path):
+    """Load fastcat run_summary.tsv and format the top summary table."""
+    df = pd.read_csv(path, sep="\t", dtype=str).fillna("")
+    if df.empty:
+        return []
+    row = df.iloc[0].to_dict()
+    rows = [
+        ("Sample ID", _summary_display_text(row.get("sample_id"))),
+        ("Barcode ID", _summary_display_text(row.get("barcode_id"))),
+    ]
+    barcode_alias = _summary_display_text(row.get("barcode_alias"))
+    if barcode_alias != "(not set)":
+        rows.append(("Barcode alias", barcode_alias))
+    rows.extend([
+        ("Run ID", _summary_display_text(row.get("run_id"))),
+        ("Basecaller model", _summary_display_text(row.get("basecaller_model"))),
+        ("Flowcell ID", _summary_display_text(row.get("flow_cell_id"))),
+        ("Run date", _summary_display_text(row.get("run_date"))),
+        ("Run duration", _summary_display_text(row.get("run_duration_s"), _format_duration_seconds)),
+        ("Yield", _summary_display_text(row.get("base_count"), _format_yield_bases)),
+        ("Read count", _summary_display_text(row.get("read_count"), lambda v: f"{int(float(v))}")),
+        ("N50", _summary_display_text(row.get("n50_bp"), lambda v: f"{int(float(v))} bp")),
+        ("L50", _summary_display_text(row.get("l50"), lambda v: f"{int(float(v))}")),
+    ])
+    return rows
+
+
 def load_length_qscore_heatmap(path):
     """Load fastcat length/qscore TSV into a Bokeh heatmap matrix."""
     df = pd.read_csv(path, sep="\t")
-    df["read length (kb)"] = (df["length_bin_start"] + df["length_bin_end"]) * 0.0005
-    df["qscore"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
+    df["Read length / kb"] = (df["length_bin_start"] + df["length_bin_end"]) * 0.0005
+    df["Quality"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
     return load_dense_heatmap(
         df,
-        "read length (kb)",
-        "qscore",
+        "Read length / kb",
+        "Quality",
         "count",
         "Estimated counts")
 
@@ -58,13 +133,13 @@ def load_length_qscore_heatmap(path):
 def load_speed_qscore_heatmap(path):
     """Load fastcat qscore/translocation-speed TSV into a Bokeh heatmap matrix."""
     df = pd.read_csv(path, sep="\t")
-    df["translocation speed (nt/s)"] = (
+    df["Translocation speed / bp/s"] = (
         df["speed_bin_start"] + df["speed_bin_end"]) * 0.5
-    df["qscore"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
+    df["Quality"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
     return load_dense_heatmap(
         df,
-        "translocation speed (nt/s)",
-        "qscore",
+        "Translocation speed / bp/s",
+        "Quality",
         "count",
         "Estimated counts")
 
@@ -103,7 +178,7 @@ def load_time_bin_summary(path):
         for row in df.itertuples()
     ]
     df["time_bin"] = pd.Categorical(labels, categories=labels, ordered=True)
-    df["base_yield_mbp"] = df["base_count"] / 1e6
+    df["base_yield_gbp"] = df["base_count"] / 1e9
     df["cumulative_base_yield_gbp"] = df["cumulative_base_count"] / 1e9
     df["length_mean_kb"] = df["length_mean"] / 1000.0
     df["speed_mean"] = df["translocation_speed_mean"]
@@ -211,22 +286,60 @@ def load_channel_summary_heatmap(path, metric):
         ])
 
 
-def time_lineplot(df, y, ylabel, color="#2f7f6f"):
+def time_lineplot(df, y, ylabel, color=FASTCAT_BLUE, x="time_mid_h", seed_origin=False):
     """Create a line plot against elapsed run time in hours."""
-    plot = ezc.lineplot(
-        data=df,
-        x="time_mid_h",
+    plot_df = df[[x, y]].copy()
+    if seed_origin and not plot_df.empty and plot_df.iloc[0][x] > 0.0:
+        first = plot_df.iloc[[0]].copy()
+        first[x] = 0.0
+        first[y] = 0.0
+        plot_df = pd.concat([first, plot_df], ignore_index=True)
+
+    plot = bokeh_relational.lineplot(
+        data=plot_df,
+        x=x,
         y=y,
         estimator=None,
         errorbar=None,
-        color=color)
-    plot._fig.xaxis.axis_label = "elapsed time (hours)"
+        color=color,
+        hover_items=[
+            ("Elapsed time / hours", f"@{{{x}}}{{0.00}}"),
+            (ylabel, "@y{0}")])
+    plot._fig.xaxis.axis_label = "Elapsed time / hours"
+    plot._fig.yaxis.axis_label = ylabel
+    return plot
+
+
+def time_stepplot(df, y, ylabel, color=FASTCAT_BLUE):
+    """Create a stepped per-bin plot over elapsed run time in hours."""
+    plot_df = pd.DataFrame({
+        "elapsed time (hours)": (df["time_bin_start_s"] / 3600.0).astype(float),
+        ylabel: pd.to_numeric(df[y], errors="coerce").fillna(0.0).astype(float),
+    })
+    if not df.empty:
+        plot_df.loc[len(plot_df)] = {
+            "elapsed time (hours)": float(df["time_bin_end_s"].iloc[-1]) / 3600.0,
+            ylabel: float(plot_df[ylabel].iloc[-1]),
+        }
+
+    plot = bokeh_relational.lineplot(
+        data=plot_df,
+        x="elapsed time (hours)",
+        y=ylabel,
+        estimator=None,
+        errorbar=None,
+        color=color,
+        drawstyle="steps-post",
+        hover_items=[
+            ("Elapsed time / hours", "@{elapsed time (hours)}{0.00}"),
+            (ylabel, f"@{{{ylabel}}}{{0}}")])
+    plot._fig.xaxis.axis_label = "Elapsed time / hours"
     plot._fig.yaxis.axis_label = ylabel
     return plot
 
 
 def quantile_ribbonplot(df, prefix, ylabel):
-    """Create a ribbon plot from KLL-estimated Q05-Q95 values."""
+    """Create a ribbon plot from Q05-Q95 values."""
     x = "elapsed time (hours)"
     y = ylabel
     cols = {
@@ -243,7 +356,7 @@ def quantile_ribbonplot(df, prefix, ylabel):
         first = plot_df.iloc[[0]].copy()
         first[x] = 0.0
         plot_df = pd.concat([first, plot_df], ignore_index=True)
-    return bokeh_ribbon.ribbonplot(
+    plot = bokeh_ribbon.ribbonplot(
         plot_df,
         x=x,
         y=y,
@@ -253,16 +366,20 @@ def quantile_ribbonplot(df, prefix, ylabel):
         q3="q75",
         upper="q95",
         linecolor="#222222",
-        color="#6aa6f8",
+        color=FASTCAT_BLUE,
         hover_items=[
-            ("time (h)", f"@{{{x}}}{{0.00}}"),
-            ("reads", "@read_count{0}"),
+            ("Elapsed time / hours", f"@{{{x}}}{{0.00}}"),
+            ("Read count", "@read_count{0}"),
             ("Q05", "@q05{0.00}"),
             ("Q25", "@q25{0.00}"),
             ("Q50", f"@{{{y}}}{{0.00}}"),
             ("Q75", "@q75{0.00}"),
             ("Q95", "@q95{0.00}"),
         ])
+    if plot is not None:
+        plot._fig.xaxis.axis_label = "Elapsed time / hours"
+        plot._fig.yaxis.axis_label = ylabel
+    return plot
 
 
 def add_time_bin_plots(path):
@@ -278,34 +395,42 @@ def add_time_bin_plots(path):
         EZChart(
             time_lineplot(
                 df, "cumulative_base_yield_gbp",
-                "cumulative base yield (Gbp)"),
+                "Cumulative base yield / Gbp",
+                x="time_end_h",
+                seed_origin=True),
             height="360px")
+        p("Accepted bases in each time bin.")
+        EZChart(time_stepplot(df, "base_yield_gbp", "Base yield / Gbp"), height="360px")
     with tabs.add_tab("Reads"):
         p("Cumulative accepted read output through the run.")
         EZChart(
             time_lineplot(
                 df, "cumulative_read_count",
-                "cumulative read count",
-                color="#1f6f9f"),
+                "Cumulative read count",
+                color=FASTCAT_BLUE,
+                x="time_end_h",
+                seed_origin=True),
             height="360px")
+        p("Accepted reads in each time bin.")
+        EZChart(time_stepplot(df, "read_count", "Read count"), height="360px")
     with tabs.add_tab("Read length"):
-        p("KLL-estimated read length quantile ribbons by time bin.")
-        length_plot = quantile_ribbonplot(df, "length", "read length (kb)")
+        p("Read length quantile ribbons by time bin.")
+        length_plot = quantile_ribbonplot(df, "length", "Read length / kb")
         if length_plot is None:
             p("No read length quartiles were available.")
         else:
             EZChart(length_plot, height="420px")
-    with tabs.add_tab("Qscore"):
-        p("KLL-estimated qscore quantile ribbons by time bin.")
-        qscore_plot = quantile_ribbonplot(df, "qscore", "qscore")
+    with tabs.add_tab("Quality"):
+        p("Quality quantile ribbons by time bin.")
+        qscore_plot = quantile_ribbonplot(df, "qscore", "Quality")
         if qscore_plot is None:
-            p("No qscore quartiles were available.")
+            p("No quality quartiles were available.")
         else:
             EZChart(qscore_plot, height="420px")
     with tabs.add_tab("Translocation speed"):
-        p("KLL-estimated translocation speed quantile ribbons by time bin.")
+        p("Translocation speed quantile ribbons by time bin.")
         speed_plot = quantile_ribbonplot(
-            df, "speed", "translocation speed (nt/s)")
+            df, "speed", "Translocation speed / bp/s")
         if speed_plot is None:
             p("No translocation speed quartiles were available.")
         else:
@@ -375,7 +500,6 @@ def main(args):
         metadata = json.load(f)
         sample_details = sorted([{
             'sample': d['alias'],
-            'type': d['type'],
             'barcode': d['barcode']
         } for d in metadata], key=lambda x: x["sample"])
 
@@ -418,8 +542,18 @@ def main(args):
             else:
                 p(error)
 
+    with report.add_section("Run summary", "Run summary"):
+        if args.run_summary:
+            simple_kv_table(load_run_summary(args.run_summary[0]))
+        else:
+            detail = sample_details[0]
+            simple_kv_table([
+                ("Sample ID", detail["sample"]),
+                ("Barcode ID", detail["barcode"]),
+            ])
+
     if args.stats:
-        with report.add_section("Read summary", "Read summary"):
+        with report.add_section("Run statistics", "Run statistics"):
             stats = tuple(args.stats)
             if len(stats) == 1:
                 stats = stats[0]
@@ -473,14 +607,6 @@ def main(args):
                     with tabs.add_tab(sample):
                         add_channel_summary_plots(path)
 
-    with report.add_section("Sample Metadata", "Sample Metadata"):
-        tabs = Tabs()
-        for d in sample_details:
-            with tabs.add_tab(d["sample"]):
-                df = pd.DataFrame.from_dict(d, orient="index", columns=["Value"])
-                df.index.name = "Key"
-                DataTable.from_pandas(df)
-
     report.write(args.report)
     logger.info(f"Report written to {args.report}.")
 
@@ -496,6 +622,9 @@ def argparser():
     parser.add_argument(
         "--metadata", required=True,
         help="sample metadata")
+    parser.add_argument(
+        "--run-summary", nargs="+",
+        help="Fastcat run_summary.tsv files, ordered as per entries in --metadata.")
     parser.add_argument(
         "--length-qscore-2d", nargs="+",
         help="Fastcat length_qscore_2d.tsv files, ordered as per entries in --metadata.")

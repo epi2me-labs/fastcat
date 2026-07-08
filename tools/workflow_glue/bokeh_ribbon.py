@@ -63,7 +63,7 @@ def ribbonplot(
         if palette:
             color = palette[0]
         else:
-            color = "#6aa6f8"
+            color = "#0173b2"
 
     x_min = float(stats[x].min())
     x_max = float(stats[x].max())

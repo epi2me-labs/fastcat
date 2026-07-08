@@ -16,6 +16,7 @@ typedef struct read_meta {
     char *runid; // RG:Z (RD:Z legacy)
     char *basecaller;
     char *flow_cell_id; // PU:Z
+    char *sample_id; // LB:Z
     char *barcode; // SM:Z
     size_t ibarcode;
     char *barcode_alias; // al:Z

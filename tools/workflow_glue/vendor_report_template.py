@@ -20,13 +20,15 @@ FIG_YIELD = 2
 FIG_LENGTH_QSCORE = 3
 FIG_SPEED_QSCORE = 4
 FIG_TIME_YIELD = 5
-FIG_TIME_READS = 6
-FIG_TIME_LENGTH = 7
-FIG_TIME_QSCORE = 8
-FIG_TIME_SPEED = 9
-FIG_CHANNEL_READS = 10
-FIG_CHANNEL_BASES = 11
-MIN_EXPECTED_FIGURES = 12
+FIG_TIME_YIELD_BIN = 6
+FIG_TIME_READS = 7
+FIG_TIME_READS_BIN = 8
+FIG_TIME_LENGTH = 9
+FIG_TIME_QSCORE = 10
+FIG_TIME_SPEED = 11
+FIG_CHANNEL_READS = 12
+FIG_CHANNEL_BASES = 13
+MIN_EXPECTED_FIGURES = 14
 
 
 def argparser():
@@ -224,15 +226,25 @@ def extract_bokeh_document(html):
     # ezcharts lineplot emits Scatter renderers even when markers are disabled
     # remove them here so runtime C only has to replace real plot data
     remove_lineplot_marker_renderers(figures[FIG_TIME_YIELD])
+    remove_lineplot_marker_renderers(figures[FIG_TIME_YIELD_BIN])
     remove_lineplot_marker_renderers(figures[FIG_TIME_READS])
+    remove_lineplot_marker_renderers(figures[FIG_TIME_READS_BIN])
 
     add_source_binding(bindings, "time_yield", figures[FIG_TIME_YIELD])
     add_numeric_range_bindings(bindings, "time_yield", figures[FIG_TIME_YIELD], "x")
     add_numeric_range_bindings(bindings, "time_yield", figures[FIG_TIME_YIELD], "y")
 
+    add_source_binding(bindings, "time_yield_bin", figures[FIG_TIME_YIELD_BIN])
+    add_numeric_range_bindings(bindings, "time_yield_bin", figures[FIG_TIME_YIELD_BIN], "x")
+    add_numeric_range_bindings(bindings, "time_yield_bin", figures[FIG_TIME_YIELD_BIN], "y")
+
     add_source_binding(bindings, "time_reads", figures[FIG_TIME_READS])
     add_numeric_range_bindings(bindings, "time_reads", figures[FIG_TIME_READS], "x")
     add_numeric_range_bindings(bindings, "time_reads", figures[FIG_TIME_READS], "y")
+
+    add_source_binding(bindings, "time_reads_bin", figures[FIG_TIME_READS_BIN])
+    add_numeric_range_bindings(bindings, "time_reads_bin", figures[FIG_TIME_READS_BIN], "x")
+    add_numeric_range_bindings(bindings, "time_reads_bin", figures[FIG_TIME_READS_BIN], "y")
 
     add_source_binding(bindings, "time_length", figures[FIG_TIME_LENGTH])
     add_numeric_range_bindings(bindings, "time_length", figures[FIG_TIME_LENGTH], "x")

@@ -128,6 +128,7 @@ static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment)
     meta->runid = "";
     meta->basecaller = "";
     meta->flow_cell_id = "";
+    meta->sample_id = "";
     meta->barcode = "";
     meta->ibarcode = 0;
     meta->barcode_alias = "";
@@ -178,6 +179,8 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             meta->start_time = bam_aux2Z(aux);
         } else if (((strcmp(tag, "PU") == 0) || (strcmp(tag, "FC") == 0)) && type == 'Z') {
             meta->flow_cell_id = bam_aux2Z(aux);
+        } else if (strcmp(tag, "LB") == 0 && type == 'Z') {
+            meta->sample_id = bam_aux2Z(aux);
         } else if (((strcmp(tag, "SM") == 0) || (strcmp(tag, "BC") == 0)) && type == 'Z') {
             meta->barcode = bam_aux2Z(aux);
             // Default to unclassified (0) unless we parse a valid barcode number
