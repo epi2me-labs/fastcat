@@ -38,6 +38,7 @@ REPORT_DEMO_DURATION_S ?= 172800
 DEV_TOOLS_SCRIPT := $(REPO_ROOT)/tools/dev-tools
 DEV_TOOLS := python3 $(DEV_TOOLS_SCRIPT)
 SHELL := /bin/bash
+BUILD_MAKEFILES := Makefile
 
 .PHONY: default
 default: $(FASTCAT_BIN) ## Build the fastcat binary (default target)
@@ -233,6 +234,7 @@ CORE_SRCS := \
 	src/core/fc_channel_map_data.c \
 	src/core/fc_metric_qscore_2d.c \
 	src/core/fc_length_qscore_2d.c \
+	src/core/fc_run_summary.c \
 	src/core/fc_speed_qscore_2d.c \
 	src/core/fc_time_bin.c \
 	src/core/fc_stats_engine.c \
@@ -258,6 +260,7 @@ CORE_SRCS := \
 	src/sink/perread.c \
 	src/sink/perfile.c \
 	src/sink/counter.c \
+	src/sink/run_summary.c \
 	src/sink/channel.c \
 	src/sink/length_qscore_2d.c \
 	src/sink/speed_qscore_2d.c \
@@ -349,14 +352,14 @@ samtools:
 	cp samtools ../../$@
 
 # outputs to build/obj/ mirroring src/ structure
-$(OBJ_DIR)/%.o: src/%.c third_party/zlib-ng/zlib.h | $(OBJ_DIR) $(DEP_DIR)
+$(OBJ_DIR)/%.o: src/%.c third_party/zlib-ng/zlib.h $(BUILD_MAKEFILES) | $(OBJ_DIR) $(DEP_DIR)
 	@mkdir -p $(dir $@)
 	@mkdir -p $(dir $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$@))
 	$(CC) $(INCLUDES) -c -pthread $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) -MF $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$@) $< -o $@
 
 # version object
-$(VERSION_OBJ): src/version.c third_party/zlib-ng/zlib.h | $(OBJ_DIR) $(DEP_DIR)
+$(VERSION_OBJ): src/version.c third_party/zlib-ng/zlib.h $(BUILD_MAKEFILES) | $(OBJ_DIR) $(DEP_DIR)
 	@mkdir -p $(dir $@)
 	@mkdir -p $(dir $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$@))
 	$(CC) $(INCLUDES) -c -pthread $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
@@ -366,7 +369,7 @@ $(VERSION_OBJ): src/version.c third_party/zlib-ng/zlib.h | $(OBJ_DIR) $(DEP_DIR)
 $(OBJ_DIR)/core/fc_fastqcomments.o: | $(HTSLIB_PATCH_STAMP)
 $(OBJ_DIR)/core/fc_read.o: | $(HTSLIB_PATCH_STAMP)
 
-$(CORE_LIB): $(CORE_OBJS) Makefile | $(BUILD_DIR)
+$(CORE_LIB): $(CORE_OBJS) $(BUILD_MAKEFILES) | $(BUILD_DIR)
 	rm -f $@
 	$(AR) rcs $@ $(CORE_OBJS)
 
@@ -376,7 +379,7 @@ $(CORE_LIB): $(CORE_OBJS) Makefile | $(BUILD_DIR)
 -include $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$(VERSION_OBJ))
 
 # oh, so thats what you wanted to do
-$(FASTCAT_BIN): $(VERSION_OBJ) $(CLI_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) third_party/zlib-ng/libz.a | $(BUILD_DIR)
+$(FASTCAT_BIN): $(VERSION_OBJ) $(CLI_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) third_party/zlib-ng/libz.a $(BUILD_MAKEFILES) | $(BUILD_DIR)
 	@echo "\x1b[1;32mLinking $@\x1b[0m"
 	$(CC) -pthread $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
@@ -529,13 +532,20 @@ $(REPORT_DIR)/template_fastcat/channel_summary.tsv: $(REPORT_DIR)/template_fastc
 $(REPORT_DIR)/template_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --template --out-dir $(REPORT_DIR)/template_inputs
 
+$(REPORT_DIR)/template_inputs/run_summary.tsv: $(REPORT_DIR)/template_inputs/metadata.json
+	test -s $@
+
 $(REPORT_DIR)/example_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --out-dir $(REPORT_DIR)/example_inputs
 
-$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/template_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/example_inputs/run_summary.tsv: $(REPORT_DIR)/example_inputs/metadata.json
+	test -s $@
+
+$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/template_fastcat/histograms \
+		--run-summary $(REPORT_DIR)/template_inputs/run_summary.tsv \
 		--length-qscore-2d $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv \
 		--speed-qscore-2d $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv \
 		--time-bin-summary $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv \
@@ -545,10 +555,11 @@ $(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/templa
 		--params $(REPORT_DIR)/template_inputs/params.json \
 		--wf_version __FASTCAT_VERSION_HTML__
 
-$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(REPORT_DIR)/example_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/template_fastcat/histograms \
+		--run-summary $(REPORT_DIR)/example_inputs/run_summary.tsv \
 		--length-qscore-2d $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv \
 		--speed-qscore-2d $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv \
 		--time-bin-summary $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv \
@@ -566,10 +577,11 @@ $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv: $(FASTCAT_BIN) $(REPORT
 		--output $(REPORT_DIR)/time_preview_fastcat \
 		> /dev/null
 
-$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv $(REPORT_DIR)/time_preview_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv $(REPORT_DIR)/time_preview_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(REPORT_DIR)/example_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/time_preview_fastcat/histograms \
+		--run-summary $(REPORT_DIR)/example_inputs/run_summary.tsv \
 		--length-qscore-2d $(REPORT_DIR)/time_preview_fastcat/length_qscore_2d.tsv \
 		--speed-qscore-2d $(REPORT_DIR)/time_preview_fastcat/speed_qscore_2d.tsv \
 		--time-bin-summary $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv \
@@ -607,25 +619,27 @@ test: test_functional test_unit  ## run all tests
 
 # unit tests use unity framework
 
-UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unit/test_bamcoverage.c test/unit/test_quantile.c test/unit/test_kll.c test/unit/test_metric_qscore_2d_helpers.c test/unit/test_length_qscore_2d.c test/unit/test_speed_qscore_2d.c test/unit/test_time_bin.c test/unit/test_channel_summary.c test/unit/test_kll_dists.c test/unity/unity.c
+UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unit/test_bamcoverage.c test/unit/test_quantile.c test/unit/test_kll.c test/unit/test_metric_qscore_2d_helpers.c test/unit/test_length_qscore_2d.c test/unit/test_speed_qscore_2d.c test/unit/test_time_bin.c test/unit/test_channel_summary.c test/unit/test_run_summary.c test/unit/test_kll_dists.c test/unity/unity.c
 UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
 
-test/unit/%.o: test/unit/%.c
+test/unit/%.o: test/unit/%.c $(BUILD_MAKEFILES)
 	$(CC) $(INCLUDES) -Itest/unity $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
 test/unit/%.o: | $(HTSLIB_PATCH_STAMP)
 
-test/unity/%.o: test/unity/%.c
+test/unity/%.o: test/unity/%.c $(BUILD_MAKEFILES)
 	$(CC) -Itest/unity $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
 
-test/unit/unit_tests: $(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB)
+test/unit/unit_tests: $(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) $(BUILD_MAKEFILES)
 	$(CC) $(INCLUDES) $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
-		$^ $(ARGP) \
+		$(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) $(ARGP) \
 		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
 		-o $@
+
+-include $(UNIT_TEST_SRCS:.c=.d)
 
 .PHONY: test_unit
 test_unit: test/unit/unit_tests  ## run unit tests
@@ -687,6 +701,13 @@ COMPARE_TABLES_SKIP_FIRST = \
 	tail -n +2 $(1) | cut -f2- | LC_ALL=C sort > $(3).sorted && \
 	tail -n +2 $(2) | cut -f2- | LC_ALL=C sort > $(3).expected.sorted && \
 	diff $(3).sorted $(3).expected.sorted
+COMPARE_TABLES_SKIP_TWO = \
+	head -n 1 $(1) | cut -f3- > $(3).header && \
+	head -n 1 $(2) | cut -f3- > $(3).expected.header && \
+	diff $(3).header $(3).expected.header && \
+	tail -n +2 $(1) | cut -f3- | LC_ALL=C sort > $(3).sorted && \
+	tail -n +2 $(2) | cut -f3- | LC_ALL=C sort > $(3).expected.sorted && \
+	diff $(3).sorted $(3).expected.sorted
 COMPARE_FASTQ = \
 	case "$(1)" in *.gz) gunzip -c "$(1)" ;; *) cat "$(1)" ;; esac \
 		| $(DEV_TOOLS) sort_fastq > $(3).sorted && \
@@ -726,6 +747,8 @@ define TEST_DEMUX_SINGLE_EQUIV
 			diff plain_out/$$f demux_out/barcode0001/$$f || exit 1; \
 		elif [[ "$$f" == "per_read.tsv" ]]; then \
 			$(call $(4),plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
+		elif [[ "$$f" == "run_summary.tsv" ]]; then \
+			$(call COMPARE_TABLES_SKIP_TWO,plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
 		else \
 			$(call COMPARE_TABLES_SKIP_FIRST,plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
 		fi; \
@@ -763,8 +786,8 @@ define TEST_METADATA
 	popd > /dev/null
 endef
 # Expected files to compare (excluding per_file.tsv which only exists at top level)
-FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist
-BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
+FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv run_summary.tsv channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist
+BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv run_summary.tsv channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
 
 
 ###
@@ -795,11 +818,14 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/speed_qscore_2d.tsv
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/time_bin_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/channel_summary.tsv
+	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/run_summary.tsv
 	grep -q "Fastcat Sequencing QC Report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Quality diagnostics" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Read length" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Translocation speed" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Sequencing over time" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	grep -q "Cumulative base yield" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	grep -q "read count" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Channel occupancy" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "__FASTCAT_" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "fc_patch_fastcat_report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
@@ -819,6 +845,7 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/speed_qscore_2d.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/time_bin_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/channel_summary.tsv
+	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/run_summary.tsv
 	rm -f $(TEST_TMP_DIR)/report_html/reads.fastq.gz
 
 
@@ -900,6 +927,9 @@ test_fastcat_demultiplex_outputs: $(FASTCAT_BIN)
 		test -f out_demux/unclassified/time_bin_summary.tsv && \
 		test -f out_demux/barcode0001/time_bin_summary.tsv && \
 		test -f out_demux/barcode0002/time_bin_summary.tsv && \
+		test -f out_demux/unclassified/run_summary.tsv && \
+		test -f out_demux/barcode0001/run_summary.tsv && \
+		test -f out_demux/barcode0002/run_summary.tsv && \
 		test -f out_demux/unclassified/channel_summary.tsv && \
 		test -f out_demux/barcode0001/channel_summary.tsv && \
 		test -f out_demux/barcode0002/channel_summary.tsv)
@@ -918,6 +948,7 @@ test_fastcat_demultiplex_split: $(FASTCAT_BIN)
 		test -f out_split/barcode0001/length_qscore_2d.tsv && \
 		test -f out_split/barcode0001/speed_qscore_2d.tsv && \
 		test -f out_split/barcode0001/time_bin_summary.tsv && \
+		test -f out_split/barcode0001/run_summary.tsv && \
 		test -f out_split/barcode0001/channel_summary.tsv)
 test_fastcat_demux: test_fastcat_demultiplex_split
 

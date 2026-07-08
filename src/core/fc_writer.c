@@ -11,6 +11,7 @@ fc_writer *fc_writer_create(const fc_writer_config *cfg)
 {
     fc_writer *writer = fc_alloc(1, sizeof(*writer), "writer");
     const fc_stats_engine_config *stats_cfg = cfg ? cfg->stats : NULL;
+    bool run_summary_enabled = cfg ? cfg->run_summary : false;
     bool channel_summary_enabled = cfg ? cfg->channel_summary : false;
     const fc_length_qscore_2d_config *length_qscore_cfg = cfg ? cfg->length_qscore : NULL;
     const fc_speed_qscore_2d_config *speed_qscore_cfg = cfg ? cfg->speed_qscore : NULL;
@@ -35,6 +36,14 @@ fc_writer *fc_writer_create(const fc_writer_config *cfg)
                 writer->stats_cfg.polya_cover,
                 writer->stats_cfg.polya_qual,
                 writer->stats_cfg.polya_rev);
+        }
+    }
+    if (run_summary_enabled) {
+        writer->run_summary = fc_run_summary_create(writer->barcode_count);
+        if (writer->run_summary == NULL) {
+            FC_LOG_ERROR("Failed to create run-summary model.");
+            fc_writer_destroy(writer);
+            return NULL;
         }
     }
     if (length_qscore_cfg != NULL) {
@@ -161,6 +170,11 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
             read->meta->mean_q);
     }
 
+    if (writer->run_summary != NULL) {
+        size_t barcode = writer->use_barcodes ? ctx.barcode : 0;
+        fc_run_summary_add_read(writer->run_summary, barcode, read);
+    }
+
     if (writer->channel_summary != NULL) {
         size_t barcode = writer->use_barcodes ? ctx.barcode : 0;
         fc_channel_summary_add_read(writer->channel_summary, barcode, read);
@@ -220,6 +234,7 @@ void fc_writer_destroy(fc_writer *writer)
         }
         free(writer->stats_engines);
     }
+    fc_run_summary_destroy(writer->run_summary);
     fc_channel_summary_destroy(writer->channel_summary);
     fc_length_qscore_2d_destroy(writer->length_qscore);
     fc_speed_qscore_2d_destroy(writer->speed_qscore);

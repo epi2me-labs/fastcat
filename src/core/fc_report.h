@@ -6,6 +6,7 @@
 
 #include "core/fc_channel_summary.h"
 #include "core/fc_length_qscore_2d.h"
+#include "core/fc_run_summary.h"
 #include "core/fc_speed_qscore_2d.h"
 #include "core/fc_stats_engine.h"
 #include "core/fc_time_bin.h"
@@ -25,6 +26,7 @@ typedef struct {
     bool unmapped_override;
     fc_stats_engine **engines;
     size_t engine_count;
+    const fc_run_summary *run_summary;
     const fc_channel_summary *channel_summary;
     const fc_length_qscore_2d *length_qscore;
     const fc_speed_qscore_2d *speed_qscore;

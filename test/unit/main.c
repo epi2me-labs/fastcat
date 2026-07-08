@@ -20,6 +20,7 @@ void length_qscore_2d_suite(void);
 void speed_qscore_2d_suite(void);
 void time_bin_suite(void);
 void channel_summary_suite(void);
+void run_summary_suite(void);
 void quantile_stress_suite(void);
 
 void setUp(void) {}
@@ -54,6 +55,7 @@ int main(void) {
     speed_qscore_2d_suite();
     time_bin_suite();
     channel_summary_suite();
+    run_summary_suite();
     quantile_stress_suite();
     int rc = UNITY_END();
 

@@ -208,6 +208,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     fc_writer_config writer_cfg = {
         .use_barcodes = args->demultiplex,
         .stats = &stats_cfg,
+        .run_summary = true,
         .channel_summary = true,
         .length_qscore = &length_qscore_cfg,
         .speed_qscore = &speed_qscore_cfg,
@@ -242,6 +243,18 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .barcode_count = writer->barcode_count
     };
     fc_writer_add_sink(writer, fc_counter_sink_create(&counter_opts));
+
+    fc_run_summary_sink_opts run_summary_opts = {
+        .output_root = args->output_dir,
+        .sample = args->sample,
+        .use_barcodes = args->demultiplex,
+        .barcode_count = writer->barcode_count,
+        .unmapped_override = (program == FC_PROGRAM_FASTCAT),
+        .engines = writer->stats_engines,
+        .engine_count = writer->stats_engine_count,
+        .model = writer->run_summary
+    };
+    fc_writer_add_sink(writer, fc_run_summary_sink_create(&run_summary_opts));
 
     fc_channel_summary_sink_opts channel_opts = {
         .output_root = args->output_dir,
@@ -389,6 +402,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .unmapped_override = (program == FC_PROGRAM_FASTCAT),
             .engines = writer->stats_engines,
             .engine_count = writer->stats_engine_count,
+            .run_summary = writer->run_summary,
             .channel_summary = writer->channel_summary,
             .length_qscore = writer->length_qscore,
             .speed_qscore = writer->speed_qscore,
