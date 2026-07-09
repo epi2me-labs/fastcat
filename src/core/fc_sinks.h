@@ -92,6 +92,7 @@ typedef struct {
     const char *sample;
     bool use_barcodes;
     size_t barcode_count;
+    bool bam_input;
     bool unmapped_override;
     fc_stats_engine **engines;
     size_t engine_count;

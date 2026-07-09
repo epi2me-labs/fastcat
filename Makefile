@@ -654,7 +654,7 @@ test_unit: | $(HTSLIB_PATCH_STAMP)
 # - Individual test-to-leaf-group registrations are inline next to each test implementation
 
 # Declare all test group targets as PHONY
-.PHONY: test test_functional test_memory test_unit demo
+.PHONY: test test_functional test_memory test_unit demo demo_ubam test_report_missing_metadata
 .PHONY: test_fastcat test_fastcat_memory test_fastcat_equivalence test_fastcat_demux test_fastcat_inputs test_fastcat_filters test_fastcat_output
 .PHONY: test_bamstats test_bamstats_memory test_bamstats_core test_bamstats_equivalence test_bamstats_coverage test_bamstats_inputs
 .PHONY: test_bamindex test_bamindex_memory
@@ -702,12 +702,12 @@ COMPARE_TABLES_SKIP_FIRST = \
 	tail -n +2 $(1) | cut -f2- | LC_ALL=C sort > $(3).sorted && \
 	tail -n +2 $(2) | cut -f2- | LC_ALL=C sort > $(3).expected.sorted && \
 	diff $(3).sorted $(3).expected.sorted
-COMPARE_TABLES_SKIP_TWO = \
-	head -n 1 $(1) | cut -f3- > $(3).header && \
-	head -n 1 $(2) | cut -f3- > $(3).expected.header && \
+COMPARE_TABLES_SKIP_THIRD = \
+	head -n 1 $(1) > $(3).header && \
+	head -n 1 $(2) > $(3).expected.header && \
 	diff $(3).header $(3).expected.header && \
-	tail -n +2 $(1) | cut -f3- | LC_ALL=C sort > $(3).sorted && \
-	tail -n +2 $(2) | cut -f3- | LC_ALL=C sort > $(3).expected.sorted && \
+	tail -n +2 $(1) | cut -f1-2,4- | LC_ALL=C sort > $(3).sorted && \
+	tail -n +2 $(2) | cut -f1-2,4- | LC_ALL=C sort > $(3).expected.sorted && \
 	diff $(3).sorted $(3).expected.sorted
 COMPARE_FASTQ = \
 	case "$(1)" in *.gz) gunzip -c "$(1)" ;; *) cat "$(1)" ;; esac \
@@ -749,7 +749,7 @@ define TEST_DEMUX_SINGLE_EQUIV
 		elif [[ "$$f" == "per_read.tsv" ]]; then \
 			$(call $(4),plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
 		elif [[ "$$f" == "run_summary.tsv" ]]; then \
-			$(call COMPARE_TABLES_SKIP_TWO,plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
+			$(call COMPARE_TABLES_SKIP_THIRD,plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
 		else \
 			$(call COMPARE_TABLES_SKIP_FIRST,plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
 		fi; \
@@ -844,6 +844,36 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/channel_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/run_summary.tsv
 	rm -f $(TEST_TMP_DIR)/report_html/reads.fastq.gz
+
+.PHONY: demo_ubam
+demo_ubam: $(FASTCAT_BIN) samtools  ## generate a synthetic unaligned BAM run and HTML report demo
+	@$(call TEST_DESC,HTML report uBAM demo)
+	rm -rf $(TEST_TMP_DIR)/report_html_ubam
+	mkdir -p $(TEST_TMP_DIR)/report_html_ubam
+	set -o pipefail; $(DEV_TOOLS) simulate_reads \
+		--n $(REPORT_DEMO_N) \
+		--run-duration-s $(REPORT_DEMO_DURATION_S) \
+		--sample-id simulated-data \
+		--max-len 1000000 \
+		--seed 7 \
+		| gzip -c > $(TEST_TMP_DIR)/report_html_ubam/reads.fastq.gz
+	$(REPO_ROOT)/samtools import -T '*' -O BAM -@ 1 \
+		-o $(TEST_TMP_DIR)/report_html_ubam/reads.bam \
+		$(TEST_TMP_DIR)/report_html_ubam/reads.fastq.gz
+	$(RUN_BAMSTATS) $(TEST_TMP_DIR)/report_html_ubam/reads.bam \
+		--output $(TEST_TMP_DIR)/report_html_ubam/bam_out \
+		--html-report \
+		> /dev/null
+	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
+	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/length_qscore_2d.tsv
+	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/speed_qscore_2d.tsv
+	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/time_bin_summary.tsv
+	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/channel_summary.tsv
+	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv
+	grep -q $$'\\tunaligned bam\\t' $(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv
+	grep -q "Input type" $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
+	grep -q "unaligned bam" $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
+	rm -f $(TEST_TMP_DIR)/report_html_ubam/reads.fastq.gz
 
 .PHONY: test_report_missing_metadata
 test_report_missing_metadata: $(FASTCAT_BIN)

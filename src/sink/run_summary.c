@@ -13,12 +13,33 @@ typedef struct {
     char *output_root;
 } run_summary_sink;
 
+static double run_summary_stats_total_count(const read_stats *stats)
+{
+    if (!stats) {
+        return 0.0;
+    }
+    double total = 0.0;
+    for (size_t i = 0; i < stats->n; ++i) {
+        total += (double)stats->counts[i];
+    }
+    return total;
+}
+
 static const read_stats *run_summary_length_stats(const fc_stats_engine *engine, bool unmapped_override)
 {
     if (!engine) {
         return NULL;
     }
-    return unmapped_override ? engine->length_stats_unmapped : engine->length_stats;
+    if (unmapped_override) {
+        return engine->length_stats_unmapped;
+    }
+    if (engine->length_stats && run_summary_stats_total_count(engine->length_stats) > 0.0) {
+        return engine->length_stats;
+    }
+    if (engine->length_stats_unmapped && run_summary_stats_total_count(engine->length_stats_unmapped) > 0.0) {
+        return engine->length_stats_unmapped;
+    }
+    return engine->length_stats;
 }
 
 static FILE *run_summary_open_output(const run_summary_sink *sink, size_t barcode)
@@ -45,10 +66,11 @@ static FILE *run_summary_open_output(const run_summary_sink *sink, size_t barcod
 static void run_summary_write_row(FILE *fp, const fc_run_summary_row *row)
 {
     fprintf(fp,
-        "sample_id\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tflow_cell_id\trun_date\t"
+        "sample_id\tinput_type\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tflow_cell_id\trun_date\t"
         "run_duration_s\tread_count\tbase_count\tn50_bp\tl50\n");
-    fprintf(fp, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t",
+    fprintf(fp, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t",
         row->sample_id ? row->sample_id : "",
+        row->input_type ? row->input_type : "",
         row->barcode_id ? row->barcode_id : "",
         row->barcode_alias ? row->barcode_alias : "",
         row->run_id ? row->run_id : "",
@@ -86,6 +108,8 @@ static void run_summary_write_output(const run_summary_sink *sink, size_t barcod
     if (fc_run_summary_materialize(
             sink->cfg.model,
             barcode,
+            (sink->cfg.engines && barcode < sink->cfg.engine_count) ? sink->cfg.engines[barcode] : NULL,
+            sink->cfg.bam_input,
             length_stats,
             sink->cfg.sample,
             barcode_id,

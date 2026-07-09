@@ -5,6 +5,7 @@
 #include "main.h"
 
 #include "core/fc_run_summary.h"
+#include "core/fc_stats_engine.h"
 
 static void add_run_summary_read(
     fc_run_summary *model,
@@ -62,9 +63,10 @@ FC_TEST(run_summary_suite, test_run_summary_collapses_multiple_values)
     fc_run_summary_row row = { 0 };
     TEST_ASSERT_EQUAL_INT(
         0,
-        fc_run_summary_materialize(model, 0, NULL, "fallback-sample", "barcode0001", &row));
+        fc_run_summary_materialize(model, 0, NULL, false, NULL, "fallback-sample", "barcode0001", &row));
 
     TEST_ASSERT_EQUAL_STRING("(multiple)", row.sample_id);
+    TEST_ASSERT_EQUAL_STRING("fastq", row.input_type);
     TEST_ASSERT_EQUAL_STRING("barcode0001", row.barcode_id);
     TEST_ASSERT_EQUAL_STRING("alias-a", row.barcode_alias);
     TEST_ASSERT_EQUAL_STRING("(multiple)", row.run_id);
@@ -103,9 +105,10 @@ FC_TEST(run_summary_suite, test_run_summary_uses_fallback_sample_and_earliest_ti
     fc_run_summary_row row = { 0 };
     TEST_ASSERT_EQUAL_INT(
         0,
-        fc_run_summary_materialize(model, 0, NULL, "fallback-sample", "unclassified", &row));
+        fc_run_summary_materialize(model, 0, NULL, false, NULL, "fallback-sample", "unclassified", &row));
 
     TEST_ASSERT_EQUAL_STRING("fallback-sample", row.sample_id);
+    TEST_ASSERT_EQUAL_STRING("fastq", row.input_type);
     TEST_ASSERT_EQUAL_STRING("unclassified", row.barcode_id);
     TEST_ASSERT_EQUAL_STRING("alias-a", row.barcode_alias);
     TEST_ASSERT_EQUAL_STRING("run-a", row.run_id);
@@ -116,5 +119,37 @@ FC_TEST(run_summary_suite, test_run_summary_uses_fallback_sample_and_earliest_ti
     TEST_ASSERT_EQUAL_UINT64(2, row.read_count);
     TEST_ASSERT_EQUAL_UINT64(300, row.base_count);
 
+    fc_run_summary_destroy(model);
+}
+
+FC_TEST(run_summary_suite, test_run_summary_classifies_bam_input_type)
+{
+    fc_run_summary *model = fc_run_summary_create(1);
+    fc_stats_engine *engine = fc_stats_engine_create(false, false, 0.0f, 0.0f, false);
+    TEST_ASSERT_NOT_NULL(model);
+    TEST_ASSERT_NOT_NULL(engine);
+
+    add_run_summary_read(
+        model, 0, 100,
+        "sample-a",
+        "run-a",
+        "model-a",
+        "flow-a",
+        "alias-a",
+        "2026-01-01T00:00:00Z");
+
+    fc_run_summary_row row = { 0 };
+    TEST_ASSERT_EQUAL_INT(
+        0,
+        fc_run_summary_materialize(model, 0, engine, true, NULL, "fallback-sample", "unclassified", &row));
+    TEST_ASSERT_EQUAL_STRING("unaligned bam", row.input_type);
+
+    add_length_count(engine->length_stats, 100);
+    TEST_ASSERT_EQUAL_INT(
+        0,
+        fc_run_summary_materialize(model, 0, engine, true, NULL, "fallback-sample", "unclassified", &row));
+    TEST_ASSERT_EQUAL_STRING("aligned bam", row.input_type);
+
+    fc_stats_engine_destroy(engine);
     fc_run_summary_destroy(model);
 }

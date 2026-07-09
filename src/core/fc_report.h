@@ -21,6 +21,7 @@ typedef struct {
     const char *sample;
     const fc_report_config_entry *run_config;
     size_t run_config_count;
+    bool bam_input;
     bool use_barcodes;
     size_t barcode_count;
     bool unmapped_override;

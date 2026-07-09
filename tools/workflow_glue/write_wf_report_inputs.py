@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 TEMPLATE_ALIAS = "__FASTCAT_SAMPLE_ALIAS_HTML__"
+TEMPLATE_INPUT_TYPE = "__FASTCAT_INPUT_TYPE_HTML__"
 TEMPLATE_BARCODE = "__FASTCAT_SAMPLE_BARCODE_HTML__"
 TEMPLATE_BARCODE_ALIAS = "__FASTCAT_BARCODE_ALIAS_HTML__"
 TEMPLATE_RUN_ID = "__FASTCAT_RUN_ID_HTML__"
@@ -56,9 +57,10 @@ def main(args):
     (out_dir / "metadata.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     (out_dir / "run_summary.tsv").write_text(
-        "sample_id\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tflow_cell_id\trun_date\t"
+        "sample_id\tinput_type\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tflow_cell_id\trun_date\t"
         "run_duration_s\tread_count\tbase_count\tn50_bp\tl50\n"
         f"{alias}\t"
+        f"{TEMPLATE_INPUT_TYPE if args.template else 'fastq'}\t"
         f"{barcode}\t"
         f"{TEMPLATE_BARCODE_ALIAS if args.template else 'Synthetic reads'}\t"
         f"{TEMPLATE_RUN_ID if args.template else 'synthetic-run'}\t"
