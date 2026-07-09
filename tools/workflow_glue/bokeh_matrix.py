@@ -8,6 +8,7 @@ import pandas as pd
 
 from ezcharts.plots import BokehPlot
 from .bokeh_style import ReportFontSizes, ReportFonts, apply_colorbar_fonts
+from . import bokeh_null
 
 
 # keep these in sync with the C channel-heatmap sizing contract
@@ -178,4 +179,5 @@ def heatmap(
     if title:
         plt._fig.add_layout(Title(text=title, text_font_size=ReportFontSizes.TITLE, text_font=ReportFonts.PLOT), 'above')
 
+    bokeh_null.attach_null_state(plt)
     return plt

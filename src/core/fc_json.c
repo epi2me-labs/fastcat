@@ -82,6 +82,26 @@ fc_json_value_t *fc_json_number_value(double value)
     return json_value;
 }
 
+fc_json_value_t *fc_json_bool_value(int value)
+{
+    fc_json_init();
+    fc_json_value_t *json_value = json_value_init_boolean(value);
+    if (!json_value) {
+        FC_LOG_FATAL("Failed to allocate JSON boolean.");
+    }
+    return json_value;
+}
+
+fc_json_value_t *fc_json_null_value(void)
+{
+    fc_json_init();
+    fc_json_value_t *json_value = json_value_init_null();
+    if (!json_value) {
+        FC_LOG_FATAL("Failed to allocate JSON null.");
+    }
+    return json_value;
+}
+
 fc_json_value_t *fc_json_parse_string(const char *json)
 {
     fc_json_init();

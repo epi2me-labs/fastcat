@@ -129,6 +129,23 @@ def subtitle_model(fig):
     raise RuntimeError(f"could not find subtitle Title for {fig.get('id')}")
 
 
+def named_model(value, name):
+    if isinstance(value, dict):
+        attrs = value.get("attributes")
+        if isinstance(attrs, dict) and attrs.get("name") == name and "id" in value:
+            return value
+        for item in value.values():
+            hit = named_model(item, name)
+            if hit is not None:
+                return hit
+    elif isinstance(value, list):
+        for item in value:
+            hit = named_model(item, name)
+            if hit is not None:
+                return hit
+    return None
+
+
 def numeric_range_model(fig, axis):
     range_obj = fig.get("attributes", {}).get(f"{axis}_range")
     if not isinstance(range_obj, dict):
@@ -204,6 +221,31 @@ def add_heatmap_color_bindings(bindings, name, fig):
 
 def add_figure_attr_binding(bindings, name, fig, attr):
     add_binding(bindings, f"{name}.{attr}", fig, attr)
+
+
+def add_null_state_bindings(bindings, name, fig, colorbar=False):
+    label = named_model(fig, "fastcat_null_label")
+    if label is None:
+        raise RuntimeError(f"could not find null label for {fig.get('id')}")
+    x_axis = named_model(fig, "fastcat_null_xaxis")
+    y_axis = named_model(fig, "fastcat_null_yaxis")
+    x_grid = named_model(fig, "fastcat_null_xgrid")
+    y_grid = named_model(fig, "fastcat_null_ygrid")
+    if x_axis is None or y_axis is None or x_grid is None or y_grid is None:
+        raise RuntimeError(f"could not find null-state chrome models for {fig.get('id')}")
+
+    add_binding(bindings, f"{name}.null.text", label, "text")
+    add_binding(bindings, f"{name}.null.visible", label, "visible")
+    add_binding(bindings, f"{name}.x_axis.visible", x_axis, "visible")
+    add_binding(bindings, f"{name}.y_axis.visible", y_axis, "visible")
+    add_binding(bindings, f"{name}.x_grid.visible", x_grid, "visible")
+    add_binding(bindings, f"{name}.y_grid.visible", y_grid, "visible")
+    add_binding(bindings, f"{name}.toolbar_location", fig, "toolbar_location")
+    if colorbar:
+        color_bar = named_model(fig, "fastcat_null_colorbar")
+        if color_bar is None:
+            raise RuntimeError(f"could not find null-state colorbar for {fig.get('id')}")
+        add_binding(bindings, f"{name}.colorbar.visible", color_bar, "visible")
 
 
 def scrub_bound_values(docs, bindings):
@@ -300,12 +342,14 @@ def extract_bokeh_document(html):
     add_heatmap_color_bindings(bindings, "length_qscore", fig_length_qscore)
     add_numeric_range_bindings(bindings, "length_qscore", fig_length_qscore, "x")
     add_numeric_range_bindings(bindings, "length_qscore", fig_length_qscore, "y")
+    add_null_state_bindings(bindings, "length_qscore", fig_length_qscore, colorbar=True)
 
     add_source_binding(bindings, "speed_qscore", fig_speed_qscore)
     add_subtitle_binding(bindings, "speed_qscore", fig_speed_qscore, required=False)
     add_heatmap_color_bindings(bindings, "speed_qscore", fig_speed_qscore)
     add_numeric_range_bindings(bindings, "speed_qscore", fig_speed_qscore, "x")
     add_numeric_range_bindings(bindings, "speed_qscore", fig_speed_qscore, "y")
+    add_null_state_bindings(bindings, "speed_qscore", fig_speed_qscore, colorbar=True)
 
     remove_lineplot_marker_renderers(fig_time_yield)
     remove_lineplot_marker_renderers(fig_time_yield_bin)
@@ -315,30 +359,37 @@ def extract_bokeh_document(html):
     add_source_binding(bindings, "time_yield", fig_time_yield)
     add_numeric_range_bindings(bindings, "time_yield", fig_time_yield, "x")
     add_numeric_range_bindings(bindings, "time_yield", fig_time_yield, "y")
+    add_null_state_bindings(bindings, "time_yield", fig_time_yield)
 
     add_source_binding(bindings, "time_yield_bin", fig_time_yield_bin)
     add_numeric_range_bindings(bindings, "time_yield_bin", fig_time_yield_bin, "x")
     add_numeric_range_bindings(bindings, "time_yield_bin", fig_time_yield_bin, "y")
+    add_null_state_bindings(bindings, "time_yield_bin", fig_time_yield_bin)
 
     add_source_binding(bindings, "time_reads", fig_time_reads)
     add_numeric_range_bindings(bindings, "time_reads", fig_time_reads, "x")
     add_numeric_range_bindings(bindings, "time_reads", fig_time_reads, "y")
+    add_null_state_bindings(bindings, "time_reads", fig_time_reads)
 
     add_source_binding(bindings, "time_reads_bin", fig_time_reads_bin)
     add_numeric_range_bindings(bindings, "time_reads_bin", fig_time_reads_bin, "x")
     add_numeric_range_bindings(bindings, "time_reads_bin", fig_time_reads_bin, "y")
+    add_null_state_bindings(bindings, "time_reads_bin", fig_time_reads_bin)
 
     add_source_binding(bindings, "time_length", fig_time_length)
     add_numeric_range_bindings(bindings, "time_length", fig_time_length, "x")
     add_numeric_range_bindings(bindings, "time_length", fig_time_length, "y")
+    add_null_state_bindings(bindings, "time_length", fig_time_length)
 
     add_source_binding(bindings, "time_qscore", fig_time_qscore)
     add_numeric_range_bindings(bindings, "time_qscore", fig_time_qscore, "x")
     add_numeric_range_bindings(bindings, "time_qscore", fig_time_qscore, "y")
+    add_null_state_bindings(bindings, "time_qscore", fig_time_qscore)
 
     add_source_binding(bindings, "time_speed", fig_time_speed)
     add_numeric_range_bindings(bindings, "time_speed", fig_time_speed, "x")
     add_numeric_range_bindings(bindings, "time_speed", fig_time_speed, "y")
+    add_null_state_bindings(bindings, "time_speed", fig_time_speed)
 
     add_source_binding(bindings, "channel_reads", fig_channel_reads)
     add_embedded_source_binding(bindings, "channel_reads", fig_channel_reads, 1, "hover_source")
@@ -347,6 +398,7 @@ def extract_bokeh_document(html):
     add_figure_attr_binding(bindings, "channel_reads", fig_channel_reads, "width")
     add_numeric_range_bindings(bindings, "channel_reads", fig_channel_reads, "x")
     add_numeric_range_bindings(bindings, "channel_reads", fig_channel_reads, "y")
+    add_null_state_bindings(bindings, "channel_reads", fig_channel_reads, colorbar=True)
 
     add_source_binding(bindings, "channel_bases", fig_channel_bases)
     add_embedded_source_binding(bindings, "channel_bases", fig_channel_bases, 1, "hover_source")
@@ -355,6 +407,7 @@ def extract_bokeh_document(html):
     add_figure_attr_binding(bindings, "channel_bases", fig_channel_bases, "width")
     add_numeric_range_bindings(bindings, "channel_bases", fig_channel_bases, "x")
     add_numeric_range_bindings(bindings, "channel_bases", fig_channel_bases, "y")
+    add_null_state_bindings(bindings, "channel_bases", fig_channel_bases, colorbar=True)
 
     scrub_bound_values(docs, bindings)
     docs_json = json.dumps(docs, separators=(",", ":"))

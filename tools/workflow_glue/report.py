@@ -13,6 +13,7 @@ import pandas as pd
 
 from . import bokeh_relational
 from . import bokeh_matrix
+from . import bokeh_null
 from . import bokeh_ribbon
 from . import bokeh_seqsummary
 from .bokeh_style import patch_bokeh_plot_class
@@ -31,14 +32,20 @@ CHANNEL_MAP_PATHS = {
 patch_bokeh_plot_class(ezc.plots.BokehPlot)
 
 
-def load_dense_heatmap(df, x, y, value, subtitle):
+def load_dense_heatmap(df, x, y, value, subtitle, null_message):
     """Load a dense rectangular TSV into a Bokeh heatmap matrix."""
+    if df.empty:
+        return bokeh_null.null_plot(null_message, x, y)
+
     data = df.pivot(
         index=x,
         columns=y,
         values=value)
     data = data.rename_axis(x)
     data = data.rename_axis(y, axis=1)
+    finite = np.isfinite(data.to_numpy(dtype=float))
+    if not finite.any():
+        return bokeh_null.null_plot(null_message, x, y)
 
     return bokeh_matrix.heatmap(
         data,
@@ -62,12 +69,12 @@ def simple_kv_table(rows):
                     td("" if value is None else str(value))
 
 
-def _summary_display_text(value, formatter=str):
+def _summary_display_text(value, formatter=str, missing_text="(not set)"):
     if value is None:
-        return "(not set)"
+        return missing_text
     text = str(value)
     if text == "" or text.lower() == "nan":
-        return "(not set)"
+        return missing_text
     if text.startswith("__FASTCAT_"):
         return text
     return formatter(value)
@@ -107,24 +114,22 @@ def load_run_summary(path):
     if df.empty:
         return []
     row = df.iloc[0].to_dict()
+    discovered = lambda key, formatter=str: _summary_display_text(
+        row.get(key), formatter, "(not found)")
     rows = [
         ("Sample ID", _summary_display_text(row.get("sample_id"))),
         ("Barcode ID", _summary_display_text(row.get("barcode_id"))),
-    ]
-    barcode_alias = _summary_display_text(row.get("barcode_alias"))
-    if barcode_alias != "(not set)":
-        rows.append(("Barcode alias", barcode_alias))
-    rows.extend([
-        ("Run ID", _summary_display_text(row.get("run_id"))),
-        ("Basecaller model", _summary_display_text(row.get("basecaller_model"))),
-        ("Flowcell ID", _summary_display_text(row.get("flow_cell_id"))),
-        ("Run date", _summary_display_text(row.get("run_date"))),
-        ("Run duration", _summary_display_text(row.get("run_duration_s"), _format_duration_seconds)),
+        ("Barcode alias", discovered("barcode_alias")),
+        ("Run ID", discovered("run_id")),
+        ("Basecaller model", discovered("basecaller_model")),
+        ("Flowcell ID", discovered("flow_cell_id")),
+        ("Run date", discovered("run_date")),
+        ("Run duration", discovered("run_duration_s", _format_duration_seconds)),
         ("Yield", _summary_display_text(row.get("base_count"), _format_yield_bases)),
         ("Read count", _summary_display_text(row.get("read_count"), lambda v: f"{int(float(v))}")),
         ("N50", _summary_display_text(row.get("n50_bp"), _format_n50)),
         ("L50", _summary_display_text(row.get("l50"), lambda v: f"{int(float(v))}")),
-    ])
+    ]
     return rows
 
 
@@ -138,7 +143,8 @@ def load_length_qscore_heatmap(path):
         "Read length / kb",
         "Quality",
         "count",
-        "")
+        "",
+        "No read length vs quality data available")
 
 
 def load_speed_qscore_heatmap(path):
@@ -152,7 +158,8 @@ def load_speed_qscore_heatmap(path):
         "Translocation speed / bp/s",
         "Quality",
         "count",
-        "")
+        "",
+        "No translocation speed vs quality data available")
 
 
 def format_hours(value):
@@ -241,7 +248,7 @@ def load_channel_map(name):
 def load_channel_summary_heatmap(path, metric):
     df = pd.read_csv(path, sep="\t")
     if df.empty:
-        max_channel = 1
+        return bokeh_null.null_plot("No channel occupancy data available")
     else:
         df["channel"] = pd.to_numeric(df["channel"], errors="coerce").fillna(0).astype(int)
         df["mux"] = pd.to_numeric(df["mux"], errors="coerce").fillna(0).astype(int)
@@ -282,6 +289,8 @@ def load_channel_summary_heatmap(path, metric):
     data = data.rename_axis(None, axis=1)
 
     occupied = ((merged["read_count"] > 0.0) | (merged["base_count"] > 0.0)).sum()
+    if occupied == 0:
+        return bokeh_null.null_plot("No channel occupancy data available")
     subtitle = f"{int(occupied)} sequencing wells"
 
     return bokeh_matrix.heatmap(
@@ -303,7 +312,20 @@ def load_channel_summary_heatmap(path, metric):
 
 def time_lineplot(df, y, ylabel, color=FASTCAT_BLUE, x="time_mid_h", seed_origin=False):
     """Create a line plot against elapsed run time in hours."""
+    null_messages = {
+        "Cumulative base yield / Gbp": "No cumulative base yield through time data available",
+        "Base yield / Gbp": "No base yield through time data available",
+        "Cumulative read count": "No cumulative read count through time data available",
+    }
     plot_df = df[[x, y]].copy()
+    plot_df[x] = pd.to_numeric(plot_df[x], errors="coerce")
+    plot_df[y] = pd.to_numeric(plot_df[y], errors="coerce")
+    plot_df = plot_df.replace([np.inf, -np.inf], np.nan).dropna(subset=[x, y])
+    if plot_df.empty:
+        return bokeh_null.null_plot(
+            null_messages.get(ylabel, f"No {ylabel.lower()} through time data available"),
+            "Elapsed time / hours",
+            ylabel)
     if seed_origin and not plot_df.empty and plot_df.iloc[0][x] > 0.0:
         first = plot_df.iloc[[0]].copy()
         first[x] = 0.0
@@ -324,11 +346,21 @@ def time_lineplot(df, y, ylabel, color=FASTCAT_BLUE, x="time_mid_h", seed_origin
     plot._fig.yaxis.axis_label = ylabel
     if ylabel == "Cumulative read count":
         bokeh_seqsummary.apply_scientific_count_formatter(plot._fig.yaxis[0])
+    bokeh_null.attach_null_state(plot)
     return plot
 
 
 def time_stepplot(df, y, ylabel, color=FASTCAT_BLUE):
     """Create a stepped per-bin plot over elapsed run time in hours."""
+    null_messages = {
+        "Base yield / Gbp": "No base yield through time data available",
+        "Read count": "No read count through time data available",
+    }
+    if df.empty:
+        return bokeh_null.null_plot(
+            null_messages.get(ylabel, f"No {ylabel.lower()} through time data available"),
+            "Elapsed time / hours",
+            ylabel)
     plot_df = pd.DataFrame({
         "elapsed time (hours)": (df["time_bin_start_s"] / 3600.0).astype(float),
         ylabel: pd.to_numeric(df[y], errors="coerce").fillna(0.0).astype(float),
@@ -356,11 +388,17 @@ def time_stepplot(df, y, ylabel, color=FASTCAT_BLUE):
         bokeh_seqsummary.apply_scientific_count_formatter(plot._fig.yaxis[0])
     elif ylabel == "Base yield / Gbp":
         bokeh_seqsummary.apply_fixed_precision_formatter(plot._fig.yaxis[0], "0,0.00")
+    bokeh_null.attach_null_state(plot)
     return plot
 
 
 def quantile_ribbonplot(df, prefix, ylabel):
     """Create a ribbon plot from Q05-Q95 values."""
+    null_messages = {
+        "length": "No read length through time data available",
+        "qscore": "No quality through time data available",
+        "speed": "No translocation speed through time data available",
+    }
     x = "elapsed time (hours)"
     y = ylabel
     cols = {
@@ -373,6 +411,13 @@ def quantile_ribbonplot(df, prefix, ylabel):
         f"{prefix}_plot_q95": "q95",
     }
     plot_df = df[list(cols)].rename(columns=cols)
+    plot_df = plot_df.replace([np.inf, -np.inf], np.nan).dropna(
+        subset=[x, "q05", "q25", y, "q75", "q95"])
+    if plot_df.empty:
+        return bokeh_null.null_plot(
+            null_messages.get(prefix, f"No {ylabel.lower()} available"),
+            "Elapsed time / hours",
+            ylabel)
     if not plot_df.empty and plot_df.iloc[0][x] > 0.0:
         first = plot_df.iloc[[0]].copy()
         first[x] = 0.0
@@ -406,9 +451,6 @@ def quantile_ribbonplot(df, prefix, ylabel):
 def add_time_bin_plots(path):
     """Add time-bin plots for one sample to the current report section."""
     df = load_time_bin_summary(path)
-    if df.empty or df["read_count"].sum() == 0:
-        p("No timestamped reads were available for time-based plots.")
-        return
 
     tabs = Tabs()
     with tabs.add_tab("Yield"):
@@ -432,23 +474,14 @@ def add_time_bin_plots(path):
         EZChart(time_stepplot(df, "read_count", "Read count"), height="360px")
     with tabs.add_tab("Read length"):
         length_plot = quantile_ribbonplot(df, "length", "Read length / kb")
-        if length_plot is None:
-            p("No read length quartiles were available.")
-        else:
-            EZChart(length_plot, height="420px")
+        EZChart(length_plot, height="420px")
     with tabs.add_tab("Quality"):
         qscore_plot = quantile_ribbonplot(df, "qscore", "Quality")
-        if qscore_plot is None:
-            p("No quality quartiles were available.")
-        else:
-            EZChart(qscore_plot, height="420px")
+        EZChart(qscore_plot, height="420px")
     with tabs.add_tab("Translocation speed"):
         speed_plot = quantile_ribbonplot(
             df, "speed", "Translocation speed / bp/s")
-        if speed_plot is None:
-            p("No translocation speed quartiles were available.")
-        else:
-            EZChart(speed_plot, height="420px")
+        EZChart(speed_plot, height="420px")
 
 
 def add_channel_summary_plots(path):

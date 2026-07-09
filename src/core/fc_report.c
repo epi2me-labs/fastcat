@@ -36,7 +36,7 @@
 #define FC_REPORT_VISIBLE_QUANTILE 0.98
 #define FC_REPORT_VISIBLE_PADDING 0.10
 #define FC_REPORT_QUALITY_XROUND 10.0
-#define FC_REPORT_LENGTH_XROUND_KB 50.0
+#define FC_REPORT_LENGTH_XROUND_KB 5.0
 
 typedef struct {
     double start;
@@ -316,7 +316,7 @@ static char *format_report_duration(double seconds)
         return fc_strdup("(not meaningful)", "report duration");
     }
     if (!isfinite(seconds)) {
-        return fc_strdup("(not set)", "report duration");
+        return fc_strdup("(not found)", "report duration");
     }
 
     size_t total = (size_t)llround(seconds);
@@ -448,9 +448,19 @@ static void bokeh_set_string(JSON_Value *docs, const char *name, const char *tex
     bokeh_set_value(docs, name, fc_json_string_value(text));
 }
 
+static void bokeh_set_bool(JSON_Value *docs, const char *name, bool value)
+{
+    bokeh_set_value(docs, name, fc_json_bool_value(value));
+}
+
 static void bokeh_set_number(JSON_Value *docs, const char *name, double value)
 {
     bokeh_set_value(docs, name, fc_json_number_value(value));
+}
+
+static void bokeh_set_null(JSON_Value *docs, const char *name)
+{
+    bokeh_set_value(docs, name, fc_json_null_value());
 }
 
 static void bokeh_set_range(JSON_Value *docs, const char *prefix, double start, double end)
@@ -463,6 +473,64 @@ static void bokeh_set_range(JSON_Value *docs, const char *prefix, double start, 
     bokeh_set_number(docs, name, end);
     FC_SNPRINTF_CHECK(name, sizeof(name), "%s.bounds", prefix);
     bokeh_set_value(docs, name, fc_json_number_array_value(bounds, 2));
+}
+
+static void bokeh_set_plot_null_state(
+    JSON_Value *docs,
+    const char *name,
+    const char *message,
+    bool has_colorbar)
+{
+    char binding[128];
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.null.text", name);
+    bokeh_set_string(docs, binding, message);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.null.visible", name);
+    bokeh_set_bool(docs, binding, true);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.x_axis.visible", name);
+    bokeh_set_bool(docs, binding, false);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.y_axis.visible", name);
+    bokeh_set_bool(docs, binding, false);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.x_grid.visible", name);
+    bokeh_set_bool(docs, binding, false);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.y_grid.visible", name);
+    bokeh_set_bool(docs, binding, false);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.toolbar_location", name);
+    bokeh_set_null(docs, binding);
+    if (has_colorbar) {
+        FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.colorbar.visible", name);
+        bokeh_set_bool(docs, binding, false);
+    }
+}
+
+static void bokeh_set_plot_data_state(
+    JSON_Value *docs,
+    const char *name,
+    bool has_colorbar,
+    const char *toolbar_location)
+{
+    char binding[128];
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.null.text", name);
+    bokeh_set_string(docs, binding, "");
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.null.visible", name);
+    bokeh_set_bool(docs, binding, false);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.x_axis.visible", name);
+    bokeh_set_bool(docs, binding, true);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.y_axis.visible", name);
+    bokeh_set_bool(docs, binding, true);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.x_grid.visible", name);
+    bokeh_set_bool(docs, binding, true);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.y_grid.visible", name);
+    bokeh_set_bool(docs, binding, true);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.toolbar_location", name);
+    if (toolbar_location) {
+        bokeh_set_string(docs, binding, toolbar_location);
+    } else {
+        bokeh_set_null(docs, binding);
+    }
+    if (has_colorbar) {
+        FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.colorbar.visible", name);
+        bokeh_set_bool(docs, binding, true);
+    }
 }
 
 //
@@ -1028,6 +1096,11 @@ static void update_length_qscore_plot(
     size_t barcode)
 {
     if (!model || !fc_length_qscore_2d_seen(model, barcode)) {
+        bokeh_set_plot_null_state(
+            docs,
+            "length_qscore",
+            "No read length vs quality data available",
+            true);
         bokeh_set_value(
             docs,
             "length_qscore.source.data",
@@ -1082,6 +1155,7 @@ static void update_length_qscore_plot(
         docs, "length_qscore.color_mapper.high", color_high > 0.0 ? color_high : 1.0);
     bokeh_set_range(docs, "length_qscore.x_range", x_start, x_end);
     bokeh_set_range(docs, "length_qscore.y_range", y_start, y_end);
+    bokeh_set_plot_data_state(docs, "length_qscore", true, "right");
 
     fc_length_qscore_2d_matrix_destroy(&matrix);
 }
@@ -1146,6 +1220,11 @@ static void update_speed_qscore_plot(
     size_t barcode)
 {
     if (!model || !fc_speed_qscore_2d_seen(model, barcode)) {
+        bokeh_set_plot_null_state(
+            docs,
+            "speed_qscore",
+            "No translocation speed vs quality data available",
+            true);
         bokeh_set_value(
             docs,
             "speed_qscore.source.data",
@@ -1204,6 +1283,7 @@ static void update_speed_qscore_plot(
         color_high > 0.0 ? color_high : 1.0);
     bokeh_set_range(docs, "speed_qscore.x_range", x_start, x_end);
     bokeh_set_range(docs, "speed_qscore.y_range", y_start, y_end);
+    bokeh_set_plot_data_state(docs, "speed_qscore", true, "right");
 
     fc_speed_qscore_2d_matrix_destroy(&matrix);
 }
@@ -1312,10 +1392,12 @@ static void update_time_yield_plot(JSON_Value *docs, const fc_time_bin_table *ta
     report_column x = bokeh_source_add_array_column(&source, "x");
     report_column y = bokeh_source_add_array_column(&source, "y");
     double y_end = 0.0;
+    bool has_points = false;
 
     if (table && table->n > 0) {
         fc_json_array_append_number(x.array, 0.0);
         fc_json_array_append_number(y.array, 0.0);
+        has_points = true;
     }
 
     for (size_t i = 0; table && i < table->n; i++) {
@@ -1324,6 +1406,7 @@ static void update_time_yield_plot(JSON_Value *docs, const fc_time_bin_table *ta
         y_end = (double)row->cumulative_base_count / 1e9;
         fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(y.array, y_end);
+        has_points = true;
     }
 
     bokeh_set_value(docs, "time_yield.source.data", source.value);
@@ -1339,6 +1422,12 @@ static void update_time_yield_plot(JSON_Value *docs, const fc_time_bin_table *ta
     }
     bokeh_set_range(docs, "time_yield.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_yield.y_range", 0.0, y_end);
+    if (has_points) {
+        bokeh_set_plot_data_state(docs, "time_yield", false, "right");
+    } else {
+        bokeh_set_plot_null_state(
+            docs, "time_yield", "No cumulative base yield through time data available", false);
+    }
 }
 
 static void update_time_yield_bin_plot(JSON_Value *docs, const fc_time_bin_table *table)
@@ -1347,6 +1436,7 @@ static void update_time_yield_bin_plot(JSON_Value *docs, const fc_time_bin_table
     report_column x = bokeh_source_add_array_column(&source, "x");
     report_column y = bokeh_source_add_array_column(&source, "y");
     double y_max = 0.0;
+    bool has_points = false;
 
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
@@ -1357,6 +1447,7 @@ static void update_time_yield_bin_plot(JSON_Value *docs, const fc_time_bin_table
         }
         fc_json_array_append_number(x.array, start_h);
         fc_json_array_append_number(y.array, y_value);
+        has_points = true;
     }
 
     if (table && table->n > 0) {
@@ -1364,6 +1455,7 @@ static void update_time_yield_bin_plot(JSON_Value *docs, const fc_time_bin_table
         double y_value = (double)table->rows[table->n - 1].base_count / 1e9;
         fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(y.array, y_value);
+        has_points = true;
     }
 
     bokeh_set_value(docs, "time_yield_bin.source.data", source.value);
@@ -1379,6 +1471,12 @@ static void update_time_yield_bin_plot(JSON_Value *docs, const fc_time_bin_table
     }
     bokeh_set_range(docs, "time_yield_bin.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_yield_bin.y_range", 0.0, y_max);
+    if (has_points) {
+        bokeh_set_plot_data_state(docs, "time_yield_bin", false, "right");
+    } else {
+        bokeh_set_plot_null_state(
+            docs, "time_yield_bin", "No base yield through time data available", false);
+    }
 }
 
 static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *table)
@@ -1387,6 +1485,7 @@ static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *ta
     report_column x = bokeh_source_add_array_column(&source, "x");
     report_column y = bokeh_source_add_array_column(&source, "y");
     double y_end = 0.0;
+    bool has_points = false;
 
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
@@ -1398,6 +1497,7 @@ static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *ta
         }
         fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(y.array, y_end);
+        has_points = true;
     }
 
     bokeh_set_value(docs, "time_reads.source.data", source.value);
@@ -1413,6 +1513,12 @@ static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *ta
     }
     bokeh_set_range(docs, "time_reads.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_reads.y_range", 0.0, y_end);
+    if (has_points) {
+        bokeh_set_plot_data_state(docs, "time_reads", false, "right");
+    } else {
+        bokeh_set_plot_null_state(
+            docs, "time_reads", "No cumulative read count through time data available", false);
+    }
 }
 
 static void update_time_reads_bin_plot(JSON_Value *docs, const fc_time_bin_table *table)
@@ -1421,6 +1527,7 @@ static void update_time_reads_bin_plot(JSON_Value *docs, const fc_time_bin_table
     report_column x = bokeh_source_add_array_column(&source, "x");
     report_column y = bokeh_source_add_array_column(&source, "y");
     double y_max = 0.0;
+    bool has_points = false;
 
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
@@ -1431,6 +1538,7 @@ static void update_time_reads_bin_plot(JSON_Value *docs, const fc_time_bin_table
         }
         fc_json_array_append_number(x.array, start_h);
         fc_json_array_append_number(y.array, y_value);
+        has_points = true;
     }
 
     if (table && table->n > 0) {
@@ -1438,6 +1546,7 @@ static void update_time_reads_bin_plot(JSON_Value *docs, const fc_time_bin_table
         double y_value = (double)table->rows[table->n - 1].read_count;
         fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(y.array, y_value);
+        has_points = true;
     }
 
     bokeh_set_value(docs, "time_reads_bin.source.data", source.value);
@@ -1453,6 +1562,12 @@ static void update_time_reads_bin_plot(JSON_Value *docs, const fc_time_bin_table
     }
     bokeh_set_range(docs, "time_reads_bin.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_reads_bin.y_range", 0.0, y_max);
+    if (has_points) {
+        bokeh_set_plot_data_state(docs, "time_reads_bin", false, "right");
+    } else {
+        bokeh_set_plot_null_state(
+            docs, "time_reads_bin", "No read count through time data available", false);
+    }
 }
 
 static void update_time_length_ribbon_plot(JSON_Value *docs, const fc_time_bin_table *table)
@@ -1466,6 +1581,7 @@ static void update_time_length_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
     report_column q75 = bokeh_source_add_array_column(&source, "q75");
     report_column q95 = bokeh_source_add_array_column(&source, "q95");
     bool seeded_origin = false;
+    bool has_points = false;
 
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
@@ -1498,6 +1614,7 @@ static void update_time_length_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
         fc_json_array_append_number(q50.array, scaled_q50);
         fc_json_array_append_number(q75.array, scaled_q75);
         fc_json_array_append_number(q95.array, scaled_q95);
+        has_points = true;
     }
 
     double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
@@ -1510,6 +1627,12 @@ static void update_time_length_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
     bokeh_set_value(docs, "time_length.source.data", source.value);
     bokeh_set_range(docs, "time_length.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_length.y_range", y_start, y_end);
+    if (has_points) {
+        bokeh_set_plot_data_state(docs, "time_length", false, "right");
+    } else {
+        bokeh_set_plot_null_state(
+            docs, "time_length", "No read length through time data available", false);
+    }
 }
 
 static void update_time_qscore_ribbon_plot(JSON_Value *docs, const fc_time_bin_table *table)
@@ -1523,6 +1646,7 @@ static void update_time_qscore_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
     report_column q75 = bokeh_source_add_array_column(&source, "q75");
     report_column q95 = bokeh_source_add_array_column(&source, "q95");
     bool seeded_origin = false;
+    bool has_points = false;
 
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
@@ -1550,6 +1674,7 @@ static void update_time_qscore_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
         fc_json_array_append_number(q50.array, q->q50);
         fc_json_array_append_number(q75.array, q->q75);
         fc_json_array_append_number(q95.array, q->q95);
+        has_points = true;
     }
 
     double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
@@ -1562,6 +1687,12 @@ static void update_time_qscore_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
     bokeh_set_value(docs, "time_qscore.source.data", source.value);
     bokeh_set_range(docs, "time_qscore.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_qscore.y_range", y_start, y_end);
+    if (has_points) {
+        bokeh_set_plot_data_state(docs, "time_qscore", false, "right");
+    } else {
+        bokeh_set_plot_null_state(
+            docs, "time_qscore", "No quality through time data available", false);
+    }
 }
 
 static bool time_speed_box_row_valid(const fc_time_bin_row *row)
@@ -1625,6 +1756,7 @@ static void update_time_speed_ribbon_plot(JSON_Value *docs, const fc_time_bin_ta
     report_column q75 = bokeh_source_add_array_column(&source, "q75");
     report_column q95 = bokeh_source_add_array_column(&source, "q95");
     bool seeded_origin = false;
+    bool has_points = false;
 
     for (size_t i = 0; table && i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
@@ -1652,6 +1784,7 @@ static void update_time_speed_ribbon_plot(JSON_Value *docs, const fc_time_bin_ta
         fc_json_array_append_number(q50.array, q->q50);
         fc_json_array_append_number(q75.array, q->q75);
         fc_json_array_append_number(q95.array, q->q95);
+        has_points = true;
     }
 
     double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
@@ -1664,6 +1797,12 @@ static void update_time_speed_ribbon_plot(JSON_Value *docs, const fc_time_bin_ta
     bokeh_set_value(docs, "time_speed.source.data", source.value);
     bokeh_set_range(docs, "time_speed.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_speed.y_range", y_start, y_end);
+    if (has_points) {
+        bokeh_set_plot_data_state(docs, "time_speed", false, "right");
+    } else {
+        bokeh_set_plot_null_state(
+            docs, "time_speed", "No translocation speed through time data available", false);
+    }
 }
 
 //
@@ -1766,9 +1905,11 @@ static void update_channel_reads_plot(
     size_t barcode)
 {
     if (!model || !fc_channel_summary_seen(model, barcode)) {
+        bokeh_set_plot_null_state(
+            docs, "channel_reads", "No channel occupancy data available", true);
         bokeh_set_value(docs, "channel_reads.source.data", build_channel_empty_source_data_value());
         bokeh_set_value(docs, "channel_reads.hover_source.data", build_channel_empty_hover_source_data_value());
-        bokeh_set_string(docs, "channel_reads.subtitle.text", "No channel occupancy data available");
+        bokeh_set_string(docs, "channel_reads.subtitle.text", "");
         bokeh_set_number(docs, "channel_reads.color_mapper.high", 1.0);
         bokeh_set_number(docs, "channel_reads.width", 500.0);
         bokeh_set_range(docs, "channel_reads.x_range", 0.0, 1.0);
@@ -1880,6 +2021,14 @@ static void update_channel_reads_plot(
     bokeh_set_number(docs, "channel_reads.width", channel_plot_width(aspect_ratio));
     bokeh_set_range(docs, "channel_reads.x_range", map->x_min - 0.5, map->x_max + 0.5);
     bokeh_set_range(docs, "channel_reads.y_range", map->y_min - 0.5, map->y_max + 0.5);
+    bokeh_set_string(docs, "channel_reads.null.text", "");
+    bokeh_set_bool(docs, "channel_reads.null.visible", false);
+    bokeh_set_bool(docs, "channel_reads.x_axis.visible", false);
+    bokeh_set_bool(docs, "channel_reads.y_axis.visible", false);
+    bokeh_set_bool(docs, "channel_reads.x_grid.visible", false);
+    bokeh_set_bool(docs, "channel_reads.y_grid.visible", false);
+    bokeh_set_null(docs, "channel_reads.toolbar_location");
+    bokeh_set_bool(docs, "channel_reads.colorbar.visible", true);
 
     free(image);
     free(color_values);
@@ -1894,9 +2043,11 @@ static void update_channel_bases_plot(
     size_t barcode)
 {
     if (!model || !fc_channel_summary_seen(model, barcode)) {
+        bokeh_set_plot_null_state(
+            docs, "channel_bases", "No channel occupancy data available", true);
         bokeh_set_value(docs, "channel_bases.source.data", build_channel_empty_source_data_value());
         bokeh_set_value(docs, "channel_bases.hover_source.data", build_channel_empty_hover_source_data_value());
-        bokeh_set_string(docs, "channel_bases.subtitle.text", "No channel occupancy data available");
+        bokeh_set_string(docs, "channel_bases.subtitle.text", "");
         bokeh_set_number(docs, "channel_bases.color_mapper.high", 1.0);
         bokeh_set_number(docs, "channel_bases.width", 500.0);
         bokeh_set_range(docs, "channel_bases.x_range", 0.0, 1.0);
@@ -2008,6 +2159,14 @@ static void update_channel_bases_plot(
     bokeh_set_number(docs, "channel_bases.width", channel_plot_width(aspect_ratio));
     bokeh_set_range(docs, "channel_bases.x_range", map->x_min - 0.5, map->x_max + 0.5);
     bokeh_set_range(docs, "channel_bases.y_range", map->y_min - 0.5, map->y_max + 0.5);
+    bokeh_set_string(docs, "channel_bases.null.text", "");
+    bokeh_set_bool(docs, "channel_bases.null.visible", false);
+    bokeh_set_bool(docs, "channel_bases.x_axis.visible", false);
+    bokeh_set_bool(docs, "channel_bases.y_axis.visible", false);
+    bokeh_set_bool(docs, "channel_bases.x_grid.visible", false);
+    bokeh_set_bool(docs, "channel_bases.y_grid.visible", false);
+    bokeh_set_null(docs, "channel_bases.toolbar_location");
+    bokeh_set_bool(docs, "channel_bases.colorbar.visible", true);
 
     free(image);
     free(color_values);
@@ -2099,7 +2258,7 @@ static char *render_report_html(
     char *sample_html = html_escape(
         (summary && summary->sample_id && summary->sample_id[0] != '\0')
             ? summary->sample_id
-            : (sample ? sample : "fastcat"));
+            : ((sample && sample[0] != '\0') ? sample : "(not found)"));
     char *barcode_html = html_escape(
         (summary && summary->barcode_id && summary->barcode_id[0] != '\0')
             ? summary->barcode_id
@@ -2114,23 +2273,23 @@ static char *render_report_html(
     char *barcode_alias_html = html_escape(
         (summary && summary->barcode_alias && summary->barcode_alias[0] != '\0')
             ? summary->barcode_alias
-            : "(not set)");
+            : "(not found)");
     char *run_id_html = html_escape(
         (summary && summary->run_id && summary->run_id[0] != '\0')
             ? summary->run_id
-            : "(not set)");
+            : "(not found)");
     char *basecaller_html = html_escape(
         (summary && summary->basecaller_model && summary->basecaller_model[0] != '\0')
             ? summary->basecaller_model
-            : "(not set)");
+            : "(not found)");
     char *flow_cell_html = html_escape(
         (summary && summary->flow_cell_id && summary->flow_cell_id[0] != '\0')
             ? summary->flow_cell_id
-            : "(not set)");
+            : "(not found)");
     char *run_date_html = html_escape(
         (summary && summary->run_date && summary->run_date[0] != '\0')
             ? summary->run_date
-            : "(not set)");
+            : "(not found)");
     char *run_duration_html = html_escape(run_duration_text);
     char *yield_html = html_escape(yield_text);
     char *read_count_html = html_escape(read_count_text);

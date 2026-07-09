@@ -406,6 +406,10 @@ def argparser():
     metadata.add_argument("--id-prefix", default="simread", help="Read ID prefix (default: simread)")
     metadata.add_argument("--sample-id", default="", help="Sample ID metadata to emit (default: unset)")
     metadata.add_argument(
+        "--omit-metadata",
+        action="store_true",
+        help="Emit bare FASTQ headers without optional metadata tags")
+    metadata.add_argument(
         "--device", choices=["flongle", "minion", "promethion"], default="minion",
         help="Flowcell layout to simulate (default: minion)")
     metadata.add_argument(
@@ -567,20 +571,23 @@ def main(args):
         rg = f"{args.runid}_{args.model}"
         if barcode and barcode != "unclassified":
             rg = f"{rg}_{barcode}"
-        prefix = f"sample_id={args.sample_id} " if args.sample_id else ""
-        tags = (
-            f"qs:f:{mean_q:.4f}\t"
-            f"du:f:{duration_s:.6f}\t"
-            f"rn:i:{i}\t"
-            f"ch:i:{channel}\t"
-            f"mx:i:{mux}\t"
-            f"st:Z:{st}\t"
-            f"SM:Z:{barcode}\t"
-            f"RG:Z:{rg}\t"
-            f"dx:i:{is_duplex}"
-        )
-
-        out.write(f"@{args.id_prefix}_{i:09d} {prefix}{tags}\n")
+        if args.omit_metadata:
+            out.write(f"@{args.id_prefix}_{i:09d}\n")
+        else:
+            sample_tag = f"LB:Z:{args.sample_id}\t" if args.sample_id else ""
+            tags = (
+                f"{sample_tag}"
+                f"qs:f:{mean_q:.4f}\t"
+                f"du:f:{duration_s:.6f}\t"
+                f"rn:i:{i}\t"
+                f"ch:i:{channel}\t"
+                f"mx:i:{mux}\t"
+                f"st:Z:{st}\t"
+                f"SM:Z:{barcode}\t"
+                f"RG:Z:{rg}\t"
+                f"dx:i:{is_duplex}"
+            )
+            out.write(f"@{args.id_prefix}_{i:09d} {tags}\n")
         out.write(f"{seq}\n+\n{qual}\n")
 
         if args.progress_every > 0 and (i % args.progress_every) == 0:
