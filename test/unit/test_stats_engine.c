@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "unity.h"
+#include "main.h"
 #include "htslib/sam.h"
 
 #include "core/fc_stats_engine.h"
@@ -60,7 +61,8 @@ static bam1_t* build_mapped_read(const char* qname, const char* seq, const char*
     return b;
 }
 
-static void test_stats_engine_unmapped_tracked_in_unmapped_stats(void) {
+FC_TEST(stats_engine_suite, test_stats_engine_unmapped_tracked_in_unmapped_stats)
+{
     bam1_t* b = build_unmapped_read("r1", "ACGT", "!!!!");
     fc_read *fr = fc_read_init();
     TEST_ASSERT_NOT_NULL(fr);
@@ -79,7 +81,8 @@ static void test_stats_engine_unmapped_tracked_in_unmapped_stats(void) {
     fc_read_destroy(fr);
 }
 
-static void test_stats_engine_aligned_metrics(void) {
+FC_TEST(stats_engine_suite, test_stats_engine_aligned_metrics)
+{
     sam_hdr_t* hdr = sam_hdr_init();
     sam_hdr_add_line(hdr, "HD", "VN", "1.6", NULL);
     sam_hdr_add_line(hdr, "SQ", "SN", "chr1", "LN", "100", NULL);
@@ -123,9 +126,4 @@ static void test_stats_engine_aligned_metrics(void) {
     fc_stats_engine_destroy(engine);
     fc_read_destroy(fr);
     sam_hdr_destroy(hdr);
-}
-
-void stats_engine_suite(void) {
-    RUN_TEST(test_stats_engine_unmapped_tracked_in_unmapped_stats);
-    RUN_TEST(test_stats_engine_aligned_metrics);
 }

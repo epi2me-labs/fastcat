@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "unity.h"
+#include "main.h"
 
 #include "core/fc_run_summary.h"
 
@@ -34,7 +35,7 @@ static void add_run_summary_read(
     fc_run_summary_add_read(model, barcode, &read);
 }
 
-static void test_run_summary_collapses_multiple_values(void)
+FC_TEST(run_summary_suite, test_run_summary_collapses_multiple_values)
 {
     fc_run_summary *model = fc_run_summary_create(1);
     TEST_ASSERT_NOT_NULL(model);
@@ -77,7 +78,7 @@ static void test_run_summary_collapses_multiple_values(void)
     fc_run_summary_destroy(model);
 }
 
-static void test_run_summary_uses_fallback_sample_and_earliest_time(void)
+FC_TEST(run_summary_suite, test_run_summary_uses_fallback_sample_and_earliest_time)
 {
     fc_run_summary *model = fc_run_summary_create(1);
     TEST_ASSERT_NOT_NULL(model);
@@ -116,10 +117,4 @@ static void test_run_summary_uses_fallback_sample_and_earliest_time(void)
     TEST_ASSERT_EQUAL_UINT64(300, row.base_count);
 
     fc_run_summary_destroy(model);
-}
-
-void run_summary_suite(void)
-{
-    RUN_TEST(test_run_summary_collapses_multiple_values);
-    RUN_TEST(test_run_summary_uses_fallback_sample_and_earliest_time);
 }

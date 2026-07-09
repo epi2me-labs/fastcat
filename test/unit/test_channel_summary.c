@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_channel_summary.h"
 #include "core/fc_read.h"
 
@@ -51,7 +52,7 @@ static void add_channel_test_read(
     fc_channel_summary_add_read(model, barcode, &read);
 }
 
-static void test_channel_summary_accumulates_counts(void)
+FC_TEST(channel_summary_suite, test_channel_summary_accumulates_counts)
 {
     fc_channel_summary *model = fc_channel_summary_create(1);
     TEST_ASSERT_NOT_NULL(model);
@@ -79,7 +80,7 @@ static void test_channel_summary_accumulates_counts(void)
     fc_channel_summary_destroy(model);
 }
 
-static void test_channel_summary_barcode_state_is_isolated(void)
+FC_TEST(channel_summary_suite, test_channel_summary_barcode_state_is_isolated)
 {
     fc_channel_summary *model = fc_channel_summary_create(3);
     TEST_ASSERT_NOT_NULL(model);
@@ -108,7 +109,7 @@ static void test_channel_summary_barcode_state_is_isolated(void)
     fc_channel_summary_destroy(model);
 }
 
-static void test_channel_summary_retains_unknown_mux_and_skips_invalid_values(void)
+FC_TEST(channel_summary_suite, test_channel_summary_retains_unknown_mux_and_skips_invalid_values)
 {
     fc_channel_summary *model = fc_channel_summary_create(1);
     TEST_ASSERT_NOT_NULL(model);
@@ -136,7 +137,7 @@ static void test_channel_summary_retains_unknown_mux_and_skips_invalid_values(vo
     fc_channel_summary_destroy(model);
 }
 
-static void test_channel_summary_reads_bam_mx_tag_into_meta(void)
+FC_TEST(channel_summary_suite, test_channel_summary_reads_bam_mx_tag_into_meta)
 {
     fc_read *read = make_channel_test_read("mx-tag");
     TEST_ASSERT_NOT_NULL(read);
@@ -148,12 +149,4 @@ static void test_channel_summary_reads_bam_mx_tag_into_meta(void)
     TEST_ASSERT_EQUAL_size_t(3, read->meta->mux);
 
     fc_read_destroy(read);
-}
-
-void channel_summary_suite(void)
-{
-    RUN_TEST(test_channel_summary_accumulates_counts);
-    RUN_TEST(test_channel_summary_barcode_state_is_isolated);
-    RUN_TEST(test_channel_summary_retains_unknown_mux_and_skips_invalid_values);
-    RUN_TEST(test_channel_summary_reads_bam_mx_tag_into_meta);
 }

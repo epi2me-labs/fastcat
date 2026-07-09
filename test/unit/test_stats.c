@@ -3,10 +3,12 @@
 #include <limits.h>
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_stats.h"
 #include "core/fc_common.h"
 
-static void test_length_bins(void) {
+FC_TEST(stats_suite, test_length_bins)
+{
     read_stats* stats = create_length_stats();
     add_length_count(stats, 0);         // first bin
     add_length_count(stats, 5);         // distinct bin
@@ -21,7 +23,8 @@ static void test_length_bins(void) {
     destroy_length_stats(stats);
 }
 
-static void test_qual_binning(void) {
+FC_TEST(stats_suite, test_qual_binning)
+{
     read_stats* stats = create_qual_stats(0.5);
     add_qual_count(stats, 10.0);
     add_qual_count(stats, 10.4);
@@ -34,19 +37,22 @@ static void test_qual_binning(void) {
     destroy_qual_stats(stats);
 }
 
-static void test_leading_decimals(void) {
+FC_TEST(stats_suite, test_leading_decimals)
+{
     TEST_ASSERT_EQUAL_size_t(7, _leading_decimals(1.0));
     TEST_ASSERT_EQUAL_size_t(1, _leading_decimals(0.1));
     TEST_ASSERT_EQUAL_size_t(2, _leading_decimals(0.01));
     TEST_ASSERT_EQUAL_size_t(3, _leading_decimals(0.001));
 }
 
-static void test_mean_qual_naive(void) {
+FC_TEST(stats_suite, test_mean_qual_naive)
+{
     char q[] = {'5', '5', '5', '5'}; // phred 20
     TEST_ASSERT_FLOAT_WITHIN(0.0001, 20.0f, mean_qual_naive(q, 4));
 }
 
-static void test_length_stats_layout(void) {
+FC_TEST(stats_suite, test_length_stats_layout)
+{
     read_stats* stats = create_length_stats();
     TEST_ASSERT_EQUAL_size_t(10000001, stats->n);
     TEST_ASSERT_EQUAL_size_t(0, stats->edges[0]);
@@ -58,7 +64,8 @@ static void test_length_stats_layout(void) {
     destroy_length_stats(stats);
 }
 
-static void test_print_stats_length_overflow_bucket_output(void) {
+FC_TEST(stats_suite, test_print_stats_length_overflow_bucket_output)
+{
     read_stats *stats = create_length_stats();
     add_length_count(stats, 10000001);
 
@@ -79,7 +86,8 @@ static void test_print_stats_length_overflow_bucket_output(void) {
     destroy_length_stats(stats);
 }
 
-static void test_print_stats_tsv_output(void) {
+FC_TEST(stats_suite, test_print_stats_tsv_output)
+{
     read_stats *stats = create_qual_stats(0.5f);
     add_qual_count(stats, 10.0f);
     add_qual_count(stats, 10.4f);
@@ -99,7 +107,8 @@ static void test_print_stats_tsv_output(void) {
     destroy_qual_stats(stats);
 }
 
-static void test_print_stats_pretty_output(void) {
+FC_TEST(stats_suite, test_print_stats_pretty_output)
+{
     read_stats *stats = create_qual_stats(0.5f);
     add_qual_count(stats, 10.0f);
     add_qual_count(stats, 10.4f);
@@ -117,15 +126,4 @@ static void test_print_stats_pretty_output(void) {
 
     fclose(fp);
     destroy_qual_stats(stats);
-}
-
-void stats_suite(void) {
-    RUN_TEST(test_length_bins);
-    RUN_TEST(test_qual_binning);
-    RUN_TEST(test_leading_decimals);
-    RUN_TEST(test_mean_qual_naive);
-    RUN_TEST(test_length_stats_layout);
-    RUN_TEST(test_print_stats_length_overflow_bucket_output);
-    RUN_TEST(test_print_stats_tsv_output);
-    RUN_TEST(test_print_stats_pretty_output);
 }

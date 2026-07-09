@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_fastqcomments.h"
 #include "core/fc_read.h"
 #include "core/fc_bam_utils.h"
@@ -57,7 +58,8 @@ static const char *get_tags(fc_read *read) {
     return tags->s;
 }
 
-static void test_parse_simple_comment(void) {
+FC_TEST(fastqcomments_suite, test_parse_simple_comment)
+{
     const char* runid = "e4994c62-93f9-439a-bc8f-d20c95a137a5";
     const char* model = "rna004_130bps_fast@v5.1.0";
     char comment[256];
@@ -81,7 +83,8 @@ static void test_parse_simple_comment(void) {
     destroy_read(read);
 }
 
-static void test_original_comment_preserved(void) {
+FC_TEST(fastqcomments_suite, test_original_comment_preserved)
+{
     fc_read *read = fc_read_init();
     TEST_ASSERT_NOT_NULL(read);
     read_from_comment(read, "raw_comment\twith\tspecials");
@@ -91,7 +94,8 @@ static void test_original_comment_preserved(void) {
     destroy_read(read);
 }
 
-static void test_unknown_key_goes_to_co(void) {
+FC_TEST(fastqcomments_suite, test_unknown_key_goes_to_co)
+{
     fc_read *read = fc_read_init();
     TEST_ASSERT_NOT_NULL(read);
     read_from_comment(read, "runid=e4994c62-93f9-439a-bc8f-d20c95a137a5 basecall_model_version_id=rna004_130bps_fast@v5.1.0 unknown=foo");
@@ -101,7 +105,8 @@ static void test_unknown_key_goes_to_co(void) {
     destroy_read(read);
 }
 
-static void test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open(void) {
+FC_TEST(fastqcomments_suite, test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open)
+{
     const char* runid = "12345678-1234-1234-1234-123456789012";
     fc_read *read = fc_read_init();
     TEST_ASSERT_NOT_NULL(read);
@@ -143,7 +148,8 @@ static void test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open(void) {
     destroy_read(read);
 }
 
-static void test_sam_style_tabs(void) {
+FC_TEST(fastqcomments_suite, test_sam_style_tabs)
+{
     fc_read *read = fc_read_init();
     TEST_ASSERT_NOT_NULL(read);
     read_from_comment(read, "RG:Z:rg1\tSM:Z:barcode01\tZZ:Z:extra");
@@ -157,7 +163,8 @@ static void test_sam_style_tabs(void) {
     destroy_read(read);
 }
 
-static void test_barcode_unclassified(void) {
+FC_TEST(fastqcomments_suite, test_barcode_unclassified)
+{
     fc_read *read = fc_read_init();
     TEST_ASSERT_NOT_NULL(read);
     read_from_comment(read, "barcode=unclassified");
@@ -168,7 +175,8 @@ static void test_barcode_unclassified(void) {
     destroy_read(read);
 }
 
-static void test_barcode_empty_value_fallback(void) {
+FC_TEST(fastqcomments_suite, test_barcode_empty_value_fallback)
+{
     const char *runid = "12345678-1234-1234-1234-123456789012";
     const char *model = "sup@v1";
     char comment[256];
@@ -191,7 +199,8 @@ static void test_barcode_empty_value_fallback(void) {
     destroy_read(read);
 }
 
-static void test_rg_populates_runid_and_basecaller(void) {
+FC_TEST(fastqcomments_suite, test_rg_populates_runid_and_basecaller)
+{
     const char* rg = "12345678-1234-1234-1234-123456789012_sup@v1";
     char buf[256];
     FC_SNPRINTF_CHECK(buf, sizeof(buf), "RG:Z:%s", rg);
@@ -206,7 +215,8 @@ static void test_rg_populates_runid_and_basecaller(void) {
     destroy_read(read);
 }
 
-static void test_rg_fallback(void) {
+FC_TEST(fastqcomments_suite, test_rg_fallback)
+{
     const char* rg = "12345678-1234-1234-1234-123456789012_sup@v4.0.0_barcode07";
     char buf[256];
     FC_SNPRINTF_CHECK(buf, sizeof(buf), "RG:Z:%s\tSM:Z:barcode07", rg);
@@ -222,7 +232,8 @@ static void test_rg_fallback(void) {
     destroy_read(read);
 }
 
-static void test_mixed_sam_and_key_value_prefers_sam(void) {
+FC_TEST(fastqcomments_suite, test_mixed_sam_and_key_value_prefers_sam)
+{
     fc_read *read = fc_read_init();
     TEST_ASSERT_NOT_NULL(read);
     read_from_comment(read,
@@ -236,7 +247,8 @@ static void test_mixed_sam_and_key_value_prefers_sam(void) {
     destroy_read(read);
 }
 
-static void test_reheader_roundtrip_preserves_aux(void) {
+FC_TEST(fastqcomments_suite, test_reheader_roundtrip_preserves_aux)
+{
     const char* comment =
         "runid=run-123 basecall_model_version_id=model@v1 barcode=barcode07 "
         "start_time=2023-01-01T00:00:00Z parent_read_id=pr-001 read=7 ch=42 "
@@ -278,18 +290,4 @@ static void test_reheader_roundtrip_preserves_aux(void) {
     bam_destroy1(b2);
     fc_read_destroy(read2);
     destroy_read(read);
-}
-
-void fastqcomments_suite(void) {
-    RUN_TEST(test_parse_simple_comment);
-    RUN_TEST(test_original_comment_preserved);
-    RUN_TEST(test_unknown_key_goes_to_co);
-    RUN_TEST(test_empty_value_goes_to_co_and_doesnt_cause_hell_to_open);
-    RUN_TEST(test_sam_style_tabs);
-    RUN_TEST(test_barcode_unclassified);
-    RUN_TEST(test_barcode_empty_value_fallback);
-    RUN_TEST(test_rg_populates_runid_and_basecaller);
-    RUN_TEST(test_rg_fallback);
-    RUN_TEST(test_mixed_sam_and_key_value_prefers_sam);
-    RUN_TEST(test_reheader_roundtrip_preserves_aux);
 }

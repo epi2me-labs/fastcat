@@ -1,11 +1,13 @@
 #include "unity.h"
+#include "main.h"
 #include "htslib/sam.h"
 
 #include "core/fc_bam_utils.h"
 #include "core/fc_dust.h"
 #include "core/fc_filter.h"
 
-static void test_filter_dust(void) {
+FC_TEST(filter_suite, test_filter_dust)
+{
     const uint8_t simple_seq[] =
         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -30,7 +32,8 @@ static void test_filter_dust(void) {
     TEST_ASSERT_TRUE(fc_filter_dust(complex_seq, sizeof(complex_seq) - 1, t, w, threshold));
 }
 
-static void test_bam_primary_flags(void) {
+FC_TEST(filter_suite, test_bam_primary_flags)
+{
     bam1_t* b = bam_init1();
     TEST_ASSERT_NOT_NULL(b);
 
@@ -55,7 +58,8 @@ static void test_bam_primary_flags(void) {
     bam_destroy1(b);
 }
 
-static void test_bam_tag_int_filter(void) {
+FC_TEST(filter_suite, test_bam_tag_int_filter)
+{
     bam1_t* b = bam_init1();
     TEST_ASSERT_NOT_NULL(b);
 
@@ -70,7 +74,8 @@ static void test_bam_tag_int_filter(void) {
     bam_destroy1(b);
 }
 
-static void test_bam_rg_filter(void) {
+FC_TEST(filter_suite, test_bam_rg_filter)
+{
     bam1_t* b = bam_init1();
     TEST_ASSERT_NOT_NULL(b);
 
@@ -83,11 +88,4 @@ static void test_bam_rg_filter(void) {
     TEST_ASSERT_FALSE(fc_filter_rg(b, "rg2", false));
 
     bam_destroy1(b);
-}
-
-void filter_suite(void) {
-    RUN_TEST(test_filter_dust);
-    RUN_TEST(test_bam_primary_flags);
-    RUN_TEST(test_bam_tag_int_filter);
-    RUN_TEST(test_bam_rg_filter);
 }

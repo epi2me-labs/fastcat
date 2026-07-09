@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "unity.h"
+#include "main.h"
 #include "htslib/sam.h"
 
 #include "core/fc_bam_utils.h"
@@ -37,14 +38,16 @@ static void append_float_tag(bam1_t *b, const char tag[2], float value) {
     TEST_ASSERT_TRUE(bam_aux_append(b, tag, 'f', sizeof(value), (const uint8_t *)&value) >= 0);
 }
 
-static void test_ensure_mean_quality_prefers_existing_tag_without_recalc(void) {
+FC_TEST(qualcalcs_suite, test_ensure_mean_quality_prefers_existing_tag_without_recalc)
+{
     bam1_t* b = build_read("r1", "ACGT", "!!!!", BAM_FUNMAP, 42.0f, true);
     float mq = fc_bam_ensure_mean_quality(b, false);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 42.0f, mq);
     bam_destroy1(b);
 }
 
-static void test_ensure_mean_quality_force_recalc_overwrites_existing_qs(void) {
+FC_TEST(qualcalcs_suite, test_ensure_mean_quality_force_recalc_overwrites_existing_qs)
+{
     bam1_t* b = build_read("r1", "ACGT", "!!!!", BAM_FUNMAP, 42.0f, true);
     float mq = fc_bam_ensure_mean_quality(b, true);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 0.0f, mq);
@@ -55,7 +58,8 @@ static void test_ensure_mean_quality_force_recalc_overwrites_existing_qs(void) {
     bam_destroy1(b);
 }
 
-static void test_ensure_mean_quality_creates_qs_when_missing(void) {
+FC_TEST(qualcalcs_suite, test_ensure_mean_quality_creates_qs_when_missing)
+{
     bam1_t *b = build_read("r1", "ACGT", "5555", BAM_FUNMAP, -1.0f, false);
     float mq = fc_bam_ensure_mean_quality(b, false);
     TEST_ASSERT_FLOAT_WITHIN(1e-2, 20.0f, mq);
@@ -66,7 +70,8 @@ static void test_ensure_mean_quality_creates_qs_when_missing(void) {
     bam_destroy1(b);
 }
 
-static void test_ensure_mean_quality_updates_existing_qs_on_force_recalc(void) {
+FC_TEST(qualcalcs_suite, test_ensure_mean_quality_updates_existing_qs_on_force_recalc)
+{
     bam1_t *b = build_read("r1", "ACGT", "!!!!", BAM_FUNMAP, -1.0f, false);
     append_float_tag(b, "qs", 42.0f);
 
@@ -79,7 +84,8 @@ static void test_ensure_mean_quality_updates_existing_qs_on_force_recalc(void) {
     bam_destroy1(b);
 }
 
-static void test_ensure_mean_quality_prefers_lowercase_qs(void) {
+FC_TEST(qualcalcs_suite, test_ensure_mean_quality_prefers_lowercase_qs)
+{
     bam1_t *b = build_read("r1", "ACGT", "####", BAM_FUNMAP, -1.0f, false);
     append_float_tag(b, "QS", 40.0f);
     append_float_tag(b, "qs", 5.0f);
@@ -87,12 +93,4 @@ static void test_ensure_mean_quality_prefers_lowercase_qs(void) {
     float mq = fc_bam_ensure_mean_quality(b, false);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 5.0f, mq);
     bam_destroy1(b);
-}
-
-void qualcalcs_suite(void) {
-    RUN_TEST(test_ensure_mean_quality_prefers_existing_tag_without_recalc);
-    RUN_TEST(test_ensure_mean_quality_force_recalc_overwrites_existing_qs);
-    RUN_TEST(test_ensure_mean_quality_creates_qs_when_missing);
-    RUN_TEST(test_ensure_mean_quality_updates_existing_qs_on_force_recalc);
-    RUN_TEST(test_ensure_mean_quality_prefers_lowercase_qs);
 }

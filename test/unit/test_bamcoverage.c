@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include "unity.h"
+#include "main.h"
 #include "htslib/sam.h"
 
 #include "core/fc_coverage.h"
@@ -108,7 +109,7 @@ static bam1_t *make_read(
     return b;
 }
 
-static void test_coverage_process_exclude_flags(void)
+FC_TEST(bamcoverage_suite, test_coverage_process_exclude_flags)
 {
     const int lengths[1] = { 100 };
     const size_t active_len = (size_t)lengths[0] + 1u;
@@ -148,7 +149,7 @@ static void test_coverage_process_exclude_flags(void)
     cleanup_output_dir(out_dir);
 }
 
-static void test_coverage_process_include_flags(void)
+FC_TEST(bamcoverage_suite, test_coverage_process_include_flags)
 {
     const int lengths[1] = { 100 };
     const size_t active_len = (size_t)lengths[0] + 1u;
@@ -191,7 +192,7 @@ static void test_coverage_process_include_flags(void)
     cleanup_output_dir(out_dir);
 }
 
-static void test_coverage_process_use_cigar_mixed_ops(void)
+FC_TEST(bamcoverage_suite, test_coverage_process_use_cigar_mixed_ops)
 {
     const int lengths[1] = { 100 };
     const size_t active_len = (size_t)lengths[0] + 1u;
@@ -241,7 +242,7 @@ static void test_coverage_process_use_cigar_mixed_ops(void)
     cleanup_output_dir(out_dir);
 }
 
-static void test_coverage_process_end_marker_at_contig_len(void)
+FC_TEST(bamcoverage_suite, test_coverage_process_end_marker_at_contig_len)
 {
     const int lengths[1] = { 50 };
     const size_t active_len = (size_t)lengths[0] + 1u;
@@ -276,7 +277,7 @@ static void test_coverage_process_end_marker_at_contig_len(void)
     cleanup_output_dir(out_dir);
 }
 
-static void test_coverage_writer_init_destroy_no_data(void)
+FC_TEST(bamcoverage_suite, test_coverage_writer_init_destroy_no_data)
 {
     const int lengths[1] = { 80 };
     char out_dir[] = "/tmp/fastcat_cov_lifecycleXXXXXX";
@@ -314,7 +315,7 @@ static void test_coverage_writer_init_destroy_no_data(void)
     cleanup_output_dir(out_dir);
 }
 
-static void test_coverage_thresholds_deduplicated(void)
+FC_TEST(bamcoverage_suite, test_coverage_thresholds_deduplicated)
 {
     const int lengths[1] = { 80 };
     char out_dir[] = "/tmp/fastcat_cov_thresholdsXXXXXX";
@@ -340,7 +341,7 @@ static void test_coverage_thresholds_deduplicated(void)
     cleanup_output_dir(out_dir);
 }
 
-static void test_coverage_summary_thresholds_handle_depth_above_initial_cap(void)
+FC_TEST(bamcoverage_suite, test_coverage_summary_thresholds_handle_depth_above_initial_cap)
 {
     const int lengths[1] = { 100 };
     char out_dir[] = "/tmp/fastcat_cov_thresholdsXXXXXX";
@@ -393,7 +394,7 @@ static void test_coverage_summary_thresholds_handle_depth_above_initial_cap(void
     cleanup_output_dir(out_dir);
 }
 
-static void test_coverage_process(void)
+FC_TEST(bamcoverage_suite, test_coverage_process)
 {
     const int lengths[7] = { 120, 60, 180, 70, 220, 80, 260 };
     const int32_t read_offset = 3;
@@ -515,16 +516,4 @@ static void test_coverage_process(void)
     destroy_coverage_writer(w);
     sam_hdr_destroy(hdr);
     cleanup_output_dir(out_dir);
-}
-
-void bamcoverage_suite(void)
-{
-    RUN_TEST(test_coverage_process_exclude_flags);
-    RUN_TEST(test_coverage_process_include_flags);
-    RUN_TEST(test_coverage_process_use_cigar_mixed_ops);
-    RUN_TEST(test_coverage_process_end_marker_at_contig_len);
-    RUN_TEST(test_coverage_writer_init_destroy_no_data);
-    RUN_TEST(test_coverage_thresholds_deduplicated);
-    RUN_TEST(test_coverage_summary_thresholds_handle_depth_above_initial_cap);
-    RUN_TEST(test_coverage_process);
 }

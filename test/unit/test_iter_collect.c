@@ -1,4 +1,5 @@
 #include "unity.h"
+#include "main.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +18,8 @@ static void make_file(const char *path, const char *content) {
     TEST_ASSERT_EQUAL_INT(0, fclose(fp));
 }
 
-static void test_collect_paths_filters_and_recurses_bfs(void) {
+FC_TEST(iter_collect_suite, test_collect_paths_filters_and_recurses_bfs)
+{
     char tmpdir[] = "/tmp/fc_iter_collectXXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
 
@@ -83,7 +85,8 @@ static void test_collect_paths_filters_and_recurses_bfs(void) {
     free(sub1); free(sub2); free(junkdir);
 }
 
-static void test_collect_paths_rejects_mixed_file_types(void) {
+FC_TEST(iter_collect_suite, test_collect_paths_rejects_mixed_file_types)
+{
     char tmpdir[] = "/tmp/fc_iter_collect_mixedXXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
 
@@ -105,7 +108,8 @@ static void test_collect_paths_rejects_mixed_file_types(void) {
     free(f2);
 }
 
-static void test_collect_paths_default_nonrecursive_depth(void) {
+FC_TEST(iter_collect_suite, test_collect_paths_default_nonrecursive_depth)
+{
     char tmpdir[] = "/tmp/fc_iter_collect_depth1XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
 
@@ -140,7 +144,8 @@ static void test_collect_paths_default_nonrecursive_depth(void) {
     free(sub1);
 }
 
-static void test_collect_paths_recurse_unbounded_with_negative_depth(void) {
+FC_TEST(iter_collect_suite, test_collect_paths_recurse_unbounded_with_negative_depth)
+{
     char tmpdir[] = "/tmp/fc_iter_collect_recurseXXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
 
@@ -181,11 +186,4 @@ static void test_collect_paths_recurse_unbounded_with_negative_depth(void) {
     free(deep);
     free(sub2);
     free(sub1);
-}
-
-void iter_collect_suite(void) {
-    RUN_TEST(test_collect_paths_filters_and_recurses_bfs);
-    RUN_TEST(test_collect_paths_rejects_mixed_file_types);
-    RUN_TEST(test_collect_paths_default_nonrecursive_depth);
-    RUN_TEST(test_collect_paths_recurse_unbounded_with_negative_depth);
 }

@@ -4,23 +4,27 @@
 #include <unistd.h>
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_common.h"
 
-static void test_min_max(void) {
+FC_TEST(common_suite, test_min_max)
+{
     int a = 5, b = 3;
     TEST_ASSERT_EQUAL_INT(3, min(a, b));
     TEST_ASSERT_EQUAL_INT(5, max(a, b));
     TEST_ASSERT_EQUAL_INT(10, max(min(10, 20), 5));
 }
 
-static void test_replace_char(void) {
+FC_TEST(common_suite, test_replace_char)
+{
     char buf[32] = "A-C-G-T";
     int n = replace_char(buf, '-', '+');
     TEST_ASSERT_EQUAL_INT(3, n);
     TEST_ASSERT_EQUAL_STRING("A+C+G+T", buf);
 }
 
-static void test_create_rg_info(void) {
+FC_TEST(common_suite, test_create_rg_info)
+{
     char rg[] = "12345678-1234-1234-1234-123456789012_sup@v4.0.0_barcode03";
     readgroup* info = create_rg_info(rg);
     TEST_ASSERT_EQUAL_STRING("12345678-1234-1234-1234-123456789012", info->runid);
@@ -30,7 +34,8 @@ static void test_create_rg_info(void) {
     destroy_rg_info(info);
 }
 
-static void test_create_rg_info_extra_at_without_modcaller_separator(void) {
+FC_TEST(common_suite, test_create_rg_info_extra_at_without_modcaller_separator)
+{
     char rg[] = "12345678-1234-1234-1234-123456789012_sup@v4.0.0@modcaller";
     readgroup* info = create_rg_info(rg);
     TEST_ASSERT_EQUAL_STRING("12345678-1234-1234-1234-123456789012", info->runid);
@@ -40,7 +45,8 @@ static void test_create_rg_info_extra_at_without_modcaller_separator(void) {
     destroy_rg_info(info);
 }
 
-static void test_kahan_sum(void) {
+FC_TEST(common_suite, test_kahan_sum)
+{
     double sum = 0.0, c = 0.0;
     for (int i = 0; i < 100000; ++i) {
         kahan_sum(&sum, 0.1, &c);
@@ -48,7 +54,8 @@ static void test_kahan_sum(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.05, sum, 10000.0);
 }
 
-static void test_kahan_sum_cancellation(void) {
+FC_TEST(common_suite, test_kahan_sum_cancellation)
+{
     double sum = 0.0, c = 0.0;
     kahan_sum(&sum, 1e12, &c);
     for (int i = 0; i < 10; ++i) {
@@ -58,7 +65,8 @@ static void test_kahan_sum_cancellation(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 1.0, sum);
 }
 
-static void test_parse_int_strict(void) {
+FC_TEST(common_suite, test_parse_int_strict)
+{
     int v = 0;
     TEST_ASSERT_TRUE(fc_parse_int_strict("42", &v));
     TEST_ASSERT_EQUAL_INT(42, v);
@@ -66,7 +74,8 @@ static void test_parse_int_strict(void) {
     TEST_ASSERT_FALSE(fc_parse_int_strict("", &v));
 }
 
-static void test_parse_size_strict(void) {
+FC_TEST(common_suite, test_parse_size_strict)
+{
     size_t v = 0;
     TEST_ASSERT_TRUE(fc_parse_size_strict("123", &v));
     TEST_ASSERT_EQUAL_UINT64(123, (uint64_t)v);
@@ -74,31 +83,20 @@ static void test_parse_size_strict(void) {
     TEST_ASSERT_FALSE(fc_parse_size_strict("1.5", &v));
 }
 
-static void test_parse_u32_strict_overflow(void) {
+FC_TEST(common_suite, test_parse_u32_strict_overflow)
+{
     uint32_t v = 0;
     TEST_ASSERT_TRUE(fc_parse_u32_strict("4294967295", &v));
     TEST_ASSERT_EQUAL_UINT32(4294967295u, v);
     TEST_ASSERT_FALSE(fc_parse_u32_strict("4294967296", &v));
 }
 
-static void test_parse_float_strict(void) {
+FC_TEST(common_suite, test_parse_float_strict)
+{
     float v = 0.0f;
     TEST_ASSERT_TRUE(fc_parse_float_strict("3.5", &v));
     TEST_ASSERT_FLOAT_WITHIN(0.0001f, 3.5f, v);
     TEST_ASSERT_FALSE(fc_parse_float_strict("nan", &v));
     TEST_ASSERT_FALSE(fc_parse_float_strict("inf", &v));
     TEST_ASSERT_FALSE(fc_parse_float_strict("3.5x", &v));
-}
-
-void common_suite(void) {
-    RUN_TEST(test_min_max);
-    RUN_TEST(test_replace_char);
-    RUN_TEST(test_create_rg_info);
-    RUN_TEST(test_create_rg_info_extra_at_without_modcaller_separator);
-    RUN_TEST(test_kahan_sum);
-    RUN_TEST(test_kahan_sum_cancellation);
-    RUN_TEST(test_parse_int_strict);
-    RUN_TEST(test_parse_size_strict);
-    RUN_TEST(test_parse_u32_strict_overflow);
-    RUN_TEST(test_parse_float_strict);
 }

@@ -6,6 +6,7 @@
 #include "htslib/sam.h"
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_time_bin.h"
 
 static void assert_parse_time(const char *text, double expected)
@@ -73,7 +74,7 @@ static void add_time_bin_test_read(
     fc_time_bin_add_read(model, barcode, &read);
 }
 
-static void test_time_bin_parse_timestamp_variants(void)
+FC_TEST(time_bin_suite, test_time_bin_parse_timestamp_variants)
 {
     assert_parse_time("123.5", 123.5);
     assert_parse_time("1970-01-01T00:00:00Z", 0.0);
@@ -89,7 +90,7 @@ static void test_time_bin_parse_timestamp_variants(void)
     TEST_ASSERT_FALSE(fc_time_bin_parse_timestamp("not-a-time", &out));
 }
 
-static void test_time_bin_counts_means_quantiles_and_cumulative_totals(void)
+FC_TEST(time_bin_suite, test_time_bin_counts_means_quantiles_and_cumulative_totals)
 {
     fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
@@ -140,7 +141,7 @@ static void test_time_bin_counts_means_quantiles_and_cumulative_totals(void)
     fc_time_bin_destroy(model);
 }
 
-static void test_time_bin_dynamic_backward_growth_preserves_empty_bins(void)
+FC_TEST(time_bin_suite, test_time_bin_dynamic_backward_growth_preserves_empty_bins)
 {
     fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
@@ -179,7 +180,7 @@ static void test_time_bin_dynamic_backward_growth_preserves_empty_bins(void)
     fc_time_bin_destroy(model);
 }
 
-static void test_time_bin_materialize_merged_limits_rows_and_merges_sketches(void)
+FC_TEST(time_bin_suite, test_time_bin_materialize_merged_limits_rows_and_merges_sketches)
 {
     fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
@@ -220,7 +221,7 @@ static void test_time_bin_materialize_merged_limits_rows_and_merges_sketches(voi
     fc_time_bin_destroy(model);
 }
 
-static void test_time_bin_barcode_state_is_isolated(void)
+FC_TEST(time_bin_suite, test_time_bin_barcode_state_is_isolated)
 {
     fc_time_bin *model = fc_time_bin_create(3, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
@@ -253,7 +254,7 @@ static void test_time_bin_barcode_state_is_isolated(void)
     fc_time_bin_destroy(model);
 }
 
-static void test_time_bin_missing_and_invalid_timestamps_are_counted(void)
+FC_TEST(time_bin_suite, test_time_bin_missing_and_invalid_timestamps_are_counted)
 {
     fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
@@ -287,7 +288,7 @@ static void test_time_bin_missing_and_invalid_timestamps_are_counted(void)
     fc_time_bin_destroy(model);
 }
 
-static void test_time_bin_add_read_uses_bam_st_z_timestamp_tags(void)
+FC_TEST(time_bin_suite, test_time_bin_add_read_uses_bam_st_z_timestamp_tags)
 {
     fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
@@ -328,7 +329,7 @@ static void test_time_bin_add_read_uses_bam_st_z_timestamp_tags(void)
     fc_time_bin_destroy(model);
 }
 
-static void test_time_bin_speed_skips_invalid_durations_only(void)
+FC_TEST(time_bin_suite, test_time_bin_speed_skips_invalid_durations_only)
 {
     fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
@@ -355,16 +356,4 @@ static void test_time_bin_speed_skips_invalid_durations_only(void)
 
     fc_time_bin_table_destroy(&table);
     fc_time_bin_destroy(model);
-}
-
-void time_bin_suite(void)
-{
-    RUN_TEST(test_time_bin_parse_timestamp_variants);
-    RUN_TEST(test_time_bin_counts_means_quantiles_and_cumulative_totals);
-    RUN_TEST(test_time_bin_dynamic_backward_growth_preserves_empty_bins);
-    RUN_TEST(test_time_bin_materialize_merged_limits_rows_and_merges_sketches);
-    RUN_TEST(test_time_bin_barcode_state_is_isolated);
-    RUN_TEST(test_time_bin_missing_and_invalid_timestamps_are_counted);
-    RUN_TEST(test_time_bin_add_read_uses_bam_st_z_timestamp_tags);
-    RUN_TEST(test_time_bin_speed_skips_invalid_durations_only);
 }
