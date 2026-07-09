@@ -845,6 +845,34 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/run_summary.tsv
 	rm -f $(TEST_TMP_DIR)/report_html/reads.fastq.gz
 
+.PHONY: test_report_missing_metadata
+test_report_missing_metadata: $(FASTCAT_BIN)
+	@$(call TEST_DESC,HTML report null-state with missing metadata)
+	rm -rf $(TEST_TMP_DIR)/report_missing_metadata
+	mkdir -p $(TEST_TMP_DIR)/report_missing_metadata
+	set -o pipefail; $(DEV_TOOLS) simulate_reads \
+		--n 200 \
+		--seed 11 \
+		--omit-metadata \
+		| gzip -c > $(TEST_TMP_DIR)/report_missing_metadata/reads.fastq.gz
+	$(RUN_FASTCAT) $(TEST_TMP_DIR)/report_missing_metadata/reads.fastq.gz \
+		--output $(TEST_TMP_DIR)/report_missing_metadata/out \
+		--html-report \
+		> /dev/null
+	test -s $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	grep -q "No cumulative base yield through time data available" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	grep -q "No base yield through time data available" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	grep -q "No cumulative read count through time data available" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	grep -q "No read count through time data available" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	grep -q "No read length through time data available" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	grep -q "No quality through time data available" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	grep -q "No translocation speed through time data available" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	grep -q "No translocation speed vs quality data available" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	grep -q "No channel occupancy data available" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	! grep -q "No read length vs quality data available" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	! grep -q "__FASTCAT_" $(TEST_TMP_DIR)/report_missing_metadata/out/fastcat_report.html
+	rm -f $(TEST_TMP_DIR)/report_missing_metadata/reads.fastq.gz
+
 
 ###
 # fastcat tests

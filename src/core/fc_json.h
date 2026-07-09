@@ -11,6 +11,8 @@ fc_json_value_t *fc_json_object_value(void);
 fc_json_value_t *fc_json_array_value(void);
 fc_json_value_t *fc_json_string_value(const char *value);
 fc_json_value_t *fc_json_number_value(double value);
+fc_json_value_t *fc_json_bool_value(int value);
+fc_json_value_t *fc_json_null_value(void);
 fc_json_value_t *fc_json_parse_string(const char *json);
 fc_json_object_t *fc_json_get_object(fc_json_value_t *value);
 fc_json_array_t *fc_json_get_array(fc_json_value_t *value);
