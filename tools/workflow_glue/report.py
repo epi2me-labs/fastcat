@@ -118,6 +118,7 @@ def load_run_summary(path):
         row.get(key), formatter, "(not found)")
     rows = [
         ("Sample ID", _summary_display_text(row.get("sample_id"))),
+        ("Input type", _summary_display_text(row.get("input_type"))),
         ("Barcode ID", _summary_display_text(row.get("barcode_id"))),
         ("Barcode alias", discovered("barcode_alias")),
         ("Run ID", discovered("run_id")),

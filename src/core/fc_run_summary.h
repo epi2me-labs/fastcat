@@ -6,11 +6,13 @@
 
 #include "core/fc_read.h"
 #include "core/fc_stats.h"
+#include "core/fc_stats_engine.h"
 
 typedef struct fc_run_summary fc_run_summary;
 
 typedef struct {
     const char *sample_id;
+    const char *input_type;
     const char *barcode_id;
     const char *barcode_alias;
     const char *run_id;
@@ -34,6 +36,8 @@ bool fc_run_summary_seen(const fc_run_summary *model, size_t barcode);
 int fc_run_summary_materialize(
     const fc_run_summary *model,
     size_t barcode,
+    const fc_stats_engine *engine,
+    bool bam_input,
     const read_stats *length_stats,
     const char *sample_id,
     const char *barcode_id,

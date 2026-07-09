@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "core/fc_common.h"
+#include "core/fc_stats_engine.h"
 #include "core/fc_time_bin.h"
 
 typedef struct {
@@ -129,6 +130,29 @@ static void compute_n50_l50(const read_stats *length_stats, size_t *n50_bp, size
     }
 }
 
+static double summary_stats_total_count(const read_stats *stats)
+{
+    if (!stats) {
+        return 0.0;
+    }
+    double total = 0.0;
+    for (size_t i = 0; i < stats->n; ++i) {
+        total += (double)stats->counts[i];
+    }
+    return total;
+}
+
+static const char *summary_input_type(const fc_stats_engine *engine, bool bam_input)
+{
+    if (!bam_input) {
+        return "fastq";
+    }
+    if (engine && summary_stats_total_count(engine->length_stats) > 0.0) {
+        return "aligned bam";
+    }
+    return "unaligned bam";
+}
+
 fc_run_summary *fc_run_summary_create(size_t barcode_count)
 {
     fc_run_summary *model = fc_alloc(1, sizeof(*model), "run_summary model");
@@ -195,6 +219,8 @@ bool fc_run_summary_seen(const fc_run_summary *model, size_t barcode)
 int fc_run_summary_materialize(
     const fc_run_summary *model,
     size_t barcode,
+    const fc_stats_engine *engine,
+    bool bam_input,
     const read_stats *length_stats,
     const char *sample_id,
     const char *barcode_id,
@@ -209,6 +235,7 @@ int fc_run_summary_materialize(
     out->sample_id = state->sample_id_multiple
         ? "(multiple)"
         : ((state->sample_id && state->sample_id[0] != '\0') ? state->sample_id : (sample_id ? sample_id : ""));
+    out->input_type = summary_input_type(engine, bam_input);
     out->barcode_id = barcode_id ? barcode_id : "";
     out->barcode_alias = state->barcode_alias ? state->barcode_alias : "";
     out->run_id = summary_display_string(state->run_id, state->run_id_multiple);

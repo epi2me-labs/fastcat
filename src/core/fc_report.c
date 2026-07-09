@@ -172,6 +172,7 @@ static double read_stats_total_count(const read_stats *stats)
 
 static void select_report_stats(
     const fc_stats_engine *engine,
+    bool bam_input,
     bool unmapped_override,
     const read_stats **length,
     const read_stats **quality)
@@ -185,10 +186,26 @@ static void select_report_stats(
     if (unmapped_override) {
         *length = engine->length_stats_unmapped;
         *quality = engine->qual_stats_unmapped;
-    } else {
+        return;
+    }
+
+    if (read_stats_total_count(engine->length_stats) > 0.0
+        && read_stats_total_count(engine->qual_stats) > 0.0) {
         *length = engine->length_stats;
         *quality = engine->qual_stats;
+        return;
     }
+
+    if (bam_input
+        && read_stats_total_count(engine->length_stats_unmapped) > 0.0
+        && read_stats_total_count(engine->qual_stats_unmapped) > 0.0) {
+        *length = engine->length_stats_unmapped;
+        *quality = engine->qual_stats_unmapped;
+        return;
+    }
+
+    *length = engine->length_stats;
+    *quality = engine->qual_stats;
 }
 
 //
@@ -2282,6 +2299,10 @@ static char *render_report_html(
         (summary && summary->basecaller_model && summary->basecaller_model[0] != '\0')
             ? summary->basecaller_model
             : "(not found)");
+    char *input_type_html = html_escape(
+        (summary && summary->input_type && summary->input_type[0] != '\0')
+            ? summary->input_type
+            : "(not set)");
     char *flow_cell_html = html_escape(
         (summary && summary->flow_cell_id && summary->flow_cell_id[0] != '\0')
             ? summary->flow_cell_id
@@ -2303,6 +2324,7 @@ static char *render_report_html(
     replace_all(&html, "__FASTCAT_BARCODE_ALIAS_HTML__", barcode_alias_html);
     replace_all(&html, "__FASTCAT_RUN_ID_HTML__", run_id_html);
     replace_all(&html, "__FASTCAT_BASECALLER_HTML__", basecaller_html);
+    replace_all(&html, "__FASTCAT_INPUT_TYPE_HTML__", input_type_html);
     replace_all(&html, "__FASTCAT_FLOW_CELL_ID_HTML__", flow_cell_html);
     replace_all(&html, "__FASTCAT_RUN_DATE_HTML__", run_date_html);
     replace_all(&html, "__FASTCAT_RUN_DURATION_HTML__", run_duration_html);
@@ -2318,6 +2340,7 @@ static char *render_report_html(
     free(barcode_alias_html);
     free(run_id_html);
     free(basecaller_html);
+    free(input_type_html);
     free(flow_cell_html);
     free(run_date_html);
     free(run_duration_text);
@@ -2360,6 +2383,8 @@ static int write_report_for_output_dir(
     const char *output_dir,
     const char *sample,
     const char *barcode,
+    const fc_stats_engine *engine,
+    bool bam_input,
     const read_stats *length_stats,
     const read_stats *quality_stats,
     const fc_report_config_entry *run_config,
@@ -2384,7 +2409,16 @@ static int write_report_for_output_dir(
         goto cleanup;
     }
 
-    if (fc_run_summary_materialize(run_summary, barcode_index, length_stats, sample, barcode, &summary) != 0) {
+    if (fc_run_summary_materialize(
+            run_summary,
+            barcode_index,
+            engine,
+            bam_input,
+            length_stats,
+            sample,
+            barcode,
+            &summary)
+        != 0) {
         FC_LOG_ERROR("Cannot write HTML report: failed to materialize run summary for '%s'.", output_dir);
         goto cleanup;
     }
@@ -2429,11 +2463,13 @@ int fc_write_html_reports(const fc_report_opts *opts)
         }
         const read_stats *length = NULL;
         const read_stats *quality = NULL;
-        select_report_stats(opts->engines[0], opts->unmapped_override, &length, &quality);
+        select_report_stats(opts->engines[0], opts->bam_input, opts->unmapped_override, &length, &quality);
         return write_report_for_output_dir(
             opts->output_root,
             opts->sample,
             "unclassified",
+            opts->engines[0],
+            opts->bam_input,
             length,
             quality,
             opts->run_config,
@@ -2464,7 +2500,7 @@ int fc_write_html_reports(const fc_report_opts *opts)
         }
         const read_stats *length = NULL;
         const read_stats *quality = NULL;
-        select_report_stats(opts->engines[barcode], opts->unmapped_override, &length, &quality);
+        select_report_stats(opts->engines[barcode], opts->bam_input, opts->unmapped_override, &length, &quality);
         bool active = read_stats_total_count(length) > 0.0 && read_stats_total_count(quality) > 0.0;
         if (!active) {
             continue;
@@ -2474,6 +2510,8 @@ int fc_write_html_reports(const fc_report_opts *opts)
                 barcode_dir,
                 opts->sample ? opts->sample : barcode_name,
                 barcode_name,
+                opts->engines[barcode],
+                opts->bam_input,
                 length,
                 quality,
                 opts->run_config,
