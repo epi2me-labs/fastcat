@@ -4,7 +4,6 @@ from pathlib import Path
 
 from dominate.tags import b, p, table, tbody, td, th, thead, tr
 import ezcharts as ezc
-from ezcharts.components import fastcat
 from ezcharts.components.ezchart import EZChart
 from ezcharts.components.reports import labs
 from ezcharts.layout.snippets import Tabs
@@ -15,6 +14,8 @@ import pandas as pd
 from . import bokeh_relational
 from . import bokeh_matrix
 from . import bokeh_ribbon
+from . import bokeh_seqsummary
+from .bokeh_style import patch_bokeh_plot_class
 from .util import get_main_logger, get_named_logger, wf_parser  # noqa: ABS101
 
 
@@ -25,6 +26,9 @@ CHANNEL_MAP_PATHS = {
     "minion": CHANNEL_MAP_ROOT / "asicb512fx_channel_map.csv",
     "promethion": CHANNEL_MAP_ROOT / "3000_opx_channel_map.csv",
 }
+
+
+patch_bokeh_plot_class(ezc.plots.BokehPlot)
 
 
 def load_dense_heatmap(df, x, y, value, subtitle):
@@ -90,6 +94,13 @@ def _format_yield_bases(value):
     return f"{int(round(value))} bp"
 
 
+def _format_n50(value):
+    value = float(value)
+    if value < 1000.0:
+        return f"{int(round(value))}"
+    return f"{value / 1000.0:.3g} kbp"
+
+
 def load_run_summary(path):
     """Load fastcat run_summary.tsv and format the top summary table."""
     df = pd.read_csv(path, sep="\t", dtype=str).fillna("")
@@ -111,7 +122,7 @@ def load_run_summary(path):
         ("Run duration", _summary_display_text(row.get("run_duration_s"), _format_duration_seconds)),
         ("Yield", _summary_display_text(row.get("base_count"), _format_yield_bases)),
         ("Read count", _summary_display_text(row.get("read_count"), lambda v: f"{int(float(v))}")),
-        ("N50", _summary_display_text(row.get("n50_bp"), lambda v: f"{int(float(v))} bp")),
+        ("N50", _summary_display_text(row.get("n50_bp"), _format_n50)),
         ("L50", _summary_display_text(row.get("l50"), lambda v: f"{int(float(v))}")),
     ])
     return rows
@@ -127,7 +138,7 @@ def load_length_qscore_heatmap(path):
         "Read length / kb",
         "Quality",
         "count",
-        "Estimated counts")
+        "")
 
 
 def load_speed_qscore_heatmap(path):
@@ -141,7 +152,7 @@ def load_speed_qscore_heatmap(path):
         "Translocation speed / bp/s",
         "Quality",
         "count",
-        "Estimated counts")
+        "")
 
 
 def format_hours(value):
@@ -255,25 +266,29 @@ def load_channel_summary_heatmap(path, metric):
     merged = cells.merge(df, on=["channel", "mux"], how="left")
     merged["read_count"] = merged["read_count"].fillna(0.0)
     merged["base_count"] = merged["base_count"].fillna(0.0)
-    merged["count"] = merged[metric]
+    color_title = "read count"
+    if metric == "base_count":
+        merged["count"] = merged[metric] / 1e6
+        color_title = "base count / 1 M"
+    else:
+        merged["count"] = merged[metric]
     merged["width"] = 1.0
     merged["height"] = 1.0
-    data = merged.pivot(index="x", columns="y", values=metric)
+    data = merged.pivot(index="x", columns="y", values="count")
     data = data.reindex(
         index=np.arange(data.index.min(), data.index.max() + 1.0, 1.0),
         columns=np.arange(data.columns.min(), data.columns.max() + 1.0, 1.0))
     data = data.rename_axis(None)
     data = data.rename_axis(None, axis=1)
 
-    subtitle = (
-        f"{int(merged['read_count'].sum())} reads across "
-        f"{int((merged['read_count'] > 0).sum())} occupied channel/mux cells")
+    occupied = ((merged["read_count"] > 0.0) | (merged["base_count"] > 0.0)).sum()
+    subtitle = f"{int(occupied)} sequencing wells"
 
     return bokeh_matrix.heatmap(
         data,
         annot=False,
         vmax_quantile=0.995,
-        cbar_kws={"title": metric.replace("_", " ")},
+        cbar_kws={"title": color_title},
         subtitle=subtitle,
         hide_axes=True,
         match_aspect=True,
@@ -307,6 +322,8 @@ def time_lineplot(df, y, ylabel, color=FASTCAT_BLUE, x="time_mid_h", seed_origin
             (ylabel, "@y{0}")])
     plot._fig.xaxis.axis_label = "Elapsed time / hours"
     plot._fig.yaxis.axis_label = ylabel
+    if ylabel == "Cumulative read count":
+        bokeh_seqsummary.apply_scientific_count_formatter(plot._fig.yaxis[0])
     return plot
 
 
@@ -335,6 +352,10 @@ def time_stepplot(df, y, ylabel, color=FASTCAT_BLUE):
             (ylabel, f"@{{{ylabel}}}{{0}}")])
     plot._fig.xaxis.axis_label = "Elapsed time / hours"
     plot._fig.yaxis.axis_label = ylabel
+    if ylabel == "Read count":
+        bokeh_seqsummary.apply_scientific_count_formatter(plot._fig.yaxis[0])
+    elif ylabel == "Base yield / Gbp":
+        bokeh_seqsummary.apply_fixed_precision_formatter(plot._fig.yaxis[0], "0,0.00")
     return plot
 
 
@@ -391,7 +412,6 @@ def add_time_bin_plots(path):
 
     tabs = Tabs()
     with tabs.add_tab("Yield"):
-        p("Cumulative base output through the run.")
         EZChart(
             time_lineplot(
                 df, "cumulative_base_yield_gbp",
@@ -399,10 +419,8 @@ def add_time_bin_plots(path):
                 x="time_end_h",
                 seed_origin=True),
             height="360px")
-        p("Accepted bases in each time bin.")
         EZChart(time_stepplot(df, "base_yield_gbp", "Base yield / Gbp"), height="360px")
     with tabs.add_tab("Reads"):
-        p("Cumulative accepted read output through the run.")
         EZChart(
             time_lineplot(
                 df, "cumulative_read_count",
@@ -411,24 +429,20 @@ def add_time_bin_plots(path):
                 x="time_end_h",
                 seed_origin=True),
             height="360px")
-        p("Accepted reads in each time bin.")
         EZChart(time_stepplot(df, "read_count", "Read count"), height="360px")
     with tabs.add_tab("Read length"):
-        p("Read length quantile ribbons by time bin.")
         length_plot = quantile_ribbonplot(df, "length", "Read length / kb")
         if length_plot is None:
             p("No read length quartiles were available.")
         else:
             EZChart(length_plot, height="420px")
     with tabs.add_tab("Quality"):
-        p("Quality quantile ribbons by time bin.")
         qscore_plot = quantile_ribbonplot(df, "qscore", "Quality")
         if qscore_plot is None:
             p("No quality quartiles were available.")
         else:
             EZChart(qscore_plot, height="420px")
     with tabs.add_tab("Translocation speed"):
-        p("Translocation speed quantile ribbons by time bin.")
         speed_plot = quantile_ribbonplot(
             df, "speed", "Translocation speed / bp/s")
         if speed_plot is None:
@@ -439,44 +453,41 @@ def add_time_bin_plots(path):
 
 def add_channel_summary_plots(path):
     """Add channel occupancy plots for one sample."""
+    def chart_styles(plot):
+        x_span = float(plot._fig.x_range.end - plot._fig.x_range.start)
+        y_span = float(plot._fig.y_range.end - plot._fig.y_range.start)
+        aspect = x_span / max(y_span, 1e-12)
+        # allow for colorbar and toolbar chrome to the right of the data frame
+        max_width = int(round(500.0 * aspect + 120.0))
+        return {
+            "width": "100%",
+            "max-width": f"{max_width}px",
+            "margin-left": "auto",
+            "margin-right": "auto",
+        }
+
     reads_plot = load_channel_summary_heatmap(path, "read_count")
     bases_plot = load_channel_summary_heatmap(path, "base_count")
-    reads_aspect = f"{reads_plot._fig.width} / {reads_plot._fig.height}"
-    bases_aspect = f"{bases_plot._fig.width} / {bases_plot._fig.height}"
-    reads_max_width = f"{int(round(500 * reads_plot._fig.width / reads_plot._fig.height))}px"
-    bases_max_width = f"{int(round(500 * bases_plot._fig.width / bases_plot._fig.height))}px"
     tabs = Tabs()
     with tabs.add_tab("Read counts"):
         EZChart(
             reads_plot,
             height="auto",
-            additional_styles={
-                "aspect-ratio": reads_aspect,
-                "max-width": reads_max_width,
-                "max-height": "500px",
-                "margin-left": "auto",
-                "margin-right": "auto",
-            })
+            additional_styles=chart_styles(reads_plot))
     with tabs.add_tab("Base counts"):
         EZChart(
             bases_plot,
             height="auto",
-            additional_styles={
-                "aspect-ratio": bases_aspect,
-                "max-width": bases_max_width,
-                "max-height": "500px",
-                "margin-left": "auto",
-                "margin-right": "auto",
-            })
+            additional_styles=chart_styles(bases_plot))
 
 
 def add_quality_diagnostics_plots(length_qscore_path, speed_qscore_path):
     """Add the two quality diagnostic heatmaps to a shared tab set."""
     tabs = Tabs()
-    with tabs.add_tab("Read length"):
-        EZChart(load_length_qscore_heatmap(length_qscore_path), height="650px")
     with tabs.add_tab("Translocation speed"):
         EZChart(load_speed_qscore_heatmap(speed_qscore_path), height="650px")
+    with tabs.add_tab("Read length"):
+        EZChart(load_length_qscore_heatmap(length_qscore_path), height="650px")
 
 
 def main(args):
@@ -558,7 +569,21 @@ def main(args):
             if len(stats) == 1:
                 stats = stats[0]
                 samples_with_stats = samples_with_stats[0]
-            fastcat.SeqSummary(stats, sample_names=samples_with_stats)
+            bokeh_seqsummary.SeqSummary(stats, sample_names=samples_with_stats)
+
+    if args.time_bin_summary:
+        time_samples = samples_with_stats
+        if isinstance(time_samples, str):
+            time_samples = (time_samples,)
+
+        with report.add_section("Sequencing over time", "Sequencing over time"):
+            if len(args.time_bin_summary) == 1:
+                add_time_bin_plots(args.time_bin_summary[0])
+            else:
+                tabs = Tabs()
+                for sample, path in zip(time_samples, args.time_bin_summary):
+                    with tabs.add_tab(sample):
+                        add_time_bin_plots(path)
 
     if args.length_qscore_2d and args.speed_qscore_2d:
         heatmap_samples = samples_with_stats
@@ -578,20 +603,6 @@ def main(args):
                         args.speed_qscore_2d):
                     with tabs.add_tab(sample):
                         add_quality_diagnostics_plots(length_path, speed_path)
-
-    if args.time_bin_summary:
-        time_samples = samples_with_stats
-        if isinstance(time_samples, str):
-            time_samples = (time_samples,)
-
-        with report.add_section("Sequencing over time", "Sequencing over time"):
-            if len(args.time_bin_summary) == 1:
-                add_time_bin_plots(args.time_bin_summary[0])
-            else:
-                tabs = Tabs()
-                for sample, path in zip(time_samples, args.time_bin_summary):
-                    with tabs.add_tab(sample):
-                        add_time_bin_plots(path)
 
     if args.channel_summary:
         channel_samples = samples_with_stats

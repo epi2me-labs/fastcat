@@ -7,6 +7,16 @@ import numpy as np
 import pandas as pd
 
 from ezcharts.plots import BokehPlot
+from .bokeh_style import ReportFontSizes, ReportFonts, apply_colorbar_fonts
+
+
+# keep these in sync with the C channel-heatmap sizing contract
+CHANNEL_HEATMAP_TARGET_HEIGHT = 500
+CHANNEL_HEATMAP_MIN_HEIGHT = 150
+CHANNEL_HEATMAP_MIN_WIDTH = 250
+CHANNEL_HEATMAP_MAX_WIDTH = 1000
+CHANNEL_HEATMAP_WIDTH_SCALE = 420.0
+CHANNEL_HEATMAP_WIDTH_CHROME = 80.0
 
 
 def heatmap(
@@ -101,9 +111,18 @@ def heatmap(
         x_span = max(x1 - x0, 1e-12)
         y_span = max(y1 - y0, 1e-12)
         aspect = x_span / y_span
+        width = max(
+            CHANNEL_HEATMAP_MIN_WIDTH,
+            min(
+                CHANNEL_HEATMAP_MAX_WIDTH,
+                int(round(aspect * CHANNEL_HEATMAP_WIDTH_SCALE + CHANNEL_HEATMAP_WIDTH_CHROME))))
+        height = max(
+            CHANNEL_HEATMAP_MIN_HEIGHT,
+            min(CHANNEL_HEATMAP_TARGET_HEIGHT, int(round(width / aspect))))
         plt._fig.match_aspect = True
-        plt._fig.aspect_ratio = aspect
-        plt._fig.sizing_mode = "stretch_both"
+        plt._fig.sizing_mode = "scale_width"
+        plt._fig.width = width
+        plt._fig.height = height
 
     if xticklabels is False:
         plt._fig.xaxis.major_label_text_font_size = "0pt"
@@ -148,14 +167,15 @@ def heatmap(
             ticker=colorbar_ticker,
             formatter=colorbar_formatter,
             title=colorbar_title)
+        apply_colorbar_fonts(color_bar)
         for attr, value in colorbar_options.items():
             setattr(color_bar, attr, value)
         plt._fig.add_layout(color_bar, "right")
 
     # add decorations
     if subtitle:
-        plt._fig.add_layout(Title(text=subtitle, text_font_size="0.8em"), 'above')
+        plt._fig.add_layout(Title(text=subtitle, text_font_size=ReportFontSizes.SUBTITLE, text_font=ReportFonts.PLOT), 'above')
     if title:
-        plt._fig.add_layout(Title(text=title, text_font_size="1.5em"), 'above')
+        plt._fig.add_layout(Title(text=title, text_font_size=ReportFontSizes.TITLE, text_font=ReportFonts.PLOT), 'above')
 
     return plt

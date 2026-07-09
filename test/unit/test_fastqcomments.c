@@ -260,16 +260,23 @@ static void test_reheader_roundtrip_preserves_aux(void) {
         BAM_FUNMAP, -1, -1, 0, 0, NULL, -1, -1, 0, strlen(seq), seq, qual, 0) >= 0);
     TEST_ASSERT_EQUAL_INT(0, fastq_comment_to_bam(&reheader, b2));
 
-    kstring_t aux1 = {0, 0, NULL};
-    kstring_t aux2 = {0, 0, NULL};
-    TEST_ASSERT_TRUE(sam_format_aux(read->bam, &aux1) >= 0);
-    TEST_ASSERT_TRUE(sam_format_aux(b2, &aux2) >= 0);
-    TEST_ASSERT_EQUAL_STRING(aux1.s, aux2.s);
+    // compare the lazily materialized SAM-style aux tag strings used by fastcat
+    fc_read *read2 = fc_read_init();
+    TEST_ASSERT_NOT_NULL(read2);
+    bam_destroy1(read2->bam);
+    read2->bam = b2;
+    fc_bam_ensure_mean_quality(read2->bam, false);
+    fc_read_reset_from_bam(read2, NULL, NULL);
+    const kstring_t *aux1 = fc_read_get_tags_str(read);
+    const kstring_t *aux2 = fc_read_get_tags_str(read2);
+    TEST_ASSERT_NOT_NULL(aux1);
+    TEST_ASSERT_NOT_NULL(aux2);
+    TEST_ASSERT_EQUAL_STRING(aux1->s, aux2->s);
 
-    ks_free(&aux1);
-    ks_free(&aux2);
     ks_free(&reheader);
+    read2->bam = NULL;
     bam_destroy1(b2);
+    fc_read_destroy(read2);
     destroy_read(read);
 }
 

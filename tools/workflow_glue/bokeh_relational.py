@@ -6,6 +6,7 @@ from bokeh.models import HoverTool, Title
 from seaborn.relational import _LinePlotter
 
 from ezcharts.plots import BokehPlot, util
+from .bokeh_style import ReportFontSizes, ReportFonts
 
 
 DEFAULT_PALETTE = util.choose_palette()
@@ -134,6 +135,6 @@ def lineplot(
         hover.renderers = renderers
 
     if subtitle:
-        plt._fig.add_layout(Title(text=subtitle, text_font_size="0.8em"), "above")
+        plt._fig.add_layout(Title(text=subtitle, text_font_size=ReportFontSizes.SUBTITLE, text_font=ReportFonts.PLOT), "above")
 
     return plt

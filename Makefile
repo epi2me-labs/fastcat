@@ -541,7 +541,7 @@ $(REPORT_DIR)/example_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_g
 $(REPORT_DIR)/example_inputs/run_summary.tsv: $(REPORT_DIR)/example_inputs/metadata.json
 	test -s $@
 
-$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/template_fastcat/histograms \
@@ -555,7 +555,7 @@ $(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/templa
 		--params $(REPORT_DIR)/template_inputs/params.json \
 		--wf_version __FASTCAT_VERSION_HTML__
 
-$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(REPORT_DIR)/example_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(REPORT_DIR)/example_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/template_fastcat/histograms \
@@ -577,7 +577,7 @@ $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv: $(FASTCAT_BIN) $(REPORT
 		--output $(REPORT_DIR)/time_preview_fastcat \
 		> /dev/null
 
-$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv $(REPORT_DIR)/time_preview_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(REPORT_DIR)/example_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv $(REPORT_DIR)/time_preview_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(REPORT_DIR)/example_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/time_preview_fastcat/histograms \
@@ -622,6 +622,7 @@ test: test_functional test_unit  ## run all tests
 UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unit/test_bamcoverage.c test/unit/test_quantile.c test/unit/test_kll.c test/unit/test_metric_qscore_2d_helpers.c test/unit/test_length_qscore_2d.c test/unit/test_speed_qscore_2d.c test/unit/test_time_bin.c test/unit/test_channel_summary.c test/unit/test_run_summary.c test/unit/test_kll_dists.c test/unity/unity.c
 UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
+.SECONDARY: $(UNIT_TEST_OBJS) $(CORE_LIB)
 
 test/unit/%.o: test/unit/%.c $(BUILD_MAKEFILES)
 	$(CC) $(INCLUDES) -Itest/unity $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
@@ -801,11 +802,7 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	set -o pipefail; $(DEV_TOOLS) simulate_reads \
 		--n $(REPORT_DEMO_N) \
 		--run-duration-s $(REPORT_DEMO_DURATION_S) \
-		--shape 2.6 \
-		--scale 30000 \
-		--q1 10 \
-		--q2 20 \
-		--q1-weight 0.6 \
+		--sample-id simulated-data \
 		--max-len 1000000 \
 		--seed 7 \
 		| gzip -c > $(TEST_TMP_DIR)/report_html/reads.fastq.gz

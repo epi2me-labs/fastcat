@@ -14,20 +14,6 @@ DOCS_JSON_RE = re.compile(
 DOCS_JSON_PLACEHOLDER = "__FASTCAT_BOKEH_DOCS_JSON__"
 BOUND_VALUE_SENTINEL = "__FASTCAT_DEADBEEF__"
 
-FIG_QUALITY = 0
-FIG_LENGTH = 1
-FIG_YIELD = 2
-FIG_LENGTH_QSCORE = 3
-FIG_SPEED_QSCORE = 4
-FIG_TIME_YIELD = 5
-FIG_TIME_YIELD_BIN = 6
-FIG_TIME_READS = 7
-FIG_TIME_READS_BIN = 8
-FIG_TIME_LENGTH = 9
-FIG_TIME_QSCORE = 10
-FIG_TIME_SPEED = 11
-FIG_CHANNEL_READS = 12
-FIG_CHANNEL_BASES = 13
 MIN_EXPECTED_FIGURES = 14
 
 
@@ -49,6 +35,54 @@ def bokeh_figures(docs):
         root for root in doc.get("roots", [])
         if root.get("type") == "object" and root.get("name") == "Figure"
     ]
+
+
+def axis_label(fig, side):
+    axes = fig.get("attributes", {}).get(side) or []
+    for item in axes:
+        if item.get("type") == "object" and item.get("name", "").endswith("Axis"):
+            return item.get("attributes", {}).get("axis_label")
+    return None
+
+
+def figure_by_axis_labels(figures, x_label, y_label, renderer_count=None, source_count=None):
+    matches = []
+    for fig in figures:
+        if axis_label(fig, "below") != x_label:
+            continue
+        if axis_label(fig, "left") != y_label:
+            continue
+        if renderer_count is not None:
+            renderers = fig.get("attributes", {}).get("renderers", [])
+            if len(renderers) != renderer_count:
+                continue
+        if source_count is not None and len(embedded_sources(fig)) != source_count:
+            continue
+        matches.append(fig)
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"expected exactly one figure for x={x_label!r}, y={y_label!r}, "
+            f"renderers={renderer_count!r}, sources={source_count!r}; found {len(matches)}")
+    return matches[0]
+
+
+def figure_by_subtitle(figures, subtitle, source_count=None):
+    matches = []
+    for fig in figures:
+        try:
+            text = subtitle_model(fig).get("attributes", {}).get("text")
+        except RuntimeError:
+            continue
+        if text != subtitle:
+            continue
+        if source_count is not None and len(embedded_sources(fig)) != source_count:
+            continue
+        matches.append(fig)
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"expected exactly one figure for subtitle={subtitle!r}, sources={source_count!r}; "
+            f"found {len(matches)}")
+    return matches[0]
 
 
 def embedded_sources(fig):
@@ -122,6 +156,14 @@ def heatmap_color_mapper_model(fig):
     return mapper
 
 
+def colorbar_title(fig):
+    right = fig.get("attributes", {}).get("right") or []
+    for item in right:
+        if item.get("type") == "object" and item.get("name") == "ColorBar":
+            return item.get("attributes", {}).get("title")
+    return None
+
+
 def add_source_binding(bindings, name, fig):
     add_binding(bindings, f"{name}.source.data", first_embedded_source(fig), "data")
 
@@ -134,8 +176,14 @@ def add_embedded_source_binding(bindings, name, fig, index, field):
     add_binding(bindings, f"{name}.{field}.data", sources[index], "data")
 
 
-def add_subtitle_binding(bindings, name, fig):
-    add_binding(bindings, f"{name}.subtitle.text", subtitle_model(fig), "text")
+def add_subtitle_binding(bindings, name, fig, required=True):
+    try:
+        model = subtitle_model(fig)
+    except RuntimeError:
+        if not required:
+            return
+        raise
+    add_binding(bindings, f"{name}.subtitle.text", model, "text")
 
 
 def add_numeric_range_bindings(bindings, name, fig, axis):
@@ -152,6 +200,10 @@ def add_factor_range_binding(bindings, name, fig):
 def add_heatmap_color_bindings(bindings, name, fig):
     mapper = heatmap_color_mapper_model(fig)
     add_binding(bindings, f"{name}.color_mapper.high", mapper, "high")
+
+
+def add_figure_attr_binding(bindings, name, fig, attr):
+    add_binding(bindings, f"{name}.{attr}", fig, attr)
 
 
 def scrub_bound_values(docs, bindings):
@@ -188,7 +240,12 @@ def extract_bokeh_document(html):
     if not match:
         raise RuntimeError("could not find Bokeh docs_json")
 
-    docs = json.loads(match.group(1))
+    docs_json = match.group(1)
+    # bokeh embeds docs_json as a single-quoted JS string, so string-valued
+    # model attributes carry one extra level of escaping compared with raw JSON
+    docs_json = docs_json.replace("\\'", "'")
+    docs_json = docs_json.replace("\\\\", "\\")
+    docs = json.loads(docs_json)
     figures = bokeh_figures(docs)
     if len(figures) < MIN_EXPECTED_FIGURES:
         raise RuntimeError(
@@ -196,81 +253,108 @@ def extract_bokeh_document(html):
 
     bindings = []
 
-    add_source_binding(bindings, "quality", figures[FIG_QUALITY])
-    add_subtitle_binding(bindings, "quality", figures[FIG_QUALITY])
-    add_numeric_range_bindings(bindings, "quality", figures[FIG_QUALITY], "x")
-    add_numeric_range_bindings(bindings, "quality", figures[FIG_QUALITY], "y")
+    fig_quality = figure_by_axis_labels(figures, "Quality", "Number of reads", renderer_count=1, source_count=1)
+    fig_length = figure_by_axis_labels(figures, "Read length / kb", "Number of reads", renderer_count=1, source_count=1)
+    fig_yield = figure_by_axis_labels(figures, "Read length / kb", "Yield above length / Gbases", renderer_count=1, source_count=1)
+    fig_time_yield = figure_by_axis_labels(figures, "Elapsed time / hours", "Cumulative base yield / Gbp", renderer_count=1, source_count=1)
+    fig_time_yield_bin = figure_by_axis_labels(figures, "Elapsed time / hours", "Base yield / Gbp", renderer_count=1, source_count=1)
+    fig_time_reads = figure_by_axis_labels(figures, "Elapsed time / hours", "Cumulative read count", renderer_count=1, source_count=1)
+    fig_time_reads_bin = figure_by_axis_labels(figures, "Elapsed time / hours", "Read count", renderer_count=1, source_count=1)
+    fig_time_length = figure_by_axis_labels(figures, "Elapsed time / hours", "Read length / kb", renderer_count=8, source_count=1)
+    fig_time_qscore = figure_by_axis_labels(figures, "Elapsed time / hours", "Quality", renderer_count=8, source_count=1)
+    fig_time_speed = figure_by_axis_labels(figures, "Elapsed time / hours", "Translocation speed / bp/s", renderer_count=8, source_count=1)
+    fig_speed_qscore = figure_by_axis_labels(figures, "Translocation speed / bp/s", "Quality", renderer_count=1, source_count=1)
+    fig_length_qscore = figure_by_axis_labels(figures, "Read length / kb", "Quality", renderer_count=1, source_count=1)
+    fig_channel_reads = None
+    fig_channel_bases = None
+    for fig in figures:
+        if axis_label(fig, "below") != "x" or axis_label(fig, "left") != "y":
+            continue
+        if len(embedded_sources(fig)) != 2:
+            continue
+        title = colorbar_title(fig)
+        if title == "read count":
+            fig_channel_reads = fig
+        elif title == "base count / 1 M":
+            fig_channel_bases = fig
+    if fig_channel_reads is None or fig_channel_bases is None:
+        raise RuntimeError("could not identify both channel occupancy figures")
 
-    add_source_binding(bindings, "length", figures[FIG_LENGTH])
-    add_subtitle_binding(bindings, "length", figures[FIG_LENGTH])
-    add_numeric_range_bindings(bindings, "length", figures[FIG_LENGTH], "x")
-    add_numeric_range_bindings(bindings, "length", figures[FIG_LENGTH], "y")
+    add_source_binding(bindings, "quality", fig_quality)
+    add_subtitle_binding(bindings, "quality", fig_quality)
+    add_numeric_range_bindings(bindings, "quality", fig_quality, "x")
+    add_numeric_range_bindings(bindings, "quality", fig_quality, "y")
 
-    add_source_binding(bindings, "yield", figures[FIG_YIELD])
-    add_subtitle_binding(bindings, "yield", figures[FIG_YIELD])
-    add_numeric_range_bindings(bindings, "yield", figures[FIG_YIELD], "x")
-    add_numeric_range_bindings(bindings, "yield", figures[FIG_YIELD], "y")
+    add_source_binding(bindings, "length", fig_length)
+    add_subtitle_binding(bindings, "length", fig_length)
+    add_numeric_range_bindings(bindings, "length", fig_length, "x")
+    add_numeric_range_bindings(bindings, "length", fig_length, "y")
 
-    add_source_binding(bindings, "length_qscore", figures[FIG_LENGTH_QSCORE])
-    add_subtitle_binding(bindings, "length_qscore", figures[FIG_LENGTH_QSCORE])
-    add_heatmap_color_bindings(bindings, "length_qscore", figures[FIG_LENGTH_QSCORE])
-    add_numeric_range_bindings(bindings, "length_qscore", figures[FIG_LENGTH_QSCORE], "x")
-    add_numeric_range_bindings(bindings, "length_qscore", figures[FIG_LENGTH_QSCORE], "y")
+    add_source_binding(bindings, "yield", fig_yield)
+    add_subtitle_binding(bindings, "yield", fig_yield)
+    add_numeric_range_bindings(bindings, "yield", fig_yield, "x")
+    add_numeric_range_bindings(bindings, "yield", fig_yield, "y")
 
-    add_source_binding(bindings, "speed_qscore", figures[FIG_SPEED_QSCORE])
-    add_subtitle_binding(bindings, "speed_qscore", figures[FIG_SPEED_QSCORE])
-    add_heatmap_color_bindings(bindings, "speed_qscore", figures[FIG_SPEED_QSCORE])
-    add_numeric_range_bindings(bindings, "speed_qscore", figures[FIG_SPEED_QSCORE], "x")
-    add_numeric_range_bindings(bindings, "speed_qscore", figures[FIG_SPEED_QSCORE], "y")
+    add_source_binding(bindings, "length_qscore", fig_length_qscore)
+    add_subtitle_binding(bindings, "length_qscore", fig_length_qscore, required=False)
+    add_heatmap_color_bindings(bindings, "length_qscore", fig_length_qscore)
+    add_numeric_range_bindings(bindings, "length_qscore", fig_length_qscore, "x")
+    add_numeric_range_bindings(bindings, "length_qscore", fig_length_qscore, "y")
 
-    # ezcharts lineplot emits Scatter renderers even when markers are disabled
-    # remove them here so runtime C only has to replace real plot data
-    remove_lineplot_marker_renderers(figures[FIG_TIME_YIELD])
-    remove_lineplot_marker_renderers(figures[FIG_TIME_YIELD_BIN])
-    remove_lineplot_marker_renderers(figures[FIG_TIME_READS])
-    remove_lineplot_marker_renderers(figures[FIG_TIME_READS_BIN])
+    add_source_binding(bindings, "speed_qscore", fig_speed_qscore)
+    add_subtitle_binding(bindings, "speed_qscore", fig_speed_qscore, required=False)
+    add_heatmap_color_bindings(bindings, "speed_qscore", fig_speed_qscore)
+    add_numeric_range_bindings(bindings, "speed_qscore", fig_speed_qscore, "x")
+    add_numeric_range_bindings(bindings, "speed_qscore", fig_speed_qscore, "y")
 
-    add_source_binding(bindings, "time_yield", figures[FIG_TIME_YIELD])
-    add_numeric_range_bindings(bindings, "time_yield", figures[FIG_TIME_YIELD], "x")
-    add_numeric_range_bindings(bindings, "time_yield", figures[FIG_TIME_YIELD], "y")
+    remove_lineplot_marker_renderers(fig_time_yield)
+    remove_lineplot_marker_renderers(fig_time_yield_bin)
+    remove_lineplot_marker_renderers(fig_time_reads)
+    remove_lineplot_marker_renderers(fig_time_reads_bin)
 
-    add_source_binding(bindings, "time_yield_bin", figures[FIG_TIME_YIELD_BIN])
-    add_numeric_range_bindings(bindings, "time_yield_bin", figures[FIG_TIME_YIELD_BIN], "x")
-    add_numeric_range_bindings(bindings, "time_yield_bin", figures[FIG_TIME_YIELD_BIN], "y")
+    add_source_binding(bindings, "time_yield", fig_time_yield)
+    add_numeric_range_bindings(bindings, "time_yield", fig_time_yield, "x")
+    add_numeric_range_bindings(bindings, "time_yield", fig_time_yield, "y")
 
-    add_source_binding(bindings, "time_reads", figures[FIG_TIME_READS])
-    add_numeric_range_bindings(bindings, "time_reads", figures[FIG_TIME_READS], "x")
-    add_numeric_range_bindings(bindings, "time_reads", figures[FIG_TIME_READS], "y")
+    add_source_binding(bindings, "time_yield_bin", fig_time_yield_bin)
+    add_numeric_range_bindings(bindings, "time_yield_bin", fig_time_yield_bin, "x")
+    add_numeric_range_bindings(bindings, "time_yield_bin", fig_time_yield_bin, "y")
 
-    add_source_binding(bindings, "time_reads_bin", figures[FIG_TIME_READS_BIN])
-    add_numeric_range_bindings(bindings, "time_reads_bin", figures[FIG_TIME_READS_BIN], "x")
-    add_numeric_range_bindings(bindings, "time_reads_bin", figures[FIG_TIME_READS_BIN], "y")
+    add_source_binding(bindings, "time_reads", fig_time_reads)
+    add_numeric_range_bindings(bindings, "time_reads", fig_time_reads, "x")
+    add_numeric_range_bindings(bindings, "time_reads", fig_time_reads, "y")
 
-    add_source_binding(bindings, "time_length", figures[FIG_TIME_LENGTH])
-    add_numeric_range_bindings(bindings, "time_length", figures[FIG_TIME_LENGTH], "x")
-    add_numeric_range_bindings(bindings, "time_length", figures[FIG_TIME_LENGTH], "y")
+    add_source_binding(bindings, "time_reads_bin", fig_time_reads_bin)
+    add_numeric_range_bindings(bindings, "time_reads_bin", fig_time_reads_bin, "x")
+    add_numeric_range_bindings(bindings, "time_reads_bin", fig_time_reads_bin, "y")
 
-    add_source_binding(bindings, "time_qscore", figures[FIG_TIME_QSCORE])
-    add_numeric_range_bindings(bindings, "time_qscore", figures[FIG_TIME_QSCORE], "x")
-    add_numeric_range_bindings(bindings, "time_qscore", figures[FIG_TIME_QSCORE], "y")
+    add_source_binding(bindings, "time_length", fig_time_length)
+    add_numeric_range_bindings(bindings, "time_length", fig_time_length, "x")
+    add_numeric_range_bindings(bindings, "time_length", fig_time_length, "y")
 
-    add_source_binding(bindings, "time_speed", figures[FIG_TIME_SPEED])
-    add_numeric_range_bindings(bindings, "time_speed", figures[FIG_TIME_SPEED], "x")
-    add_numeric_range_bindings(bindings, "time_speed", figures[FIG_TIME_SPEED], "y")
+    add_source_binding(bindings, "time_qscore", fig_time_qscore)
+    add_numeric_range_bindings(bindings, "time_qscore", fig_time_qscore, "x")
+    add_numeric_range_bindings(bindings, "time_qscore", fig_time_qscore, "y")
 
-    add_source_binding(bindings, "channel_reads", figures[FIG_CHANNEL_READS])
-    add_embedded_source_binding(bindings, "channel_reads", figures[FIG_CHANNEL_READS], 1, "hover_source")
-    add_subtitle_binding(bindings, "channel_reads", figures[FIG_CHANNEL_READS])
-    add_heatmap_color_bindings(bindings, "channel_reads", figures[FIG_CHANNEL_READS])
-    add_numeric_range_bindings(bindings, "channel_reads", figures[FIG_CHANNEL_READS], "x")
-    add_numeric_range_bindings(bindings, "channel_reads", figures[FIG_CHANNEL_READS], "y")
+    add_source_binding(bindings, "time_speed", fig_time_speed)
+    add_numeric_range_bindings(bindings, "time_speed", fig_time_speed, "x")
+    add_numeric_range_bindings(bindings, "time_speed", fig_time_speed, "y")
 
-    add_source_binding(bindings, "channel_bases", figures[FIG_CHANNEL_BASES])
-    add_embedded_source_binding(bindings, "channel_bases", figures[FIG_CHANNEL_BASES], 1, "hover_source")
-    add_subtitle_binding(bindings, "channel_bases", figures[FIG_CHANNEL_BASES])
-    add_heatmap_color_bindings(bindings, "channel_bases", figures[FIG_CHANNEL_BASES])
-    add_numeric_range_bindings(bindings, "channel_bases", figures[FIG_CHANNEL_BASES], "x")
-    add_numeric_range_bindings(bindings, "channel_bases", figures[FIG_CHANNEL_BASES], "y")
+    add_source_binding(bindings, "channel_reads", fig_channel_reads)
+    add_embedded_source_binding(bindings, "channel_reads", fig_channel_reads, 1, "hover_source")
+    add_subtitle_binding(bindings, "channel_reads", fig_channel_reads)
+    add_heatmap_color_bindings(bindings, "channel_reads", fig_channel_reads)
+    add_figure_attr_binding(bindings, "channel_reads", fig_channel_reads, "width")
+    add_numeric_range_bindings(bindings, "channel_reads", fig_channel_reads, "x")
+    add_numeric_range_bindings(bindings, "channel_reads", fig_channel_reads, "y")
+
+    add_source_binding(bindings, "channel_bases", fig_channel_bases)
+    add_embedded_source_binding(bindings, "channel_bases", fig_channel_bases, 1, "hover_source")
+    add_subtitle_binding(bindings, "channel_bases", fig_channel_bases)
+    add_heatmap_color_bindings(bindings, "channel_bases", fig_channel_bases)
+    add_figure_attr_binding(bindings, "channel_bases", fig_channel_bases, "width")
+    add_numeric_range_bindings(bindings, "channel_bases", fig_channel_bases, "x")
+    add_numeric_range_bindings(bindings, "channel_bases", fig_channel_bases, "y")
 
     scrub_bound_values(docs, bindings)
     docs_json = json.dumps(docs, separators=(",", ":"))

@@ -4,6 +4,7 @@ from bokeh.models import ColumnDataSource, HoverTool, Title
 from ezcharts.plots import BokehPlot
 import numpy as np
 import pandas as pd
+from .bokeh_style import ReportFontSizes, ReportFonts
 
 
 def _unsupported(**kwargs):
@@ -141,6 +142,6 @@ def ribbonplot(
     ]
 
     if subtitle:
-        fig.add_layout(Title(text=subtitle, text_font_size="0.8em"), "above")
+        fig.add_layout(Title(text=subtitle, text_font_size=ReportFontSizes.SUBTITLE, text_font=ReportFonts.PLOT), "above")
 
     return plot

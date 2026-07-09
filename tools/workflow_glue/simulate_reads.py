@@ -1,15 +1,16 @@
 """Stream synthetic FASTQ records to stdout.
 
 Designed for fastcat testing:
-- read lengths sampled from a Gamma distribution
-- bimodal mean-q distribution (two Gaussian peaks, e.g. ~10 and ~20)
+- timestamps sampled from a throughput curve over time
+- read classes sampled from a small latent mixture
+- read length, qscore, and translocation speed sampled jointly by class
 - explicit SAM-style `qs:f:` tag in FASTQ comment so fastcat can use it
   directly without recomputing quality
 
 Example:
   python3 tools/dev-tools simulate_reads \
-    --n 200000 --shape 2.6 --scale 30000 \
-    --q1 10 --q2 20 --q1-weight 0.6 \
+    --n 200000 --shape 5.0 --scale 6000 \
+    --q1 11 --q2 28 \
     --barcodes barcode0001 barcode0002 unclassified \
     --barcode-weights 0.7 0.2 0.1 \
     > /tmp/synth.fastq
@@ -30,6 +31,7 @@ DEFAULT_MODEL = "dna_r10.4.1_e8.2_400bps_hac@v5.0.0"
 DEFAULT_SPEED_MEAN = 400.0
 DEFAULT_SPEED_IQR = 40.0
 DEFAULT_SPEED_FINAL_MEAN = 340.0
+DEFAULT_THROUGHPUT_BIN_S = 1800.0
 SPEED_QSCORE_BAND_MIN = 390.0
 SPEED_QSCORE_BAND_MAX = 420.0
 SPEED_QSCORE_MAX_PENALTY = 5.0
@@ -45,6 +47,7 @@ DEVICE_CHANNELS = {
     "minion": 512,
     "promethion": 3000,
 }
+READ_CLASSES = ("good", "mediocre", "junk_short")
 
 
 class RunningStats:
@@ -83,38 +86,172 @@ def clamp(x, lo, hi):
     return x
 
 
-def sample_qscore(
-    rng,
-    q1,
-    q2,
-    q1_sd,
-    q2_sd,
-    q1_weight,
-    qmin,
-    qmax,
-):
-    peak = 1 if rng.random() < q1_weight else 2
-    if peak == 1:
-        q = rng.gauss(q1, q1_sd)
+def smoothstep(x):
+    x = clamp(x, 0.0, 1.0)
+    return x * x * (3.0 - 2.0 * x)
+
+
+def gaussian_bump(x, centre, width):
+    if width <= 0.0:
+        return 0.0
+    z = (x - centre) / width
+    return math.exp(-0.5 * z * z)
+
+
+def throughput_profile(frac):
+    # quick startup, long decay, two outages, slight recovery late
+    if frac < 0.01:
+        rate = 0.18 + 75.0 * frac
+    elif frac < 0.05:
+        rate = 0.93 + 0.04 * math.sin(18.0 * math.pi * frac)
+    elif frac < 0.22:
+        rate = 0.95 - 0.25 * ((frac - 0.05) / 0.17)
+    elif frac < 0.55:
+        rate = 0.77 - 0.18 * ((frac - 0.22) / 0.33)
+    elif frac < 0.75:
+        rate = 0.72 - 0.12 * ((frac - 0.55) / 0.20)
     else:
-        q = rng.gauss(q2, q2_sd)
-    q = clamp(q, qmin, qmax)
-    return q, peak
+        tail = (frac - 0.75) / 0.25
+        rate = 0.60 * math.exp(-3.6 * tail) + 0.012
+
+    rate *= 1.0 - 0.98 * gaussian_bump(frac, 0.245, 0.009)
+    rate *= 1.0 - 0.995 * gaussian_bump(frac, 0.455, 0.008)
+    rate *= 1.0 + 0.18 * gaussian_bump(frac, 0.83, 0.035)
+    return max(rate, 1e-6)
 
 
-def sample_length(
-    rng,
-    shape,
-    scale,
-    min_len,
-    max_len,
-):
-    length = int(round(rng.gammavariate(shape, scale)))
-    if length < min_len:
-        return min_len
-    if length > max_len:
-        return max_len
-    return length
+def build_time_sampler(args):
+    duration = timestamp_duration_seconds(args)
+    if args.time_profile == "linear" or duration <= 0.0:
+        return None
+
+    bins = max(1, int(math.ceil(duration / DEFAULT_THROUGHPUT_BIN_S)))
+    cumulative = []
+    total = 0.0
+    for idx in range(bins):
+        mid_s = min(duration, (idx + 0.5) * DEFAULT_THROUGHPUT_BIN_S)
+        frac = mid_s / duration if duration > 0.0 else 0.0
+        total += throughput_profile(frac)
+        cumulative.append(total)
+    return cumulative, total, duration
+
+
+def sample_timestamp_from_profile(rng, sampler):
+    cumulative, total, duration = sampler
+    if total <= 0.0:
+        return 0.0
+    target = rng.random() * total
+    idx = bisect.bisect_left(cumulative, target)
+    if idx >= len(cumulative):
+        idx = len(cumulative) - 1
+    start = idx * DEFAULT_THROUGHPUT_BIN_S
+    end = min(duration, start + DEFAULT_THROUGHPUT_BIN_S)
+    if end <= start:
+        return start
+    return start + rng.random() * (end - start)
+
+
+def class_mix_for_time(frac):
+    late = smoothstep((frac - 0.68) / 0.32)
+    outage = max(
+        gaussian_bump(frac, 0.245, 0.018),
+        gaussian_bump(frac, 0.455, 0.016),
+    )
+    recovery = gaussian_bump(frac, 0.83, 0.06)
+
+    good = 0.84 - 0.14 * late - 0.06 * outage + 0.03 * recovery
+    mediocre = 0.12 + 0.08 * late + 0.03 * outage
+    junk = 1.0 - good - mediocre
+    junk = clamp(junk, 0.008, 0.06)
+    total = good + mediocre + junk
+    return [
+        ("good", good / total),
+        ("mediocre", mediocre / total),
+        ("junk_short", junk / total),
+    ]
+
+
+def good_speed_mean(start_mean, final_mean, frac):
+    if frac < 0.70:
+        base = start_mean + 8.0 * smoothstep(frac / 0.70)
+    else:
+        late = (frac - 0.70) / 0.30
+        top = start_mean + 8.0
+        base = top + (final_mean - top) * smoothstep(late)
+    base -= 10.0 * gaussian_bump(frac, 0.245, 0.022)
+    base -= 8.0 * gaussian_bump(frac, 0.455, 0.020)
+    base += 8.0 * gaussian_bump(frac, 0.83, 0.05)
+    return base
+
+
+def time_quality_offset(frac):
+    late = smoothstep((frac - 0.72) / 0.28)
+    return -1.4 * late - 1.1 * gaussian_bump(frac, 0.245, 0.020) - 0.9 * gaussian_bump(frac, 0.455, 0.018)
+
+
+def time_noise_scale(frac):
+    return 1.0 + 0.85 * smoothstep((frac - 0.72) / 0.28)
+
+
+def class_length(rng, read_class, args):
+    if read_class == "good":
+        if rng.random() < 0.84:
+            length = rng.gammavariate(args.shape, args.scale)
+        else:
+            length = rng.gammavariate(2.0, 1600.0)
+    elif read_class == "mediocre":
+        if rng.random() < 0.65:
+            length = rng.gammavariate(3.4, 2200.0)
+        else:
+            length = rng.gammavariate(1.8, 5200.0)
+    else:
+        if rng.random() < 0.82:
+            length = rng.gammavariate(1.25, 260.0)
+        else:
+            length = rng.gammavariate(1.3, 1400.0)
+    return int(round(clamp(length, args.min_len, args.max_len)))
+
+
+def class_speed(rng, read_class, args, frac):
+    good_mean = good_speed_mean(args.speed_mean, args.speed_final_mean, frac)
+    sd_scale = time_noise_scale(frac)
+    if read_class == "good":
+        mean = good_mean
+        sd = args.speed_sd * (0.55 + 0.25 * sd_scale)
+    elif read_class == "mediocre":
+        mean = good_mean - (22.0 + 10.0 * smoothstep((frac - 0.45) / 0.55))
+        sd = args.speed_sd * (0.90 + 0.25 * sd_scale)
+    else:
+        mean = 275.0 - 35.0 * smoothstep((frac - 0.60) / 0.40)
+        sd = 12.0 + 8.0 * sd_scale
+    return sample_speed(rng, mean, sd)
+
+
+def class_qscore(rng, read_class, length, speed_nt_s, args, frac):
+    length_kb = float(length) / 1000.0
+    speed_penalty = qscore_speed_penalty(speed_nt_s)
+    time_shift = time_quality_offset(frac)
+    noise_scale = time_noise_scale(frac)
+
+    if read_class == "good":
+        base = args.q2 + 0.3 + time_shift
+        if rng.random() < 0.42:
+            base -= rng.uniform(1.0, 7.0)
+        sigma = args.q2_sd * (0.72 + 0.18 * noise_scale)
+        q = rng.gauss(base - 0.45 * speed_penalty, sigma)
+    elif read_class == "mediocre":
+        base = args.q1 + 0.4 + 0.30 * time_shift
+        base += 0.10 * min(length_kb, 12.0)
+        if rng.random() < 0.25:
+            base += rng.uniform(1.0, 3.0)
+        sigma = args.q1_sd * (0.85 + 0.20 * noise_scale)
+        q = rng.gauss(base - 0.60 * speed_penalty, sigma)
+    else:
+        base = 9.6 - 0.5 * smoothstep((frac - 0.65) / 0.35)
+        sigma = 1.05 + 0.18 * noise_scale
+        q = rng.gauss(base - 0.18 * speed_penalty, sigma)
+
+    return clamp(q, args.q_min, args.q_max)
 
 
 def load_channel_centres(device, channels):
@@ -195,13 +332,6 @@ def sample_speed(rng, mean, sd):
     return max(1e-3, rng.gauss(mean, sd))
 
 
-def speed_profile_mean(start_mean, final_mean, time_s, run_duration_s):
-    if run_duration_s <= 0.0:
-        return start_mean
-    frac = clamp(time_s / run_duration_s, 0.0, 1.0)
-    return start_mean + frac * (final_mean - start_mean)
-
-
 def qscore_speed_penalty(speed_nt_s):
     if SPEED_QSCORE_BAND_MIN <= speed_nt_s <= SPEED_QSCORE_BAND_MAX:
         return 0.0
@@ -252,17 +382,17 @@ def argparser():
     run.add_argument("--seed", type=int, default=42, help="RNG seed (default: 42)")
 
     length = p.add_argument_group("read length distribution")
-    length.add_argument("--shape", type=float, default=2.6, help="Gamma shape k (default: 2.6)")
-    length.add_argument("--scale", type=float, default=30000.0, help="Gamma scale theta (default: 30000)")
+    length.add_argument("--shape", type=float, default=5.0, help="Main productive-read Gamma shape k (default: 5.0)")
+    length.add_argument("--scale", type=float, default=6000.0, help="Main productive-read Gamma scale theta (default: 6000)")
     length.add_argument("--min-len", type=int, default=100, help="Minimum read length clamp (default: 100)")
     length.add_argument("--max-len", type=int, default=1_000_000, help="Maximum read length clamp (default: 1000000)")
 
     qscore = p.add_argument_group("qscore distribution")
-    qscore.add_argument("--q1", type=float, default=10.0, help="First qscore peak mean (default: 10)")
-    qscore.add_argument("--q2", type=float, default=20.0, help="Second qscore peak mean (default: 20)")
-    qscore.add_argument("--q1-sd", type=float, default=1.6, help="Stddev around q1 peak (default: 1.6)")
-    qscore.add_argument("--q2-sd", type=float, default=1.8, help="Stddev around q2 peak (default: 1.8)")
-    qscore.add_argument("--q1-weight", type=float, default=0.6, help="Mix weight for q1 peak in [0,1] (default: 0.6)")
+    qscore.add_argument("--q1", type=float, default=12.5, help="Mediocre-read qscore mean (default: 12.5)")
+    qscore.add_argument("--q2", type=float, default=27.8, help="Good-read qscore mean (default: 27.8)")
+    qscore.add_argument("--q1-sd", type=float, default=2.1, help="Stddev around mediocre-read qscore mean (default: 2.1)")
+    qscore.add_argument("--q2-sd", type=float, default=2.6, help="Stddev around good-read qscore mean (default: 2.6)")
+    qscore.add_argument("--q1-weight", type=float, default=0.15, help="Legacy option; retained for compatibility (default: 0.15)")
     qscore.add_argument("--q-min", type=float, default=1.0, help="Minimum qscore clamp (default: 1)")
     qscore.add_argument("--q-max", type=float, default=40.0, help="Maximum qscore clamp (default: 40)")
 
@@ -274,6 +404,7 @@ def argparser():
     metadata.add_argument("--runid", default=DEFAULT_RUNID, help=f"Run ID for RG composition (default: {DEFAULT_RUNID})")
     metadata.add_argument("--model", default=DEFAULT_MODEL, help=f"Basecaller model in RG (default: {DEFAULT_MODEL})")
     metadata.add_argument("--id-prefix", default="simread", help="Read ID prefix (default: simread)")
+    metadata.add_argument("--sample-id", default="", help="Sample ID metadata to emit (default: unset)")
     metadata.add_argument(
         "--device", choices=["flongle", "minion", "promethion"], default="minion",
         help="Flowcell layout to simulate (default: minion)")
@@ -284,7 +415,7 @@ def argparser():
     metadata.add_argument("--start-time", default="2026-01-01T00:00:00Z", help="Base start_time tag (default: 2026-01-01T00:00:00Z)")
     metadata.add_argument(
         "--time-profile", choices=["saturating", "linear"], default="saturating",
-        help="Timestamp spacing profile (default: saturating)")
+        help="Timestamp spacing profile; 'saturating' now uses a realistic throughput curve (default: saturating)")
     metadata.add_argument(
         "--seconds-step", type=int, default=1,
         help="Linear timestamp step, and default run-duration basis for saturating profile (default: 1)")
@@ -393,38 +524,28 @@ def main(args):
     err = sys.stderr
 
     stats = RunningStats()
-    qpeak1 = 0
-    qpeak2 = 0
+    class_counts = {name: 0 for name in READ_CLASSES}
     duplex_n = 0
     max_time_s = 0.0
     sum_speed = 0.0
     barcode_counts = {name: 0 for name, _ in args.barcode_mix}
     run_duration_s = timestamp_duration_seconds(args)
+    time_sampler = build_time_sampler(args)
 
     for i in range(1, args.n + 1):
-        length = sample_length(rng, args.shape, args.scale, args.min_len, args.max_len)
-        time_s = sample_timestamp_offset_seconds(time_rng, args, i)
+        if time_sampler is not None:
+            time_s = sample_timestamp_from_profile(time_rng, time_sampler)
+        else:
+            time_s = sample_timestamp_offset_seconds(time_rng, args, i)
         if time_s > max_time_s:
             max_time_s = time_s
-        speed_mean = speed_profile_mean(
-            args.speed_mean,
-            args.speed_final_mean,
-            time_s,
-            run_duration_s)
-        speed_nt_s = sample_speed(rng, speed_mean, args.speed_sd)
+        frac = time_s / run_duration_s if run_duration_s > 0.0 else 0.0
+        read_class = draw_from_mix(rng, class_mix_for_time(frac))
+        length = class_length(rng, read_class, args)
+        speed_nt_s = class_speed(rng, read_class, args, frac)
         sum_speed += speed_nt_s
 
-        mean_q, peak = sample_qscore(
-            rng,
-            args.q1,
-            args.q2,
-            args.q1_sd,
-            args.q2_sd,
-            args.q1_weight,
-            args.q_min,
-            args.q_max,
-        )
-        mean_q = clamp(mean_q - qscore_speed_penalty(speed_nt_s), args.q_min, args.q_max)
+        mean_q = class_qscore(rng, read_class, length, speed_nt_s, args, frac)
         barcode = draw_from_mix(rng, args.barcode_mix)
         channel = sample_channel(channel_rng, channel_sampler)
         mux = rng.randint(1, args.muxes)
@@ -432,10 +553,7 @@ def main(args):
         if is_duplex:
             duplex_n += 1
 
-        if peak == 1:
-            qpeak1 += 1
-        else:
-            qpeak2 += 1
+        class_counts[read_class] = class_counts.get(read_class, 0) + 1
         barcode_counts[barcode] = barcode_counts.get(barcode, 0) + 1
         stats.add(length, mean_q)
 
@@ -449,6 +567,7 @@ def main(args):
         rg = f"{args.runid}_{args.model}"
         if barcode and barcode != "unclassified":
             rg = f"{rg}_{barcode}"
+        prefix = f"sample_id={args.sample_id} " if args.sample_id else ""
         tags = (
             f"qs:f:{mean_q:.4f}\t"
             f"du:f:{duration_s:.6f}\t"
@@ -461,7 +580,7 @@ def main(args):
             f"dx:i:{is_duplex}"
         )
 
-        out.write(f"@{args.id_prefix}_{i:09d} {tags}\n")
+        out.write(f"@{args.id_prefix}_{i:09d} {prefix}{tags}\n")
         out.write(f"{seq}\n+\n{qual}\n")
 
         if args.progress_every > 0 and (i % args.progress_every) == 0:
@@ -485,7 +604,7 @@ def main(args):
         f"time_profile={args.time_profile} duration_s={duration_s:.1f} max_time_s={max_time_s:.1f} "
         f"len(min/mean/max)={stats.min_len}/{mean_len:.1f}/{stats.max_len} "
         f"q_mean={mean_q:.3f} speed_mean={mean_speed:.2f} "
-        f"qpeak1={qpeak1} qpeak2={qpeak2} duplex={duplex_n}\n"
+        f"good={class_counts['good']} mediocre={class_counts['mediocre']} junk={class_counts['junk_short']} duplex={duplex_n}\n"
     )
     if barcode_counts:
         parts = [f"{k}:{v}" for k, v in sorted(barcode_counts.items())]

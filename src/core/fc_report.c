@@ -23,15 +23,20 @@
 #include "version.h"
 
 #define FC_REPORT_LENGTH_BINS 100
-#define FC_REPORT_QUALITY_MIN 4.0
-#define FC_REPORT_QUALITY_MAX 30.0
+#define FC_REPORT_QUALITY_MIN 0.0
 #define FC_REPORT_QUALITY_WIDTH 0.2
-#define FC_REPORT_QUALITY_BINS 130
 #define FC_REPORT_YIELD_THINNING 100
 #define FC_REPORT_LQ2D_COLOR_QUANTILE 0.995
 #define FC_REPORT_CHANNEL_COLOR_QUANTILE 0.995
 #define FC_REPORT_TIME_BOX_MAX_BINS SIZE_MAX
 #define FC_REPORT_NAME "fastcat_report.html"
+#define FC_REPORT_CHANNEL_PLOT_TARGET_HEIGHT 500.0
+#define FC_REPORT_CHANNEL_PLOT_MIN_WIDTH 250.0
+#define FC_REPORT_CHANNEL_PLOT_MAX_WIDTH 1000.0
+#define FC_REPORT_VISIBLE_QUANTILE 0.98
+#define FC_REPORT_VISIBLE_PADDING 0.10
+#define FC_REPORT_QUALITY_XROUND 10.0
+#define FC_REPORT_LENGTH_XROUND_KB 50.0
 
 typedef struct {
     double start;
@@ -226,6 +231,34 @@ static char *html_escape(const char *text)
     return report_steal(&ks);
 }
 
+static char *html_unescape_basic(const char *text)
+{
+    kstring_t ks = { 0, 0, NULL };
+    const char *p = text ? text : "";
+    while (*p != '\0') {
+        if (strncmp(p, "&lt;", 4) == 0) {
+            report_kputc(&ks, '<');
+            p += 4;
+        } else if (strncmp(p, "&gt;", 4) == 0) {
+            report_kputc(&ks, '>');
+            p += 4;
+        } else if (strncmp(p, "&amp;", 5) == 0) {
+            report_kputc(&ks, '&');
+            p += 5;
+        } else if (strncmp(p, "&quot;", 6) == 0) {
+            report_kputc(&ks, '"');
+            p += 6;
+        } else if (strncmp(p, "&#39;", 5) == 0) {
+            report_kputc(&ks, '\'');
+            p += 5;
+        } else {
+            report_kputc(&ks, *p);
+            p++;
+        }
+    }
+    return report_steal(&ks);
+}
+
 static char *build_run_config_rows_html(const fc_report_config_entry *entries, size_t count)
 {
     kstring_t ks = { 0, 0, NULL };
@@ -249,12 +282,15 @@ static char *format_report_count(size_t value)
     return fc_asprintf("report count", "%zu", value);
 }
 
-static char *format_report_bp(size_t value)
+static char *format_report_n50(size_t value)
 {
     if (value == 0) {
-        return fc_strdup("(not set)", "report bp");
+        return fc_strdup("(not set)", "report n50");
     }
-    return fc_asprintf("report bp", "%zu bp", value);
+    if (value < 1000) {
+        return fc_asprintf("report n50", "%zu", value);
+    }
+    return fc_asprintf("report n50", "%.3g kbp", (double)value / 1e3);
 }
 
 static char *format_report_yield(size_t bases)
@@ -487,18 +523,6 @@ static double hist_mean_midpoint(const report_hist *hist)
     return sum / hist->total_count;
 }
 
-static double hist_mean_start(const report_hist *hist)
-{
-    if (!hist || hist->total_count <= 0.0) {
-        return 0.0;
-    }
-    double sum = 0.0;
-    for (size_t i = 0; i < hist->n; ++i) {
-        sum += hist->bins[i].start * hist->bins[i].count;
-    }
-    return sum / hist->total_count;
-}
-
 static double hist_median_start(const report_hist *hist)
 {
     if (!hist || hist->total_count <= 0.0 || hist->n == 0) {
@@ -513,6 +537,67 @@ static double hist_median_start(const report_hist *hist)
         }
     }
     return hist->bins[hist->n - 1].start;
+}
+
+static double hist_quantile_start(const report_hist *hist, double quantile)
+{
+    if (!hist || hist->total_count <= 0.0 || hist->n == 0 || !isfinite(quantile)) {
+        return 0.0;
+    }
+    if (quantile <= 0.0) {
+        return hist->bins[0].start;
+    }
+    if (quantile >= 1.0) {
+        return hist->bins[hist->n - 1].start;
+    }
+
+    double target = quantile * hist->total_count;
+    double cumsum = 0.0;
+    for (size_t i = 0; i < hist->n; ++i) {
+        cumsum += hist->bins[i].count;
+        if (cumsum >= target) {
+            return hist->bins[i].start;
+        }
+    }
+    return hist->bins[hist->n - 1].start;
+}
+
+static double hist_visible_max(const report_hist *hist)
+{
+    if (!hist || hist->n == 0) {
+        return 1.0;
+    }
+    double q95 = hist_quantile_start(hist, FC_REPORT_VISIBLE_QUANTILE);
+    double xmax = q95 * (1.0 + FC_REPORT_VISIBLE_PADDING);
+    double fallback = hist->bins[hist->n - 1].end;
+    if (!isfinite(xmax) || xmax <= 0.0) {
+        xmax = fallback;
+    }
+    if (!isfinite(xmax) || xmax <= 0.0) {
+        xmax = 1.0;
+    }
+    return xmax;
+}
+
+static double round_up_to(double value, double step)
+{
+    if (!isfinite(value) || value <= 0.0 || !isfinite(step) || step <= 0.0) {
+        return step > 0.0 ? step : 1.0;
+    }
+    return ceil(value / step) * step;
+}
+
+static void format_length_stat(char *buf, size_t size, double value)
+{
+    if (!isfinite(value)) {
+        FC_SNPRINTF_CHECK(buf, size, "0");
+        return;
+    }
+    if (value < 1000.0) {
+        FC_SNPRINTF_CHECK(buf, size, "%" PRIu64, (uint64_t)llround(value));
+        return;
+    }
+    FC_SNPRINTF_CHECK(buf, size, "%.3g kb", value / 1000.0);
 }
 
 //
@@ -597,26 +682,37 @@ static fc_json_value_t *build_quality_source_data_value(
     const report_hist *quality,
     char *subtitle,
     size_t subtitle_size,
+    double *x_end,
     double *y_end)
 {
-    double top[FC_REPORT_QUALITY_BINS] = { 0 };
-    double left[FC_REPORT_QUALITY_BINS] = { 0 };
-    double right[FC_REPORT_QUALITY_BINS] = { 0 };
+    double *top = NULL;
+    double *left = NULL;
+    double *right = NULL;
+    size_t bins = 0;
     *y_end = 1.0;
+    *x_end = round_up_to(hist_visible_max(quality), FC_REPORT_QUALITY_XROUND);
+    bins = (size_t)ceil((*x_end - FC_REPORT_QUALITY_MIN) / FC_REPORT_QUALITY_WIDTH);
+    if (bins == 0) {
+        bins = 1;
+    }
+    top = fc_alloc(bins, sizeof(*top), "report quality top");
+    memset(top, 0, bins * sizeof(*top));
+    left = fc_alloc(bins, sizeof(*left), "report quality left");
+    right = fc_alloc(bins, sizeof(*right), "report quality right");
 
-    for (size_t i = 0; i < FC_REPORT_QUALITY_BINS; ++i) {
+    for (size_t i = 0; i < bins; ++i) {
         left[i] = FC_REPORT_QUALITY_MIN + (double)i * FC_REPORT_QUALITY_WIDTH;
         right[i] = left[i] + FC_REPORT_QUALITY_WIDTH;
     }
     for (size_t i = 0; i < quality->n; ++i) {
         double value = quality->bins[i].start;
-        if (value < FC_REPORT_QUALITY_MIN || value > FC_REPORT_QUALITY_MAX) {
+        if (value < FC_REPORT_QUALITY_MIN || value > *x_end) {
             continue;
         }
-        size_t bin = (value == FC_REPORT_QUALITY_MAX)
-            ? FC_REPORT_QUALITY_BINS - 1
+        size_t bin = (value >= *x_end)
+            ? bins - 1
             : (size_t)floor((value - FC_REPORT_QUALITY_MIN) / FC_REPORT_QUALITY_WIDTH);
-        if (bin < FC_REPORT_QUALITY_BINS) {
+        if (bin < bins) {
             top[bin] += quality->bins[i].count;
             if (top[bin] > *y_end) {
                 *y_end = top[bin];
@@ -630,24 +726,28 @@ static fc_json_value_t *build_quality_source_data_value(
 
     report_source source = bokeh_source_create();
     fc_json_entries_append_value(
-        source.entries, "top", fc_json_number_array_value(top, FC_REPORT_QUALITY_BINS));
+        source.entries, "top", fc_json_number_array_value(top, bins));
     fc_json_entries_append_value(
-        source.entries, "left", fc_json_number_array_value(left, FC_REPORT_QUALITY_BINS));
+        source.entries, "left", fc_json_number_array_value(left, bins));
     fc_json_entries_append_value(
-        source.entries, "right", fc_json_number_array_value(right, FC_REPORT_QUALITY_BINS));
+        source.entries, "right", fc_json_number_array_value(right, bins));
+    free(top);
+    free(left);
+    free(right);
     return source.value;
 }
 
 static void update_quality_plot(JSON_Value *docs, const report_hist *quality)
 {
     char subtitle[128] = { 0 };
+    double x_end = 1.0;
     double y_end = 1.0;
     bokeh_set_value(
         docs,
         "quality.source.data",
-        build_quality_source_data_value(quality, subtitle, sizeof(subtitle), &y_end));
+        build_quality_source_data_value(quality, subtitle, sizeof(subtitle), &x_end, &y_end));
     bokeh_set_string(docs, "quality.subtitle.text", subtitle);
-    bokeh_set_range(docs, "quality.x_range", FC_REPORT_QUALITY_MIN, FC_REPORT_QUALITY_MAX);
+    bokeh_set_range(docs, "quality.x_range", FC_REPORT_QUALITY_MIN, x_end);
     bokeh_set_range(docs, "quality.y_range", 0.0, y_end);
 }
 
@@ -667,10 +767,10 @@ static fc_json_value_t *build_length_source_data_value(
     double left[FC_REPORT_LENGTH_BINS] = { 0 };
     double right[FC_REPORT_LENGTH_BINS] = { 0 };
 
-    double min_kb = (length->n > 0) ? length->bins[0].start / 1000.0 : 0.0;
-    double max_kb = (length->n > 0) ? length->bins[length->n - 1].start / 1000.0 : 1.0;
-    if (max_kb <= min_kb) {
-        max_kb = min_kb + 1.0;
+    double min_kb = 0.0;
+    double max_kb = round_up_to(hist_visible_max(length) / 1000.0, FC_REPORT_LENGTH_XROUND_KB);
+    if (max_kb <= min_kb || !isfinite(max_kb)) {
+        max_kb = 1.0;
     }
     *x_start = min_kb;
     *x_end = max_kb;
@@ -683,6 +783,9 @@ static fc_json_value_t *build_length_source_data_value(
     }
     for (size_t i = 0; i < length->n; ++i) {
         double value = length->bins[i].start / 1000.0;
+        if (value < min_kb || value > max_kb) {
+            continue;
+        }
         size_t bin = (value >= max_kb)
             ? FC_REPORT_LENGTH_BINS - 1
             : (size_t)floor((value - min_kb) / width);
@@ -697,9 +800,17 @@ static fc_json_value_t *build_length_source_data_value(
 
     uint64_t min_len = (length->n > 0) ? (uint64_t)llround(length->bins[0].start) : 0;
     uint64_t max_len = (length->n > 0) ? (uint64_t)llround(length->bins[length->n - 1].start) : 0;
+    char mean_text[32] = { 0 };
+    char median_text[32] = { 0 };
+    char min_text[32] = { 0 };
+    char max_text[32] = { 0 };
+    format_length_stat(mean_text, sizeof(mean_text), hist_mean_midpoint(length));
+    format_length_stat(median_text, sizeof(median_text), hist_median_start(length));
+    format_length_stat(min_text, sizeof(min_text), (double)min_len);
+    format_length_stat(max_text, sizeof(max_text), (double)max_len);
     FC_SNPRINTF_CHECK(subtitle, subtitle_size,
-        "Mean: %.1f. Median: %.1f. Min: %" PRIu64 ". Max: %" PRIu64,
-        hist_mean_start(length), hist_median_start(length), min_len, max_len);
+        "Mean: %s. Median: %s. Min: %s. Max: %s",
+        mean_text, median_text, min_text, max_text);
 
     report_source source = bokeh_source_create();
     fc_json_entries_append_value(
@@ -771,32 +882,46 @@ static fc_json_value_t *build_yield_source_data_value(
             cumsum[i - 1] = total_yield;
         }
 
+        *x_end = round_up_to(hist_visible_max(length) / 1000.0, FC_REPORT_LENGTH_XROUND_KB);
+        if (!isfinite(*x_end) || *x_end <= 0.0) {
+            *x_end = 1.0;
+        }
         size_t step = (length->n > FC_REPORT_YIELD_THINNING)
             ? length->n / FC_REPORT_YIELD_THINNING
             : 1;
         for (size_t i = 0; i < length->n; i += step) {
+            double x_value = length->bins[i].start / 1000.0;
+            if (x_value > *x_end) {
+                continue;
+            }
             if (out_n == out_cap) {
                 out_cap = out_cap ? out_cap * 2 : 128;
                 x = fc_realloc(x, out_cap * sizeof(*x), "report yield x");
                 y = fc_realloc(y, out_cap * sizeof(*y), "report yield y");
             }
-            x[out_n] = length->bins[i].start / 1000.0;
+            x[out_n] = x_value;
             y[out_n] = cumsum[i] / 1e9;
             out_n++;
         }
-        if (out_n == 0 || x[out_n - 1] != length->bins[length->n - 1].start / 1000.0) {
+        size_t last_visible = 0;
+        bool have_last_visible = false;
+        for (size_t i = length->n; i > 0; --i) {
+            double x_value = length->bins[i - 1].start / 1000.0;
+            if (x_value <= *x_end) {
+                last_visible = i - 1;
+                have_last_visible = true;
+                break;
+            }
+        }
+        if (have_last_visible && (out_n == 0 || x[out_n - 1] != length->bins[last_visible].start / 1000.0)) {
             if (out_n == out_cap) {
                 out_cap = out_cap ? out_cap * 2 : 128;
                 x = fc_realloc(x, out_cap * sizeof(*x), "report yield x");
                 y = fc_realloc(y, out_cap * sizeof(*y), "report yield y");
             }
-            x[out_n] = length->bins[length->n - 1].start / 1000.0;
-            y[out_n] = cumsum[length->n - 1] / 1e9;
+            x[out_n] = length->bins[last_visible].start / 1000.0;
+            y[out_n] = cumsum[last_visible] / 1e9;
             out_n++;
-        }
-        *x_end = length->bins[length->n - 1].start / 1000.0;
-        if (!isfinite(*x_end) || *x_end <= 0.0) {
-            *x_end = 1.0;
         }
         *y_end = total_yield / 1e9;
         *y_end = (isfinite(*y_end) && *y_end > 0.0) ? *y_end * 1.1 : 1.0;
@@ -907,10 +1032,6 @@ static void update_length_qscore_plot(
             docs,
             "length_qscore.source.data",
             build_image_heatmap_empty_source_data_value());
-        bokeh_set_string(
-            docs,
-            "length_qscore.subtitle.text",
-            "No length/qscore data available");
         bokeh_set_number(docs, "length_qscore.color_mapper.high", 1.0);
         bokeh_set_range(docs, "length_qscore.x_range", 0.0, 1.0);
         bokeh_set_range(docs, "length_qscore.y_range", 0.0, 1.0);
@@ -924,17 +1045,19 @@ static void update_length_qscore_plot(
         return;
     }
 
-    double total = 0.0;
+    bool any_positive = false;
     size_t n = matrix.x_bins * matrix.qscore_bins;
     for (size_t i = 0; i < n; i++) {
         if (isfinite(matrix.counts[i]) && matrix.counts[i] > 0.0) {
-            total += matrix.counts[i];
+            any_positive = true;
+            break;
         }
     }
-
-    char subtitle[160];
-    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "Estimated counts, n=%.0f, length cap %.3g kb",
-        total, matrix.x_upper / 1000.0);
+    if (!any_positive) {
+        fc_length_qscore_2d_matrix_destroy(&matrix);
+        update_length_qscore_plot(docs, NULL, barcode);
+        return;
+    }
 
     double color_high = lq2d_color_high_quantile(&matrix);
     double x_start = 0.0;
@@ -955,7 +1078,6 @@ static void update_length_qscore_plot(
     fc_json_array_append_number(dh.array, y_end - y_start);
 
     bokeh_set_value(docs, "length_qscore.source.data", source.value);
-    bokeh_set_string(docs, "length_qscore.subtitle.text", subtitle);
     bokeh_set_number(
         docs, "length_qscore.color_mapper.high", color_high > 0.0 ? color_high : 1.0);
     bokeh_set_range(docs, "length_qscore.x_range", x_start, x_end);
@@ -1028,10 +1150,6 @@ static void update_speed_qscore_plot(
             docs,
             "speed_qscore.source.data",
             build_image_heatmap_empty_source_data_value());
-        bokeh_set_string(
-            docs,
-            "speed_qscore.subtitle.text",
-            "No quality/translocation-speed data available");
         bokeh_set_number(docs, "speed_qscore.color_mapper.high", 1.0);
         bokeh_set_range(docs, "speed_qscore.x_range", 0.0, 1.0);
         bokeh_set_range(docs, "speed_qscore.y_range", 0.0, 1.0);
@@ -1046,28 +1164,20 @@ static void update_speed_qscore_plot(
         return;
     }
 
-    double total = 0.0;
+    bool any_positive = false;
     size_t n = matrix.x_bins * matrix.qscore_bins;
     for (size_t i = 0; i < n; i++) {
         if (isfinite(matrix.counts[i]) && matrix.counts[i] > 0.0) {
-            total += matrix.counts[i];
+            any_positive = true;
+            break;
         }
     }
 
-    if (!(total > 0.0)) {
+    if (!any_positive) {
         fc_speed_qscore_2d_matrix_destroy(&matrix);
         update_speed_qscore_plot(docs, NULL, barcode);
         return;
     }
-
-    char subtitle[160];
-    FC_SNPRINTF_CHECK(
-        subtitle,
-        sizeof(subtitle),
-        "Estimated counts, n=%.0f, speed range %.0f-%.0f bp/s",
-        total,
-        matrix.x_lower,
-        matrix.x_upper);
 
     double color_high = qts2d_color_high_quantile(&matrix);
     double x_start = matrix.x_lower;
@@ -1088,7 +1198,6 @@ static void update_speed_qscore_plot(
     fc_json_array_append_number(dh.array, y_end - y_start);
 
     bokeh_set_value(docs, "speed_qscore.source.data", source.value);
-    bokeh_set_string(docs, "speed_qscore.subtitle.text", subtitle);
     bokeh_set_number(
         docs,
         "speed_qscore.color_mapper.high",
@@ -1639,6 +1748,18 @@ static double channel_color_high_quantile(const double *values, size_t n)
     return (isfinite(high) && high > 0.0) ? high : 1.0;
 }
 
+static double channel_plot_width(double aspect_ratio)
+{
+    // keep this in sync with the python channel-heatmap sizing contract
+    if (!isfinite(aspect_ratio) || aspect_ratio <= 0.0) {
+        aspect_ratio = 1.0;
+    }
+    double width = round(aspect_ratio * FC_REPORT_CHANNEL_PLOT_TARGET_HEIGHT);
+    width = fmax(width, FC_REPORT_CHANNEL_PLOT_MIN_WIDTH);
+    width = fmin(width, FC_REPORT_CHANNEL_PLOT_MAX_WIDTH);
+    return width;
+}
+
 static void update_channel_reads_plot(
     JSON_Value *docs,
     const fc_channel_summary *model,
@@ -1649,6 +1770,7 @@ static void update_channel_reads_plot(
         bokeh_set_value(docs, "channel_reads.hover_source.data", build_channel_empty_hover_source_data_value());
         bokeh_set_string(docs, "channel_reads.subtitle.text", "No channel occupancy data available");
         bokeh_set_number(docs, "channel_reads.color_mapper.high", 1.0);
+        bokeh_set_number(docs, "channel_reads.width", 500.0);
         bokeh_set_range(docs, "channel_reads.x_range", 0.0, 1.0);
         bokeh_set_range(docs, "channel_reads.y_range", 0.0, 1.0);
         return;
@@ -1698,13 +1820,13 @@ static void update_channel_reads_plot(
     report_column hover_count = bokeh_source_add_array_column(&hover_source, "count");
 
     size_t occupied = 0;
-    double total_reads = 0.0;
     size_t out_i = 0;
     for (size_t i = 0; i < map->row_count; i++) {
         const fc_channel_map_channel_row *row = &map->rows[i];
         for (size_t mx = 1; mx <= FC_CHANNEL_SUMMARY_MAX_MUX; mx++) {
             size_t idx = report_channel_cell_index((size_t)row->channel, mx);
             double value = read_lookup[idx];
+            double base_value = base_lookup[idx];
             double plot_x = 0.0;
             double plot_y = 0.0;
             fc_channel_map_project(
@@ -1725,8 +1847,7 @@ static void update_channel_reads_plot(
             fc_json_array_append_number(hover_count.array, value);
 
             color_values[out_i++] = value;
-            total_reads += value;
-            if (value > 0.0) {
+            if (value > 0.0 || base_value > 0.0) {
                 occupied++;
             }
         }
@@ -1736,8 +1857,7 @@ static void update_channel_reads_plot(
     FC_SNPRINTF_CHECK(
         subtitle,
         sizeof(subtitle),
-        "%.0f reads across %zu occupied channel/mux cells",
-        total_reads,
+        "%zu sequencing wells",
         occupied);
 
     report_source source = bokeh_source_create();
@@ -1756,6 +1876,8 @@ static void update_channel_reads_plot(
     bokeh_set_value(docs, "channel_reads.hover_source.data", hover_source.value);
     bokeh_set_string(docs, "channel_reads.subtitle.text", subtitle);
     bokeh_set_number(docs, "channel_reads.color_mapper.high", channel_color_high_quantile(color_values, n_cells));
+    double aspect_ratio = ((map->x_max - map->x_min) + 1.0) / ((map->y_max - map->y_min) + 1.0);
+    bokeh_set_number(docs, "channel_reads.width", channel_plot_width(aspect_ratio));
     bokeh_set_range(docs, "channel_reads.x_range", map->x_min - 0.5, map->x_max + 0.5);
     bokeh_set_range(docs, "channel_reads.y_range", map->y_min - 0.5, map->y_max + 0.5);
 
@@ -1776,6 +1898,7 @@ static void update_channel_bases_plot(
         bokeh_set_value(docs, "channel_bases.hover_source.data", build_channel_empty_hover_source_data_value());
         bokeh_set_string(docs, "channel_bases.subtitle.text", "No channel occupancy data available");
         bokeh_set_number(docs, "channel_bases.color_mapper.high", 1.0);
+        bokeh_set_number(docs, "channel_bases.width", 500.0);
         bokeh_set_range(docs, "channel_bases.x_range", 0.0, 1.0);
         bokeh_set_range(docs, "channel_bases.y_range", 0.0, 1.0);
         return;
@@ -1825,13 +1948,13 @@ static void update_channel_bases_plot(
     report_column hover_count = bokeh_source_add_array_column(&hover_source, "count");
 
     size_t occupied = 0;
-    double total_bases = 0.0;
     size_t out_i = 0;
     for (size_t i = 0; i < map->row_count; i++) {
         const fc_channel_map_channel_row *row = &map->rows[i];
         for (size_t mx = 1; mx <= FC_CHANNEL_SUMMARY_MAX_MUX; mx++) {
             size_t idx = report_channel_cell_index((size_t)row->channel, mx);
-            double value = base_lookup[idx];
+            double read_value = read_lookup[idx];
+            double value = base_lookup[idx] / 1e6;
             double plot_x = 0.0;
             double plot_y = 0.0;
             fc_channel_map_project(
@@ -1852,8 +1975,7 @@ static void update_channel_bases_plot(
             fc_json_array_append_number(hover_count.array, value);
 
             color_values[out_i++] = value;
-            total_bases += value;
-            if (value > 0.0) {
+            if (read_value > 0.0 || base_lookup[idx] > 0.0) {
                 occupied++;
             }
         }
@@ -1863,8 +1985,7 @@ static void update_channel_bases_plot(
     FC_SNPRINTF_CHECK(
         subtitle,
         sizeof(subtitle),
-        "%.0f bases across %zu occupied channel/mux cells",
-        total_bases,
+        "%zu sequencing wells",
         occupied);
 
     report_source source = bokeh_source_create();
@@ -1883,6 +2004,8 @@ static void update_channel_bases_plot(
     bokeh_set_value(docs, "channel_bases.hover_source.data", hover_source.value);
     bokeh_set_string(docs, "channel_bases.subtitle.text", subtitle);
     bokeh_set_number(docs, "channel_bases.color_mapper.high", channel_color_high_quantile(color_values, n_cells));
+    double aspect_ratio = ((map->x_max - map->x_min) + 1.0) / ((map->y_max - map->y_min) + 1.0);
+    bokeh_set_number(docs, "channel_bases.width", channel_plot_width(aspect_ratio));
     bokeh_set_range(docs, "channel_bases.x_range", map->x_min - 0.5, map->x_max + 0.5);
     bokeh_set_range(docs, "channel_bases.y_range", map->y_min - 0.5, map->y_max + 0.5);
 
@@ -1986,7 +2109,7 @@ static char *render_report_html(
     char *run_duration_text = summary ? format_report_duration(summary->run_duration_s) : fc_strdup("(not set)", "report duration");
     char *yield_text = summary ? format_report_yield(summary->base_count) : fc_strdup("(not set)", "report yield");
     char *read_count_text = summary ? format_report_count(summary->read_count) : fc_strdup("(not set)", "report read count");
-    char *n50_text = summary ? format_report_bp(summary->n50_bp) : fc_strdup("(not set)", "report n50");
+    char *n50_text = summary ? format_report_n50(summary->n50_bp) : fc_strdup("(not set)", "report n50");
     char *l50_text = summary ? format_report_count(summary->l50) : fc_strdup("(not set)", "report l50");
     char *barcode_alias_html = html_escape(
         (summary && summary->barcode_alias && summary->barcode_alias[0] != '\0')
@@ -2013,8 +2136,9 @@ static char *render_report_html(
     char *read_count_html = html_escape(read_count_text);
     char *n50_html = html_escape(n50_text);
     char *l50_html = html_escape(l50_text);
+    char *docs_json_html = html_unescape_basic(docs_json ? docs_json : "{}");
 
-    replace_all(&html, "__FASTCAT_BOKEH_DOCS_JSON__", docs_json ? docs_json : "{}");
+    replace_all(&html, "__FASTCAT_BOKEH_DOCS_JSON__", docs_json_html);
     replace_all(&html, "__FASTCAT_SAMPLE_ALIAS_HTML__", sample_html);
     replace_all(&html, "__FASTCAT_SAMPLE_BARCODE_HTML__", barcode_html);
     replace_all(&html, "__FASTCAT_BARCODE_ALIAS_HTML__", barcode_alias_html);
@@ -2049,6 +2173,7 @@ static char *render_report_html(
     free(l50_html);
     free(version_html);
     free(run_config_rows_html);
+    free(docs_json_html);
     return html;
 }
 
