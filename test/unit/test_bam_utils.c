@@ -4,6 +4,7 @@
 #include <zlib.h>
 
 #include "unity.h"
+#include "main.h"
 #include "htslib/kseq.h"
 
 #ifndef KSEQ_DECLARED
@@ -65,7 +66,7 @@ static const char *get_tags(fc_read *read) {
     return tags->s;
 }
 
-static void test_kseq_to_bam_unmapped_aux(void) {
+FC_TEST(bam_utils_suite, test_kseq_to_bam_unmapped_aux) {
     fc_read *fr = fc_read_init();
     TEST_ASSERT_NOT_NULL(fr);
     read_from_comment(fr, "XY:Z:foo");
@@ -88,7 +89,7 @@ static void test_kseq_to_bam_unmapped_aux(void) {
     destroy_read(fr);
 }
 
-static void test_fc_read_reset_from_kseq_sam_comment_consistency(void) {
+FC_TEST(bam_utils_suite, test_fc_read_reset_from_kseq_sam_comment_consistency) {
     const char* runid = "12345678-1234-1234-1234-123456789012";
     fc_read *fr = fc_read_init();
     TEST_ASSERT_NOT_NULL(fr);
@@ -171,7 +172,7 @@ static void test_fc_read_reset_from_kseq_sam_comment_consistency(void) {
     destroy_read(fr);
 }
 
-static void test_fc_read_reset_from_kseq_key_value_fallback_consistency(void) {
+FC_TEST(bam_utils_suite, test_fc_read_reset_from_kseq_key_value_fallback_consistency) {
     const char* runid = "e4994c62-93f9-439a-bc8f-d20c95a137a5";
     const char* model = "rna004_130bps_fast@v5.1.0";
     fc_read *fr = fc_read_init();
@@ -251,7 +252,7 @@ static void test_fc_read_reset_from_kseq_key_value_fallback_consistency(void) {
     destroy_read(fr);
 }
 
-static void test_fc_read_preserves_original_comment(void) {
+FC_TEST(bam_utils_suite, test_fc_read_preserves_original_comment) {
     fc_read *fr = fc_read_init();
     TEST_ASSERT_NOT_NULL(fr);
     read_from_comment(fr, "raw\tcomment  with  spaces");
@@ -261,7 +262,7 @@ static void test_fc_read_preserves_original_comment(void) {
     destroy_read(fr);
 }
 
-static void test_fc_read_reset_from_kseq_reuses_preallocated_bam(void) {
+FC_TEST(bam_utils_suite, test_fc_read_reset_from_kseq_reuses_preallocated_bam) {
     fc_read *fr = fc_read_init();
     TEST_ASSERT_NOT_NULL(fr);
     read_from_comment(fr, "XY:Z:foo");
@@ -275,12 +276,4 @@ static void test_fc_read_reset_from_kseq_reuses_preallocated_bam(void) {
     TEST_ASSERT_NOT_NULL(aux);
     TEST_ASSERT_EQUAL_STRING("bar", bam_aux2Z(aux));
     destroy_read(fr);
-}
-
-void bam_utils_suite(void) {
-    RUN_TEST(test_kseq_to_bam_unmapped_aux);
-    RUN_TEST(test_fc_read_reset_from_kseq_sam_comment_consistency);
-    RUN_TEST(test_fc_read_reset_from_kseq_key_value_fallback_consistency);
-    RUN_TEST(test_fc_read_preserves_original_comment);
-    RUN_TEST(test_fc_read_reset_from_kseq_reuses_preallocated_bam);
 }

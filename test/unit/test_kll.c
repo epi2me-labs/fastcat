@@ -2,9 +2,10 @@
 #include <stdio.h>
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_kll.h"
 
-static void test_empty_sketch(void)
+FC_TEST(kll_suite, test_empty_sketch)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
@@ -16,7 +17,7 @@ static void test_empty_sketch(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_single_value(void)
+FC_TEST(kll_suite, test_single_value)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
@@ -30,7 +31,7 @@ static void test_single_value(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_bad_quantile_input(void)
+FC_TEST(kll_suite, test_bad_quantile_input)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
@@ -55,7 +56,7 @@ static void test_bad_quantile_input(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_quantile_linear_interpolation(void)
+FC_TEST(kll_suite, test_quantile_linear_interpolation)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
     fc_kll_add(sketch, 0.0);
@@ -75,7 +76,7 @@ static void test_quantile_linear_interpolation(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_nan_input(void)
+FC_TEST(kll_suite, test_nan_input)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
@@ -94,7 +95,7 @@ static void test_nan_input(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_infinity_input(void)
+FC_TEST(kll_suite, test_infinity_input)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
@@ -115,7 +116,7 @@ static void test_infinity_input(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_quantile_quintuple(void)
+FC_TEST(kll_suite, test_quantile_quintuple)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
@@ -142,7 +143,7 @@ static void test_quantile_quintuple(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_quantile_quintuple_empty(void)
+FC_TEST(kll_suite, test_quantile_quintuple_empty)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
@@ -158,7 +159,7 @@ static void test_quantile_quintuple_empty(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_merge_sketches(void)
+FC_TEST(kll_suite, test_merge_sketches)
 {
     fc_kll_sketch *left = fc_kll_create(200);
     fc_kll_sketch *right = fc_kll_create(200);
@@ -180,7 +181,7 @@ static void test_merge_sketches(void)
     fc_kll_destroy(right);
 }
 
-static void test_density_from_quantiles_basic(void)
+FC_TEST(kll_suite, test_density_from_quantiles_basic)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
     fc_kll_add(sketch, 0.0);
@@ -204,7 +205,7 @@ static void test_density_from_quantiles_basic(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_density_from_quantiles_smooth_changes_values(void)
+FC_TEST(kll_suite, test_density_from_quantiles_smooth_changes_values)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
@@ -238,7 +239,7 @@ static void test_density_from_quantiles_smooth_changes_values(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_density_from_quantiles_all_equal(void)
+FC_TEST(kll_suite, test_density_from_quantiles_all_equal)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
     for (int i = 0; i < 10; i++) {
@@ -256,7 +257,7 @@ static void test_density_from_quantiles_all_equal(void)
     fc_kll_destroy(sketch);
 }
 
-static void test_density_from_quantiles_smoothing_window_size(void)
+FC_TEST(kll_suite, test_density_from_quantiles_smoothing_window_size)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
     fc_kll_add(sketch, 0.0);
@@ -291,21 +292,4 @@ static void test_density_from_quantiles_smoothing_window_size(void)
     fc_kll_density_destroy(&smooth3);
     fc_kll_density_destroy(&smooth9);
     fc_kll_destroy(sketch);
-}
-
-void kll_suite(void)
-{
-    RUN_TEST(test_empty_sketch);
-    RUN_TEST(test_single_value);
-    RUN_TEST(test_bad_quantile_input);
-    RUN_TEST(test_quantile_linear_interpolation);
-    RUN_TEST(test_nan_input);
-    RUN_TEST(test_infinity_input);
-    RUN_TEST(test_quantile_quintuple);
-    RUN_TEST(test_quantile_quintuple_empty);
-    RUN_TEST(test_merge_sketches);
-    RUN_TEST(test_density_from_quantiles_basic);
-    RUN_TEST(test_density_from_quantiles_smooth_changes_values);
-    RUN_TEST(test_density_from_quantiles_all_equal);
-    RUN_TEST(test_density_from_quantiles_smoothing_window_size);
 }

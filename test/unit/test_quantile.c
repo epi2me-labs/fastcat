@@ -2,10 +2,11 @@
 #include <stdio.h>
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_quantile.h"
 #include "core/fc_stats.h"
 
-static void test_empty_histogram(void)
+FC_TEST(quantile_suite, test_empty_histogram)
 {
     read_stats *stats = create_qual_stats(1.0f);
 
@@ -20,7 +21,7 @@ static void test_empty_histogram(void)
     destroy_qual_stats(stats);
 }
 
-static void test_uniform_distribution(void)
+FC_TEST(quantile_suite, test_uniform_distribution)
 {
     // Create histogram with 1-unit bins from 0 to 100
     read_stats *stats = create_qual_stats(1.0f);
@@ -43,7 +44,7 @@ static void test_uniform_distribution(void)
     destroy_qual_stats(stats);
 }
 
-static void test_single_bin(void)
+FC_TEST(quantile_suite, test_single_bin)
 {
     read_stats *stats = create_qual_stats(1.0f);
 
@@ -65,7 +66,7 @@ static void test_single_bin(void)
     destroy_qual_stats(stats);
 }
 
-static void test_zero_quantile_with_leading_empty_bins(void)
+FC_TEST(quantile_suite, test_zero_quantile_with_leading_empty_bins)
 {
     read_stats *stats = create_qual_stats(1.0f);
 
@@ -83,7 +84,7 @@ static void test_zero_quantile_with_leading_empty_bins(void)
     destroy_qual_stats(stats);
 }
 
-static void test_skewed_distribution(void)
+FC_TEST(quantile_suite, test_skewed_distribution)
 {
     read_stats *stats = create_qual_stats(1.0f);
 
@@ -109,7 +110,7 @@ static void test_skewed_distribution(void)
     destroy_qual_stats(stats);
 }
 
-static void test_segmented_bins(void)
+FC_TEST(quantile_suite, test_segmented_bins)
 {
     read_stats *stats = create_qc_length_bins();
 
@@ -146,7 +147,7 @@ static void test_segmented_bins(void)
     destroy_length_stats(stats);
 }
 
-static void test_overflow_bin(void)
+FC_TEST(quantile_suite, test_overflow_bin)
 {
     // Test that overflow bin (unbounded upper edge) returns lower bound
     read_stats *stats = create_qc_length_bins();
@@ -179,7 +180,7 @@ static void test_overflow_bin(void)
     destroy_length_stats(stats);
 }
 
-static void test_fixed_width_terminal_bucket_returns_lower_bound(void)
+FC_TEST(quantile_suite, test_fixed_width_terminal_bucket_returns_lower_bound)
 {
     read_stats *stats = create_qual_stats(1.0f);
 
@@ -197,7 +198,7 @@ static void test_fixed_width_terminal_bucket_returns_lower_bound(void)
     destroy_qual_stats(stats);
 }
 
-static void test_fixed_width_vs_segmented(void)
+FC_TEST(quantile_suite, test_fixed_width_vs_segmented)
 {
     // Fixed-width
     read_stats *fixed = create_qual_stats(0.5f);
@@ -217,17 +218,4 @@ static void test_fixed_width_vs_segmented(void)
 
     destroy_qual_stats(fixed);
     destroy_length_stats(segmented);
-}
-
-void quantile_suite(void)
-{
-    RUN_TEST(test_empty_histogram);
-    RUN_TEST(test_uniform_distribution);
-    RUN_TEST(test_single_bin);
-    RUN_TEST(test_zero_quantile_with_leading_empty_bins);
-    RUN_TEST(test_skewed_distribution);
-    RUN_TEST(test_segmented_bins);
-    RUN_TEST(test_overflow_bin);
-    RUN_TEST(test_fixed_width_terminal_bucket_returns_lower_bound);
-    RUN_TEST(test_fixed_width_vs_segmented);
 }

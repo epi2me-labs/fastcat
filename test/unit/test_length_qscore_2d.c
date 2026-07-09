@@ -2,6 +2,7 @@
 #include <stddef.h>
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_length_qscore_2d.h"
 #include "test_metric_qscore_2d_helpers.h"
 
@@ -10,7 +11,7 @@ static fc_length_qscore_2d *create_model(size_t barcode_count, size_t smoothing_
     return fc_length_qscore_2d_create(barcode_count, 64, 33, smoothing_points);
 }
 
-static void test_length_qscore_create_rejects_bad_config(void)
+FC_TEST(length_qscore_2d_suite, test_length_qscore_create_rejects_bad_config)
 {
     TEST_ASSERT_NULL(fc_length_qscore_2d_create(1, 7, 33, 1));
     TEST_ASSERT_NULL(fc_length_qscore_2d_create(1, 64, 1, 1));
@@ -18,7 +19,7 @@ static void test_length_qscore_create_rejects_bad_config(void)
     TEST_ASSERT_NULL(fc_length_qscore_2d_create(1, 64, 33, 2));
 }
 
-static void test_length_qscore_empty_model_materializes_zero_matrix(void)
+FC_TEST(length_qscore_2d_suite, test_length_qscore_empty_model_materializes_zero_matrix)
 {
     fc_length_qscore_2d *model = create_model(1, 1);
     TEST_ASSERT_NOT_NULL(model);
@@ -45,7 +46,7 @@ static void test_length_qscore_empty_model_materializes_zero_matrix(void)
     fc_length_qscore_2d_destroy(model);
 }
 
-static void test_length_qscore_single_read_lands_in_expected_qscore_bin(void)
+FC_TEST(length_qscore_2d_suite, test_length_qscore_single_read_lands_in_expected_qscore_bin)
 {
     fc_length_qscore_2d *model = create_model(1, 1);
     TEST_ASSERT_NOT_NULL(model);
@@ -79,7 +80,7 @@ static void test_length_qscore_single_read_lands_in_expected_qscore_bin(void)
     fc_length_qscore_2d_destroy(model);
 }
 
-static void test_length_qscore_qscore_bins_clamp_to_range(void)
+FC_TEST(length_qscore_2d_suite, test_length_qscore_qscore_bins_clamp_to_range)
 {
     fc_length_qscore_2d *model = create_model(1, 1);
     TEST_ASSERT_NOT_NULL(model);
@@ -125,7 +126,7 @@ static void test_length_qscore_qscore_bins_clamp_to_range(void)
     fc_length_qscore_2d_destroy(model);
 }
 
-static void test_length_qscore_barcode_state_is_isolated(void)
+FC_TEST(length_qscore_2d_suite, test_length_qscore_barcode_state_is_isolated)
 {
     fc_length_qscore_2d *model = create_model(3, 1);
     TEST_ASSERT_NOT_NULL(model);
@@ -179,7 +180,7 @@ static void test_length_qscore_barcode_state_is_isolated(void)
     fc_length_qscore_2d_destroy(model);
 }
 
-static void test_length_qscore_smoothing_preserves_observed_column_totals(void)
+FC_TEST(length_qscore_2d_suite, test_length_qscore_smoothing_preserves_observed_column_totals)
 {
     fc_length_qscore_2d *model = create_model(1, 3);
     TEST_ASSERT_NOT_NULL(model);
@@ -226,7 +227,7 @@ static void test_length_qscore_smoothing_preserves_observed_column_totals(void)
     fc_length_qscore_2d_destroy(model);
 }
 
-static void test_length_qscore_extreme_tail_does_not_force_terminal_row_spike(void)
+FC_TEST(length_qscore_2d_suite, test_length_qscore_extreme_tail_does_not_force_terminal_row_spike)
 {
     fc_length_qscore_2d *model = create_model(1, 1);
     TEST_ASSERT_NOT_NULL(model);
@@ -261,15 +262,4 @@ static void test_length_qscore_extreme_tail_does_not_force_terminal_row_spike(vo
 
     fc_length_qscore_2d_matrix_destroy(&matrix);
     fc_length_qscore_2d_destroy(model);
-}
-
-void length_qscore_2d_suite(void)
-{
-    RUN_TEST(test_length_qscore_create_rejects_bad_config);
-    RUN_TEST(test_length_qscore_empty_model_materializes_zero_matrix);
-    RUN_TEST(test_length_qscore_single_read_lands_in_expected_qscore_bin);
-    RUN_TEST(test_length_qscore_qscore_bins_clamp_to_range);
-    RUN_TEST(test_length_qscore_barcode_state_is_isolated);
-    RUN_TEST(test_length_qscore_smoothing_preserves_observed_column_totals);
-    RUN_TEST(test_length_qscore_extreme_tail_does_not_force_terminal_row_spike);
 }

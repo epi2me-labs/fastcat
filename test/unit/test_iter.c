@@ -1,4 +1,5 @@
 #include "unity.h"
+#include "main.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -189,7 +190,7 @@ static void _run_iter_and_assert(
 
 // run on a real fixture and check that stats are accumulated as expected
 
-static void test_fastq_iter_stats_accumulate(void) {
+FC_TEST(iter_suite, test_fastq_iter_stats_accumulate) {
     fc_iter_opts opts = fq_opts_defaults();
     _run_iter_and_assert("test/fixtures/fastq/basic/bc1.fastq.gz", &opts,
         10, 5904, 281, 878, 12.8569, 10, 10, 0, 0, 0);
@@ -202,14 +203,14 @@ static void _test_known_stats(const char *path) {
     _run_iter_and_assert(path, NULL, 3, 15, 4, 6, 20.0, 3, 3, 0, 0, 0);
 }
 
-static void test_iter_fastq_known_stats(void) {
+FC_TEST(iter_suite, test_iter_fastq_known_stats) {
     char fq_path[64];
     make_temp_gz_fastq(fq_path, sizeof(fq_path));
     _test_known_stats(fq_path);
     remove(fq_path);
 }
 
-static void test_iter_bam_known_stats(void) {
+FC_TEST(iter_suite, test_iter_bam_known_stats) {
     char sam_path[64];
     make_temp_sam(sam_path, sizeof(sam_path));
     _test_known_stats(sam_path);
@@ -227,21 +228,21 @@ static void _test_case_filters_length_and_quality(const char *path) {
         1, 6, 6, 6, 40.0, 3, 1, 1, 1, 0);
 }
 
-static void test_iter_fastq_filters_length_and_quality(void) {
+FC_TEST(iter_suite, test_iter_fastq_filters_length_and_quality) {
     char fq_path[64];
     make_temp_gz_fastq(fq_path, sizeof(fq_path));
     _test_case_filters_length_and_quality(fq_path);
     remove(fq_path);
 }
 
-static void test_iter_bam_filters_length_and_quality(void) {
+FC_TEST(iter_suite, test_iter_bam_filters_length_and_quality) {
     char sam_path[64];
     make_temp_sam(sam_path, sizeof(sam_path));
     _test_case_filters_length_and_quality(sam_path);
     remove(sam_path);
 }
 
-static void test_iter_bam_lowercase_qs_used_for_quality_filtering(void) {
+FC_TEST(iter_suite, test_iter_bam_lowercase_qs_used_for_quality_filtering) {
     char sam_path[64];
     make_temp_sam_contents(SAM_LOWER_QS_FIXTURE, sam_path, sizeof(sam_path));
     fc_iter_opts opts = fq_opts_defaults();
@@ -250,7 +251,7 @@ static void test_iter_bam_lowercase_qs_used_for_quality_filtering(void) {
     remove(sam_path);
 }
 
-static void test_iter_bam_missing_quality_matches_fastq_style_drop(void) {
+FC_TEST(iter_suite, test_iter_bam_missing_quality_matches_fastq_style_drop) {
     char sam_path[64];
     make_temp_sam_contents(SAM_MISSING_QUAL_FIXTURE, sam_path, sizeof(sam_path));
     fc_iter_opts opts = fq_opts_defaults();
@@ -267,14 +268,14 @@ static void _test_case_all_filtered(const char *path) {
     _run_iter_and_assert(path, &opts, 0, 0, 0, 0, 0.0, 3, 0, 3, 0, 0);
 }
 
-static void test_iter_fastq_all_filtered_sets_minmax_zero(void) {
+FC_TEST(iter_suite, test_iter_fastq_all_filtered_sets_minmax_zero) {
     char fq_path[64];
     make_temp_gz_fastq(fq_path, sizeof(fq_path));
     _test_case_all_filtered(fq_path);
     remove(fq_path);
 }
 
-static void test_iter_bam_all_filtered_sets_minmax_zero(void) {
+FC_TEST(iter_suite, test_iter_bam_all_filtered_sets_minmax_zero) {
     char sam_path[64];
     make_temp_sam(sam_path, sizeof(sam_path));
     _test_case_all_filtered(sam_path);
@@ -297,31 +298,12 @@ static void _test_case_open_failure_sets_unknown_error(const char *path, fc_file
     fc_iter_close(&iter);
 }
 
-static void test_iter_fastq_iter_open_failure_sets_unknown_error(void) {
+FC_TEST(iter_suite, test_iter_fastq_iter_open_failure_sets_unknown_error) {
     _test_case_open_failure_sets_unknown_error("/no/such/file.fastq", FC_FILE_FASTQ);
 }
 
-static void test_iter_bam_iter_open_failure_sets_unknown_error(void) {
+FC_TEST(iter_suite, test_iter_bam_iter_open_failure_sets_unknown_error) {
     _test_case_open_failure_sets_unknown_error("/no/such/file.bam", FC_FILE_BAM);
 }
 
 // go go gadget
-
-void iter_suite(void) {
-    // real data
-    RUN_TEST(test_fastq_iter_stats_accumulate);
-    // synthetic data with known stats
-    RUN_TEST(test_iter_fastq_known_stats);
-    RUN_TEST(test_iter_bam_known_stats);
-    // filters in controlled cases
-    RUN_TEST(test_iter_fastq_filters_length_and_quality);
-    RUN_TEST(test_iter_bam_filters_length_and_quality);
-    RUN_TEST(test_iter_bam_lowercase_qs_used_for_quality_filtering);
-    RUN_TEST(test_iter_bam_missing_quality_matches_fastq_style_drop);
-    // all filtered sets min/max length to zero
-    RUN_TEST(test_iter_fastq_all_filtered_sets_minmax_zero);
-    RUN_TEST(test_iter_bam_all_filtered_sets_minmax_zero);
-    // open failure sets unknown error
-    RUN_TEST(test_iter_fastq_iter_open_failure_sets_unknown_error);
-    RUN_TEST(test_iter_bam_iter_open_failure_sets_unknown_error);
-}

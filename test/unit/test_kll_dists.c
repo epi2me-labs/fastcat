@@ -21,6 +21,7 @@
 #include <sys/resource.h>
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_kll.h"
 
 // Global profiling state
@@ -165,7 +166,7 @@ static void shuffle_doubles(double *arr, size_t n)
     }
 }
 
-static void test_distribution_quantiles(distribution_fixture dist, size_t n_samples)
+static void run_distribution_quantiles(distribution_fixture dist, size_t n_samples)
 {
     rng_state = 42;
 
@@ -256,12 +257,12 @@ static void test_distribution_quantiles(distribution_fixture dist, size_t n_samp
     fc_kll_destroy(sketch);
 }
 
-static void test_dist_quantiles_fixture_list(
+static void run_dist_quantiles_fixture_list(
     const distribution_fixture *dists, size_t n_dists)
 {
     for (size_t i = 0; i < n_dists; i++) {
         for (size_t n = 1000; n <= 1000000; n *= 10) {
-            test_distribution_quantiles(dists[i], n);
+            run_distribution_quantiles(dists[i], n);
         }
     }
 }
@@ -277,7 +278,7 @@ static void test_dist_quantiles_fixture_list(
 
 #define Uniform(a, b) \
     { "Uniform(" #a "," #b ")", uniform_quantile, uniform_cdf, (a), (b) }
-static void test_uniform_stress(void)
+static void uniform_stress(void)
 {
     distribution_fixture dists[] = {
         // ok, well this one is silly
@@ -286,12 +287,12 @@ static void test_uniform_stress(void)
         Uniform(0, 100),
         Uniform(-100, 1000),
     };
-    test_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
+    run_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
 }
 
 #define Exponential(lambda) \
     DIST_FIXTURE_1("Exponential", exponential_quantile, exponential_cdf, "lambda", lambda)
-static void test_exponential_stress(void)
+static void exponential_stress(void)
 {
     distribution_fixture dists[] = {
         Exponential(0.1),
@@ -299,12 +300,12 @@ static void test_exponential_stress(void)
         Exponential(1.0),
         Exponential(2.0),
     };
-    test_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
+    run_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
 }
 
 #define Logistic(mu, s) \
     DIST_FIXTURE_2("Logistic", logistic_quantile, logistic_cdf, "mu", mu, "s", s)
-static void test_logistic_stress(void)
+static void logistic_stress(void)
 {
     distribution_fixture dists[] = {
         Logistic(5, 2),
@@ -313,12 +314,12 @@ static void test_logistic_stress(void)
         Logistic(6, 2),
         Logistic(2, 1),
     };
-    test_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
+    run_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
 }
 
 #define Weibull(lambda, k) \
     DIST_FIXTURE_2("Weibull", weibull_quantile, weibull_cdf, "lambda", lambda, "k", k)
-static void test_weibull_stress(void)
+static void weibull_stress(void)
 {
     distribution_fixture dists[] = {
         Weibull(1, 0.5),
@@ -331,12 +332,12 @@ static void test_weibull_stress(void)
         Weibull(10, 1.5),
         Weibull(10, 5),
     };
-    test_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
+    run_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
 }
 
 #define Cauchy(x0, gamma) \
     DIST_FIXTURE_2("Cauchy", cauchy_quantile, cauchy_cdf, "x0", x0, "gamma", gamma)
-static void test_cauchy_stress(void)
+static void cauchy_stress(void)
 {
     distribution_fixture dists[] = {
         Cauchy(0, 0.5),
@@ -344,12 +345,12 @@ static void test_cauchy_stress(void)
         Cauchy(0, 2),
         Cauchy(-2, 1),
     };
-    test_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
+    run_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
 }
 
 #define Pareto(xm, alpha) \
     DIST_FIXTURE_2("Pareto", pareto_quantile, pareto_cdf, "xm", xm, "alpha", alpha)
-static void test_pareto_stress(void)
+static void pareto_stress(void)
 {
     distribution_fixture dists[] = {
         Pareto(1, 1),
@@ -362,12 +363,12 @@ static void test_pareto_stress(void)
         Pareto(2, 3),
         Pareto(2, 9999999),
     };
-    test_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
+    run_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
 }
 
 #define Laplace(mu, b) \
     DIST_FIXTURE_2("Laplace", laplace_quantile, laplace_cdf, "mu", mu, "b", b)
-static void test_laplace_stress(void)
+static void laplace_stress(void)
 {
     distribution_fixture dists[] = {
         Laplace(0, 1),
@@ -375,12 +376,12 @@ static void test_laplace_stress(void)
         Laplace(0, 4),
         Laplace(-5, 4),
     };
-    test_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
+    run_dist_quantiles_fixture_list(dists, sizeof(dists) / sizeof(dists[0]));
 }
 
-void quantile_stress_suite(void)
+FC_TEST(quantile_stress_suite, test_quantile_stress_battery)
 {
-    // Reset profiling state at start
+    // reset profiling state at start
     total_kll_time_sec = 0.0;
     peak_kll_memory_bytes = 0;
     baseline_memory_bytes = get_current_rss_bytes();
@@ -388,25 +389,25 @@ void quantile_stress_suite(void)
     total_values_added = 0;
     total_quantiles_computed = 0;
 
-    RUN_TEST(test_uniform_stress);
-    RUN_TEST(test_exponential_stress);
-    RUN_TEST(test_logistic_stress);
-    RUN_TEST(test_weibull_stress);
-    RUN_TEST(test_cauchy_stress);
-    RUN_TEST(test_pareto_stress);
-    RUN_TEST(test_laplace_stress);
+    uniform_stress();
+    exponential_stress();
+    logistic_stress();
+    weibull_stress();
+    cauchy_stress();
+    pareto_stress();
+    laplace_stress();
 
-    // Print profiling results
+    // print profiling results
     size_t mem_growth = peak_kll_memory_bytes - baseline_memory_bytes;
-    printf("\n========== KLL Sketch Profiling ==========\n");
-    printf("Total sketches created:     %zu\n", total_sketches_created);
-    printf("Total values added:         %.2f M\n", total_values_added / 1e6);
-    printf("Total quantiles computed:   %.2f K\n", total_quantiles_computed / 1e3);
-    printf("Memory growth (peak-base):  %.1f KB\n", mem_growth / 1024.0);
-    printf("Total CPU time:             %.3f sec\n", total_kll_time_sec);
-    printf("Throughput (add):           %.2f M values/sec\n",
-           total_values_added / 1e6 / total_kll_time_sec);
-    printf("Throughput (quantile):      %.2f K queries/sec\n",
-           total_quantiles_computed / 1e3 / total_kll_time_sec);
-    printf("==========================================\n");
+    fprintf(stderr, "========== KLL Sketch Profiling ==========\n");
+    fprintf(stderr, "Total sketches created:     %zu\n", total_sketches_created);
+    fprintf(stderr, "Total values added:         %.2f M\n", total_values_added / 1e6);
+    fprintf(stderr, "Total quantiles computed:   %.2f K\n", total_quantiles_computed / 1e3);
+    fprintf(stderr, "Memory growth (peak-base):  %.1f KB\n", mem_growth / 1024.0);
+    fprintf(stderr, "Total CPU time:             %.3f sec\n", total_kll_time_sec);
+    fprintf(stderr, "Throughput (add):           %.2f M values/sec\n",
+        total_values_added / 1e6 / total_kll_time_sec);
+    fprintf(stderr, "Throughput (quantile):      %.2f K queries/sec\n",
+        total_quantiles_computed / 1e3 / total_kll_time_sec);
+    fprintf(stderr, "==========================================\n");
 }

@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_common.h"
 
 typedef struct {
@@ -40,7 +41,7 @@ static char* build_rg(const rg_case* c) {
     return rg;
 }
 
-static void test_rg_matrix(void) {
+FC_TEST(rg_parse_suite, test_rg_matrix) {
     const char *runid_acq = "ef1af1ab8967cb20ca30dbeca93fd66592bf4619";
     const char *runid_proto = "c886531d-28f5-41f6-b948-948e8cb78e5e";
     const char *basecall = "basecall_model_name@v1.2.3";
@@ -93,7 +94,7 @@ static void test_rg_matrix(void) {
     }
 }
 
-static void test_hex_suffix_stripped(void) {
+FC_TEST(rg_parse_suite, test_hex_suffix_stripped) {
     char* rg = strdup("12345678-1234-1234-1234-123456789012_sup@v1_barcode01-ABCDEF");
     readgroup* info = create_rg_info(rg);
     TEST_ASSERT_EQUAL_STRING("12345678-1234-1234-1234-123456789012", info->runid);
@@ -103,7 +104,7 @@ static void test_hex_suffix_stripped(void) {
     free(rg);
 }
 
-static void test_hex_suffix_no_barcode(void) {
+FC_TEST(rg_parse_suite, test_hex_suffix_no_barcode) {
     char* rg = strdup("12345678-1234-1234-1234-123456789012_sup@v1-ABCDEF");
     readgroup* info = create_rg_info(rg);
     TEST_ASSERT_EQUAL_STRING("12345678-1234-1234-1234-123456789012", info->runid);
@@ -114,7 +115,7 @@ static void test_hex_suffix_no_barcode(void) {
     free(rg);
 }
 
-static void test_no_at_in_basecaller(void) {
+FC_TEST(rg_parse_suite, test_no_at_in_basecaller) {
     char* rg = strdup("12345678-1234-1234-1234-123456789012_supv1_barcode01");
     readgroup* info = create_rg_info(rg);
     TEST_ASSERT_EQUAL_STRING("12345678-1234-1234-1234-123456789012", info->runid);
@@ -125,7 +126,7 @@ static void test_no_at_in_basecaller(void) {
     free(rg);
 }
 
-static void test_invalid_runid_length(void) {
+FC_TEST(rg_parse_suite, test_invalid_runid_length) {
     char* rg = strdup("short_sup@v1_barcode01");
     readgroup* info = create_rg_info(rg);
     TEST_ASSERT_NULL(info->runid);
@@ -135,7 +136,7 @@ static void test_invalid_runid_length(void) {
     free(rg);
 }
 
-static void test_modcaller_extraction(void) {
+FC_TEST(rg_parse_suite, test_modcaller_extraction) {
     char* rg = strdup("12345678-1234-1234-1234-123456789012_sup@v1_mod@v2_barcode01");
     readgroup* info = create_rg_info(rg);
     TEST_ASSERT_EQUAL_STRING("sup@v1", info->basecaller);
@@ -145,7 +146,7 @@ static void test_modcaller_extraction(void) {
     free(rg);
 }
 
-static void test_modcaller_no_barcode(void) {
+FC_TEST(rg_parse_suite, test_modcaller_no_barcode) {
     char* rg = strdup("12345678-1234-1234-1234-123456789012_sup@v1_mod@v2");
     readgroup* info = create_rg_info(rg);
     TEST_ASSERT_EQUAL_STRING("sup@v1", info->basecaller);
@@ -155,22 +156,11 @@ static void test_modcaller_no_barcode(void) {
     free(rg);
 }
 
-static void test_no_barcode(void) {
+FC_TEST(rg_parse_suite, test_no_barcode) {
     char* rg = strdup("12345678-1234-1234-1234-123456789012_sup@v1");
     readgroup* info = create_rg_info(rg);
     TEST_ASSERT_EQUAL_STRING("sup@v1", info->basecaller);
     TEST_ASSERT_NULL(info->barcode);
     destroy_rg_info(info);
     free(rg);
-}
-
-void rg_parse_suite(void) {
-    RUN_TEST(test_rg_matrix);
-    RUN_TEST(test_hex_suffix_stripped);
-    RUN_TEST(test_hex_suffix_no_barcode);
-    RUN_TEST(test_no_at_in_basecaller);
-    RUN_TEST(test_invalid_runid_length);
-    RUN_TEST(test_modcaller_extraction);
-    RUN_TEST(test_modcaller_no_barcode);
-    RUN_TEST(test_no_barcode);
 }

@@ -619,7 +619,7 @@ test: test_functional test_unit  ## run all tests
 
 # unit tests use unity framework
 
-UNIT_TEST_SRCS = test/unit/main.c test/unit/test_common.c test/unit/test_stats.c test/unit/test_stats_engine.c test/unit/test_fastqcomments.c test/unit/test_filters.c test/unit/test_rg_parse.c test/unit/test_regiter.c test/unit/test_quality.c test/unit/test_bam_utils.c test/unit/test_qualcalcs.c test/unit/test_iter.c test/unit/test_iter_collect.c test/unit/test_bamcoverage.c test/unit/test_quantile.c test/unit/test_kll.c test/unit/test_metric_qscore_2d_helpers.c test/unit/test_length_qscore_2d.c test/unit/test_speed_qscore_2d.c test/unit/test_time_bin.c test/unit/test_channel_summary.c test/unit/test_run_summary.c test/unit/test_kll_dists.c test/unity/unity.c
+UNIT_TEST_SRCS = test/unit/main.c $(sort $(wildcard test/unit/test_*.c)) test/unity/unity.c
 UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
 

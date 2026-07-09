@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include "unity.h"
+#include "main.h"
 #include "core/fc_regiter.h"
 #include "core/fc_common.h"
 
@@ -26,7 +27,7 @@ static char *write_temp_bed(const char *contents) {
     return strdup(tmpl);
 }
 
-static void test_region_from_string_valid(void) {
+FC_TEST(regiter_suite, test_region_from_string_valid) {
     char* chr = NULL;
     int start = 0, end = 0;
     char* input = strdup("chr1:10-20");
@@ -38,7 +39,7 @@ static void test_region_from_string_valid(void) {
     free(input);
 }
 
-static void test_region_from_string_error_return(void) {
+FC_TEST(regiter_suite, test_region_from_string_error_return) {
     char* chr = NULL;
     int start = 0, end = 0;
     char* input = strdup("chr1:20-10"); // start >= end invalid
@@ -47,7 +48,7 @@ static void test_region_from_string_error_return(void) {
     free(input);
 }
 
-static void test_region_from_string_invalid(void) {
+FC_TEST(regiter_suite, test_region_from_string_invalid) {
     char* chr = NULL;
     int start = 0, end = 0;
     char* input = strdup("not_a_region");
@@ -59,7 +60,7 @@ static void test_region_from_string_invalid(void) {
     free(input);
 }
 
-static void test_region_to_string_roundtrip(void) {
+FC_TEST(regiter_suite, test_region_to_string_roundtrip) {
     _bed_region region = {.chr = "chr2", .tid = 0, .start = 5, .end = 25};
     char* s = region_to_string(&region);
     TEST_ASSERT_EQUAL_STRING("chr2:5-25", s);
@@ -75,7 +76,7 @@ static void test_region_to_string_roundtrip(void) {
     free(s);
 }
 
-static void test_region_from_bed_errors(void) {
+FC_TEST(regiter_suite, test_region_from_bed_errors) {
     FILE* fp = tmpfile();
     fprintf(fp, "chr1\t5\n");              // missing end
     fprintf(fp, "chr1\tA\t10\n");         // bad start
@@ -95,7 +96,7 @@ static void test_region_from_bed_errors(void) {
     fclose(fp);
 }
 
-static void test_region_from_bed_valid(void) {
+FC_TEST(regiter_suite, test_region_from_bed_valid) {
     FILE* fp = tmpfile();
     fprintf(fp, "chr1\t0\t10\n");
     rewind(fp);
@@ -111,7 +112,7 @@ static void test_region_from_bed_valid(void) {
     fclose(fp);
 }
 
-static void test_next_region_and_truncation(void) {
+FC_TEST(regiter_suite, test_next_region_and_truncation) {
     sam_hdr_t* hdr = make_header();
     regiter it = init_region_iterator(NULL, "chr1:90-200", hdr);
     TEST_ASSERT_EQUAL_INT(REGITER_OK, next_region(&it));
@@ -123,7 +124,7 @@ static void test_next_region_and_truncation(void) {
     sam_hdr_destroy(hdr);
 }
 
-static void test_next_region_unknown_reference(void) {
+FC_TEST(regiter_suite, test_next_region_unknown_reference) {
     sam_hdr_t *hdr = make_header();
     regiter it = init_region_iterator(NULL, "chrX:1-10", hdr);
     TEST_ASSERT_EQUAL_INT(REGITER_REF_MISSING, next_region(&it));
@@ -132,7 +133,7 @@ static void test_next_region_unknown_reference(void) {
     sam_hdr_destroy(hdr);
 }
 
-static void test_init_bed_sorts_unordered_input(void) {
+FC_TEST(regiter_suite, test_init_bed_sorts_unordered_input) {
     sam_hdr_t *hdr = make_header();
     const char *bed_text =
         "chr2\t10\t20\n"
@@ -172,7 +173,7 @@ static void test_init_bed_sorts_unordered_input(void) {
     free(bed_path);
 }
 
-static void test_init_bed_from_sam_segments(void) {
+FC_TEST(regiter_suite, test_init_bed_from_sam_segments) {
     sam_hdr_t* hdr = make_header();
     bed_regions br = init_bed_from_sam(hdr, 50);
     TEST_ASSERT_EQUAL_size_t(3, br->n_regions); // chr1 split into two, chr2 one
@@ -191,17 +192,4 @@ static void test_init_bed_from_sam_segments(void) {
 
     destroy_bed(br);
     sam_hdr_destroy(hdr);
-}
-
-void regiter_suite(void) {
-    RUN_TEST(test_region_from_string_valid);
-    RUN_TEST(test_region_from_string_error_return);
-    RUN_TEST(test_region_from_string_invalid);
-    RUN_TEST(test_region_to_string_roundtrip);
-    RUN_TEST(test_region_from_bed_errors);
-    RUN_TEST(test_region_from_bed_valid);
-    RUN_TEST(test_next_region_and_truncation);
-    RUN_TEST(test_next_region_unknown_reference);
-    RUN_TEST(test_init_bed_from_sam_segments);
-    RUN_TEST(test_init_bed_sorts_unordered_input);
 }
