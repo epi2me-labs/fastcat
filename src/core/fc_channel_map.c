@@ -51,11 +51,11 @@ const fc_channel_map *fc_channel_map_get(fc_channel_map_device device)
 
     if (!initialized) {
         maps[FC_CHANNEL_MAP_FLONGLE].row_count = fc_channel_map_flongle_row_count;
-        maps[FC_CHANNEL_MAP_FLONGLE].swap_axes = true;
-        maps[FC_CHANNEL_MAP_FLONGLE].x_min = (double)fc_channel_map_flongle_y_min;
-        maps[FC_CHANNEL_MAP_FLONGLE].x_max = (double)fc_channel_map_flongle_y_max;
-        maps[FC_CHANNEL_MAP_FLONGLE].y_min = -(double)fc_channel_map_flongle_x_max;
-        maps[FC_CHANNEL_MAP_FLONGLE].y_max = -(double)fc_channel_map_flongle_x_min;
+        maps[FC_CHANNEL_MAP_FLONGLE].swap_axes = false;
+        maps[FC_CHANNEL_MAP_FLONGLE].x_min = (double)fc_channel_map_flongle_x_min;
+        maps[FC_CHANNEL_MAP_FLONGLE].x_max = (double)fc_channel_map_flongle_x_max;
+        maps[FC_CHANNEL_MAP_FLONGLE].y_min = -(double)fc_channel_map_flongle_y_max;
+        maps[FC_CHANNEL_MAP_FLONGLE].y_max = -(double)fc_channel_map_flongle_y_min;
 
         maps[FC_CHANNEL_MAP_MINION].row_count = fc_channel_map_minion_row_count;
         maps[FC_CHANNEL_MAP_MINION].swap_axes = true;
@@ -65,11 +65,11 @@ const fc_channel_map *fc_channel_map_get(fc_channel_map_device device)
         maps[FC_CHANNEL_MAP_MINION].y_max = -(double)fc_channel_map_minion_x_min;
 
         maps[FC_CHANNEL_MAP_PROMETHION].row_count = fc_channel_map_promethion_row_count;
-        maps[FC_CHANNEL_MAP_PROMETHION].swap_axes = true;
-        maps[FC_CHANNEL_MAP_PROMETHION].x_min = (double)fc_channel_map_promethion_y_min;
-        maps[FC_CHANNEL_MAP_PROMETHION].x_max = (double)fc_channel_map_promethion_y_max;
-        maps[FC_CHANNEL_MAP_PROMETHION].y_min = -(double)fc_channel_map_promethion_x_max;
-        maps[FC_CHANNEL_MAP_PROMETHION].y_max = -(double)fc_channel_map_promethion_x_min;
+        maps[FC_CHANNEL_MAP_PROMETHION].swap_axes = false;
+        maps[FC_CHANNEL_MAP_PROMETHION].x_min = (double)fc_channel_map_promethion_x_min;
+        maps[FC_CHANNEL_MAP_PROMETHION].x_max = (double)fc_channel_map_promethion_x_max;
+        maps[FC_CHANNEL_MAP_PROMETHION].y_min = -(double)fc_channel_map_promethion_y_max;
+        maps[FC_CHANNEL_MAP_PROMETHION].y_max = -(double)fc_channel_map_promethion_y_min;
         initialized = 1;
     }
 
