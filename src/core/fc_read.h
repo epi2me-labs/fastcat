@@ -5,6 +5,7 @@
 #include <htslib/sam.h>
 #include <stdbool.h>
 
+#include "core/fc_bam_rg_cache.h"
 #include "core/fc_common.h"
 #include "core/fc_stats.h"
 #include "core/kseq_gz.h"
@@ -15,6 +16,9 @@ typedef struct read_meta {
     readgroup *rg_info;
     char *runid; // RG:Z (RD:Z legacy)
     char *basecaller;
+    char *_basecaller; // owned storage for basecaller when needed
+    char *modcallers;
+    char *_modcallers;
     char *flow_cell_id; // PU:Z
     char *sample_id; // LB:Z
     char *barcode; // SM:Z
@@ -50,7 +54,7 @@ int kseq_to_bam(bam1_t *b, kseq_t *seq);
 
 // Reset a reusable fc_read in-place from the current BAM record.
 // Expects mean quality tag policy to have been applied by the caller.
-void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const kstring_t *orig_comment);
+void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const fc_bam_rg_cache *rg_cache, const kstring_t *orig_comment);
 
 // Return SAM-style auxiliary tags text, lazily materialized and cached on first use.
 const kstring_t *fc_read_get_tags_str(const fc_read *read);

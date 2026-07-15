@@ -47,6 +47,8 @@ char *fc_asprintf(const char *msg, const char *fmt, ...);
  *
  */
 char *fc_strdup(const char *s, const char *msg);
+char *fc_strndup(const char *s, size_t len, const char *msg);
+bool fc_find_value_for_key(const char *text, const char *key, const char **value, size_t *value_len);
 
 // Maximum barcode slots: unclassified (0) + barcode0001..barcode1024.
 #define FC_MAX_BARCODES 1025

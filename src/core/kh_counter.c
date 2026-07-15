@@ -80,6 +80,9 @@ size_t kh_counter_increment(kh_counter_t *hash, char *key)
 
 void kh_counter_destroy(kh_counter_t *hash)
 {
+    if (NULL == hash) {
+        return;
+    }
     for (khiter_t k = 0; k < kh_end(hash); k++) {
         if (kh_exist(hash, k)) {
             free((void *)kh_key(hash, k));

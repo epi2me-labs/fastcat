@@ -69,7 +69,7 @@ FC_TEST(stats_engine_suite, test_stats_engine_unmapped_tracked_in_unmapped_stats
     bam_destroy1(fr->bam);
     fr->bam = b;
     fc_bam_ensure_mean_quality(b, false);
-    fc_read_reset_from_bam(fr, NULL, NULL);
+    fc_read_reset_from_bam(fr, NULL, NULL, NULL);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 0.0f, fr->meta->mean_q);
 
     fc_stats_engine* engine = fc_stats_engine_create(false, false, 0.0f, 0.0f, false);
@@ -93,7 +93,7 @@ FC_TEST(stats_engine_suite, test_stats_engine_aligned_metrics)
     bam_destroy1(fr->bam);
     fr->bam = b;
     fc_bam_ensure_mean_quality(b, false);
-    fc_read_reset_from_bam(fr, hdr, NULL);
+    fc_read_reset_from_bam(fr, hdr, NULL, NULL);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 0.0f, fr->meta->mean_q);
 
     fc_stats_engine* engine = fc_stats_engine_create(true, false, 0.0f, 0.0f, false);

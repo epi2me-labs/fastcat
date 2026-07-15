@@ -18,7 +18,8 @@ static read_meta *read_meta_create_empty(void);
 static void read_meta_destroy(read_meta *meta);
 static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_comment);
 static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment);
-static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr);
+static void read_meta_set_caller(read_meta *meta, bool mod, const char *caller, size_t caller_len);
+static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr, const fc_bam_rg_cache *rg_cache);
 
 fc_read *fc_read_init(void)
 {
@@ -47,7 +48,7 @@ void fc_read_destroy(fc_read *read)
     free(read);
 }
 
-void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const kstring_t *orig_comment)
+void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const fc_bam_rg_cache *rg_cache, const kstring_t *orig_comment)
 {
     if (!read) {
         return;
@@ -59,7 +60,7 @@ void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const kstring_t
         read->meta = read_meta_create_empty();
     }
     read_meta_reset(read->meta, orig_comment);
-    read_meta_populate_from_bam(read->meta, read->bam, hdr);
+    read_meta_populate_from_bam(read->meta, read->bam, hdr, rg_cache);
 }
 
 // NOTE: This function is NOT thread-safe due to lazy initialization of tags_str.
@@ -81,6 +82,8 @@ static void read_meta_destroy(read_meta *meta)
         return;
     }
     free(meta->orig_comment);
+    free(meta->_basecaller);
+    free(meta->_modcallers);
     destroy_rg_info(meta->rg_info);
     free(meta->tags_str->s);
     free(meta->tags_str);
@@ -92,6 +95,10 @@ static read_meta *read_meta_create_empty(void)
     read_meta *meta = fc_alloc(1, sizeof(read_meta), "meta");
     meta->orig_comment = fc_alloc(1, sizeof(char), "meta->orig_comment");
     meta->orig_comment[0] = '\0';
+    meta->basecaller = "";
+    meta->_basecaller = NULL;
+    meta->modcallers = "";
+    meta->_modcallers = NULL;
     meta->tags_str = fc_alloc(1, sizeof(kstring_t), "meta->tags_str");
     ks_initialize(meta->tags_str);
     meta->tags_ready = false;
@@ -100,7 +107,7 @@ static read_meta *read_meta_create_empty(void)
 
 static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_comment)
 {
-    if (!meta) {
+    if (NULL == meta) {
         return;
     }
     size_t len = 0;
@@ -126,7 +133,12 @@ static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment)
     meta->rg = "";
     meta->rg_info = NULL;
     meta->runid = "";
+    free(meta->_basecaller);
+    meta->_basecaller = NULL;
     meta->basecaller = "";
+    free(meta->_modcallers);
+    meta->_modcallers = NULL;
+    meta->modcallers = "";
     meta->flow_cell_id = "";
     meta->sample_id = "";
     meta->barcode = "";
@@ -148,9 +160,35 @@ static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment)
     meta->tags_ready = false;
 }
 
-static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr)
+static void read_meta_set_caller(read_meta *meta, bool mod, const char *caller, size_t caller_len)
 {
-    if (!meta || !b) {
+    if (NULL == meta) {
+        return;
+    }
+
+    if (mod) {
+        free(meta->_modcallers);
+        meta->_modcallers = NULL;
+        meta->modcallers = "";
+        if (NULL != caller && caller_len > 0) {
+            meta->_modcallers = fc_strndup(caller, caller_len, "meta modcallers");
+            meta->modcallers = meta->_modcallers;
+        }
+        return;
+    }
+
+    free(meta->_basecaller);
+    meta->_basecaller = NULL;
+    meta->basecaller = "";
+    if (NULL != caller && caller_len > 0) {
+        meta->_basecaller = fc_strndup(caller, caller_len, "meta basecaller");
+        meta->basecaller = meta->_basecaller;
+    }
+}
+
+static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr, const fc_bam_rg_cache *rg_cache)
+{
+    if (NULL == meta || NULL == b) {
         return;
     }
     uint8_t *aux = bam_aux_first(b);
@@ -255,13 +293,93 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
         exit(EXIT_FAILURE);
     }
 
-    if (meta->rg && strlen(meta->rg)) {
+    // first try to get the RG info from the BAM header
+    const fc_bam_rg_entry *rg_entry = NULL;
+    if (NULL != hdr && NULL != rg_cache && NULL != meta->rg && meta->rg[0] != '\0') {
+        rg_entry = fc_bam_rg_cache_find(rg_cache, meta->rg);
+        if (NULL != rg_entry) {
+            if ('\0' == meta->runid[0] && NULL != rg_entry->runid && rg_entry->runid[0] != '\0') {
+                meta->runid = rg_entry->runid;
+            }
+            if ('\0' == meta->start_time[0] && NULL != rg_entry->dt && rg_entry->dt[0] != '\0') {
+                meta->start_time = rg_entry->dt;
+            }
+            if ('\0' == meta->sample_id[0] && NULL != rg_entry->lb && rg_entry->lb[0] != '\0') {
+                meta->sample_id = rg_entry->lb;
+            }
+            if ('\0' == meta->flow_cell_id[0] && NULL != rg_entry->pu && rg_entry->pu[0] != '\0') {
+                meta->flow_cell_id = rg_entry->pu;
+            }
+            if ('\0' == meta->barcode[0] && NULL != rg_entry->sm && rg_entry->sm[0] != '\0') {
+                meta->barcode = rg_entry->sm;
+                meta->ibarcode = 0;
+                if (strncmp(meta->barcode, "barcode", 7) == 0) {
+                    size_t val = 0;
+                    if (fc_parse_size_strict(meta->barcode + 7, &val) && val < FC_MAX_BARCODES) {
+                        meta->ibarcode = val;
+                    }
+                }
+            }
+            if ('\0' == meta->barcode_alias[0] && NULL != rg_entry->al && rg_entry->al[0] != '\0') {
+                meta->barcode_alias = rg_entry->al;
+            }
+        }
+    }
+
+    // fall back to parsing the RG string itself if we didn't find an entry in the BAM header
+    if (NULL != meta->rg && meta->rg[0] != '\0') {
         meta->rg_info = create_rg_info(meta->rg);
-        if (meta->rg_info->runid) {
+        if (meta->rg_info->runid && '\0' == meta->runid[0]) {
             meta->runid = meta->rg_info->runid;
         }
-        if (meta->rg_info->basecaller) {
+    }
+
+    // getting the basecaller info is a PITA because it has been stored in a few
+    // different ways over time and we still want to support them all. the order
+    // of precedence is:
+    // 1. basecall_model / modbase_models in the RG DS field from the BAM header
+    // 2. basecall_model_version_id / model_version_id / modbase_models in the
+    //    original FASTQ-style comment text
+    // 3. legacy parsing of the RG string itself
+    bool explicit_models = false;
+    if (NULL != rg_entry) {
+        if (NULL != rg_entry->basecall_model && rg_entry->basecall_model[0] != '\0') {
+            meta->basecaller = rg_entry->basecall_model;
+            explicit_models = true;
+        }
+        if (NULL != rg_entry->modbase_models && rg_entry->modbase_models[0] != '\0') {
+            meta->modcallers = rg_entry->modbase_models;
+            explicit_models = true;
+        }
+    }
+
+    // option 2.
+    if (!explicit_models && NULL != meta->orig_comment && meta->orig_comment[0] != '\0') {
+        const char *value = NULL;
+        size_t value_len = 0;
+        if (fc_find_value_for_key(meta->orig_comment, "basecall_model_version_id", &value, &value_len) && value_len > 0) {
+            read_meta_set_caller(meta, false, value, value_len);
+            explicit_models = true;
+        }
+        if (!explicit_models
+            && fc_find_value_for_key(meta->orig_comment, "model_version_id", &value, &value_len)
+            && value_len > 0) {
+            read_meta_set_caller(meta, false, value, value_len);
+            explicit_models = true;
+        }
+        if (fc_find_value_for_key(meta->orig_comment, "modbase_models", &value, &value_len) && value_len > 0) {
+            read_meta_set_caller(meta, true, value, value_len);
+            explicit_models = true;
+        }
+    }
+
+    // option 3.
+    if (!explicit_models && NULL != meta->rg_info) {
+        if (NULL != meta->rg_info->basecaller) {
             meta->basecaller = meta->rg_info->basecaller;
+        }
+        if (NULL != meta->rg_info->modcaller) {
+            meta->modcallers = meta->rg_info->modcaller;
         }
     }
 }

@@ -11,6 +11,7 @@ TEMPLATE_BARCODE = "__FASTCAT_SAMPLE_BARCODE_HTML__"
 TEMPLATE_BARCODE_ALIAS = "__FASTCAT_BARCODE_ALIAS_HTML__"
 TEMPLATE_RUN_ID = "__FASTCAT_RUN_ID_HTML__"
 TEMPLATE_BASECALLER = "__FASTCAT_BASECALLER_HTML__"
+TEMPLATE_MODBASE = "__FASTCAT_MODBASE_HTML__"
 TEMPLATE_FLOW_CELL_ID = "__FASTCAT_FLOW_CELL_ID_HTML__"
 TEMPLATE_RUN_DATE = "__FASTCAT_RUN_DATE_HTML__"
 TEMPLATE_RUN_DURATION = "__FASTCAT_RUN_DURATION_HTML__"
@@ -57,7 +58,7 @@ def main(args):
     (out_dir / "metadata.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     (out_dir / "run_summary.tsv").write_text(
-        "sample_id\tinput_type\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tflow_cell_id\trun_date\t"
+        "sample_id\tinput_type\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tmodbase_models\tflow_cell_id\trun_date\t"
         "run_duration_s\tread_count\tbase_count\tn50_bp\tl50\n"
         f"{alias}\t"
         f"{TEMPLATE_INPUT_TYPE if args.template else 'fastq'}\t"
@@ -65,6 +66,7 @@ def main(args):
         f"{TEMPLATE_BARCODE_ALIAS if args.template else 'Synthetic reads'}\t"
         f"{TEMPLATE_RUN_ID if args.template else 'synthetic-run'}\t"
         f"{TEMPLATE_BASECALLER if args.template else 'dna_r10.4.1_e8.2_400bps_sup@v5.2.0'}\t"
+        f"{TEMPLATE_MODBASE if args.template else 'dna_r10.4.1_e8.2_400bps_hac@v5.2.0_5mCG_5hmCG@v1'}\t"
         f"{TEMPLATE_FLOW_CELL_ID if args.template else 'synthetic-flowcell'}\t"
         f"{TEMPLATE_RUN_DATE if args.template else '2026-01-01 00:00:00'}\t"
         f"{TEMPLATE_RUN_DURATION if args.template else '172800'}\t"

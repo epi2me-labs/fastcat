@@ -252,25 +252,32 @@ static char *html_unescape_basic(const char *text)
 {
     kstring_t ks = { 0, 0, NULL };
     const char *p = text ? text : "";
-    while (*p != '\0') {
-        if (strncmp(p, "&lt;", 4) == 0) {
+    size_t remaining = strlen(p);
+    while (0 < remaining) {
+        if (remaining >= 4 && strncmp(p, "&lt;", 4) == 0) {
             report_kputc(&ks, '<');
             p += 4;
-        } else if (strncmp(p, "&gt;", 4) == 0) {
+            remaining -= 4;
+        } else if (remaining >= 4 && strncmp(p, "&gt;", 4) == 0) {
             report_kputc(&ks, '>');
             p += 4;
-        } else if (strncmp(p, "&amp;", 5) == 0) {
+            remaining -= 4;
+        } else if (remaining >= 5 && strncmp(p, "&amp;", 5) == 0) {
             report_kputc(&ks, '&');
             p += 5;
-        } else if (strncmp(p, "&quot;", 6) == 0) {
+            remaining -= 5;
+        } else if (remaining >= 6 && strncmp(p, "&quot;", 6) == 0) {
             report_kputc(&ks, '"');
             p += 6;
-        } else if (strncmp(p, "&#39;", 5) == 0) {
+            remaining -= 6;
+        } else if (remaining >= 5 && strncmp(p, "&#39;", 5) == 0) {
             report_kputc(&ks, '\'');
             p += 5;
+            remaining -= 5;
         } else {
             report_kputc(&ks, *p);
             p++;
+            remaining -= 1;
         }
     }
     return report_steal(&ks);
@@ -2299,6 +2306,10 @@ static char *render_report_html(
         (summary && summary->basecaller_model && summary->basecaller_model[0] != '\0')
             ? summary->basecaller_model
             : "(not found)");
+    char *modbase_html = html_escape(
+        (summary && summary->modbase_models && summary->modbase_models[0] != '\0')
+            ? summary->modbase_models
+            : "(not found)");
     char *input_type_html = html_escape(
         (summary && summary->input_type && summary->input_type[0] != '\0')
             ? summary->input_type
@@ -2324,6 +2335,7 @@ static char *render_report_html(
     replace_all(&html, "__FASTCAT_BARCODE_ALIAS_HTML__", barcode_alias_html);
     replace_all(&html, "__FASTCAT_RUN_ID_HTML__", run_id_html);
     replace_all(&html, "__FASTCAT_BASECALLER_HTML__", basecaller_html);
+    replace_all(&html, "__FASTCAT_MODBASE_HTML__", modbase_html);
     replace_all(&html, "__FASTCAT_INPUT_TYPE_HTML__", input_type_html);
     replace_all(&html, "__FASTCAT_FLOW_CELL_ID_HTML__", flow_cell_html);
     replace_all(&html, "__FASTCAT_RUN_DATE_HTML__", run_date_html);
@@ -2340,6 +2352,7 @@ static char *render_report_html(
     free(barcode_alias_html);
     free(run_id_html);
     free(basecaller_html);
+    free(modbase_html);
     free(input_type_html);
     free(flow_cell_html);
     free(run_date_html);
@@ -2444,6 +2457,7 @@ static int write_report_for_output_dir(
     free(html);
 
 cleanup:
+    fc_run_summary_row_destroy(&summary);
     report_hist_destroy(&length);
     report_hist_destroy(&quality);
     free(report_path);

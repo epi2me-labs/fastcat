@@ -495,6 +495,64 @@ char *fc_strdup(const char *s, const char *msg)
     return copy;
 }
 
+char *fc_strndup(const char *s, size_t len, const char *msg)
+{
+    if (NULL == s) {
+        return NULL;
+    }
+    char *copy = fc_alloc(len + 1, sizeof(char), msg);
+    memcpy(copy, s, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+bool fc_find_value_for_key(const char *text, const char *key, const char **value, size_t *value_len)
+{
+    if (NULL != value) {
+        *value = NULL;
+    }
+    if (NULL != value_len) {
+        *value_len = 0;
+    }
+    if (NULL == text || NULL == key || key[0] == '\0') {
+        return false;
+    }
+
+    size_t key_len = strlen(key);
+    const char *p = text;
+    while (*p) {
+        while (*p == ' ' || *p == '\t') {
+            ++p;
+        }
+        if ('\0' == *p) {
+            break;
+        }
+
+        const char *token = p;
+        while (*p && *p != ' ' && *p != '\t') {
+            ++p;
+        }
+
+        const char *eq = memchr(token, '=', (size_t)(p - token));
+        if (NULL == eq || eq == token || eq + 1 >= p) {
+            continue;
+        }
+        if ((size_t)(eq - token) != key_len || strncmp(token, key, key_len) != 0) {
+            continue;
+        }
+
+        if (NULL != value) {
+            *value = eq + 1;
+        }
+        if (NULL != value_len) {
+            *value_len = (size_t)(p - (eq + 1));
+        }
+        return true;
+    }
+
+    return false;
+}
+
 int replace_char(char *str, char orig, char rep)
 {
     char *ix = str;

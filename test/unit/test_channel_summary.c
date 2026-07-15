@@ -144,7 +144,7 @@ FC_TEST(channel_summary_suite, test_channel_summary_reads_bam_mx_tag_into_meta)
     TEST_ASSERT_TRUE(bam_aux_update_int(read->bam, "ch", 42) >= 0);
     TEST_ASSERT_TRUE(bam_aux_update_int(read->bam, "mx", 3) >= 0);
 
-    fc_read_reset_from_bam(read, NULL, NULL);
+    fc_read_reset_from_bam(read, NULL, NULL, NULL);
     TEST_ASSERT_EQUAL_size_t(42, read->meta->channel);
     TEST_ASSERT_EQUAL_size_t(3, read->meta->mux);
 

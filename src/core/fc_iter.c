@@ -142,6 +142,7 @@ static bool fc_iter_filter_dust_bam(
 
 static bool fc_iter_process_bam_record(
     fc_read *out, const bam_hdr_t *hdr, const kstring_t *orig_comment,
+    const fc_bam_rg_cache *rg_cache,
     const fc_iter_opts *opts, bool apply_filters, fc_file_stats *stats,
     double *q_sum, double *q_comp, dust_buffer *dust)
 {
@@ -177,20 +178,20 @@ static bool fc_iter_process_bam_record(
     }
 
     fc_iter_accum_add(len, mean_q, stats, q_sum, q_comp);
-    fc_read_reset_from_bam(out, hdr, orig_comment);
+    fc_read_reset_from_bam(out, hdr, rg_cache, orig_comment);
     return true;
 }
 
 static bool fastq_iter_process_record(fc_fastq_iter *iter, fc_read *out)
 {
-    return fc_iter_process_bam_record(out, NULL, &iter->seq->comment,
+    return fc_iter_process_bam_record(out, NULL, &iter->seq->comment, NULL,
         &iter->opts, iter->apply_filters, &iter->stats,
         &iter->q_sum, &iter->q_comp, &iter->dust);
 }
 
 static bool bam_iter_process_record(fc_bam_iter *iter, fc_read *out)
 {
-    return fc_iter_process_bam_record(out, iter->hdr, NULL,
+    return fc_iter_process_bam_record(out, iter->hdr, NULL, iter->rg_cache,
         &iter->opts, iter->apply_filters, &iter->stats,
         &iter->q_sum, &iter->q_comp, &iter->dust);
 }
@@ -388,6 +389,10 @@ static int fc_bam_iter_open(
 
     iter->fp = fp;
     iter->hdr = hdr;
+    iter->rg_cache = fc_bam_rg_cache_create(hdr);
+    if (NULL == iter->rg_cache) {
+        return -1;
+    }
     iter->idx = idx;
     iter->own_idx = false;
 
@@ -580,6 +585,10 @@ static void fc_bam_iter_close(fc_bam_iter *iter)
     if (iter->hdr) {
         sam_hdr_destroy(iter->hdr);
         iter->hdr = NULL;
+    }
+    if (iter->rg_cache) {
+        fc_bam_rg_cache_destroy(iter->rg_cache);
+        iter->rg_cache = NULL;
     }
     if (iter->fp) {
         hts_close(iter->fp);

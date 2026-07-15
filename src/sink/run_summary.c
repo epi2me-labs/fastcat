@@ -66,15 +66,16 @@ static FILE *run_summary_open_output(const run_summary_sink *sink, size_t barcod
 static void run_summary_write_row(FILE *fp, const fc_run_summary_row *row)
 {
     fprintf(fp,
-        "sample_id\tinput_type\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tflow_cell_id\trun_date\t"
+        "sample_id\tinput_type\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tmodbase_models\tflow_cell_id\trun_date\t"
         "run_duration_s\tread_count\tbase_count\tn50_bp\tl50\n");
-    fprintf(fp, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t",
+    fprintf(fp, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t",
         row->sample_id ? row->sample_id : "",
         row->input_type ? row->input_type : "",
         row->barcode_id ? row->barcode_id : "",
         row->barcode_alias ? row->barcode_alias : "",
         row->run_id ? row->run_id : "",
         row->basecaller_model ? row->basecaller_model : "",
+        row->modbase_models ? row->modbase_models : "",
         row->flow_cell_id ? row->flow_cell_id : "",
         row->run_date ? row->run_date : "");
     if (isfinite(row->run_duration_s)) {
@@ -121,6 +122,7 @@ static void run_summary_write_output(const run_summary_sink *sink, size_t barcod
     FILE *fp = run_summary_open_output(sink, barcode);
     run_summary_write_row(fp, &row);
     fclose(fp);
+    fc_run_summary_row_destroy(&row);
 }
 
 static void run_summary_sink_finish(void *ctx)
