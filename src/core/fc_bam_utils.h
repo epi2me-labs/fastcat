@@ -6,6 +6,8 @@
 
 #include "htslib/sam.h"
 
+#include "core/fc_bam_rg_cache.h"
+
 // parameters for bam iteration
 typedef struct {
     htsFile *fp;

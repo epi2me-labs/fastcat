@@ -9,6 +9,7 @@
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
 
+#include "core/fc_bam_rg_cache.h"
 #include "core/fc_bam_utils.h"
 #include "core/fc_common.h"
 #include "core/fc_failures.h"
@@ -84,6 +85,7 @@ typedef struct {
 typedef struct {
     htsFile *fp;
     sam_hdr_t *hdr;
+    fc_bam_rg_cache *rg_cache;
     mplp_data *bam;
     hts_idx_t *idx;
     fc_iter_opts opts;

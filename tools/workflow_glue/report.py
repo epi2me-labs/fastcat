@@ -123,6 +123,7 @@ def load_run_summary(path):
         ("Barcode alias", discovered("barcode_alias")),
         ("Run ID", discovered("run_id")),
         ("Basecaller model", discovered("basecaller_model")),
+        ("Modbase models", discovered("modbase_models")),
         ("Flowcell ID", discovered("flow_cell_id")),
         ("Run date", discovered("run_date")),
         ("Run duration", discovered("run_duration_s", _format_duration_seconds)),

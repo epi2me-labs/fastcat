@@ -11,14 +11,15 @@
 typedef struct fc_run_summary fc_run_summary;
 
 typedef struct {
-    const char *sample_id;
-    const char *input_type;
-    const char *barcode_id;
-    const char *barcode_alias;
-    const char *run_id;
-    const char *basecaller_model;
-    const char *flow_cell_id;
-    const char *run_date;
+    char *sample_id;
+    char *input_type;
+    char *barcode_id;
+    char *barcode_alias;
+    char *run_id;
+    char *basecaller_model;
+    char *modbase_models;
+    char *flow_cell_id;
+    char *run_date;
     double run_duration_s;
     size_t read_count;
     size_t base_count;
@@ -42,5 +43,7 @@ int fc_run_summary_materialize(
     const char *sample_id,
     const char *barcode_id,
     fc_run_summary_row *out);
+
+void fc_run_summary_row_destroy(fc_run_summary_row *row);
 
 #endif

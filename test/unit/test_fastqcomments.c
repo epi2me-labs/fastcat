@@ -36,7 +36,7 @@ static void read_from_comment(fc_read *read, const char* comment) {
     }
 
     fc_bam_ensure_mean_quality(read->bam, false);
-    fc_read_reset_from_bam(read, NULL, NULL);
+    fc_read_reset_from_bam(read, NULL, NULL, &c);
 
     char *tmp = realloc(read->meta->orig_comment, c.l + 1);
     TEST_ASSERT_NOT_NULL(tmp);
@@ -71,6 +71,7 @@ FC_TEST(fastqcomments_suite, test_parse_simple_comment)
     read_from_comment(read, comment);
     read_meta *meta = read->meta;
     TEST_ASSERT_EQUAL_STRING(runid, meta->runid);
+    TEST_ASSERT_EQUAL_STRING(model, meta->basecaller);
     TEST_ASSERT_EQUAL_STRING("barcode12", meta->barcode);
     TEST_ASSERT_EQUAL_INT(12, meta->ibarcode);
     TEST_ASSERT_EQUAL_STRING("2023-01-01T00:00:00Z", meta->start_time);
@@ -81,6 +82,104 @@ FC_TEST(fastqcomments_suite, test_parse_simple_comment)
     TEST_ASSERT_NOT_NULL(strstr(tags, "st:Z:2023-01-01T00:00:00Z"));
     TEST_ASSERT_NOT_NULL(strstr(tags, "du:f:1.25"));
     destroy_read(read);
+}
+
+FC_TEST(fastqcomments_suite, test_parse_modbase_models_from_comment)
+{
+    const char *runid = "e4994c62-93f9-439a-bc8f-d20c95a137a5";
+    const char *model = "rna004_130bps_sup@2025-01-22_n1mpU";
+    const char *modbase =
+        "rna004_130bps_hac@v5.1.0_inosine_m6A@v1,rna004_130bps_hac@v5.2.0_pseU@v1";
+    char comment[512];
+    FC_SNPRINTF_CHECK(
+        comment,
+        sizeof(comment),
+        "runid=%s basecall_model_version_id=%s modbase_models=%s",
+        runid,
+        model,
+        modbase);
+
+    fc_read *read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(read);
+    read_from_comment(read, comment);
+    TEST_ASSERT_EQUAL_STRING(model, read->meta->basecaller);
+    TEST_ASSERT_EQUAL_STRING(modbase, read->meta->modcallers);
+    destroy_read(read);
+}
+
+FC_TEST(fastqcomments_suite, test_parse_multiple_modbase_models_from_comment_as_one_string)
+{
+    const char *runid = "e4994c62-93f9-439a-bc8f-d20c95a137a5";
+    const char *model = "rna004_130bps_fast@v5.1.0";
+    const char *modbase =
+        "rna004_130bps_hac@v5.1.0_inosine_m6A@v1,rna004_130bps_hac@v5.2.0_pseU@v1";
+    char comment[512];
+    FC_SNPRINTF_CHECK(
+        comment,
+        sizeof(comment),
+        "runid=%s basecall_model_version_id=%s modbase_models=%s",
+        runid,
+        model,
+        modbase);
+
+    fc_read *read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(read);
+    read_from_comment(read, comment);
+    TEST_ASSERT_EQUAL_STRING(model, read->meta->basecaller);
+    TEST_ASSERT_EQUAL_STRING(modbase, read->meta->modcallers);
+    destroy_read(read);
+}
+
+FC_TEST(fastqcomments_suite, test_parse_model_version_id_alias_from_comment)
+{
+    const char *model = "rna004_130bps_sup@2025-06-12_canonical-integrity";
+    fc_read *read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(read);
+    read_from_comment(read, "runid=e4994c62-93f9-439a-bc8f-d20c95a137a5 model_version_id=rna004_130bps_sup@2025-06-12_canonical-integrity");
+    TEST_ASSERT_EQUAL_STRING(model, read->meta->basecaller);
+    TEST_ASSERT_EQUAL_STRING("", read->meta->modcallers);
+    destroy_read(read);
+}
+
+FC_TEST(fastqcomments_suite, test_fastq_ds_is_ignored_for_model_parsing)
+{
+    fc_read *read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(read);
+    read_from_comment(
+        read,
+        "runid=e4994c62-93f9-439a-bc8f-d20c95a137a5 DS=QuadroRTX6000 "
+        "basecall_model_version_id=rna004_130bps_fast@v5.1.0");
+    TEST_ASSERT_EQUAL_STRING("rna004_130bps_fast@v5.1.0", read->meta->basecaller);
+    TEST_ASSERT_EQUAL_STRING("", read->meta->modcallers);
+    const char *tags = get_tags(read);
+    TEST_ASSERT_NULL(strstr(tags, "DS:Z:QuadroRTX6000"));
+    TEST_ASSERT_NOT_NULL(strstr(tags, "CO:Z:DS=QuadroRTX6000"));
+    destroy_read(read);
+}
+
+FC_TEST(fastqcomments_suite, test_parse_proprietary_model_comment_variants)
+{
+    fc_read *canonical = fc_read_init();
+    TEST_ASSERT_NOT_NULL(canonical);
+    read_from_comment(
+        canonical,
+        "runid=e4994c62-93f9-439a-bc8f-d20c95a137a5 "
+        "basecall_model_version_id=rna004_130bps_sup@2025-06-12_canonical-integrity "
+        "modbase_models=modbase_model_version_id");
+    TEST_ASSERT_EQUAL_STRING("rna004_130bps_sup@2025-06-12_canonical-integrity", canonical->meta->basecaller);
+    TEST_ASSERT_EQUAL_STRING("modbase_model_version_id", canonical->meta->modcallers);
+    destroy_read(canonical);
+
+    fc_read *n1mpu = fc_read_init();
+    TEST_ASSERT_NOT_NULL(n1mpu);
+    read_from_comment(
+        n1mpu,
+        "runid=e4994c62-93f9-439a-bc8f-d20c95a137a5 "
+        "basecall_model_version_id=rna004_130bps_sup@2025-01-22_n1mpU "
+        "modbase_models=modbase_model_version_id");
+    TEST_ASSERT_EQUAL_STRING("rna004_130bps_sup@2025-01-22_n1mpU", n1mpu->meta->basecaller);
+    TEST_ASSERT_EQUAL_STRING("modbase_model_version_id", n1mpu->meta->modcallers);
+    destroy_read(n1mpu);
 }
 
 FC_TEST(fastqcomments_suite, test_original_comment_preserved)
@@ -163,6 +262,21 @@ FC_TEST(fastqcomments_suite, test_sam_style_tabs)
     destroy_read(read);
 }
 
+FC_TEST(fastqcomments_suite, test_sam_style_z_tag_preserves_internal_spaces)
+{
+    fc_read *read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(read);
+    read_from_comment(read, "RG:Z:rg1\tZZ:Z:hello world\tSM:Z:barcode01");
+
+    uint8_t *zz_aux = bam_aux_get(read->bam, "ZZ");
+    TEST_ASSERT_NOT_NULL(zz_aux);
+    TEST_ASSERT_EQUAL_STRING("hello world", bam_aux2Z(zz_aux));
+
+    const char *tags = get_tags(read);
+    TEST_ASSERT_NOT_NULL(strstr(tags, "ZZ:Z:hello world"));
+    destroy_read(read);
+}
+
 FC_TEST(fastqcomments_suite, test_barcode_unclassified)
 {
     fc_read *read = fc_read_init();
@@ -210,6 +324,7 @@ FC_TEST(fastqcomments_suite, test_rg_populates_runid_and_basecaller)
     read_meta *meta = read->meta;
     TEST_ASSERT_EQUAL_STRING("12345678-1234-1234-1234-123456789012", meta->runid);
     TEST_ASSERT_EQUAL_STRING("sup@v1", meta->basecaller);
+    TEST_ASSERT_EQUAL_STRING("", meta->modcallers);
     TEST_ASSERT_NULL(meta->rg_info->barcode);
     TEST_ASSERT_NOT_NULL(strstr(get_tags(read), "RG:Z:12345678-1234-1234-1234-123456789012_sup@v1"));
     destroy_read(read);
@@ -226,9 +341,23 @@ FC_TEST(fastqcomments_suite, test_rg_fallback)
     read_meta *meta = read->meta;
     TEST_ASSERT_EQUAL_STRING("12345678-1234-1234-1234-123456789012", meta->runid);
     TEST_ASSERT_EQUAL_STRING("sup@v4.0.0", meta->basecaller);
+    TEST_ASSERT_EQUAL_STRING("", meta->modcallers);
     TEST_ASSERT_EQUAL_STRING("barcode07", meta->barcode);
     TEST_ASSERT_EQUAL_INT(7, meta->ibarcode);
     TEST_ASSERT_NOT_NULL(strstr(get_tags(read), "RG:Z:12345678-1234-1234-1234-123456789012_sup@v4.0.0_barcode07"));
+    destroy_read(read);
+}
+
+FC_TEST(fastqcomments_suite, test_rg_fallback_populates_modcallers)
+{
+    const char *rg = "12345678-1234-1234-1234-123456789012_sup@v1_mod@v2_barcode07";
+    char buf[256];
+    FC_SNPRINTF_CHECK(buf, sizeof(buf), "RG:Z:%s\tSM:Z:barcode07", rg);
+    fc_read *read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(read);
+    read_from_comment(read, buf);
+    TEST_ASSERT_EQUAL_STRING("sup@v1", read->meta->basecaller);
+    TEST_ASSERT_EQUAL_STRING("mod@v2", read->meta->modcallers);
     destroy_read(read);
 }
 
@@ -278,7 +407,7 @@ FC_TEST(fastqcomments_suite, test_reheader_roundtrip_preserves_aux)
     bam_destroy1(read2->bam);
     read2->bam = b2;
     fc_bam_ensure_mean_quality(read2->bam, false);
-    fc_read_reset_from_bam(read2, NULL, NULL);
+    fc_read_reset_from_bam(read2, NULL, NULL, NULL);
     const kstring_t *aux1 = fc_read_get_tags_str(read);
     const kstring_t *aux2 = fc_read_get_tags_str(read2);
     TEST_ASSERT_NOT_NULL(aux1);

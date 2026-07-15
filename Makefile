@@ -243,6 +243,7 @@ CORE_SRCS := \
 	src/core/fc_report.c \
 	src/core/fc_report_arg_table.c \
 	src/core/fc_report_template_data.c \
+	src/core/fc_bam_rg_cache.c \
 	src/core/fc_read.c \
 	src/core/fc_filter.c \
 	src/core/fc_bam_utils.c \
@@ -816,13 +817,14 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/time_bin_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/channel_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/run_summary.tsv
+	# TODO: these HTML content greps are brittle; prefer structural checks or remove low-value text assertions
 	grep -q "Fastcat Sequencing QC Report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Quality diagnostics" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Read length" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Translocation speed" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Sequencing over time" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Cumulative base yield" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
-	grep -q "read count" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	grep -q "Read count" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Channel occupancy" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "__FASTCAT_" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "fc_patch_fastcat_report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
