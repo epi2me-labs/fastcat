@@ -108,6 +108,23 @@ def _format_n50(value):
     return f"{value / 1000.0:.3g} kbp"
 
 
+def _format_n_range(row, center, upper, lower):
+    """Format an N statistic with its high-to-low N10--N90 range."""
+    return (
+        f"{_summary_display_text(row.get(center), _format_n50)} "
+        f"({_summary_display_text(row.get(upper), _format_n50)} - "
+        f"{_summary_display_text(row.get(lower), _format_n50)})")
+
+
+def _format_l_range(row, center, lower, upper):
+    """Format an L statistic with its low-to-high L10--L90 range."""
+    format_count = lambda value: f"{int(float(value))}"
+    return (
+        f"{_summary_display_text(row.get(center), format_count)} "
+        f"({_summary_display_text(row.get(lower), format_count)} - "
+        f"{_summary_display_text(row.get(upper), format_count)})")
+
+
 def load_run_summary(path):
     """Load fastcat run_summary.tsv and format the top summary table."""
     df = pd.read_csv(path, sep="\t", dtype=str).fillna("")
@@ -129,8 +146,8 @@ def load_run_summary(path):
         ("Run duration", discovered("run_duration_s", _format_duration_seconds)),
         ("Yield", _summary_display_text(row.get("base_count"), _format_yield_bases)),
         ("Read count", _summary_display_text(row.get("read_count"), lambda v: f"{int(float(v))}")),
-        ("N50", _summary_display_text(row.get("n50_bp"), _format_n50)),
-        ("L50", _summary_display_text(row.get("l50"), lambda v: f"{int(float(v))}")),
+        ("N50 (N10-N90)", _format_n_range(row, "n50_bp", "n10_bp", "n90_bp")),
+        ("L50 (L10-L90)", _format_l_range(row, "l50", "l10", "l90")),
     ]
     return rows
 

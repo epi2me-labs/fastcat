@@ -8,13 +8,24 @@ import re
 
 
 DOCS_JSON_RE = re.compile(
-    r"const docs_json = '(.*?)';\n        const render_items",
+    r"const docs_json = '(.*?)';\n        const render_items = ",
+    flags=re.DOTALL,
+)
+RENDER_ITEMS_RE = re.compile(
+    r"const render_items = (\[.*?\]);\n        root\.Bokeh\.embed\.embed_items",
     flags=re.DOTALL,
 )
 DOCS_JSON_PLACEHOLDER = "__FASTCAT_BOKEH_DOCS_JSON__"
 BOUND_VALUE_SENTINEL = "__FASTCAT_DEADBEEF__"
 
 MIN_EXPECTED_FIGURES = 14
+
+
+def deterministic_gzip(data):
+    """Compress data without Python-version-specific gzip header metadata."""
+    compressed = bytearray(gzip.compress(data, compresslevel=9, mtime=0))
+    compressed[9] = 255  # gzip OS field: unknown, rather than the host platform
+    return bytes(compressed)
 
 
 def argparser():
@@ -25,6 +36,9 @@ def argparser():
     parser.add_argument("--template-output", help="optional patched runtime template HTML")
     parser.add_argument("--header", required=True, help="output header path")
     parser.add_argument("--source", required=True, help="output C source path")
+    parser.add_argument(
+        "--verify-source",
+        help="verify this existing C source contains the generated template")
     parser.add_argument("--symbol", default="fc_report_template_html", help="symbol base name")
     return parser
 
@@ -277,6 +291,67 @@ def scrub_bound_values(docs, bindings):
         attrs[binding["attr"]] = BOUND_VALUE_SENTINEL
 
 
+def canonicalize_bokeh_ids(docs, bindings, html):
+    """Replace Bokeh's generated document and model IDs with stable IDs.
+
+    Model IDs are present in both ``docs_json`` and the adjacent
+    ``render_items`` JavaScript. Canonicalising only the document would leave
+    those structures referring to different models at runtime.
+    """
+    id_map = {}
+    canonical_docs = {}
+
+    for index, (doc_id, document) in enumerate(docs.items()):
+        canonical_id = f"d{index}"
+        id_map[doc_id] = canonical_id
+        canonical_docs[canonical_id] = document
+
+    def collect(value):
+        if isinstance(value, dict):
+            model_id = value.get("id")
+            if isinstance(model_id, str) and model_id not in id_map:
+                id_map[model_id] = f"m{len(id_map) - len(canonical_docs)}"
+            for item in value.values():
+                collect(item)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+
+    def replace(value):
+        if isinstance(value, dict):
+            model_id = value.get("id")
+            if model_id in id_map:
+                value["id"] = id_map[model_id]
+            for item in value.values():
+                replace(item)
+        elif isinstance(value, list):
+            for item in value:
+                replace(item)
+
+    collect(canonical_docs)
+    replace(canonical_docs)
+    for binding in bindings:
+        binding["model_id"] = id_map[binding["model_id"]]
+
+    render_items_match = RENDER_ITEMS_RE.search(html)
+    if not render_items_match:
+        raise RuntimeError("could not find Bokeh render_items")
+    render_items = json.loads(render_items_match.group(1))
+    root_count = 0
+    for item in render_items:
+        for root_id in item.get("roots", {}).values():
+            if root_id not in id_map:
+                id_map[root_id] = f"r{root_count}"
+                root_count += 1
+
+    # The docs_json assignment is replaced below, but render_items remains in
+    # the HTML and must use the same canonical document/model/root IDs. Root
+    # IDs also occur as HTML div IDs, so replacing quoted values covers both.
+    for old, new in sorted(id_map.items(), key=lambda item: len(item[0]), reverse=True):
+        html = re.sub(rf"(?<=[\"']){re.escape(old)}(?=[\"'])", new, html)
+    return canonical_docs, html
+
+
 def extract_bokeh_document(html):
     match = DOCS_JSON_RE.search(html)
     if not match:
@@ -410,9 +485,10 @@ def extract_bokeh_document(html):
     add_null_state_bindings(bindings, "channel_bases", fig_channel_bases, colorbar=True)
 
     scrub_bound_values(docs, bindings)
-    docs_json = json.dumps(docs, separators=(",", ":"))
-    assignment = f"const docs_json = {DOCS_JSON_PLACEHOLDER};\n        const render_items"
+    assignment = f"const docs_json = {DOCS_JSON_PLACEHOLDER};\n        const render_items = "
     html = html[:match.start()] + assignment + html[match.end():]
+    docs, html = canonicalize_bokeh_ids(docs, bindings, html)
+    docs_json = json.dumps(docs, separators=(",", ":"))
     return html, docs_json, bindings
 
 
@@ -477,6 +553,10 @@ def apply_fastcat_template_wording(html):
     html = remove_versions_panel(html)
     html = replace_params_table(html)
     html = html.replace(" nextflow workflow (", " (")
+    # The template's section menu is custom markup, not a Bootstrap dropdown.
+    # Bootstrap ScrollSpy treats its items as dropdown entries and crashes when
+    # trying to activate their nonexistent .dropdown parent.
+    html = html.replace(' data-bs-spy="scroll"', "")
     return html
 
 
@@ -509,13 +589,59 @@ def emit_bindings(bindings, symbol):
     return "\n".join(lines)
 
 
+def c_array_bytes(source_text, symbol, name):
+    match = re.search(
+        rf"const unsigned char {re.escape(symbol)}_{re.escape(name)}\[\] = \{{\n(.*?)\n\}};",
+        source_text,
+        flags=re.DOTALL,
+    )
+    if not match:
+        raise RuntimeError(f"could not find {symbol}_{name} in generated C source")
+    return bytes(int(value, 16) for value in re.findall(r"0x[0-9a-f]{2}", match.group(1)))
+
+
+def verify_c_assets(html, docs_json, bindings, source_path, symbol):
+    """Verify generated asset contents without depending on zlib byte output."""
+    source_text = source_path.read_text(encoding="utf-8")
+    raw = html.encode("utf-8")
+    docs_raw = docs_json.encode("utf-8")
+    gz = c_array_bytes(source_text, symbol, "gz")
+    docs_gz = c_array_bytes(source_text, symbol, "docs_json_gz")
+
+    if gzip.decompress(gz) != raw:
+        raise RuntimeError("embedded report template does not match generated HTML")
+    if gzip.decompress(docs_gz) != docs_raw:
+        raise RuntimeError("embedded Bokeh document does not match generated document")
+
+    expected_bindings = emit_bindings(bindings, symbol)
+    bindings_match = re.search(
+        rf"(const fc_report_template_binding {re.escape(symbol)}_bindings\[\] = \{{.*?"
+        rf"const size_t {re.escape(symbol)}_binding_count = \d+;)",
+        source_text,
+        flags=re.DOTALL,
+    )
+    if not bindings_match or bindings_match.group(1) != expected_bindings:
+        raise RuntimeError("embedded Bokeh bindings do not match generated bindings")
+
+    expected_sizes = {
+        "gz_len": len(gz),
+        "len": len(raw),
+        "docs_json_gz_len": len(docs_gz),
+        "docs_json_len": len(docs_raw),
+    }
+    for name, value in expected_sizes.items():
+        declaration = f"const size_t {symbol}_{name} = {value};"
+        if declaration not in source_text:
+            raise RuntimeError(f"embedded report template has an incorrect {name}")
+
+
 def emit_c_assets(html, docs_json, bindings, header_path, source_path, symbol):
     raw = html.encode("utf-8")
-    compressed = gzip.compress(raw, compresslevel=9, mtime=0)
+    compressed = deterministic_gzip(raw)
     array_payload = bytes_to_c_array(compressed)
 
     docs_raw = docs_json.encode("utf-8")
-    docs_compressed = gzip.compress(docs_raw, compresslevel=9, mtime=0)
+    docs_compressed = deterministic_gzip(docs_raw)
     docs_array_payload = bytes_to_c_array(docs_compressed)
 
     guard = f"{symbol.upper()}_DATA_H"
@@ -588,4 +714,6 @@ def main(args):
         template_path.write_text(html, encoding="utf-8")
 
     emit_c_assets(html, docs_json, bindings, Path(args.header), Path(args.source), args.symbol)
+    if args.verify_source:
+        verify_c_assets(html, docs_json, bindings, Path(args.verify_source), args.symbol)
     return 0

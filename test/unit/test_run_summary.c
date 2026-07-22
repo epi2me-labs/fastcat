@@ -214,3 +214,41 @@ FC_TEST(run_summary_suite, test_run_summary_classifies_bam_input_type)
     fc_stats_engine_destroy(engine);
     fc_run_summary_destroy(model);
 }
+
+FC_TEST(run_summary_suite, test_run_summary_nxx_lxx_metrics)
+{
+    fc_run_summary *model = fc_run_summary_create(1);
+    read_stats *length_stats = create_length_stats();
+    TEST_ASSERT_NOT_NULL(model);
+    TEST_ASSERT_NOT_NULL(length_stats);
+
+    add_run_summary_read(model, 0, 100, "sample", "run", "model", "", "flow", "alias", "");
+    add_run_summary_read(model, 0, 200, "sample", "run", "model", "", "flow", "alias", "");
+    add_run_summary_read(model, 0, 400, "sample", "run", "model", "", "flow", "alias", "");
+    add_length_count(length_stats, 100);
+    add_length_count(length_stats, 200);
+    add_length_count(length_stats, 400);
+
+    fc_run_summary_row row = { 0 };
+    TEST_ASSERT_EQUAL_INT(0,
+        fc_run_summary_materialize(model, 0, NULL, false, length_stats, "fallback", "all", &row));
+
+    TEST_ASSERT_EQUAL_UINT64(400, row.n5_bp);
+    TEST_ASSERT_EQUAL_UINT64(400, row.n10_bp);
+    TEST_ASSERT_EQUAL_UINT64(400, row.n25_bp);
+    TEST_ASSERT_EQUAL_UINT64(400, row.n50_bp);
+    TEST_ASSERT_EQUAL_UINT64(200, row.n75_bp);
+    TEST_ASSERT_EQUAL_UINT64(100, row.n90_bp);
+    TEST_ASSERT_EQUAL_UINT64(100, row.n95_bp);
+    TEST_ASSERT_EQUAL_UINT64(1, row.l5);
+    TEST_ASSERT_EQUAL_UINT64(1, row.l10);
+    TEST_ASSERT_EQUAL_UINT64(1, row.l25);
+    TEST_ASSERT_EQUAL_UINT64(1, row.l50);
+    TEST_ASSERT_EQUAL_UINT64(2, row.l75);
+    TEST_ASSERT_EQUAL_UINT64(3, row.l90);
+    TEST_ASSERT_EQUAL_UINT64(3, row.l95);
+
+    fc_run_summary_row_destroy(&row);
+    destroy_length_stats(length_stats);
+    fc_run_summary_destroy(model);
+}

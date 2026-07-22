@@ -286,7 +286,8 @@ CLI_SRCS := \
 	src/cli/bamindex/dump_main.c \
 	src/cli/bamindex/index.c \
 	src/cli/fastlint/main.c \
-	src/cli/fastlint/args.c
+	src/cli/fastlint/args.c \
+	src/cli/summary_json_schema_data.c
 
 # convert source paths to object paths in build/obj/
 CORE_OBJS := $(patsubst src/%.c,$(OBJ_DIR)/%.o,$(CORE_SRCS))
@@ -361,6 +362,11 @@ $(OBJ_DIR)/%.o: src/%.c third_party/zlib-ng/zlib.h $(BUILD_MAKEFILES) | $(OBJ_DI
 	$(CC) $(INCLUDES) -c -pthread $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) -MF $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$@) $< -o $@
 
+src/cli/summary_json_schema_data.c src/cli/summary_json_schema_data.h: test/fixtures/misc/summary_json.schema.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/generate_json_schema_c.py
+	$(DEV_TOOLS) generate_json_schema_c --input $< --header src/cli/summary_json_schema_data.h --source src/cli/summary_json_schema_data.c
+
+$(OBJ_DIR)/cli/main.o: src/cli/summary_json_schema_data.h
+
 # version object
 $(VERSION_OBJ): src/version.c third_party/zlib-ng/zlib.h $(BUILD_MAKEFILES) | $(OBJ_DIR) $(DEP_DIR)
 	@mkdir -p $(dir $@)
@@ -416,7 +422,7 @@ clean_all: clean clean_htslib clean_zlib  ## clean all build artifacts including
 .PHONY: clang_format
 clang_format:  ## run clang-format on first-party source files
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
-	@find src -type f \( -name '*.c' -o -name '*.h' \) ! -path 'src/vendor/*' -print0 | xargs -0 $(CLANG_FORMAT) -i \
+	@find src -type f \( -name '*.c' -o -name '*.h' \) ! -path 'src/vendor/*' ! -path 'src/cli/summary_json_schema_data.c' ! -path 'src/core/fc_report_template_data.c' -print0 | xargs -0 $(CLANG_FORMAT) -i \
 		-style='$(CLANG_FORMAT_STYLE)'
 
 .PHONY: clang_format_staged
@@ -424,7 +430,7 @@ clang_format_staged:  ## run clang-format on staged source files
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
 	@tmp=$$(mktemp); \
 	trap 'rm -f "$$tmp"' EXIT; \
-	git diff --cached --name-only --diff-filter=ACMR -z -- ':(glob)src/**/*.c' ':(glob)src/**/*.h' ':(exclude)src/vendor/**' > "$$tmp"; \
+	git diff --cached --name-only --diff-filter=ACMR -z -- ':(glob)src/**/*.c' ':(glob)src/**/*.h' ':(exclude)src/vendor/**' ':(exclude)src/cli/summary_json_schema_data.c' ':(exclude)src/core/fc_report_template_data.c' > "$$tmp"; \
 	if [ ! -s "$$tmp" ]; then \
 		exit 0; \
 	fi; \
@@ -434,7 +440,7 @@ clang_format_staged:  ## run clang-format on staged source files
 .PHONY: clang_format_check
 clang_format_check:
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
-	@find src -type f \( -name '*.c' -o -name '*.h' \) ! -path 'src/vendor/*' -print0 | xargs -0 $(CLANG_FORMAT) --dry-run -Werror \
+	@find src -type f \( -name '*.c' -o -name '*.h' \) ! -path 'src/vendor/*' ! -path 'src/cli/summary_json_schema_data.c' ! -path 'src/core/fc_report_template_data.c' -print0 | xargs -0 $(CLANG_FORMAT) --dry-run -Werror \
 		-style='$(CLANG_FORMAT_STYLE)'
 
 .PHONY: clang_tidy
@@ -480,6 +486,31 @@ install_hooks:  ## install git hooks for the current repository
 	@chmod +x .githooks/pre-commit
 	@git config --local core.hooksPath .githooks
 	@echo "Installed git hooks path: .githooks"
+
+.PHONY: summary_json_schema_check
+summary_json_schema_check:  ## verify the bundled summary JSON Schema asset is current
+	@tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	$(DEV_TOOLS) generate_json_schema_c \
+		--input test/fixtures/misc/summary_json.schema.json \
+		--header "$$tmp/summary_json_schema_data.h" \
+		--source "$$tmp/summary_json_schema_data.c"; \
+	diff -u src/cli/summary_json_schema_data.h "$$tmp/summary_json_schema_data.h"; \
+	diff -u src/cli/summary_json_schema_data.c "$$tmp/summary_json_schema_data.c"
+
+.PHONY: summary_json_schema_staged
+summary_json_schema_staged:  ## regenerate and stage the schema asset when related files are staged
+	@if ! git diff --cached --quiet -- \
+		test/fixtures/misc/summary_json.schema.json \
+		tools/workflow_glue/generate_json_schema_c.py \
+		src/cli/summary_json_schema_data.h \
+		src/cli/summary_json_schema_data.c; then \
+		$(DEV_TOOLS) generate_json_schema_c \
+			--input test/fixtures/misc/summary_json.schema.json \
+			--header src/cli/summary_json_schema_data.h \
+			--source src/cli/summary_json_schema_data.c; \
+		git add -- src/cli/summary_json_schema_data.h src/cli/summary_json_schema_data.c; \
+	fi
 
 
 ###
@@ -541,9 +572,6 @@ $(REPORT_DIR)/template_inputs/run_summary.tsv: $(REPORT_DIR)/template_inputs/met
 $(REPORT_DIR)/example_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --out-dir $(REPORT_DIR)/example_inputs
 
-$(REPORT_DIR)/example_inputs/run_summary.tsv: $(REPORT_DIR)/example_inputs/metadata.json
-	test -s $@
-
 $(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
@@ -558,11 +586,11 @@ $(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/templa
 		--params $(REPORT_DIR)/template_inputs/params.json \
 		--wf_version __FASTCAT_VERSION_HTML__
 
-$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(REPORT_DIR)/example_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/template_fastcat/histograms \
-		--run-summary $(REPORT_DIR)/example_inputs/run_summary.tsv \
+		--run-summary $(REPORT_DIR)/template_fastcat/run_summary.tsv \
 		--length-qscore-2d $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv \
 		--speed-qscore-2d $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv \
 		--time-bin-summary $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv \
@@ -580,11 +608,11 @@ $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv: $(FASTCAT_BIN) $(REPORT
 		--output $(REPORT_DIR)/time_preview_fastcat \
 		> /dev/null
 
-$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv $(REPORT_DIR)/time_preview_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(REPORT_DIR)/example_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv $(REPORT_DIR)/time_preview_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/time_preview_fastcat/histograms \
-		--run-summary $(REPORT_DIR)/example_inputs/run_summary.tsv \
+		--run-summary $(REPORT_DIR)/time_preview_fastcat/run_summary.tsv \
 		--length-qscore-2d $(REPORT_DIR)/time_preview_fastcat/length_qscore_2d.tsv \
 		--speed-qscore-2d $(REPORT_DIR)/time_preview_fastcat/speed_qscore_2d.tsv \
 		--time-bin-summary $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv \
@@ -608,6 +636,42 @@ report_vendor_template: $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT
 		--header src/core/fc_report_template_data.h \
 		--source src/core/fc_report_template_data.c \
 		--symbol fc_report_template_html
+
+.PHONY: report_template_check
+report_template_check: $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py  ## verify the vendored report template assets are current
+	@tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	$(DEV_TOOLS) vendor_report_template \
+		--input $(REPORT_DIR)/template_wf_report.html \
+		--header "$$tmp/fc_report_template_data.h" \
+		--source "$$tmp/fc_report_template_data.c" \
+		--verify-source src/core/fc_report_template_data.c \
+		--symbol fc_report_template_html; \
+	diff -u src/core/fc_report_template_data.h "$$tmp/fc_report_template_data.h"; \
+	true
+
+.PHONY: report_template_staged
+report_template_staged:  ## refresh staged report-template C assets when their inputs change
+	@if git diff --cached --quiet -- \
+		Makefile \
+		tools/requirements.txt \
+		tools/workflow_glue/__init__.py \
+		tools/workflow_glue/vendor_report_template.py \
+		tools/workflow_glue/report.py \
+		tools/workflow_glue/bokeh_relational.py \
+		tools/workflow_glue/bokeh_matrix.py \
+		tools/workflow_glue/bokeh_boxplot.py \
+		tools/workflow_glue/bokeh_ribbon.py \
+		tools/workflow_glue/bokeh_seqsummary.py \
+		tools/workflow_glue/simulate_reads.py \
+		tools/workflow_glue/write_wf_report_inputs.py \
+		tools/workflow_glue/util.py \
+		src/core/fc_report_template_data.c \
+		src/core/fc_report_template_data.h; then \
+		exit 0; \
+	fi; \
+	$(MAKE) report_vendor_template; \
+	git add -- src/core/fc_report_template_data.c src/core/fc_report_template_data.h
 
 .PHONY: report_scaffold
 report_scaffold: report_vendor_template  ## rebuild the developer HTML report scaffold
@@ -1089,12 +1153,12 @@ test_fastcat_time_bin_summary: $(FASTCAT_BIN)
 		test -f out/time_bin_summary.tsv && \
 		test $$(wc -l < out/time_bin_summary.tsv) -eq 3 && \
 		awk 'BEGIN { FS = OFS = "\t"; prev_reads = -1; prev_bases = -1; } \
-			NR == 1 { if (NF != 24 || $$1 != "time_bin_start_s" || $$24 != "translocation_speed_q95") exit 1; next; } \
+			NR == 1 { if (NF != 30 || $$1 != "time_bin_start_s" || $$30 != "translocation_speed_q95") exit 1; next; } \
 			{ \
-				if (NF != 24) exit 1; \
+				if (NF != 30) exit 1; \
 				if ($$1 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$2 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/) exit 1; \
 				if ($$3 < 0 || $$4 < 0 || $$5 < 0 || $$6 < 0) exit 1; \
-				if ($$19 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$20 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$21 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$22 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$23 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$24 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/) exit 1; \
+				if ($$22 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$23 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$24 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$25 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$26 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$27 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$28 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$29 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$30 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/) exit 1; \
 				if (prev_reads >= 0 && ($$5 < prev_reads || $$6 < prev_bases)) exit 1; \
 				prev_reads = $$5; prev_bases = $$6; \
 				reads += $$3; bases += $$4; rows++; \

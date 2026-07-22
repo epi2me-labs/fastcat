@@ -299,9 +299,11 @@ static fc_time_bin_quantiles time_bin_nan_quantiles(void)
 {
     return (fc_time_bin_quantiles) {
         .q05 = NAN,
+        .q10 = NAN,
         .q25 = NAN,
         .q50 = NAN,
         .q75 = NAN,
+        .q90 = NAN,
         .q95 = NAN
     };
 }
@@ -353,14 +355,14 @@ int fc_time_bin_materialize(const fc_time_bin *model, size_t barcode, fc_time_bi
 
         row->length_mean = bin->sum_length / (double)bin->read_count;
         row->qscore_mean = bin->sum_qscore / (double)bin->read_count;
-        row->length_quantiles = fc_kll_compute_quantile_quintuple(bin->length);
-        row->qscore_quantiles = fc_kll_compute_quantile_quintuple(bin->qscore);
+        row->length_quantiles = fc_kll_compute_quantile_septuple(bin->length);
+        row->qscore_quantiles = fc_kll_compute_quantile_septuple(bin->qscore);
         if (bin->speed_count == 0) {
             row->speed_mean = NAN;
             row->speed_quantiles = time_bin_nan_quantiles();
         } else {
             row->speed_mean = bin->sum_speed / (double)bin->speed_count;
-            row->speed_quantiles = fc_kll_compute_quantile_quintuple(bin->speed);
+            row->speed_quantiles = fc_kll_compute_quantile_septuple(bin->speed);
         }
     }
 
@@ -430,14 +432,14 @@ int fc_time_bin_materialize_merged(
         } else {
             row->length_mean = sum_length / (double)row->read_count;
             row->qscore_mean = sum_qscore / (double)row->read_count;
-            row->length_quantiles = fc_kll_compute_quantile_quintuple(length);
-            row->qscore_quantiles = fc_kll_compute_quantile_quintuple(qscore);
+            row->length_quantiles = fc_kll_compute_quantile_septuple(length);
+            row->qscore_quantiles = fc_kll_compute_quantile_septuple(qscore);
             if (speed_count == 0) {
                 row->speed_mean = NAN;
                 row->speed_quantiles = time_bin_nan_quantiles();
             } else {
                 row->speed_mean = sum_speed / (double)speed_count;
-                row->speed_quantiles = fc_kll_compute_quantile_quintuple(speed);
+                row->speed_quantiles = fc_kll_compute_quantile_septuple(speed);
             }
         }
 

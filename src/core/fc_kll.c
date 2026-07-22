@@ -322,19 +322,21 @@ double fc_kll_compute_quantile(const fc_kll_sketch *sketch, double p)
     return result;
 }
 
-fc_kll_quantile_quintuple fc_kll_compute_quantile_quintuple(const fc_kll_sketch *sketch)
+fc_kll_quantile_septuple fc_kll_compute_quantile_septuple(const fc_kll_sketch *sketch)
 {
-    double p[5] = { 0.05, 0.25, 0.50, 0.75, 0.95 };
-    double out[5] = { NAN, NAN, NAN, NAN, NAN };
-    fc_kll_quantile_quintuple result;
+    double p[7] = { 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95 };
+    double out[7] = { NAN, NAN, NAN, NAN, NAN, NAN, NAN };
+    fc_kll_quantile_septuple result;
 
-    fc_kll_compute_quantiles(sketch, p, 5, out);
+    fc_kll_compute_quantiles(sketch, p, 7, out);
 
     result.q05 = out[0];
-    result.q25 = out[1];
-    result.q50 = out[2];
-    result.q75 = out[3];
-    result.q95 = out[4];
+    result.q10 = out[1];
+    result.q25 = out[2];
+    result.q50 = out[3];
+    result.q75 = out[4];
+    result.q90 = out[5];
+    result.q95 = out[6];
 
     return result;
 }

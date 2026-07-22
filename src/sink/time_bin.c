@@ -38,18 +38,18 @@ static void time_bin_write_table(const fc_time_bin_table *table, FILE *fp)
     fprintf(fp,
         "time_bin_start_s\ttime_bin_end_s\tread_count\tbase_count\t"
         "cumulative_read_count\tcumulative_base_count\t"
-        "length_mean\tlength_q05\tlength_q25\tlength_q50\tlength_q75\tlength_q95\t"
-        "qscore_mean\tqscore_q05\tqscore_q25\tqscore_q50\tqscore_q75\tqscore_q95\t"
-        "translocation_speed_mean\ttranslocation_speed_q05\ttranslocation_speed_q25\t"
-        "translocation_speed_q50\ttranslocation_speed_q75\ttranslocation_speed_q95\n");
+        "length_mean\tlength_q05\tlength_q10\tlength_q25\tlength_q50\tlength_q75\tlength_q90\tlength_q95\t"
+        "qscore_mean\tqscore_q05\tqscore_q10\tqscore_q25\tqscore_q50\tqscore_q75\tqscore_q90\tqscore_q95\t"
+        "translocation_speed_mean\ttranslocation_speed_q05\ttranslocation_speed_q10\ttranslocation_speed_q25\t"
+        "translocation_speed_q50\ttranslocation_speed_q75\ttranslocation_speed_q90\ttranslocation_speed_q95\n");
 
     for (size_t i = 0; i < table->n; i++) {
         const fc_time_bin_row *row = &table->rows[i];
         fprintf(fp,
             "%.12g\t%.12g\t%zu\t%zu\t%zu\t%zu\t"
-            "%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t"
-            "%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t"
-            "%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\n",
+            "%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t"
+            "%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t"
+            "%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\n",
             row->time_bin_start_s,
             row->time_bin_end_s,
             row->read_count,
@@ -58,21 +58,27 @@ static void time_bin_write_table(const fc_time_bin_table *table, FILE *fp)
             row->cumulative_base_count,
             row->length_mean,
             row->length_quantiles.q05,
+            row->length_quantiles.q10,
             row->length_quantiles.q25,
             row->length_quantiles.q50,
             row->length_quantiles.q75,
+            row->length_quantiles.q90,
             row->length_quantiles.q95,
             row->qscore_mean,
             row->qscore_quantiles.q05,
+            row->qscore_quantiles.q10,
             row->qscore_quantiles.q25,
             row->qscore_quantiles.q50,
             row->qscore_quantiles.q75,
+            row->qscore_quantiles.q90,
             row->qscore_quantiles.q95,
             row->speed_mean,
             row->speed_quantiles.q05,
+            row->speed_quantiles.q10,
             row->speed_quantiles.q25,
             row->speed_quantiles.q50,
             row->speed_quantiles.q75,
+            row->speed_quantiles.q90,
             row->speed_quantiles.q95);
     }
 }

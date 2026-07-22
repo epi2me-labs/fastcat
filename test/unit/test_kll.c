@@ -116,7 +116,7 @@ FC_TEST(kll_suite, test_infinity_input)
     fc_kll_destroy(sketch);
 }
 
-FC_TEST(kll_suite, test_quantile_quintuple)
+FC_TEST(kll_suite, test_quantile_septuple)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
@@ -125,36 +125,42 @@ FC_TEST(kll_suite, test_quantile_quintuple)
         fc_kll_add(sketch, (double)i);
     }
 
-    fc_kll_quantile_quintuple quintuple = fc_kll_compute_quantile_quintuple(sketch);
+    fc_kll_quantile_septuple septuple = fc_kll_compute_quantile_septuple(sketch);
 
     // verify ordering
-    TEST_ASSERT_TRUE(quintuple.q05 <= quintuple.q25);
-    TEST_ASSERT_TRUE(quintuple.q25 <= quintuple.q50);
-    TEST_ASSERT_TRUE(quintuple.q50 <= quintuple.q75);
-    TEST_ASSERT_TRUE(quintuple.q75 <= quintuple.q95);
+    TEST_ASSERT_TRUE(septuple.q05 <= septuple.q10);
+    TEST_ASSERT_TRUE(septuple.q10 <= septuple.q25);
+    TEST_ASSERT_TRUE(septuple.q25 <= septuple.q50);
+    TEST_ASSERT_TRUE(septuple.q50 <= septuple.q75);
+    TEST_ASSERT_TRUE(septuple.q75 <= septuple.q90);
+    TEST_ASSERT_TRUE(septuple.q90 <= septuple.q95);
 
     // verify rough correctness (exact mode with 100 items)
-    TEST_ASSERT_FLOAT_WITHIN(2.0, 5.0, quintuple.q05);
-    TEST_ASSERT_FLOAT_WITHIN(2.0, 25.0, quintuple.q25);
-    TEST_ASSERT_FLOAT_WITHIN(2.0, 50.0, quintuple.q50);
-    TEST_ASSERT_FLOAT_WITHIN(2.0, 75.0, quintuple.q75);
-    TEST_ASSERT_FLOAT_WITHIN(2.0, 95.0, quintuple.q95);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 5.0, septuple.q05);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 10.0, septuple.q10);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 25.0, septuple.q25);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 50.0, septuple.q50);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 75.0, septuple.q75);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 90.0, septuple.q90);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 95.0, septuple.q95);
 
     fc_kll_destroy(sketch);
 }
 
-FC_TEST(kll_suite, test_quantile_quintuple_empty)
+FC_TEST(kll_suite, test_quantile_septuple_empty)
 {
     fc_kll_sketch *sketch = fc_kll_create(200);
 
-    fc_kll_quantile_quintuple quintuple = fc_kll_compute_quantile_quintuple(sketch);
+    fc_kll_quantile_septuple septuple = fc_kll_compute_quantile_septuple(sketch);
 
     // empty sketch should return NaN
-    TEST_ASSERT_TRUE(isnan(quintuple.q05));
-    TEST_ASSERT_TRUE(isnan(quintuple.q25));
-    TEST_ASSERT_TRUE(isnan(quintuple.q50));
-    TEST_ASSERT_TRUE(isnan(quintuple.q75));
-    TEST_ASSERT_TRUE(isnan(quintuple.q95));
+    TEST_ASSERT_TRUE(isnan(septuple.q05));
+    TEST_ASSERT_TRUE(isnan(septuple.q10));
+    TEST_ASSERT_TRUE(isnan(septuple.q25));
+    TEST_ASSERT_TRUE(isnan(septuple.q50));
+    TEST_ASSERT_TRUE(isnan(septuple.q75));
+    TEST_ASSERT_TRUE(isnan(septuple.q90));
+    TEST_ASSERT_TRUE(isnan(septuple.q95));
 
     fc_kll_destroy(sketch);
 }

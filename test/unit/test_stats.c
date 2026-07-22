@@ -51,6 +51,21 @@ FC_TEST(stats_suite, test_mean_qual_naive)
     TEST_ASSERT_FLOAT_WITHIN(0.0001, 20.0f, mean_qual_naive(q, 4));
 }
 
+FC_TEST(stats_suite, test_histogram_midpoint_mean_and_start_median)
+{
+    read_stats *stats = create_qual_stats(0.5f);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, fc_stats_mean_midpoint(stats));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, fc_stats_median_start(stats));
+
+    add_qual_count(stats, 10.0f);
+    add_qual_count(stats, 10.4f);
+    add_qual_count(stats, 11.0f);
+
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 10.5833, fc_stats_mean_midpoint(stats));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 10.0, fc_stats_median_start(stats));
+    destroy_qual_stats(stats);
+}
+
 FC_TEST(stats_suite, test_length_stats_layout)
 {
     read_stats* stats = create_length_stats();

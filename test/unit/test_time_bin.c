@@ -112,21 +112,27 @@ FC_TEST(time_bin_suite, test_time_bin_counts_means_quantiles_and_cumulative_tota
     TEST_ASSERT_EQUAL_size_t(300, table.rows[0].cumulative_base_count);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 150.0, table.rows[0].length_mean);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 105.0, table.rows[0].length_quantiles.q05);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 110.0, table.rows[0].length_quantiles.q10);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 125.0, table.rows[0].length_quantiles.q25);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 150.0, table.rows[0].length_quantiles.q50);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 175.0, table.rows[0].length_quantiles.q75);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 190.0, table.rows[0].length_quantiles.q90);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 195.0, table.rows[0].length_quantiles.q95);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 15.0, table.rows[0].qscore_mean);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 10.5, table.rows[0].qscore_quantiles.q05);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 11.0, table.rows[0].qscore_quantiles.q10);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 12.5, table.rows[0].qscore_quantiles.q25);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 15.0, table.rows[0].qscore_quantiles.q50);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 17.5, table.rows[0].qscore_quantiles.q75);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 19.0, table.rows[0].qscore_quantiles.q90);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 19.5, table.rows[0].qscore_quantiles.q95);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_mean);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q05);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q10);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q25);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q50);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q75);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q90);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 50.0, table.rows[0].speed_quantiles.q95);
 
     TEST_ASSERT_EQUAL_size_t(1, table.rows[1].read_count);
@@ -161,13 +167,19 @@ FC_TEST(time_bin_suite, test_time_bin_dynamic_backward_growth_preserves_empty_bi
     TEST_ASSERT_EQUAL_size_t(0, table.rows[1].read_count);
     TEST_ASSERT_TRUE(isnan(table.rows[1].length_mean));
     TEST_ASSERT_TRUE(isnan(table.rows[1].length_quantiles.q05));
+    TEST_ASSERT_TRUE(isnan(table.rows[1].length_quantiles.q10));
     TEST_ASSERT_TRUE(isnan(table.rows[1].length_quantiles.q95));
+    TEST_ASSERT_TRUE(isnan(table.rows[1].length_quantiles.q90));
     TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_mean));
     TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_quantiles.q05));
+    TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_quantiles.q10));
     TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_quantiles.q95));
+    TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_quantiles.q90));
     TEST_ASSERT_TRUE(isnan(table.rows[1].speed_mean));
     TEST_ASSERT_TRUE(isnan(table.rows[1].speed_quantiles.q05));
+    TEST_ASSERT_TRUE(isnan(table.rows[1].speed_quantiles.q10));
     TEST_ASSERT_TRUE(isnan(table.rows[1].speed_quantiles.q95));
+    TEST_ASSERT_TRUE(isnan(table.rows[1].speed_quantiles.q90));
     TEST_ASSERT_EQUAL_size_t(1, table.rows[1].cumulative_read_count);
     TEST_ASSERT_EQUAL_size_t(80, table.rows[1].cumulative_base_count);
 

@@ -23,8 +23,20 @@ typedef struct {
     double run_duration_s;
     size_t read_count;
     size_t base_count;
+    size_t n5_bp;
+    size_t n10_bp;
+    size_t n25_bp;
     size_t n50_bp;
+    size_t n75_bp;
+    size_t n90_bp;
+    size_t n95_bp;
+    size_t l5;
+    size_t l10;
+    size_t l25;
     size_t l50;
+    size_t l75;
+    size_t l90;
+    size_t l95;
 } fc_run_summary_row;
 
 fc_run_summary *fc_run_summary_create(size_t barcode_count);

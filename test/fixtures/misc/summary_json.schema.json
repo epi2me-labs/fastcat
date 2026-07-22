@@ -77,6 +77,14 @@
         "uint64"
       ]
     },
+    "nonNegativeInt": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nonNegativeFloat": {
+      "type": "number",
+      "minimum": 0
+    },
     "base64": {
       "type": "string",
       "pattern": "^[A-Za-z0-9+/]*={0,2}$"
@@ -133,8 +141,7 @@
           "minItems": 1,
           "maxItems": 1,
           "items": {
-            "type": "integer",
-            "minimum": 0
+            "$ref": "#/$defs/nonNegativeInt"
           }
         },
         "columns": {
@@ -156,8 +163,7 @@
           "minItems": 2,
           "maxItems": 2,
           "items": {
-            "type": "integer",
-            "minimum": 0
+            "$ref": "#/$defs/nonNegativeInt"
           }
         },
         "dtype": {
@@ -211,8 +217,8 @@
     },
     "lengthColumns": {
       "type": "array",
-      "minItems": 3,
-      "maxItems": 3,
+      "minItems": 4,
+      "maxItems": 4,
       "items": false,
       "prefixItems": [
         {
@@ -236,6 +242,14 @@
           "properties": {
             "name": {
               "const": "count"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "yield_at_or_above_bp"
             }
           }
         }
@@ -275,8 +289,8 @@
     },
     "timeColumns": {
       "type": "array",
-      "minItems": 24,
-      "maxItems": 24,
+      "minItems": 30,
+      "maxItems": 30,
       "items": false,
       "prefixItems": [
         {
@@ -347,6 +361,14 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "const": "length_q10"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
               "const": "length_q25"
             }
           }
@@ -364,6 +386,14 @@
           "properties": {
             "name": {
               "const": "length_q75"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "length_q90"
             }
           }
         },
@@ -395,6 +425,14 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "const": "quality_q10"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
               "const": "quality_q25"
             }
           }
@@ -412,6 +450,14 @@
           "properties": {
             "name": {
               "const": "quality_q75"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "quality_q90"
             }
           }
         },
@@ -443,6 +489,14 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "const": "translocation_speed_q10"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
               "const": "translocation_speed_q25"
             }
           }
@@ -460,6 +514,14 @@
           "properties": {
             "name": {
               "const": "translocation_speed_q75"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "translocation_speed_q90"
             }
           }
         },
@@ -485,8 +547,7 @@
           "type": "string"
         },
         "count": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         }
       }
     },
@@ -521,20 +582,16 @@
           "type": "string"
         },
         "accepted_read_count": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "accepted_base_count": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "min_length_bp": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "max_length_bp": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "mean_quality": {
           "type": "number"
@@ -562,8 +619,20 @@
         "run_duration_s",
         "read_count",
         "base_count",
+        "n5_bp",
+        "n10_bp",
+        "n25_bp",
         "n50_bp",
-        "l50"
+        "n75_bp",
+        "n90_bp",
+        "n95_bp",
+        "l5",
+        "l10",
+        "l25",
+        "l50",
+        "l75",
+        "l90",
+        "l95"
       ],
       "additionalProperties": false,
       "properties": {
@@ -637,20 +706,52 @@
           "type": "number"
         },
         "read_count": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "base_count": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "n5_bp": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "n10_bp": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "n25_bp": {
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "n50_bp": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "n75_bp": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "n90_bp": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "n95_bp": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "l5": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "l10": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "l25": {
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "l50": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "l75": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "l90": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "l95": {
+          "$ref": "#/$defs/nonNegativeInt"
         }
       }
     },
@@ -701,12 +802,10 @@
       "additionalProperties": false,
       "properties": {
         "read_count": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "base_count": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "run_ids": {
           "$ref": "#/$defs/counter"
@@ -763,20 +862,16 @@
       "additionalProperties": false,
       "properties": {
         "missing_channel": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "invalid_channel": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "missing_mux": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "invalid_mux": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         }
       }
     },
@@ -789,8 +884,16 @@
       "additionalProperties": false,
       "properties": {
         "total_count": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "mean": {
+          "$ref": "#/$defs/nonNegativeFloat"
+        },
+        "median": {
+          "$ref": "#/$defs/nonNegativeFloat"
+        },
+        "total_base_count": {
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "overflow_start_bp": {
           "type": [
@@ -827,6 +930,11 @@
                   "$ref": "#/$defs/distribution"
                 },
                 {
+                  "required": [
+                    "total_base_count",
+                    "mean",
+                    "median"
+                  ],
                   "properties": {
                     "__data__": {
                       "properties": {
@@ -852,6 +960,10 @@
                   "$ref": "#/$defs/distribution"
                 },
                 {
+                  "required": [
+                    "mean",
+                    "median"
+                  ],
                   "properties": {
                     "__data__": {
                       "properties": {
@@ -909,20 +1021,16 @@
       "additionalProperties": false,
       "properties": {
         "missing_start_time": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "invalid_start_time": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "missing_duration": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "invalid_duration": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         }
       }
     },
@@ -1014,40 +1122,31 @@
           "type": "string"
         },
         "total": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "primary": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "secondary": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "supplementary": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "unmapped": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "qcfail": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "duplicate": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "duplex": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         },
         "duplex_forming": {
-          "type": "integer",
-          "minimum": 0
+          "$ref": "#/$defs/nonNegativeInt"
         }
       }
     }

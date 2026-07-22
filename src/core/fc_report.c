@@ -2222,8 +2222,12 @@ static char *render_report_html(
     char *run_duration_text = summary ? format_report_duration(summary->run_duration_s) : fc_strdup("(not set)", "report duration");
     char *yield_text = summary ? format_report_yield(summary->base_count) : fc_strdup("(not set)", "report yield");
     char *read_count_text = summary ? format_report_count(summary->read_count) : fc_strdup("(not set)", "report read count");
+    char *n10_text = summary ? format_report_n50(summary->n10_bp) : fc_strdup("(not set)", "report n10");
     char *n50_text = summary ? format_report_n50(summary->n50_bp) : fc_strdup("(not set)", "report n50");
+    char *n90_text = summary ? format_report_n50(summary->n90_bp) : fc_strdup("(not set)", "report n90");
+    char *l10_text = summary ? format_report_count(summary->l10) : fc_strdup("(not set)", "report l10");
     char *l50_text = summary ? format_report_count(summary->l50) : fc_strdup("(not set)", "report l50");
+    char *l90_text = summary ? format_report_count(summary->l90) : fc_strdup("(not set)", "report l90");
     char *barcode_alias_html = html_escape(
         (summary && summary->barcode_alias && summary->barcode_alias[0] != '\0')
             ? summary->barcode_alias
@@ -2255,8 +2259,12 @@ static char *render_report_html(
     char *run_duration_html = html_escape(run_duration_text);
     char *yield_html = html_escape(yield_text);
     char *read_count_html = html_escape(read_count_text);
+    char *n10_html = html_escape(n10_text);
     char *n50_html = html_escape(n50_text);
+    char *n90_html = html_escape(n90_text);
+    char *l10_html = html_escape(l10_text);
     char *l50_html = html_escape(l50_text);
+    char *l90_html = html_escape(l90_text);
     char *docs_json_html = html_unescape_basic(docs_json ? docs_json : "{}");
 
     replace_all(&html, "__FASTCAT_BOKEH_DOCS_JSON__", docs_json_html);
@@ -2272,8 +2280,12 @@ static char *render_report_html(
     replace_all(&html, "__FASTCAT_RUN_DURATION_HTML__", run_duration_html);
     replace_all(&html, "__FASTCAT_YIELD_HTML__", yield_html);
     replace_all(&html, "__FASTCAT_READ_COUNT_HTML__", read_count_html);
+    replace_all(&html, "__FASTCAT_N10_HTML__", n10_html);
     replace_all(&html, "__FASTCAT_N50_HTML__", n50_html);
+    replace_all(&html, "__FASTCAT_N90_HTML__", n90_html);
+    replace_all(&html, "__FASTCAT_L10_HTML__", l10_html);
     replace_all(&html, "__FASTCAT_L50_HTML__", l50_html);
+    replace_all(&html, "__FASTCAT_L90_HTML__", l90_html);
     replace_all(&html, "__FASTCAT_VERSION_HTML__", version_html);
     replace_all(&html, "__FASTCAT_RUN_CONFIG_ROWS__", run_config_rows_html);
 
@@ -2289,13 +2301,21 @@ static char *render_report_html(
     free(run_duration_text);
     free(yield_text);
     free(read_count_text);
+    free(n10_text);
     free(n50_text);
+    free(n90_text);
+    free(l10_text);
     free(l50_text);
+    free(l90_text);
     free(run_duration_html);
     free(yield_html);
     free(read_count_html);
+    free(n10_html);
     free(n50_html);
+    free(n90_html);
+    free(l10_html);
     free(l50_html);
+    free(l90_html);
     free(version_html);
     free(run_config_rows_html);
     free(docs_json_html);
