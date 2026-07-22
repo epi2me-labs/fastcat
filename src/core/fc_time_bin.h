@@ -17,7 +17,7 @@ typedef struct {
     size_t kll_k;
 } fc_time_bin_config;
 
-typedef fc_kll_quantile_quintuple fc_time_bin_quantiles;
+typedef fc_kll_quantile_septuple fc_time_bin_quantiles;
 
 typedef struct {
     double time_bin_start_s;

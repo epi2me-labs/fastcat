@@ -37,6 +37,20 @@ check-changelog:
         - !reference [.install, gleeok]
         - gleeok changelog validate CHANGELOG.md
 
+check-summary-json-schema:
+    stage: test
+    before_script:
+        - *prep-image
+    script:
+        - make summary_json_schema_check
+
+check-report-template:
+    stage: test
+    before_script:
+        - *prep-image
+    script:
+        - make report_template_check
+
 .fastcat-test-base:
     stage: test
     before_script:
@@ -66,6 +80,17 @@ report_demo:
       when: always
       paths:
         - demo/
+
+report_browser_smoke:
+    stage: test
+    image: mcr.microsoft.com/playwright/python:v1.52.0-noble
+    needs:
+        - job: report_demo
+          artifacts: true
+    script:
+        - export CHROME_BIN="$(find /ms-playwright -type f -name chrome -print -quit)"
+        - test -n "$CHROME_BIN"
+        - python3 tools/dev-tools check_report_browser --browser "$CHROME_BIN" demo/fastcat_out/fastcat_report.html
 
 pages:
     stage: release

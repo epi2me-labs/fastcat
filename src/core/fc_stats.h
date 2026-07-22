@@ -32,6 +32,12 @@ read_stats *create_qual_stats(float width);
 void destroy_qual_stats(read_stats *stats);
 void add_qual_count(read_stats *stats, float q);
 
+// Histogram summaries using explicit bin representatives. The mean weights bin
+// midpoints; the median is the start of the first bin reaching 50% of counts.
+// Both return 0.0 for an empty or invalid histogram.
+double fc_stats_mean_midpoint(const read_stats *stats);
+double fc_stats_median_start(const read_stats *stats);
+
 void print_stats(read_stats *stats, bool zeroes, bool tsv, FILE *fp);
 
 size_t _leading_decimals(float num);

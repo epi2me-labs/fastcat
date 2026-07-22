@@ -87,7 +87,7 @@ def validate_ndarray(data, path):
     return [] if error is None else [error]
 
 
-def validate_dataframe(data, path):
+def decode_dataframe(data, path):
     """Decode a dataframe block exactly as a pandas consumer would."""
     row_count = data["shape"][0]
     arrays = {}
@@ -101,7 +101,7 @@ def validate_dataframe(data, path):
         arrays[column["name"]] = np.frombuffer(payload, dtype=column["dtype"])
 
     if errors:
-        return errors
+        return None, errors
 
     dataframe = pd.DataFrame(arrays)
     columns = data["columns"]
@@ -115,6 +115,12 @@ def validate_dataframe(data, path):
         errors.append(
             f"{path}: pandas dataframe dtypes expected {list(expected_dtypes)}, "
             f"got {list(decoded_dtypes)}")
+    return dataframe, errors
+
+
+def validate_dataframe(data, path):
+    """Validate a dataframe block can be decoded exactly as a pandas consumer would."""
+    _, errors = decode_dataframe(data, path)
     return errors
 
 

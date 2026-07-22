@@ -15,14 +15,16 @@
 
 typedef struct fc_kll_sketch fc_kll_sketch;
 
-// Quantile quintuple (Q05, Q25, Q50, Q75, Q95) for distribution summary
+// Quantile septuple (Q05, Q10, Q25, Q50, Q75, Q90, Q95) for distribution summary
 typedef struct {
     double q05;
+    double q10;
     double q25;
     double q50;
     double q75;
+    double q90;
     double q95;
-} fc_kll_quantile_quintuple;
+} fc_kll_quantile_septuple;
 
 // Density estimate with explicit support/value arrays.
 // support[i] is the i-th support location.
@@ -57,9 +59,9 @@ int fc_kll_compute_quantiles(const fc_kll_sketch *sketch, const double *ps, size
 // Returns: interpolated quantile value, or NAN if sketch is empty or p is invalid
 double fc_kll_compute_quantile(const fc_kll_sketch *sketch, double p);
 
-// Convenience wrapper: compute Q05/Q25/Q50/Q75/Q95 in one pass
-// Returns: quantile quintuple, or NAN values if sketch is empty
-fc_kll_quantile_quintuple fc_kll_compute_quantile_quintuple(const fc_kll_sketch *sketch);
+// Convenience wrapper: compute Q05/Q10/Q25/Q50/Q75/Q90/Q95 in one pass.
+// Returns: quantile septuple, or NAN values if sketch is empty.
+fc_kll_quantile_septuple fc_kll_compute_quantile_septuple(const fc_kll_sketch *sketch);
 
 // Compute density from a uniform quantile-probability grid.
 // grid_points controls resolution in probability space (must be >= 2).

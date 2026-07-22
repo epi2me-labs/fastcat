@@ -101,10 +101,18 @@ static size_t length_bin_start_bp(const read_stats *stats, size_t index)
     return (size_t)llround((double)index * (double)stats->width);
 }
 
-static void compute_n50_l50(const read_stats *length_stats, size_t *n50_bp, size_t *l50)
+static void compute_nxx_lxx(const read_stats *length_stats, fc_run_summary_row *out)
 {
-    *n50_bp = 0;
-    *l50 = 0;
+    const double thresholds[] = { 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95 };
+    size_t *nxx[] = { &out->n5_bp, &out->n10_bp, &out->n25_bp, &out->n50_bp,
+        &out->n75_bp, &out->n90_bp, &out->n95_bp };
+    size_t *lxx[] = { &out->l5, &out->l10, &out->l25, &out->l50,
+        &out->l75, &out->l90, &out->l95 };
+    const size_t n_thresholds = sizeof(thresholds) / sizeof(thresholds[0]);
+    for (size_t i = 0; i < n_thresholds; ++i) {
+        *nxx[i] = 0;
+        *lxx[i] = 0;
+    }
     if (!length_stats || !length_stats->counts || length_stats->n == 0) {
         return;
     }
@@ -118,10 +126,10 @@ static void compute_n50_l50(const read_stats *length_stats, size_t *n50_bp, size
         return;
     }
 
-    double target = total_bases * 0.5;
     double cumulative_bases = 0.0;
     size_t cumulative_reads = 0;
-    for (size_t i = 0; i < length_stats->n; ++i) {
+    size_t next_threshold = 0;
+    for (size_t i = length_stats->n; i-- > 0 && next_threshold < n_thresholds;) {
         size_t count = length_stats->counts[i];
         if (count == 0) {
             continue;
@@ -129,10 +137,10 @@ static void compute_n50_l50(const read_stats *length_stats, size_t *n50_bp, size
         size_t bin_start = length_bin_start_bp(length_stats, i);
         cumulative_bases += (double)bin_start * (double)count;
         cumulative_reads += count;
-        if (cumulative_bases >= target) {
-            *n50_bp = bin_start;
-            *l50 = cumulative_reads;
-            return;
+        while (next_threshold < n_thresholds && cumulative_bases >= total_bases * thresholds[next_threshold]) {
+            *nxx[next_threshold] = bin_start;
+            *lxx[next_threshold] = cumulative_reads;
+            ++next_threshold;
         }
     }
 }
@@ -321,6 +329,6 @@ int fc_run_summary_materialize(
         : (state->has_time ? fmax(0.0, state->max_time_s - state->min_time_s) : NAN);
     out->read_count = state->read_count;
     out->base_count = state->base_count;
-    compute_n50_l50(length_stats, &out->n50_bp, &out->l50);
+    compute_nxx_lxx(length_stats, out);
     return 0;
 }

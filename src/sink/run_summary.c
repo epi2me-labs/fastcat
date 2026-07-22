@@ -67,7 +67,9 @@ static void run_summary_write_row(FILE *fp, const fc_run_summary_row *row)
 {
     fprintf(fp,
         "sample_id\tinput_type\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tmodbase_models\tflow_cell_id\trun_date\t"
-        "run_duration_s\tread_count\tbase_count\tn50_bp\tl50\n");
+        "run_duration_s\tread_count\tbase_count\t"
+        "n5_bp\tn10_bp\tn25_bp\tn50_bp\tn75_bp\tn90_bp\tn95_bp\t"
+        "l5\tl10\tl25\tl50\tl75\tl90\tl95\n");
     fprintf(fp, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t",
         row->sample_id ? row->sample_id : "",
         row->input_type ? row->input_type : "",
@@ -83,11 +85,24 @@ static void run_summary_write_row(FILE *fp, const fc_run_summary_row *row)
     } else {
         fputs("nan", fp);
     }
-    fprintf(fp, "\t%zu\t%zu\t%zu\t%zu\n",
+    fprintf(fp, "\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t"
+                "%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
         row->read_count,
         row->base_count,
+        row->n5_bp,
+        row->n10_bp,
+        row->n25_bp,
         row->n50_bp,
-        row->l50);
+        row->n75_bp,
+        row->n90_bp,
+        row->n95_bp,
+        row->l5,
+        row->l10,
+        row->l25,
+        row->l50,
+        row->l75,
+        row->l90,
+        row->l95);
 }
 
 static void run_summary_write_output(const run_summary_sink *sink, size_t barcode)

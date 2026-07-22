@@ -7,6 +7,7 @@
 #include "cli/catstats/main.h"
 #include "cli/catstats/program_kind.h"
 #include "cli/fastlint/main.h"
+#include "cli/summary_json_schema_data.h"
 
 static void print_usage(const char *prog)
 {
@@ -16,6 +17,7 @@ static void print_usage(const char *prog)
     fprintf(stderr, "  bam     BAM alignment statistics/filtering mode\n");
     fprintf(stderr, "  lint    Standalone FASTQ low-complexity filter (fastlint)\n");
     fprintf(stderr, "  index   BAM chunk index tools (bamindex)\n");
+    fprintf(stderr, "  json-schema  Write the summary.json JSON Schema to standard output\n");
     fprintf(stderr, "Try '%s <subcommand> --help' for subcommand options.\n", prog);
 }
 
@@ -39,6 +41,12 @@ int main(int argc, char **argv)
         fprintf(stderr, "Subcommand '%s' has been removed.\n", argv[1]);
         fprintf(stderr, "Use 'fastcat bam --coverage ...' instead.\n");
         return 1;
+    } else if (strcmp(argv[1], "json-schema") == 0) {
+        if (argc != 2) {
+            fprintf(stderr, "Usage: %s json-schema\n", argv[0]);
+            return 1;
+        }
+        return fc_summary_json_schema_write(stdout) == 0 ? 0 : 1;
     } else {
         fprintf(stderr, "Unknown subcommand '%s'.\n", argv[1]);
         print_usage(argv[0]);

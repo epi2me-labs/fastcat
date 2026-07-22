@@ -18,7 +18,11 @@ TEMPLATE_RUN_DURATION = "__FASTCAT_RUN_DURATION_HTML__"
 TEMPLATE_YIELD = "__FASTCAT_YIELD_HTML__"
 TEMPLATE_READ_COUNT = "__FASTCAT_READ_COUNT_HTML__"
 TEMPLATE_N50 = "__FASTCAT_N50_HTML__"
+TEMPLATE_N10 = "__FASTCAT_N10_HTML__"
+TEMPLATE_N90 = "__FASTCAT_N90_HTML__"
 TEMPLATE_L50 = "__FASTCAT_L50_HTML__"
+TEMPLATE_L10 = "__FASTCAT_L10_HTML__"
+TEMPLATE_L90 = "__FASTCAT_L90_HTML__"
 TEMPLATE_VERSION = "__FASTCAT_VERSION_HTML__"
 
 
@@ -57,24 +61,18 @@ def main(args):
 
     (out_dir / "metadata.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    (out_dir / "run_summary.tsv").write_text(
-        "sample_id\tinput_type\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tmodbase_models\tflow_cell_id\trun_date\t"
-        "run_duration_s\tread_count\tbase_count\tn50_bp\tl50\n"
-        f"{alias}\t"
-        f"{TEMPLATE_INPUT_TYPE if args.template else 'fastq'}\t"
-        f"{barcode}\t"
-        f"{TEMPLATE_BARCODE_ALIAS if args.template else 'Synthetic reads'}\t"
-        f"{TEMPLATE_RUN_ID if args.template else 'synthetic-run'}\t"
-        f"{TEMPLATE_BASECALLER if args.template else 'dna_r10.4.1_e8.2_400bps_sup@v5.2.0'}\t"
-        f"{TEMPLATE_MODBASE if args.template else 'dna_r10.4.1_e8.2_400bps_hac@v5.2.0_5mCG_5hmCG@v1'}\t"
-        f"{TEMPLATE_FLOW_CELL_ID if args.template else 'synthetic-flowcell'}\t"
-        f"{TEMPLATE_RUN_DATE if args.template else '2026-01-01 00:00:00'}\t"
-        f"{TEMPLATE_RUN_DURATION if args.template else '172800'}\t"
-        f"{TEMPLATE_READ_COUNT if args.template else '100000'}\t"
-        f"{TEMPLATE_YIELD if args.template else '7620000000'}\t"
-        f"{TEMPLATE_N50 if args.template else '3230'}\t"
-        f"{TEMPLATE_L50 if args.template else '2063112'}\n",
-        encoding="utf-8")
+    if args.template:
+        (out_dir / "run_summary.tsv").write_text(
+            "sample_id\tinput_type\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tmodbase_models\tflow_cell_id\trun_date\t"
+            "run_duration_s\tread_count\tbase_count\t"
+            "n5_bp\tn10_bp\tn25_bp\tn50_bp\tn75_bp\tn90_bp\tn95_bp\t"
+            "l5\tl10\tl25\tl50\tl75\tl90\tl95\n"
+            f"{alias}\t{TEMPLATE_INPUT_TYPE}\t{barcode}\t{TEMPLATE_BARCODE_ALIAS}\t{TEMPLATE_RUN_ID}\t"
+            f"{TEMPLATE_BASECALLER}\t{TEMPLATE_MODBASE}\t{TEMPLATE_FLOW_CELL_ID}\t{TEMPLATE_RUN_DATE}\t"
+            f"{TEMPLATE_RUN_DURATION}\t{TEMPLATE_READ_COUNT}\t{TEMPLATE_YIELD}\t"
+            f"\t{TEMPLATE_N10}\t\t{TEMPLATE_N50}\t\t{TEMPLATE_N90}\t\t"
+            f"\t{TEMPLATE_L10}\t\t{TEMPLATE_L50}\t\t{TEMPLATE_L90}\t\n",
+            encoding="utf-8")
     (out_dir / "params.json").write_text(
         json.dumps(params, indent=2) + "\n", encoding="utf-8")
     (versions_dir / "versions.txt").write_text(

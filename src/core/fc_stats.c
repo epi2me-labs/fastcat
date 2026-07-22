@@ -130,6 +130,49 @@ void add_length_count(read_stats *stats, size_t x)
     }
 }
 
+double fc_stats_mean_midpoint(const read_stats *stats)
+{
+    if (NULL == stats || NULL == stats->counts || 0 == stats->n) {
+        return 0.0;
+    }
+
+    double total = 0.0;
+    double sum = 0.0;
+    for (size_t i = 0; i < stats->n; ++i) {
+        size_t count = stats->counts[i];
+        double start = stats->width == 0.0f ? (double)stats->edges[i] : i * stats->width;
+        double end = stats->width == 0.0f ? (double)stats->edges[i + 1] : (i + 1) * stats->width;
+        total += (double)count;
+        sum += 0.5 * (start + end) * (double)count;
+    }
+    return total > 0.0 ? sum / total : 0.0;
+}
+
+double fc_stats_median_start(const read_stats *stats)
+{
+    if (NULL == stats || NULL == stats->counts || 0 == stats->n) {
+        return 0.0;
+    }
+
+    double total = 0.0;
+    for (size_t i = 0; i < stats->n; ++i) {
+        total += (double)stats->counts[i];
+    }
+    if (total <= 0.0) {
+        return 0.0;
+    }
+
+    double cumulative = 0.0;
+    for (size_t i = 0; i < stats->n; ++i) {
+        cumulative += (double)stats->counts[i];
+        if (cumulative >= total * 0.5) {
+            return stats->width == 0.0f ? (double)stats->edges[i] : i * stats->width;
+        }
+    }
+    return stats->width == 0.0f ? (double)stats->edges[stats->n - 1]
+                                : (stats->n - 1) * stats->width;
+}
+
 read_stats *create_qual_stats(float width)
 {
     if (width <= 0.0f || !isfinite(width)) {

@@ -406,7 +406,11 @@ static void summary_json_counts(fc_json_object_t *root, const fc_run_summary_row
     summary_json_counter_array(counts, "basecallers", state->basecallers);
 }
 
-static void summary_json_length_distribution(fc_json_object_t *distributions, const read_stats *stats)
+static void summary_json_length_distribution(
+    fc_json_object_t *distributions,
+    const read_stats *stats,
+    size_t total_base_count,
+    size_t total_read_count)
 {
     if (NULL == stats) {
         fc_json_object_set_null(distributions, "read_length");
@@ -420,6 +424,7 @@ static void summary_json_length_distribution(fc_json_object_t *distributions, co
     size_t *starts_arr = fc_alloc(stats->n, sizeof(size_t), "summary_json length starts");
     size_t *ends_arr = fc_alloc(stats->n, sizeof(size_t), "summary_json length ends");
     size_t *counts_arr = fc_alloc(stats->n, sizeof(size_t), "summary_json length counts");
+    size_t *yield_arr = fc_alloc(stats->n, sizeof(size_t), "summary_json length yields");
     size_t n_bins = 0;
 
     double total = 0.0;
@@ -446,6 +451,20 @@ static void summary_json_length_distribution(fc_json_object_t *distributions, co
         }
     }
 
+    size_t cumulative_yield = 0;
+    for (size_t i = n_bins; i > 0; i--) {
+        size_t index = i - 1;
+        if (starts_arr[index] != 0 && counts_arr[index] > SIZE_MAX / starts_arr[index]) {
+            FC_LOG_FATAL("Length yield exceeds summary.json integer range.");
+        }
+        size_t bin_yield = starts_arr[index] * counts_arr[index];
+        if (bin_yield > SIZE_MAX - cumulative_yield) {
+            FC_LOG_FATAL("Cumulative length yield exceeds summary.json integer range.");
+        }
+        cumulative_yield += bin_yield;
+        yield_arr[index] = cumulative_yield;
+    }
+
     // Encode as columnar table (consistent with other data tables)
     fc_json_object_t *data = fc_json_object_set_object(hist, "__data__");
     fc_json_array_t *shape = fc_json_object_set_array(data, "shape");
@@ -455,12 +474,19 @@ static void summary_json_length_distribution(fc_json_object_t *distributions, co
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("start", starts_arr, n_bins));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("end", ends_arr, n_bins));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("count", counts_arr, n_bins));
+    fc_json_array_append_value(
+        columns, fc_json_column_uint_adaptive("yield_at_or_above_bp", yield_arr, n_bins));
 
     free(starts_arr);
     free(ends_arr);
     free(counts_arr);
+    free(yield_arr);
 
     fc_json_object_set_number(hist, "total_count", total);
+    fc_json_object_set_number(hist, "total_base_count", (double)total_base_count);
+    fc_json_object_set_number(
+        hist, "mean", total_read_count > 0 ? (double)total_base_count / total_read_count : 0.0);
+    fc_json_object_set_number(hist, "median", fc_stats_median_start(stats));
     if (overflow_count > 0) {
         fc_json_object_set_number(hist, "overflow_start_bp", (double)overflow_start);
         fc_json_object_set_number(hist, "overflow_count", (double)overflow_count);
@@ -501,6 +527,8 @@ static void summary_json_quality_distribution(fc_json_object_t *distributions, c
     }
 
     fc_json_object_set_number(hist, "total_count", total);
+    fc_json_object_set_number(hist, "mean", fc_stats_mean_midpoint(stats));
+    fc_json_object_set_number(hist, "median", fc_stats_median_start(stats));
 
     // Encode as columnar table (consistent with other data tables)
     fc_json_object_t *data = fc_json_object_set_object(hist, "__data__");
@@ -628,21 +656,27 @@ static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, 
     double *time_end = fc_alloc(table.n, sizeof(double), "time_end");
     double *len_mean = fc_alloc(table.n, sizeof(double), "len_mean");
     double *len_q05 = fc_alloc(table.n, sizeof(double), "len_q05");
+    double *len_q10 = fc_alloc(table.n, sizeof(double), "len_q10");
     double *len_q25 = fc_alloc(table.n, sizeof(double), "len_q25");
     double *len_q50 = fc_alloc(table.n, sizeof(double), "len_q50");
     double *len_q75 = fc_alloc(table.n, sizeof(double), "len_q75");
+    double *len_q90 = fc_alloc(table.n, sizeof(double), "len_q90");
     double *len_q95 = fc_alloc(table.n, sizeof(double), "len_q95");
     double *q_mean = fc_alloc(table.n, sizeof(double), "q_mean");
     double *q_q05 = fc_alloc(table.n, sizeof(double), "q_q05");
+    double *q_q10 = fc_alloc(table.n, sizeof(double), "q_q10");
     double *q_q25 = fc_alloc(table.n, sizeof(double), "q_q25");
     double *q_q50 = fc_alloc(table.n, sizeof(double), "q_q50");
     double *q_q75 = fc_alloc(table.n, sizeof(double), "q_q75");
+    double *q_q90 = fc_alloc(table.n, sizeof(double), "q_q90");
     double *q_q95 = fc_alloc(table.n, sizeof(double), "q_q95");
     double *spd_mean = fc_alloc(table.n, sizeof(double), "spd_mean");
     double *spd_q05 = fc_alloc(table.n, sizeof(double), "spd_q05");
+    double *spd_q10 = fc_alloc(table.n, sizeof(double), "spd_q10");
     double *spd_q25 = fc_alloc(table.n, sizeof(double), "spd_q25");
     double *spd_q50 = fc_alloc(table.n, sizeof(double), "spd_q50");
     double *spd_q75 = fc_alloc(table.n, sizeof(double), "spd_q75");
+    double *spd_q90 = fc_alloc(table.n, sizeof(double), "spd_q90");
     double *spd_q95 = fc_alloc(table.n, sizeof(double), "spd_q95");
 
     for (size_t i = 0; i < table.n; i++) {
@@ -655,21 +689,27 @@ static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, 
         cum_base[i] = row->cumulative_base_count;
         len_mean[i] = row->length_mean;
         len_q05[i] = row->length_quantiles.q05;
+        len_q10[i] = row->length_quantiles.q10;
         len_q25[i] = row->length_quantiles.q25;
         len_q50[i] = row->length_quantiles.q50;
         len_q75[i] = row->length_quantiles.q75;
+        len_q90[i] = row->length_quantiles.q90;
         len_q95[i] = row->length_quantiles.q95;
         q_mean[i] = row->qscore_mean;
         q_q05[i] = row->qscore_quantiles.q05;
+        q_q10[i] = row->qscore_quantiles.q10;
         q_q25[i] = row->qscore_quantiles.q25;
         q_q50[i] = row->qscore_quantiles.q50;
         q_q75[i] = row->qscore_quantiles.q75;
+        q_q90[i] = row->qscore_quantiles.q90;
         q_q95[i] = row->qscore_quantiles.q95;
         spd_mean[i] = row->speed_mean;
         spd_q05[i] = row->speed_quantiles.q05;
+        spd_q10[i] = row->speed_quantiles.q10;
         spd_q25[i] = row->speed_quantiles.q25;
         spd_q50[i] = row->speed_quantiles.q50;
         spd_q75[i] = row->speed_quantiles.q75;
+        spd_q90[i] = row->speed_quantiles.q90;
         spd_q95[i] = row->speed_quantiles.q95;
     }
 
@@ -687,21 +727,27 @@ static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, 
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("cumulative_base_count", cum_base, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("length_mean", len_mean, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("length_q05", len_q05, table.n));
+    fc_json_array_append_value(columns, fc_json_column_f64("length_q10", len_q10, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("length_q25", len_q25, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("length_q50", len_q50, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("length_q75", len_q75, table.n));
+    fc_json_array_append_value(columns, fc_json_column_f64("length_q90", len_q90, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("length_q95", len_q95, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("quality_mean", q_mean, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("quality_q05", q_q05, table.n));
+    fc_json_array_append_value(columns, fc_json_column_f64("quality_q10", q_q10, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("quality_q25", q_q25, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("quality_q50", q_q50, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("quality_q75", q_q75, table.n));
+    fc_json_array_append_value(columns, fc_json_column_f64("quality_q90", q_q90, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("quality_q95", q_q95, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_mean", spd_mean, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_q05", spd_q05, table.n));
+    fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_q10", spd_q10, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_q25", spd_q25, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_q50", spd_q50, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_q75", spd_q75, table.n));
+    fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_q90", spd_q90, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_q95", spd_q95, table.n));
 
     free(time_start);
@@ -712,21 +758,27 @@ static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, 
     free(cum_base);
     free(len_mean);
     free(len_q05);
+    free(len_q10);
     free(len_q25);
     free(len_q50);
     free(len_q75);
+    free(len_q90);
     free(len_q95);
     free(q_mean);
     free(q_q05);
+    free(q_q10);
     free(q_q25);
     free(q_q50);
     free(q_q75);
+    free(q_q90);
     free(q_q95);
     free(spd_mean);
     free(spd_q05);
+    free(spd_q10);
     free(spd_q25);
     free(spd_q50);
     free(spd_q75);
+    free(spd_q90);
     free(spd_q95);
 
     fc_time_bin_table_destroy(&table);
@@ -919,8 +971,20 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
     fc_json_object_set_number(summary, "run_duration_s", row.run_duration_s);
     fc_json_object_set_number(summary, "read_count", (double)row.read_count);
     fc_json_object_set_number(summary, "base_count", (double)row.base_count);
+    fc_json_object_set_number(summary, "n5_bp", (double)row.n5_bp);
+    fc_json_object_set_number(summary, "n10_bp", (double)row.n10_bp);
+    fc_json_object_set_number(summary, "n25_bp", (double)row.n25_bp);
     fc_json_object_set_number(summary, "n50_bp", (double)row.n50_bp);
+    fc_json_object_set_number(summary, "n75_bp", (double)row.n75_bp);
+    fc_json_object_set_number(summary, "n90_bp", (double)row.n90_bp);
+    fc_json_object_set_number(summary, "n95_bp", (double)row.n95_bp);
+    fc_json_object_set_number(summary, "l5", (double)row.l5);
+    fc_json_object_set_number(summary, "l10", (double)row.l10);
+    fc_json_object_set_number(summary, "l25", (double)row.l25);
     fc_json_object_set_number(summary, "l50", (double)row.l50);
+    fc_json_object_set_number(summary, "l75", (double)row.l75);
+    fc_json_object_set_number(summary, "l90", (double)row.l90);
+    fc_json_object_set_number(summary, "l95", (double)row.l95);
 
     fc_json_object_t *sample = fc_json_object_set_object(root, "sample");
     summary_json_set_string_or_null(sample, "sample_id", row.sample_id);
@@ -933,7 +997,8 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
     summary_json_channels(root, sink->cfg.channel_summary, barcode);
 
     fc_json_object_t *distributions = fc_json_object_set_object(root, "distributions");
-    summary_json_length_distribution(distributions, length_stats);
+    summary_json_length_distribution(
+        distributions, length_stats, row.base_count, row.read_count);
     summary_json_quality_distribution(distributions, quality_stats);
 
     summary_json_time(root, sink->cfg.time_bin, barcode);
