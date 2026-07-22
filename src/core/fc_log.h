@@ -43,10 +43,10 @@ void fc_logmv(fc_log_level level, const char *module, const char *fmt, va_list a
 #define FC_LOG_ERROR(...) FC_LOG_ERR(__VA_ARGS__)
 
 // Logs fatal error and exits immediately with EXIT_FAILURE
-#define FC_LOG_FATAL(...)                  \
-    do {                                   \
+#define FC_LOG_FATAL(...) \
+    do { \
         fc_log(FC_LOG_ERROR, __VA_ARGS__); \
-        exit(EXIT_FAILURE);                \
+        exit(EXIT_FAILURE); \
     } while (0)
 
 #define FC_LOGM_ERR(mod, ...) fc_logm(FC_LOG_ERROR, mod, __VA_ARGS__)

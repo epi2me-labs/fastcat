@@ -696,76 +696,6 @@ static void format_length_stat(char *buf, size_t size, double value)
 // heatmap image helpers
 //
 
-static void append_base64(kstring_t *ks, const uint8_t *data, size_t n)
-{
-    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    for (size_t i = 0; i < n; i += 3) {
-        uint32_t a = data[i];
-        uint32_t b = (i + 1 < n) ? data[i + 1] : 0;
-        uint32_t c = (i + 2 < n) ? data[i + 2] : 0;
-        uint32_t triple = (a << 16) | (b << 8) | c;
-
-        report_kputc(ks, table[(triple >> 18) & 0x3f]);
-        report_kputc(ks, table[(triple >> 12) & 0x3f]);
-        report_kputc(ks, (i + 1 < n) ? table[(triple >> 6) & 0x3f] : '=');
-        report_kputc(ks, (i + 2 < n) ? table[triple & 0x3f] : '=');
-    }
-}
-
-static char *build_image_base64(const double *values, size_t rows, size_t cols)
-{
-    if (rows != 0 && cols > SIZE_MAX / rows) {
-        FC_LOG_FATAL("Report image is too large.");
-    }
-    size_t n = rows * cols;
-    if (n > SIZE_MAX / sizeof(double)) {
-        FC_LOG_FATAL("Report image is too large.");
-    }
-
-    size_t byte_count = n * sizeof(double);
-    uint8_t *bytes = fc_alloc(byte_count, sizeof(*bytes), "report image bytes");
-    size_t out = 0;
-    for (size_t row = 0; row < rows; row++) {
-        for (size_t col = 0; col < cols; col++) {
-            double count = values[row * cols + col];
-            uint64_t bits = 0;
-            memcpy(&bits, &count, sizeof(bits));
-            for (size_t byte = 0; byte < sizeof(bits); byte++) {
-                bytes[out++] = (uint8_t)((bits >> (8 * byte)) & 0xff);
-            }
-        }
-    }
-
-    kstring_t b64 = { 0, 0, NULL };
-    append_base64(&b64, bytes, byte_count);
-    free(bytes);
-    return report_steal(&b64);
-}
-
-static fc_json_value_t *build_image_ndarray_value(const double *values, size_t rows, size_t cols)
-{
-    char *b64 = build_image_base64(values, rows, cols);
-
-    fc_json_value_t *value = fc_json_object_value();
-    fc_json_object_t *object = fc_json_get_object(value);
-    fc_json_object_set_string(object, "type", "ndarray");
-
-    fc_json_object_t *array = fc_json_object_set_object(object, "array");
-    fc_json_object_set_string(array, "type", "bytes");
-    fc_json_object_set_string(array, "data", b64);
-
-    fc_json_array_t *shape = fc_json_object_set_array(object, "shape");
-    fc_json_array_append_number(shape, (double)rows);
-    fc_json_array_append_number(shape, (double)cols);
-
-    fc_json_object_set_string(object, "dtype", "float64");
-    fc_json_object_set_string(object, "order", "little");
-
-    free(b64);
-    return value;
-}
-
 //
 // quality plot
 //
@@ -1077,7 +1007,7 @@ static fc_json_value_t *build_lq2d_image_ndarray_value(const fc_length_qscore_2d
         values[i] = count;
     }
 
-    fc_json_value_t *value = build_image_ndarray_value(
+    fc_json_value_t *value = fc_json_bokeh_ndarray_f64(
         values, matrix->qscore_bins, matrix->x_bins);
     free(values);
     return value;
@@ -1201,7 +1131,7 @@ static fc_json_value_t *build_qts2d_image_ndarray_value(
         values[i] = count;
     }
 
-    fc_json_value_t *value = build_image_ndarray_value(
+    fc_json_value_t *value = fc_json_bokeh_ndarray_f64(
         values, matrix->qscore_bins, matrix->x_bins);
     free(values);
     return value;
@@ -2031,7 +1961,7 @@ static void update_channel_reads_plot(
     report_column y = bokeh_source_add_array_column(&source, "y");
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
-    fc_json_array_append_value(image_col.array, build_image_ndarray_value(image, y_bins, x_bins));
+    fc_json_array_append_value(image_col.array, fc_json_bokeh_ndarray_f64(image, y_bins, x_bins));
     fc_json_array_append_number(x.array, map->x_min - 0.5);
     fc_json_array_append_number(y.array, map->y_min - 0.5);
     fc_json_array_append_number(dw.array, (double)x_bins);
@@ -2169,7 +2099,7 @@ static void update_channel_bases_plot(
     report_column y = bokeh_source_add_array_column(&source, "y");
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
-    fc_json_array_append_value(image_col.array, build_image_ndarray_value(image, y_bins, x_bins));
+    fc_json_array_append_value(image_col.array, fc_json_bokeh_ndarray_f64(image, y_bins, x_bins));
     fc_json_array_append_number(x.array, map->x_min - 0.5);
     fc_json_array_append_number(y.array, map->y_min - 0.5);
     fc_json_array_append_number(dw.array, (double)x_bins);

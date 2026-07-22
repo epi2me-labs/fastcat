@@ -1,0 +1,1055 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/epi2me-labs/fastcat/schema/summary_json.schema.json",
+  "title": "fastcat summary.json v1",
+  "description": "Schema for --json-summary. Dataframe and ndarray payloads are base64-encoded native little-endian values; count columns may use adaptive unsigned integer dtypes.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_summary",
+    "sample",
+    "files",
+    "counts",
+    "channels",
+    "distributions",
+    "time",
+    "heatmaps"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "run_summary": {
+      "$ref": "#/$defs/runSummary"
+    },
+    "sample": {
+      "$ref": "#/$defs/sample"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/file"
+      }
+    },
+    "counts": {
+      "$ref": "#/$defs/counts"
+    },
+    "channels": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/channels"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "distributions": {
+      "$ref": "#/$defs/distributions"
+    },
+    "time": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "heatmaps": {
+      "$ref": "#/$defs/heatmaps"
+    },
+    "flagstats": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flagstat"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "adaptiveDtype": {
+      "enum": [
+        "uint8",
+        "uint16",
+        "uint32",
+        "uint64"
+      ]
+    },
+    "base64": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+    },
+    "adaptiveColumn": {
+      "type": "object",
+      "required": [
+        "name",
+        "dtype",
+        "__ndarray__"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "dtype": {
+          "$ref": "#/$defs/adaptiveDtype"
+        },
+        "__ndarray__": {
+          "$ref": "#/$defs/base64"
+        }
+      },
+      "additionalProperties": false
+    },
+    "floatColumn": {
+      "type": "object",
+      "required": [
+        "name",
+        "dtype",
+        "__ndarray__"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "dtype": {
+          "const": "float64"
+        },
+        "__ndarray__": {
+          "$ref": "#/$defs/base64"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dataframe": {
+      "type": "object",
+      "required": [
+        "shape",
+        "columns"
+      ],
+      "properties": {
+        "shape": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "columns": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ndarray": {
+      "type": "object",
+      "required": [
+        "shape",
+        "dtype",
+        "__ndarray__"
+      ],
+      "properties": {
+        "shape": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "dtype": {
+          "$ref": "#/$defs/adaptiveDtype"
+        },
+        "__ndarray__": {
+          "$ref": "#/$defs/base64"
+        }
+      },
+      "additionalProperties": false
+    },
+    "channelColumns": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": false,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "channel"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "mux"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "read_count"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "base_count"
+            }
+          }
+        }
+      ]
+    },
+    "lengthColumns": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "start"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "end"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "count"
+            }
+          }
+        }
+      ]
+    },
+    "qualityColumns": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "start"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "end"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "count"
+            }
+          }
+        }
+      ]
+    },
+    "timeColumns": {
+      "type": "array",
+      "minItems": 24,
+      "maxItems": 24,
+      "items": false,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "time_bin_start_s"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "time_bin_end_s"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "read_count"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "base_count"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "cumulative_read_count"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "cumulative_base_count"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "length_mean"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "length_q05"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "length_q25"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "length_q50"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "length_q75"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "length_q95"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "quality_mean"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "quality_q05"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "quality_q25"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "quality_q50"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "quality_q75"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "quality_q95"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "translocation_speed_mean"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "translocation_speed_q05"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "translocation_speed_q25"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "translocation_speed_q50"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "translocation_speed_q75"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "translocation_speed_q95"
+            }
+          }
+        }
+      ]
+    },
+    "counterRow": {
+      "type": "object",
+      "required": [
+        "value",
+        "count"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "counter": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/counterRow"
+          }
+        }
+      ]
+    },
+    "file": {
+      "type": "object",
+      "required": [
+        "path",
+        "accepted_read_count",
+        "accepted_base_count",
+        "min_length_bp",
+        "max_length_bp",
+        "mean_quality",
+        "run_id_counts",
+        "basecaller_counts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "accepted_read_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "accepted_base_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "min_length_bp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_length_bp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mean_quality": {
+          "type": "number"
+        },
+        "run_id_counts": {
+          "$ref": "#/$defs/counter"
+        },
+        "basecaller_counts": {
+          "$ref": "#/$defs/counter"
+        }
+      }
+    },
+    "runSummary": {
+      "type": "object",
+      "required": [
+        "sample_id",
+        "input_type",
+        "barcode_id",
+        "barcode_alias",
+        "run_ids",
+        "basecaller_models",
+        "modbase_models",
+        "flow_cell_ids",
+        "run_date",
+        "run_duration_s",
+        "read_count",
+        "base_count",
+        "n50_bp",
+        "l50"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sample_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "barcode_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "barcode_alias": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_ids": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "basecaller_models": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "modbase_models": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "flow_cell_ids": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "run_date": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_duration_s": {
+          "type": "number"
+        },
+        "read_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "base_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n50_bp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "l50": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "sample": {
+      "type": "object",
+      "required": [
+        "sample_id",
+        "input_type",
+        "barcode_id",
+        "barcode_alias"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sample_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "barcode_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "barcode_alias": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "required": [
+        "read_count",
+        "base_count",
+        "run_ids",
+        "basecallers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "read_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "base_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "run_ids": {
+          "$ref": "#/$defs/counter"
+        },
+        "basecallers": {
+          "$ref": "#/$defs/counter"
+        }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "required": [
+        "device",
+        "skipped",
+        "__data__"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "enum": [
+            "minion",
+            "flongle",
+            "promethion",
+            "unknown"
+          ]
+        },
+        "skipped": {
+          "$ref": "#/$defs/channelSkipped"
+        },
+        "__data__": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/dataframe"
+            },
+            {
+              "properties": {
+                "columns": {
+                  "$ref": "#/$defs/channelColumns"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "channelSkipped": {
+      "type": "object",
+      "required": [
+        "missing_channel",
+        "invalid_channel",
+        "missing_mux",
+        "invalid_mux"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "missing_channel": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalid_channel": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing_mux": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalid_mux": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "required": [
+        "total_count",
+        "__data__"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "total_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overflow_start_bp": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "overflow_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "__data__": {
+          "$ref": "#/$defs/dataframe"
+        }
+      }
+    },
+    "distributions": {
+      "type": "object",
+      "required": [
+        "read_length",
+        "quality"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "read_length": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/distribution"
+                },
+                {
+                  "properties": {
+                    "__data__": {
+                      "properties": {
+                        "columns": {
+                          "$ref": "#/$defs/lengthColumns"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/distribution"
+                },
+                {
+                  "properties": {
+                    "__data__": {
+                      "properties": {
+                        "columns": {
+                          "$ref": "#/$defs/qualityColumns"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "time": {
+      "type": "object",
+      "required": [
+        "skipped",
+        "__data__"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "skipped": {
+          "$ref": "#/$defs/timeSkipped"
+        },
+        "__data__": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/dataframe"
+            },
+            {
+              "properties": {
+                "columns": {
+                  "$ref": "#/$defs/timeColumns"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "timeSkipped": {
+      "type": "object",
+      "required": [
+        "missing_start_time",
+        "invalid_start_time",
+        "missing_duration",
+        "invalid_duration"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "missing_start_time": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalid_start_time": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing_duration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalid_duration": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "heatmap": {
+      "type": "object",
+      "required": [
+        "x_label",
+        "x_range",
+        "y_label",
+        "y_range",
+        "__data__"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x_label": {
+          "type": "string"
+        },
+        "x_range": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number"
+          }
+        },
+        "y_label": {
+          "type": "string"
+        },
+        "y_range": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number"
+          }
+        },
+        "__data__": {
+          "$ref": "#/$defs/ndarray"
+        }
+      }
+    },
+    "heatmaps": {
+      "type": "object",
+      "required": [
+        "read_length_quality",
+        "translocation_speed_quality"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "read_length_quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/heatmap"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "translocation_speed_quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/heatmap"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "flagstat": {
+      "type": "object",
+      "required": [
+        "ref",
+        "total",
+        "primary",
+        "secondary",
+        "supplementary",
+        "unmapped",
+        "qcfail",
+        "duplicate",
+        "duplex",
+        "duplex_forming"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "primary": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "secondary": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "supplementary": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unmapped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "qcfail": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicate": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplex_forming": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

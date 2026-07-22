@@ -28,6 +28,7 @@ import sys
 
 DEFAULT_RUNID = "12345678-1234-1234-1234-123456789abc"
 DEFAULT_MODEL = "dna_r10.4.1_e8.2_400bps_hac@v5.0.0"
+DEFAULT_FLOW_CELL_ID = "XXX12345"
 DEFAULT_SPEED_MEAN = 400.0
 DEFAULT_SPEED_IQR = 40.0
 DEFAULT_SPEED_FINAL_MEAN = 340.0
@@ -403,6 +404,9 @@ def argparser():
     metadata = p.add_argument_group("read metadata")
     metadata.add_argument("--runid", default=DEFAULT_RUNID, help=f"Run ID for RG composition (default: {DEFAULT_RUNID})")
     metadata.add_argument("--model", default=DEFAULT_MODEL, help=f"Basecaller model in RG (default: {DEFAULT_MODEL})")
+    metadata.add_argument(
+        "--flow-cell-id", default=DEFAULT_FLOW_CELL_ID,
+        help=f"Flow cell ID metadata to emit (default: {DEFAULT_FLOW_CELL_ID})")
     metadata.add_argument("--id-prefix", default="simread", help="Read ID prefix (default: simread)")
     metadata.add_argument("--sample-id", default="", help="Sample ID metadata to emit (default: unset)")
     metadata.add_argument(
@@ -575,8 +579,10 @@ def main(args):
             out.write(f"@{args.id_prefix}_{i:09d}\n")
         else:
             sample_tag = f"LB:Z:{args.sample_id}\t" if args.sample_id else ""
+            flow_cell_tag = f"PU:Z:{args.flow_cell_id}\t" if args.flow_cell_id else ""
             tags = (
                 f"{sample_tag}"
+                f"{flow_cell_tag}"
                 f"qs:f:{mean_q:.4f}\t"
                 f"du:f:{duration_s:.6f}\t"
                 f"rn:i:{i}\t"

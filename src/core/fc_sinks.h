@@ -138,4 +138,25 @@ typedef struct {
 
 fc_sink fc_time_bin_sink_create(const fc_time_bin_sink_opts *opts);
 
+typedef struct {
+    const char *output_root;
+    const char *sample;
+    bool use_barcodes;
+    size_t barcode_count;
+    bool bam_input;
+    bool unmapped_override;
+    bool region_mode;
+    const char *region_label;
+    const bam_hdr_t *hdr;
+    fc_stats_engine **engines;
+    size_t engine_count;
+    fc_run_summary *run_summary;
+    fc_channel_summary *channel_summary;
+    fc_length_qscore_2d *length_qscore;
+    fc_speed_qscore_2d *speed_qscore;
+    fc_time_bin *time_bin;
+} fc_summary_json_sink_opts;
+
+fc_sink fc_summary_json_sink_create(const fc_summary_json_sink_opts *opts);
+
 #endif

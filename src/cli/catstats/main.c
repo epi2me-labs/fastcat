@@ -223,73 +223,99 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     // per-input-file summaries (e.g. FASTQ header stats, BAM flagstats)
     fc_writer_add_sink(writer, fc_perfile_sink_create(args->output_dir, args->sample));
 
-    // histograms (read lengths, quality, etc.)
-    fc_hist_sink_opts hist_opts = {
-        .output_root = args->output_dir,
-        .use_barcodes = args->demultiplex,
-        .unmapped_override = (program == FC_PROGRAM_FASTCAT),
-        .write_alignment_metrics = (program == FC_PROGRAM_BAMSTATS),
-        .write_polya = (program == FC_PROGRAM_BAMSTATS) ? args->poly_a : false,
-        .engines = writer->stats_engines,
-        .engine_count = writer->stats_engine_count
-    };
-    fc_writer_add_sink(writer, fc_hist_sink_create(&hist_opts));
+    // Legacy TSV summary outputs (disabled with --no-legacy-outputs)
+    if (!args->no_legacy_outputs) {
+        // histograms (read lengths, quality, etc.)
+        fc_hist_sink_opts hist_opts = {
+            .output_root = args->output_dir,
+            .use_barcodes = args->demultiplex,
+            .unmapped_override = (program == FC_PROGRAM_FASTCAT),
+            .write_alignment_metrics = (program == FC_PROGRAM_BAMSTATS),
+            .write_polya = (program == FC_PROGRAM_BAMSTATS) ? args->poly_a : false,
+            .engines = writer->stats_engines,
+            .engine_count = writer->stats_engine_count
+        };
+        fc_writer_add_sink(writer, fc_hist_sink_create(&hist_opts));
 
-    // counters (overall and per-barcode read counts, etc.)
-    fc_counter_sink_opts counter_opts = {
-        .output_root = args->output_dir,
-        .sample = args->sample,
-        .use_barcodes = args->demultiplex,
-        .barcode_count = writer->barcode_count
-    };
-    fc_writer_add_sink(writer, fc_counter_sink_create(&counter_opts));
+        // counters (overall and per-barcode read counts, etc.)
+        fc_counter_sink_opts counter_opts = {
+            .output_root = args->output_dir,
+            .sample = args->sample,
+            .use_barcodes = args->demultiplex,
+            .barcode_count = writer->barcode_count
+        };
+        fc_writer_add_sink(writer, fc_counter_sink_create(&counter_opts));
 
-    fc_run_summary_sink_opts run_summary_opts = {
-        .output_root = args->output_dir,
-        .sample = args->sample,
-        .use_barcodes = args->demultiplex,
-        .barcode_count = writer->barcode_count,
-        .bam_input = (program == FC_PROGRAM_BAMSTATS) || (args->input_kind == FC_FILE_BAM),
-        .unmapped_override = (program == FC_PROGRAM_FASTCAT),
-        .engines = writer->stats_engines,
-        .engine_count = writer->stats_engine_count,
-        .model = writer->run_summary
-    };
-    fc_writer_add_sink(writer, fc_run_summary_sink_create(&run_summary_opts));
+        fc_run_summary_sink_opts run_summary_opts = {
+            .output_root = args->output_dir,
+            .sample = args->sample,
+            .use_barcodes = args->demultiplex,
+            .barcode_count = writer->barcode_count,
+            .bam_input = (program == FC_PROGRAM_BAMSTATS) || (args->input_kind == FC_FILE_BAM),
+            .unmapped_override = (program == FC_PROGRAM_FASTCAT),
+            .engines = writer->stats_engines,
+            .engine_count = writer->stats_engine_count,
+            .model = writer->run_summary
+        };
+        fc_writer_add_sink(writer, fc_run_summary_sink_create(&run_summary_opts));
 
-    fc_channel_summary_sink_opts channel_opts = {
-        .output_root = args->output_dir,
-        .use_barcodes = args->demultiplex,
-        .barcode_count = writer->barcode_count,
-        .model = writer->channel_summary
-    };
-    fc_writer_add_sink(writer, fc_channel_summary_sink_create(&channel_opts));
+        fc_channel_summary_sink_opts channel_opts = {
+            .output_root = args->output_dir,
+            .use_barcodes = args->demultiplex,
+            .barcode_count = writer->barcode_count,
+            .model = writer->channel_summary
+        };
+        fc_writer_add_sink(writer, fc_channel_summary_sink_create(&channel_opts));
 
-    // read-length vs qscore 2D density table derived from writer-owned KLL sketches
-    fc_length_qscore_2d_sink_opts lq2d_opts = {
-        .output_root = args->output_dir,
-        .use_barcodes = args->demultiplex,
-        .barcode_count = writer->barcode_count,
-        .model = writer->length_qscore
-    };
-    fc_writer_add_sink(writer, fc_length_qscore_2d_sink_create(&lq2d_opts));
+        // read-length vs qscore 2D density table derived from writer-owned KLL sketches
+        fc_length_qscore_2d_sink_opts lq2d_opts = {
+            .output_root = args->output_dir,
+            .use_barcodes = args->demultiplex,
+            .barcode_count = writer->barcode_count,
+            .model = writer->length_qscore
+        };
+        fc_writer_add_sink(writer, fc_length_qscore_2d_sink_create(&lq2d_opts));
 
-    fc_speed_qscore_2d_sink_opts qts2d_opts = {
-        .output_root = args->output_dir,
-        .use_barcodes = args->demultiplex,
-        .barcode_count = writer->barcode_count,
-        .model = writer->speed_qscore
-    };
-    fc_writer_add_sink(writer, fc_speed_qscore_2d_sink_create(&qts2d_opts));
+        fc_speed_qscore_2d_sink_opts qts2d_opts = {
+            .output_root = args->output_dir,
+            .use_barcodes = args->demultiplex,
+            .barcode_count = writer->barcode_count,
+            .model = writer->speed_qscore
+        };
+        fc_writer_add_sink(writer, fc_speed_qscore_2d_sink_create(&qts2d_opts));
 
-    // time-binned summaries for yield and boxplot-style temporal QC
-    fc_time_bin_sink_opts time_bin_opts = {
-        .output_root = args->output_dir,
-        .use_barcodes = args->demultiplex,
-        .barcode_count = writer->barcode_count,
-        .model = writer->time_bin
-    };
-    fc_writer_add_sink(writer, fc_time_bin_sink_create(&time_bin_opts));
+        // time-binned summaries for yield and boxplot-style temporal QC
+        fc_time_bin_sink_opts time_bin_opts = {
+            .output_root = args->output_dir,
+            .use_barcodes = args->demultiplex,
+            .barcode_count = writer->barcode_count,
+            .model = writer->time_bin
+        };
+        fc_writer_add_sink(writer, fc_time_bin_sink_create(&time_bin_opts));
+    }
+
+    // JSON summary output (enabled with --json-summary)
+    if (args->json_summary) {
+        fc_summary_json_sink_opts summary_json_opts = {
+            .output_root = args->output_dir,
+            .sample = args->sample,
+            .use_barcodes = args->demultiplex,
+            .barcode_count = writer->barcode_count,
+            .bam_input = (program == FC_PROGRAM_BAMSTATS) || (args->input_kind == FC_FILE_BAM),
+            .unmapped_override = (program == FC_PROGRAM_FASTCAT),
+            .region_mode = region_mode,
+            .region_label = region_mode ? (args->region ? args->region : "bed_regions") : NULL,
+            .hdr = (program == FC_PROGRAM_BAMSTATS) ? file_iter.bmi.hdr : NULL,
+            .engines = writer->stats_engines,
+            .engine_count = writer->stats_engine_count,
+            .run_summary = writer->run_summary,
+            .channel_summary = writer->channel_summary,
+            .length_qscore = writer->length_qscore,
+            .speed_qscore = writer->speed_qscore,
+            .time_bin = writer->time_bin
+        };
+        fc_writer_add_sink(writer, fc_summary_json_sink_create(&summary_json_opts));
+    }
 
     // alignment specific flags/statistics (BAMSTATS only)
     if (program == FC_PROGRAM_BAMSTATS) {
