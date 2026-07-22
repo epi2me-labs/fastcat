@@ -16,6 +16,8 @@ typedef struct {
     bool demultiplex;
     bool per_read;
     bool html_report;
+    bool json_summary;
+    bool no_legacy_outputs;
     int threads;
     bool verbose;
     bool force_error;

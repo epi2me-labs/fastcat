@@ -16,25 +16,25 @@
  * @returns the min/max of a and b
  *
  */
-#define min(a, b) ({    \
+#define min(a, b) ({ \
     typeof(a) _a = (a); \
     typeof(b) _b = (b); \
-    _a < _b ? _a : _b;  \
+    _a < _b ? _a : _b; \
 })
-#define max(a, b) ({    \
+#define max(a, b) ({ \
     typeof(a) _a = (a); \
     typeof(b) _b = (b); \
-    _a > _b ? _a : _b;  \
+    _a > _b ? _a : _b; \
 })
 
-#define FC_SNPRINTF_CHECK(buf, size, ...)                                        \
-    do {                                                                         \
-        size_t _fc_snprintf_size = (size_t)(size);                               \
-        int _fc_snprintf_n = snprintf((buf), _fc_snprintf_size, __VA_ARGS__);    \
+#define FC_SNPRINTF_CHECK(buf, size, ...) \
+    do { \
+        size_t _fc_snprintf_size = (size_t)(size); \
+        int _fc_snprintf_n = snprintf((buf), _fc_snprintf_size, __VA_ARGS__); \
         if (_fc_snprintf_n < 0 || (size_t)_fc_snprintf_n >= _fc_snprintf_size) { \
-            FC_LOG_ERROR("snprintf failed at %s:%d", __FILE__, __LINE__);        \
-            exit(EXIT_FAILURE);                                                  \
-        }                                                                        \
+            FC_LOG_ERROR("snprintf failed at %s:%d", __FILE__, __LINE__); \
+            exit(EXIT_FAILURE); \
+        } \
     } while (0)
 
 char *fc_asprintf(const char *msg, const char *fmt, ...);

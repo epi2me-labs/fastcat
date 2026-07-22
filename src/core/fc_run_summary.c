@@ -290,7 +290,7 @@ int fc_run_summary_materialize(
     memset(out, 0, sizeof(*out));
     out->sample_id = NULL != state->sample_id && kh_size(state->sample_id) > 0
         ? summary_join_counter(state->sample_id, "run_summary sample id")
-        : fc_strdup(sample_id ? sample_id : "", "run_summary sample fallback");
+        : fc_strdup(sample_id ? sample_id : "SAMPLE", "run_summary sample fallback");
     out->input_type = fc_strdup(summary_input_type(engine, bam_input), "run_summary input type");
     out->barcode_id = fc_strdup(barcode_id ? barcode_id : "", "run_summary barcode id");
     out->barcode_alias = summary_join_counter(state->barcode_alias, "run_summary barcode alias");

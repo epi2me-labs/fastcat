@@ -8,8 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `fastcat bam` recorded records with missing quality as being low quality. The behaviour has been changed to be the same as `fastcat fastq`, where records with missing quality are dropped and the program will finish processing inputs but exit with a non-zero exit code.
+- Changed the default fallback for `sample_id` field in outputs to be `SAMPLE`, rather than empty text.
 ### Added
 - HTML report outputs in the style of EPI2ME workflows, enabled by setting `--html-report` on the command line.
+- JSON summary and metrics output, enabled by setting `--json-report` on the command line.
+- Legacy TSV outputs can be disabled with `--no-legacy-outputs`. These will be removed in a future release.
 
 
 ## [v1.0.1]

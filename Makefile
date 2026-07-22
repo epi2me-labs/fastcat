@@ -37,6 +37,7 @@ REPORT_DEMO_N ?= 100000
 REPORT_DEMO_DURATION_S ?= 172800
 DEV_TOOLS_SCRIPT := $(REPO_ROOT)/tools/dev-tools
 DEV_TOOLS := python3 $(DEV_TOOLS_SCRIPT)
+SUMMARY_JSON_SCHEMA := $(REPO_ROOT)/test/fixtures/misc/summary_json.schema.json
 SHELL := /bin/bash
 BUILD_MAKEFILES := Makefile
 
@@ -59,7 +60,7 @@ CLANG_TIDY ?= clang-tidy
 SCAN_BUILD ?= scan-build
 ZCAT ?= zcat
 CLANG_FORMAT ?= clang-format
-CLANG_FORMAT_STYLE ?= {BasedOnStyle: WebKit, BreakBeforeBraces: Custom, BraceWrapping: { AfterFunction: true, AfterControlStatement: Never }, PointerAlignment: Right, SortIncludes: true, IncludeBlocks: Regroup, IncludeCategories: [ { Regex: "^<.*>$$", Priority: 1 }, { Regex: "^\\\"(third_party|htslib|zlib-ng)/.*\\\"$$", Priority: 2 }, { Regex: "^\\\".*\\\"$$", Priority: 3 } ], ReflowComments: true, AllowShortIfStatementsOnASingleLine: Never, InsertBraces: true, UseTab: Never, IndentWidth: 4, ContinuationIndentWidth: 4, AlignAfterOpenBracket: DontAlign, Cpp11BracedListStyle: false}
+CLANG_FORMAT_STYLE ?= {BasedOnStyle: WebKit, BreakBeforeBraces: Custom, BraceWrapping: { AfterFunction: true, AfterControlStatement: Never }, PointerAlignment: Right, SortIncludes: true, IncludeBlocks: Regroup, IncludeCategories: [ { Regex: "^<.*>$$", Priority: 1 }, { Regex: "^\\\"(third_party|htslib|zlib-ng)/.*\\\"$$", Priority: 2 }, { Regex: "^\\\".*\\\"$$", Priority: 3 } ], ReflowComments: true, AllowShortIfStatementsOnASingleLine: Never, UseTab: Never, IndentWidth: 4, ContinuationIndentWidth: 4, AlignAfterOpenBracket: DontAlign, AlignEscapedNewlines: DontAlign, Cpp11BracedListStyle: false}
 
 # third-party library versions and paths
 DEFLATEVER = 1.24
@@ -266,6 +267,7 @@ CORE_SRCS := \
 	src/sink/length_qscore_2d.c \
 	src/sink/speed_qscore_2d.c \
 	src/sink/time_bin.c \
+	src/sink/summary_json.c \
 	src/sink/hist.c \
 	src/sink/coverage.c \
 	src/sink/flagstats.c \
@@ -411,14 +413,14 @@ clean_zlib:
 clean_all: clean clean_htslib clean_zlib  ## clean all build artifacts including third-party libraries
 	rm -rf third_party/libdeflate-* third_party/samtools-*
 
-.PHONY: format format_check
-format:  ## run clang-format on first-party source files
+.PHONY: clang_format
+clang_format:  ## run clang-format on first-party source files
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
 	@find src -type f \( -name '*.c' -o -name '*.h' \) ! -path 'src/vendor/*' -print0 | xargs -0 $(CLANG_FORMAT) -i \
 		-style='$(CLANG_FORMAT_STYLE)'
 
-.PHONY: format_staged
-format_staged:  ## run clang-format on staged source files
+.PHONY: clang_format_staged
+clang_format_staged:  ## run clang-format on staged source files
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
 	@tmp=$$(mktemp); \
 	trap 'rm -f "$$tmp"' EXIT; \
@@ -429,8 +431,8 @@ format_staged:  ## run clang-format on staged source files
 	xargs -0 $(CLANG_FORMAT) -i -style='$(CLANG_FORMAT_STYLE)' < "$$tmp"; \
 	xargs -0 git add -- < "$$tmp"
 
-.PHONY: format_check
-format_check:
+.PHONY: clang_format_check
+clang_format_check:
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
 	@find src -type f \( -name '*.c' -o -name '*.h' \) ! -path 'src/vendor/*' -print0 | xargs -0 $(CLANG_FORMAT) --dry-run -Werror \
 		-style='$(CLANG_FORMAT_STYLE)'
@@ -716,6 +718,9 @@ COMPARE_FASTQ = \
 	case "$(2)" in *.gz) gunzip -c "$(2)" ;; *) cat "$(2)" ;; esac \
 		| $(DEV_TOOLS) sort_fastq > $(3).expected.sorted && \
 	diff $(3).sorted $(3).expected.sorted
+# Validate and compare JSON files, normalizing paths and optionally barcode IDs.
+# Args: $(1)=actual $(2)=expected $(3)=optional: mask_barcode
+COMPARE_JSON = $(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) --expected $(2) --path-root $(REPO_ROOT) $(if $(filter mask_barcode,$(3)),--mask-barcode) $(1)
 TEST_DESC = printf '\n%s\n' "$(1)"
 RUN_FASTCAT = $(PEPPER) $(FASTCAT_BIN) fastq
 RUN_BAMSTATS = $(PEPPER) $(FASTCAT_BIN) bam
@@ -728,9 +733,9 @@ TEST_EXPECTED_FASTCAT := $(TEST_EXPECTED)/fastcat
 TEST_EXPECTED_BAMSTATS := $(TEST_EXPECTED)/bamstats
 TEST_EXPECTED_METADATA := $(TEST_EXPECTED)/metadata
 TEST_EXPECTED_DEMULTIPLEX := $(TEST_EXPECTED_FASTCAT)/demultiplex
+TEST_EXPECTED_SUMMARY_JSON := $(TEST_EXPECTED_FASTCAT)
 TEST_TMP_DIR ?= $(TEST_ROOT)/tmp
 comma := ,
-
 
 # Test demux single barcode equivalence
 # This is used with both `fastcat fastq` and `fastcat bam` to provide the same test
@@ -751,6 +756,8 @@ define TEST_DEMUX_SINGLE_EQUIV
 			$(call $(4),plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
 		elif [[ "$$f" == "run_summary.tsv" ]]; then \
 			$(call COMPARE_TABLES_SKIP_THIRD,plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
+		elif [[ "$$f" == "summary.json" ]]; then \
+			$(call COMPARE_JSON,plain_out/$$f,demux_out/barcode0001/$$f,mask_barcode) || exit 1; \
 		else \
 			$(call COMPARE_TABLES_SKIP_FIRST,plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
 		fi; \
@@ -788,8 +795,8 @@ define TEST_METADATA
 	popd > /dev/null
 endef
 # Expected files to compare (excluding per_file.tsv which only exists at top level)
-FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv run_summary.tsv channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist
-BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv run_summary.tsv channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
+FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv run_summary.tsv summary.json channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist
+BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv run_summary.tsv summary.json channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
 
 
 ###
@@ -810,6 +817,7 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	$(RUN_FASTCAT) $(TEST_TMP_DIR)/report_html/reads.fastq.gz \
 		--output $(TEST_TMP_DIR)/report_html/fastcat_out \
 		--html-report \
+		--json-summary \
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/length_qscore_2d.tsv
@@ -817,6 +825,7 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/time_bin_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/channel_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/run_summary.tsv
+	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/summary.json
 	# TODO: these HTML content greps are brittle; prefer structural checks or remove low-value text assertions
 	grep -q "Fastcat Sequencing QC Report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Quality diagnostics" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
@@ -838,6 +847,7 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 		--output $(TEST_TMP_DIR)/report_html/demux_out \
 		--demultiplex \
 		--html-report \
+		--json-summary \
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/fastcat_report.html
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/length_qscore_2d.tsv
@@ -845,6 +855,7 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/time_bin_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/channel_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/run_summary.tsv
+	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/summary.json
 	rm -f $(TEST_TMP_DIR)/report_html/reads.fastq.gz
 
 .PHONY: demo_ubam
@@ -865,6 +876,7 @@ demo_ubam: $(FASTCAT_BIN) samtools  ## generate a synthetic unaligned BAM run an
 	$(RUN_BAMSTATS) $(TEST_TMP_DIR)/report_html_ubam/reads.bam \
 		--output $(TEST_TMP_DIR)/report_html_ubam/bam_out \
 		--html-report \
+		--json-summary \
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/length_qscore_2d.tsv
@@ -872,6 +884,7 @@ demo_ubam: $(FASTCAT_BIN) samtools  ## generate a synthetic unaligned BAM run an
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/time_bin_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/channel_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv
+	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/summary.json
 	grep -q $$'\\tunaligned bam\\t' $(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv
 	grep -q "Input type" $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
 	grep -q "unaligned bam" $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
@@ -910,12 +923,12 @@ test_report_missing_metadata: $(FASTCAT_BIN)
 # fastcat tests
 
 .PHONY: test_fastcat_demux_single_equiv
-test_fastcat_demux_single_equiv: $(FASTCAT_BIN)
+test_fastcat_demux_single_equiv: $(FASTCAT_BIN) $(REPORT_VENV)/.deps
 	@$(call TEST_DESC,Fastcat demux vs non-demux (single barcode))
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/demux_single, \
 		$(call TEST_DEMUX_SINGLE_EQUIV,\
-			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output plain_out --per-read > /dev/null && \
-			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output demux_out --per-read --demultiplex > /dev/null,\
+			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output plain_out --per-read --json-summary > /dev/null && \
+			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output demux_out --per-read --demultiplex --json-summary > /dev/null,\
 			$(FASTCAT_EXPECTED_FILES),\
 			demux_single,\
 			COMPARE_TABLES_SKIP_FIRST))
@@ -997,7 +1010,7 @@ test_fastcat_demux: test_fastcat_demultiplex_outputs
 test_fastcat_demultiplex_split: $(FASTCAT_BIN)
 	@$(call TEST_DESC,Fastcat demultiplex split files)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/demultiplex/split, \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --demultiplex --output out_split --reads-per-file 4 > /dev/null && \
+		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --demultiplex --output out_split --reads-per-file 4 --json-summary > /dev/null && \
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0000.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0000.fastq.gz,demux_split_0000) && \
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0001.fastq.gz,demux_split_0001) && \
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0002.fastq.gz,demux_split_0002) && \
@@ -1006,7 +1019,8 @@ test_fastcat_demultiplex_split: $(FASTCAT_BIN)
 		test -f out_split/barcode0001/speed_qscore_2d.tsv && \
 		test -f out_split/barcode0001/time_bin_summary.tsv && \
 		test -f out_split/barcode0001/run_summary.tsv && \
-		test -f out_split/barcode0001/channel_summary.tsv)
+		test -f out_split/barcode0001/channel_summary.tsv && \
+		test -f out_split/barcode0001/summary.json)
 test_fastcat_demux: test_fastcat_demultiplex_split
 
 
@@ -1126,6 +1140,40 @@ test_fastcat_channel_summary: $(FASTCAT_BIN)
 		test -f demux_out/unclassified/channel_summary.tsv && \
 		test -f demux_out/barcode0001/channel_summary.tsv)
 test_fastcat_output: test_fastcat_channel_summary
+
+
+.PHONY: test_fastcat_summary_json
+test_fastcat_summary_json: $(FASTCAT_BIN) $(REPORT_VENV)/.deps test_summary_json_validator
+	@$(call TEST_DESC,Fastcat summary.json structure and totals)
+	rm -rf $(TEST_TMP_DIR)/summary_json_fixture; \
+	mkdir -p $(TEST_TMP_DIR)/summary_json_fixture; \
+	pushd $(TEST_TMP_DIR)/summary_json_fixture > /dev/null; \
+	printf "@r1 start_time=1970-01-01T00:00:00Z ch=12 mux=1 du=1.0\nACGT\n+\n!!!!\n@r2 barcode=barcode0001 start_time=1970-01-01T00:00:05Z ch=12 mux=3 du=2.0\nAAAAAA\n+\nIIIIII\n@r3 barcode=barcode0001 start_time=1970-01-01T00:00:15Z ch=9 mux=2 du=4.0\nGGGGGGGG\n+\n55555555\n" > tiny.fastq; \
+	$(RUN_FASTCAT) $(TEST_TMP_DIR)/summary_json_fixture/tiny.fastq --output $(TEST_TMP_DIR)/summary_json_fixture/out --demultiplex --time-bin-size 10 --time-bin-k 64 --json-summary > /dev/null; \
+	test -f $(TEST_TMP_DIR)/summary_json_fixture/out/unclassified/summary.json; \
+	test -f $(TEST_TMP_DIR)/summary_json_fixture/out/barcode0001/summary.json; \
+	$(call COMPARE_JSON,$(TEST_TMP_DIR)/summary_json_fixture/out/barcode0001/summary.json,$(TEST_EXPECTED_SUMMARY_JSON)/summary_json.barcode0001.json.gz) && \
+	$(call COMPARE_JSON,$(TEST_TMP_DIR)/summary_json_fixture/out/unclassified/summary.json,$(TEST_EXPECTED_SUMMARY_JSON)/summary_json.unclassified.json.gz); \
+	popd > /dev/null; \
+	rm -rf $(TEST_TMP_DIR)/summary_json_fixture
+test_fastcat_output: test_fastcat_summary_json
+
+
+.PHONY: test_summary_json_validator
+test_summary_json_validator: $(REPORT_VENV)/.deps tools/workflow_glue/validate_summary_json.py $(SUMMARY_JSON_SCHEMA)
+	@$(call TEST_DESC,Summary JSON fixtures validate)
+	$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) $(TEST_EXPECTED_SUMMARY_JSON)/summary_json.barcode0001.json.gz $(TEST_EXPECTED_SUMMARY_JSON)/summary_json.unclassified.json.gz
+
+
+.PHONY: test_fastcat_summary_json_counters
+test_fastcat_summary_json_counters: $(FASTCAT_BIN) $(REPORT_VENV)/.deps tools/workflow_glue/validate_summary_json.py $(SUMMARY_JSON_SCHEMA)
+	@$(call TEST_DESC,Fastcat summary.json counter arrays)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/summary_json_counters, \
+		printf "@r1 runid=12345678-1234-1234-1234-123456789012 basecall_model_version_id=model-a ch=1 mux=1 start_time=1970-01-01T00:00:00Z du=1.0\\nACGT\\n+\\nIIII\\n" > reads.fastq && \
+		$(RUN_FASTCAT) reads.fastq --output out --json-summary > /dev/null && \
+		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) out/summary.json && \
+		$(REPORT_PY) -c 'import json; data = json.load(open("out/summary.json")); assert len(data["counts"]["run_ids"]) == 1; assert len(data["counts"]["basecallers"]) == 1')
+test_fastcat_output: test_fastcat_summary_json_counters
 
 
 .PHONY: test_fastcat_regression_results
@@ -1317,13 +1365,13 @@ test_fastcat_memory: mem_check_fastcat_demultiplex_bam
 # bamstats tests
 
 .PHONY: test_bamstats_demux_single_equiv
-test_bamstats_demux_single_equiv: $(FASTCAT_BIN)
+test_bamstats_demux_single_equiv: $(FASTCAT_BIN) $(REPORT_VENV)/.deps
 	@$(call TEST_DESC,Bamstats demux vs non-demux (single barcode))
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/demux_single, \
 		$(call TEST_DEMUX_SINGLE_EQUIV,\
 			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output tmp_fc --per-read -B > bc1.bam && \
-			$(RUN_BAMSTATS) bc1.bam --per-read --output plain_out > /dev/null && \
-			$(RUN_BAMSTATS) bc1.bam --per-read --demultiplex --output demux_out > /dev/null,\
+			$(RUN_BAMSTATS) bc1.bam --per-read --output plain_out --json-summary > /dev/null && \
+			$(RUN_BAMSTATS) bc1.bam --per-read --demultiplex --output demux_out --json-summary > /dev/null,\
 			$(BAMSTATS_EXPECTED_FILES),\
 			bs_demux_single,\
 			COMPARE_TABLES))
@@ -1349,6 +1397,19 @@ test_bamstats_sample_column: $(FASTCAT_BIN)
 		$(RUN_BAMSTATS) $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --sample foo --output out_sample > /dev/null && \
 		head -n 1 out_sample/flagstats.tsv | grep -q "sample_name")
 test_bamstats_core: test_bamstats_sample_column
+
+
+.PHONY: test_bamstats_summary_json_schema
+test_bamstats_summary_json_schema: $(FASTCAT_BIN) $(REPORT_VENV)/.deps tools/workflow_glue/validate_summary_json.py $(SUMMARY_JSON_SCHEMA)
+	@$(call TEST_DESC,Bamstats summary.json schema including flagstats)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/summary_json_schema, \
+		printf "@r1 runid=12345678-1234-1234-1234-123456789012 basecall_model_version_id=model-a ch=1 mux=1 start_time=1970-01-01T00:00:00Z du=1.0\\nACGT\\n+\\nIIII\\n" > reads.fastq && \
+		$(RUN_FASTCAT) reads.fastq --output fastcat_out -B > reads.bam && \
+		$(RUN_BAMSTATS) reads.bam --output out --json-summary > /dev/null && \
+		test -s out/summary.json && \
+		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) out/summary.json && \
+		$(REPORT_PY) -c 'import json; assert json.load(open("out/summary.json"))["flagstats"]')
+test_bamstats_core: test_bamstats_summary_json_schema
 
 
 .PHONY: test_bamstats_coverage_demux_layout
