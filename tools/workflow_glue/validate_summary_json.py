@@ -99,6 +99,17 @@ def decode_dataframe(data, path):
     errors = []
     for index, column in enumerate(data["columns"]):
         column_path = f"{path}.columns[{index}]"
+        if column["dtype"] == "string":
+            values = column.get("data")
+            if not isinstance(values, list) or len(values) != row_count:
+                errors.append(
+                    f"{column_path}.data: expected {row_count} strings")
+                continue
+            if not all(isinstance(value, str) for value in values):
+                errors.append(f"{column_path}.data: expected only strings")
+                continue
+            arrays[column["name"]] = pd.Series(values, dtype="string")
+            continue
         payload, error = decode_payload(column, column_path, row_count, column["dtype"])
         if error is not None:
             errors.append(error)
@@ -115,7 +126,9 @@ def decode_dataframe(data, path):
     if dataframe.shape != expected_shape:
         errors.append(f"{path}: pandas dataframe has shape {dataframe.shape}, expected {expected_shape}")
     decoded_dtypes = tuple(str(dtype) for dtype in dataframe.dtypes)
-    expected_dtypes = tuple(column["dtype"] for column in columns)
+    expected_dtypes = tuple(
+        "string" if column["dtype"] == "string" else column["dtype"]
+        for column in columns)
     if decoded_dtypes != expected_dtypes:
         errors.append(
             f"{path}: pandas dataframe dtypes expected {list(expected_dtypes)}, "
@@ -146,6 +159,12 @@ def validate_document(document, schema):
         if value is None:
             continue
         errors.extend(validate_dataframe(value, path))
+
+    for index, target in enumerate(document.get("coverage", {}).get("targets", [])):
+        prefix = f"$.coverage.targets[{index}]"
+        errors.extend(validate_dataframe(target["summary"]["__data__"], f"{prefix}.summary.__data__"))
+        errors.extend(validate_dataframe(
+            target["distribution"]["__data__"], f"{prefix}.distribution.__data__"))
 
     for name, heatmap in document["heatmaps"].items():
         if heatmap is not None:

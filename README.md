@@ -343,7 +343,7 @@ A set of files is produced for each user-provided BED file, as well as for the w
   are covered at at least X depth?").
 
 The summary file contains user-configurable entries enumerating a sparse coverage CDF:
-the default is to output the proportion of positions covered at 1x, 5x, 10x, 20x, 30x, 40x, and 50x.
+the default is to output the proportion of positions covered at 1x, 5x, 10x, 20x, 30x, and 40x.
 This is done independently for all regions in the BED, as well as the final total line.
 
 ## fastcat lint

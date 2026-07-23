@@ -138,6 +138,23 @@ FC_TEST(json_suite, test_empty_adaptive_column_has_uint8_empty_payload)
     json_value_free(parsed);
 }
 
+FC_TEST(json_suite, test_dataframe_string_column_uses_direct_strings)
+{
+    const char *values[] = { "chr1", "total" };
+    JSON_Value *parsed = round_trip_json_value(fc_json_column_string("chrom", values, 2));
+    JSON_Object *object = json_value_get_object(parsed);
+    TEST_ASSERT_NOT_NULL(object);
+    TEST_ASSERT_EQUAL_size_t(3, json_object_get_count(object));
+    TEST_ASSERT_EQUAL_STRING("chrom", json_object_get_string(object, "name"));
+    TEST_ASSERT_EQUAL_STRING("string", json_object_get_string(object, "dtype"));
+    JSON_Array *data = json_object_get_array(object, "data");
+    TEST_ASSERT_NOT_NULL(data);
+    TEST_ASSERT_EQUAL_size_t(2, json_array_get_count(data));
+    TEST_ASSERT_EQUAL_STRING("chr1", json_array_get_string(data, 0));
+    TEST_ASSERT_EQUAL_STRING("total", json_array_get_string(data, 1));
+    json_value_free(parsed);
+}
+
 FC_TEST(json_suite, test_object_set_value_null_writes_json_null)
 {
     fc_json_value_t *value = fc_json_object_value();
