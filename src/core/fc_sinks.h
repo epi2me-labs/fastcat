@@ -63,6 +63,31 @@ typedef struct {
     size_t barcode_count;
 } fc_flagstats_sink_opts;
 
+typedef enum {
+    FC_FLAGSTAT_TOTAL,
+    FC_FLAGSTAT_PRIMARY,
+    FC_FLAGSTAT_SECONDARY,
+    FC_FLAGSTAT_SUPPLEMENTARY,
+    FC_FLAGSTAT_UNMAPPED,
+    FC_FLAGSTAT_QCFAIL,
+    FC_FLAGSTAT_DUPLICATE,
+    FC_FLAGSTAT_DUPLEX,
+    FC_FLAGSTAT_DUPLEX_FORMING,
+    FC_FLAGSTAT_COUNT
+} fc_flagstat_column;
+
+static const char *const fc_flagstat_column_names[FC_FLAGSTAT_COUNT] = {
+    "total",
+    "primary",
+    "secondary",
+    "supplementary",
+    "unmapped",
+    "qcfail",
+    "duplicate",
+    "duplex",
+    "duplex_forming"
+};
+
 fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts);
 
 typedef struct {

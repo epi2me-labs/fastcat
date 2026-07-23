@@ -8,8 +8,6 @@
 #include "core/fc_sinks.h"
 #include "sink/common.h"
 
-#define FLAG_COLS 9
-
 typedef struct flag_stats {
     size_t n_refs;
     size_t **counts;
@@ -23,10 +21,10 @@ static flag_stats *create_flag_stats(size_t n_refs, bool store_unmapped)
     stats->n_refs = n_refs;
     // For unaligned-only BAMs (n_refs=0), we only track unmapped stats
     stats->counts = n_refs > 0 ? fc_alloc(n_refs, sizeof(size_t *), "flagstat") : NULL;
-    stats->unmapped = store_unmapped ? fc_alloc(FLAG_COLS, sizeof(size_t), "flagstat") : NULL;
+    stats->unmapped = store_unmapped ? fc_alloc(FC_FLAGSTAT_COUNT, sizeof(size_t), "flagstat") : NULL;
 
     for (size_t i = 0; i < n_refs; i++) {
-        stats->counts[i] = fc_alloc(FLAG_COLS, sizeof(size_t), "flagstat");
+        stats->counts[i] = fc_alloc(FC_FLAGSTAT_COUNT, sizeof(size_t), "flagstat");
     }
     return stats;
 }
@@ -44,20 +42,23 @@ static void destroy_flag_stats(flag_stats *stats)
     free(stats);
 }
 
-// counting alignment flags: total, primary, secondary, supplementary, unmapped, qcfail, duplicate, duplex, duplex_forming
-static const size_t FLAG_MASK[8] = {
-    0, 0, BAM_FSECONDARY, BAM_FSUPPLEMENTARY, BAM_FUNMAP, BAM_FQCFAIL, BAM_FDUP, 0
+static const size_t flag_masks[FC_FLAGSTAT_COUNT] = {
+    [FC_FLAGSTAT_SECONDARY] = BAM_FSECONDARY,
+    [FC_FLAGSTAT_SUPPLEMENTARY] = BAM_FSUPPLEMENTARY,
+    [FC_FLAGSTAT_UNMAPPED] = BAM_FUNMAP,
+    [FC_FLAGSTAT_QCFAIL] = BAM_FQCFAIL,
+    [FC_FLAGSTAT_DUPLICATE] = BAM_FDUP
 };
 
 static inline void flagstats_add_counts(const bam1_t *b, size_t *counts, const int duplex_code)
 {
-    counts[0] += 1;
-    counts[1] += fc_is_primary(b);
-    for (size_t i = 2; i < 7; ++i) {
-        counts[i] += ((b->core.flag & FLAG_MASK[i]) != 0);
+    counts[FC_FLAGSTAT_TOTAL] += 1;
+    counts[FC_FLAGSTAT_PRIMARY] += fc_is_primary(b);
+    for (size_t i = FC_FLAGSTAT_SECONDARY; i <= FC_FLAGSTAT_DUPLICATE; ++i) {
+        counts[i] += ((b->core.flag & flag_masks[i]) != 0);
     }
-    counts[7] += (duplex_code == 1);
-    counts[8] += (duplex_code == -1);
+    counts[FC_FLAGSTAT_DUPLEX] += (duplex_code == 1);
+    counts[FC_FLAGSTAT_DUPLEX_FORMING] += (duplex_code == -1);
 }
 
 typedef struct {
@@ -128,10 +129,11 @@ static void flagstats_write_header(FILE *fh, const char *sample)
     if (!fh) {
         return;
     }
-    const char *sample_col = sample ? "\tsample_name" : "";
-    fprintf(fh,
-        "ref%s\ttotal\tprimary\tsecondary\tsupplementary\tunmapped\tqcfail\tduplicate\tduplex\tduplex_forming\n",
-        sample_col);
+    fprintf(fh, "ref%s", sample ? "\tsample_name" : "");
+    for (size_t i = 0; i < FC_FLAGSTAT_COUNT; ++i) {
+        fprintf(fh, "\t%s", fc_flagstat_column_names[i]);
+    }
+    fputc('\n', fh);
 }
 
 static void flagstats_write_line(FILE *fh, const char *sample, const char *label, size_t *stats)
@@ -139,17 +141,14 @@ static void flagstats_write_line(FILE *fh, const char *sample, const char *label
     if (!fh) {
         return;
     }
+    fprintf(fh, "%s", label);
     if (sample) {
-        fprintf(fh,
-            "%s\t%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
-            label, sample,
-            stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6], stats[7], stats[8]);
-    } else {
-        fprintf(fh,
-            "%s\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\t%zu\n",
-            label,
-            stats[0], stats[1], stats[2], stats[3], stats[4], stats[5], stats[6], stats[7], stats[8]);
+        fprintf(fh, "\t%s", sample);
     }
+    for (size_t i = 0; i < FC_FLAGSTAT_COUNT; ++i) {
+        fprintf(fh, "\t%zu", stats[i]);
+    }
+    fputc('\n', fh);
 }
 
 static void flagstats_write_all(flagstats_sink *sink, flag_stats *stats, FILE *fp)

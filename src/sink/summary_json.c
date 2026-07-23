@@ -18,8 +18,6 @@
 #include "sink/common.h"
 
 #define FC_SUMMARY_JSON_SCHEMA_VERSION 1
-#define FC_SUMMARY_JSON_FLAG_COLS 9
-
 typedef struct {
     size_t n_refs;
     size_t **counts;
@@ -113,11 +111,11 @@ static summary_flag_stats *summary_flag_stats_create(size_t n_refs, bool store_u
     stats->n_refs = n_refs;
     stats->counts = n_refs > 0 ? fc_alloc(n_refs, sizeof(*stats->counts), "summary_json flagstats counts") : NULL;
     stats->unmapped = store_unmapped
-        ? fc_alloc(FC_SUMMARY_JSON_FLAG_COLS, sizeof(*stats->unmapped), "summary_json flagstats unmapped")
+        ? fc_alloc(FC_FLAGSTAT_COUNT, sizeof(*stats->unmapped), "summary_json flagstats unmapped")
         : NULL;
     for (size_t i = 0; i < n_refs; i++) {
         stats->counts[i] = fc_alloc(
-            FC_SUMMARY_JSON_FLAG_COLS,
+            FC_FLAGSTAT_COUNT,
             sizeof(*stats->counts[i]),
             "summary_json flagstats row");
     }
@@ -126,15 +124,15 @@ static summary_flag_stats *summary_flag_stats_create(size_t n_refs, bool store_u
 
 static void summary_flagstats_add_counts(const bam1_t *bam, size_t *counts, int duplex_code)
 {
-    counts[0] += 1;
-    counts[1] += fc_is_primary(bam);
-    counts[2] += ((bam->core.flag & BAM_FSECONDARY) != 0);
-    counts[3] += ((bam->core.flag & BAM_FSUPPLEMENTARY) != 0);
-    counts[4] += ((bam->core.flag & BAM_FUNMAP) != 0);
-    counts[5] += ((bam->core.flag & BAM_FQCFAIL) != 0);
-    counts[6] += ((bam->core.flag & BAM_FDUP) != 0);
-    counts[7] += (duplex_code == 1);
-    counts[8] += (duplex_code == -1);
+    counts[FC_FLAGSTAT_TOTAL] += 1;
+    counts[FC_FLAGSTAT_PRIMARY] += fc_is_primary(bam);
+    counts[FC_FLAGSTAT_SECONDARY] += ((bam->core.flag & BAM_FSECONDARY) != 0);
+    counts[FC_FLAGSTAT_SUPPLEMENTARY] += ((bam->core.flag & BAM_FSUPPLEMENTARY) != 0);
+    counts[FC_FLAGSTAT_UNMAPPED] += ((bam->core.flag & BAM_FUNMAP) != 0);
+    counts[FC_FLAGSTAT_QCFAIL] += ((bam->core.flag & BAM_FQCFAIL) != 0);
+    counts[FC_FLAGSTAT_DUPLICATE] += ((bam->core.flag & BAM_FDUP) != 0);
+    counts[FC_FLAGSTAT_DUPLEX] += (duplex_code == 1);
+    counts[FC_FLAGSTAT_DUPLEX_FORMING] += (duplex_code == -1);
 }
 
 static summary_flag_stats *summary_ensure_flagstats(summary_json_sink *sink, size_t barcode)
@@ -406,15 +404,17 @@ static void summary_json_counts(fc_json_object_t *root, const fc_run_summary_row
     summary_json_counter_array(counts, "basecallers", state->basecallers);
 }
 
-static void summary_json_length_distribution(
-    fc_json_object_t *distributions,
+// Root read-length output includes aggregate totals and the yield trace; alignment
+// distributions reuse this serializer with zero totals and both optional fields omitted.
+static fc_json_value_t *summary_json_length_distribution_value(
     const read_stats *stats,
     size_t total_base_count,
-    size_t total_read_count)
+    size_t total_read_count,
+    bool include_yield,
+    bool include_total_base_count)
 {
     if (NULL == stats) {
-        fc_json_object_set_null(distributions, "read_length");
-        return;
+        return NULL;
     }
 
     fc_json_value_t *value = fc_json_object_value();
@@ -424,7 +424,9 @@ static void summary_json_length_distribution(
     size_t *starts_arr = fc_alloc(stats->n, sizeof(size_t), "summary_json length starts");
     size_t *ends_arr = fc_alloc(stats->n, sizeof(size_t), "summary_json length ends");
     size_t *counts_arr = fc_alloc(stats->n, sizeof(size_t), "summary_json length counts");
-    size_t *yield_arr = fc_alloc(stats->n, sizeof(size_t), "summary_json length yields");
+    size_t *yield_arr = include_yield
+        ? fc_alloc(stats->n, sizeof(size_t), "summary_json length yields")
+        : NULL;
     size_t n_bins = 0;
 
     double total = 0.0;
@@ -451,18 +453,20 @@ static void summary_json_length_distribution(
         }
     }
 
-    size_t cumulative_yield = 0;
-    for (size_t i = n_bins; i > 0; i--) {
-        size_t index = i - 1;
-        if (starts_arr[index] != 0 && counts_arr[index] > SIZE_MAX / starts_arr[index]) {
-            FC_LOG_FATAL("Length yield exceeds summary.json integer range.");
+    if (include_yield) {
+        size_t cumulative_yield = 0;
+        for (size_t i = n_bins; i > 0; i--) {
+            size_t index = i - 1;
+            if (starts_arr[index] != 0 && counts_arr[index] > SIZE_MAX / starts_arr[index]) {
+                FC_LOG_FATAL("Length yield exceeds summary.json integer range.");
+            }
+            size_t bin_yield = starts_arr[index] * counts_arr[index];
+            if (bin_yield > SIZE_MAX - cumulative_yield) {
+                FC_LOG_FATAL("Cumulative length yield exceeds summary.json integer range.");
+            }
+            cumulative_yield += bin_yield;
+            yield_arr[index] = cumulative_yield;
         }
-        size_t bin_yield = starts_arr[index] * counts_arr[index];
-        if (bin_yield > SIZE_MAX - cumulative_yield) {
-            FC_LOG_FATAL("Cumulative length yield exceeds summary.json integer range.");
-        }
-        cumulative_yield += bin_yield;
-        yield_arr[index] = cumulative_yield;
     }
 
     // Encode as columnar table (consistent with other data tables)
@@ -474,8 +478,10 @@ static void summary_json_length_distribution(
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("start", starts_arr, n_bins));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("end", ends_arr, n_bins));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("count", counts_arr, n_bins));
-    fc_json_array_append_value(
-        columns, fc_json_column_uint_adaptive("yield_at_or_above_bp", yield_arr, n_bins));
+    if (include_yield) {
+        fc_json_array_append_value(
+            columns, fc_json_column_uint_adaptive("yield_at_or_above_bp", yield_arr, n_bins));
+    }
 
     free(starts_arr);
     free(ends_arr);
@@ -483,9 +489,11 @@ static void summary_json_length_distribution(
     free(yield_arr);
 
     fc_json_object_set_number(hist, "total_count", total);
-    fc_json_object_set_number(hist, "total_base_count", (double)total_base_count);
-    fc_json_object_set_number(
-        hist, "mean", total_read_count > 0 ? (double)total_base_count / total_read_count : 0.0);
+    if (include_total_base_count) {
+        fc_json_object_set_number(hist, "total_base_count", (double)total_base_count);
+        fc_json_object_set_number(
+            hist, "mean", total_read_count > 0 ? (double)total_base_count / total_read_count : 0.0);
+    }
     fc_json_object_set_number(hist, "median", fc_stats_median_start(stats));
     if (overflow_count > 0) {
         fc_json_object_set_number(hist, "overflow_start_bp", (double)overflow_start);
@@ -494,14 +502,13 @@ static void summary_json_length_distribution(
         fc_json_object_set_null(hist, "overflow_start_bp");
         fc_json_object_set_null(hist, "overflow_count");
     }
-    fc_json_object_set_value(distributions, "read_length", value);
+    return value;
 }
 
-static void summary_json_quality_distribution(fc_json_object_t *distributions, const read_stats *stats)
+static fc_json_value_t *summary_json_fixed_distribution_value(const read_stats *stats)
 {
     if (NULL == stats) {
-        fc_json_object_set_null(distributions, "quality");
-        return;
+        return NULL;
     }
 
     fc_json_value_t *value = fc_json_object_value();
@@ -544,7 +551,7 @@ static void summary_json_quality_distribution(fc_json_object_t *distributions, c
     free(ends_arr);
     free(counts_arr);
 
-    fc_json_object_set_value(distributions, "quality", value);
+    return value;
 }
 
 static fc_json_value_t *summary_json_heatmap_ndarray(const double *counts, size_t rows, size_t cols)
@@ -839,29 +846,71 @@ static void summary_json_channels(fc_json_object_t *root, const fc_channel_summa
 }
 
 static void summary_json_flagstats(
-    fc_json_object_t *root,
+    fc_json_object_t *alignment,
     const summary_json_sink *sink,
     const summary_json_barcode *state)
 {
-    if (!sink->cfg.bam_input || NULL == state->flagstats) {
+    if (!sink->cfg.bam_input) {
         return;
     }
 
-    fc_json_array_t *rows = fc_json_object_set_array(root, "flagstats");
+    if (NULL == state->flagstats) {
+        fc_json_object_t *record_counts = fc_json_object_set_object(alignment, "record_counts");
+        size_t zero_counts[FC_FLAGSTAT_COUNT] = { 0 };
+        for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
+            fc_json_object_set_number(record_counts, fc_flagstat_column_names[col], (double)zero_counts[col]);
+        }
+        fc_json_object_set_number(alignment, "mapped_record_count", 0.0);
+        fc_json_object_set_number(alignment, "mapped_record_percent", 0.0);
+        fc_json_object_set_number(alignment, "primary_mapped_record_count", 0.0);
+        fc_json_object_set_number(alignment, "primary_mapped_record_percent", 0.0);
+        fc_json_object_set_array(alignment, "per_reference_counts");
+        return;
+    }
+
+    size_t aggregate[FC_FLAGSTAT_COUNT] = { 0 };
+    size_t mapped_count = 0;
+    size_t primary_mapped_count = 0;
+    for (size_t i = 0; i < state->flagstats->n_refs; ++i) {
+        const size_t *counts = state->flagstats->counts[i];
+        for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
+            aggregate[col] += counts[col];
+        }
+        mapped_count += counts[FC_FLAGSTAT_TOTAL];
+        primary_mapped_count += counts[FC_FLAGSTAT_PRIMARY];
+    }
+    if (NULL != state->flagstats->unmapped) {
+        const size_t *counts = state->flagstats->unmapped;
+        for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
+            aggregate[col] += counts[col];
+        }
+    }
+
+    fc_json_object_t *record_counts = fc_json_object_set_object(alignment, "record_counts");
+    for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
+        fc_json_object_set_number(record_counts, fc_flagstat_column_names[col], (double)aggregate[col]);
+    }
+
+    fc_json_object_set_number(alignment, "mapped_record_count", (double)mapped_count);
+    fc_json_object_set_number(
+        alignment,
+        "mapped_record_percent",
+        aggregate[FC_FLAGSTAT_TOTAL] > 0 ? 100.0 * mapped_count / aggregate[FC_FLAGSTAT_TOTAL] : 0.0);
+    fc_json_object_set_number(alignment, "primary_mapped_record_count", (double)primary_mapped_count);
+    fc_json_object_set_number(
+        alignment,
+        "primary_mapped_record_percent",
+        aggregate[FC_FLAGSTAT_TOTAL] > 0 ? 100.0 * primary_mapped_count / aggregate[FC_FLAGSTAT_TOTAL] : 0.0);
+
+    fc_json_array_t *rows = fc_json_object_set_array(alignment, "per_reference_counts");
     if (sink->cfg.region_mode) {
         fc_json_value_t *value = fc_json_object_value();
         fc_json_object_t *obj = fc_json_get_object(value);
         fc_json_object_set_string(obj, "ref", sink->cfg.region_label ? sink->cfg.region_label : "region");
         const size_t *counts = state->flagstats->counts[0];
-        fc_json_object_set_number(obj, "total", (double)counts[0]);
-        fc_json_object_set_number(obj, "primary", (double)counts[1]);
-        fc_json_object_set_number(obj, "secondary", (double)counts[2]);
-        fc_json_object_set_number(obj, "supplementary", (double)counts[3]);
-        fc_json_object_set_number(obj, "unmapped", (double)counts[4]);
-        fc_json_object_set_number(obj, "qcfail", (double)counts[5]);
-        fc_json_object_set_number(obj, "duplicate", (double)counts[6]);
-        fc_json_object_set_number(obj, "duplex", (double)counts[7]);
-        fc_json_object_set_number(obj, "duplex_forming", (double)counts[8]);
+        for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
+            fc_json_object_set_number(obj, fc_flagstat_column_names[col], (double)counts[col]);
+        }
         fc_json_array_append_value(rows, value);
     } else {
         for (size_t i = 0; i < state->flagstats->n_refs; i++) {
@@ -877,15 +926,9 @@ static void summary_json_flagstats(
             }
             const size_t *counts = state->flagstats->counts[i];
             fc_json_object_set_string(obj, "ref", label);
-            fc_json_object_set_number(obj, "total", (double)counts[0]);
-            fc_json_object_set_number(obj, "primary", (double)counts[1]);
-            fc_json_object_set_number(obj, "secondary", (double)counts[2]);
-            fc_json_object_set_number(obj, "supplementary", (double)counts[3]);
-            fc_json_object_set_number(obj, "unmapped", (double)counts[4]);
-            fc_json_object_set_number(obj, "qcfail", (double)counts[5]);
-            fc_json_object_set_number(obj, "duplicate", (double)counts[6]);
-            fc_json_object_set_number(obj, "duplex", (double)counts[7]);
-            fc_json_object_set_number(obj, "duplex_forming", (double)counts[8]);
+            for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
+                fc_json_object_set_number(obj, fc_flagstat_column_names[col], (double)counts[col]);
+            }
             fc_json_array_append_value(rows, value);
         }
     }
@@ -894,17 +937,50 @@ static void summary_json_flagstats(
         fc_json_object_t *obj = fc_json_get_object(value);
         const size_t *counts = state->flagstats->unmapped;
         fc_json_object_set_string(obj, "ref", "*");
-        fc_json_object_set_number(obj, "total", (double)counts[0]);
-        fc_json_object_set_number(obj, "primary", (double)counts[1]);
-        fc_json_object_set_number(obj, "secondary", (double)counts[2]);
-        fc_json_object_set_number(obj, "supplementary", (double)counts[3]);
-        fc_json_object_set_number(obj, "unmapped", (double)counts[4]);
-        fc_json_object_set_number(obj, "qcfail", (double)counts[5]);
-        fc_json_object_set_number(obj, "duplicate", (double)counts[6]);
-        fc_json_object_set_number(obj, "duplex", (double)counts[7]);
-        fc_json_object_set_number(obj, "duplex_forming", (double)counts[8]);
+        for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
+            fc_json_object_set_number(obj, fc_flagstat_column_names[col], (double)counts[col]);
+        }
         fc_json_array_append_value(rows, value);
     }
+}
+
+static void summary_json_alignment_distributions(
+    fc_json_object_t *alignment,
+    const fc_stats_engine *engine)
+{
+    fc_json_object_t *distributions = fc_json_object_set_object(alignment, "distributions");
+
+    fc_json_value_t *value = summary_json_fixed_distribution_value(engine ? engine->acc_stats : NULL);
+    fc_json_object_set_value(distributions, "accuracy", value);
+
+    value = summary_json_fixed_distribution_value(engine ? engine->cov_stats : NULL);
+    fc_json_object_set_value(distributions, "query_coverage", value);
+
+    value = summary_json_length_distribution_value(
+        engine ? engine->length_stats_unmapped : NULL, 0, 0, false, false);
+    fc_json_object_set_value(distributions, "unmapped_read_length", value);
+
+    value = summary_json_fixed_distribution_value(engine ? engine->qual_stats_unmapped : NULL);
+    fc_json_object_set_value(distributions, "unmapped_quality", value);
+
+    value = summary_json_length_distribution_value(
+        engine ? engine->polya_stats : NULL, 0, 0, false, false);
+    fc_json_object_set_value(distributions, "poly_a_length", value);
+}
+
+static void summary_json_alignment(
+    fc_json_object_t *root,
+    const summary_json_sink *sink,
+    const summary_json_barcode *state,
+    const fc_stats_engine *engine)
+{
+    if (!sink->cfg.bam_input) {
+        return;
+    }
+
+    fc_json_object_t *alignment = fc_json_object_set_object(root, "alignment");
+    summary_json_flagstats(alignment, sink, state);
+    summary_json_alignment_distributions(alignment, engine);
 }
 
 static FILE *summary_json_open_output(const summary_json_sink *sink, size_t barcode)
@@ -997,16 +1073,19 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
     summary_json_channels(root, sink->cfg.channel_summary, barcode);
 
     fc_json_object_t *distributions = fc_json_object_set_object(root, "distributions");
-    summary_json_length_distribution(
-        distributions, length_stats, row.base_count, row.read_count);
-    summary_json_quality_distribution(distributions, quality_stats);
+    fc_json_value_t *length_distribution = summary_json_length_distribution_value(
+        length_stats, row.base_count, row.read_count, true, true);
+    fc_json_object_set_value(distributions, "read_length", length_distribution);
+
+    fc_json_value_t *quality_distribution = summary_json_fixed_distribution_value(quality_stats);
+    fc_json_object_set_value(distributions, "quality", quality_distribution);
 
     summary_json_time(root, sink->cfg.time_bin, barcode);
 
     fc_json_object_t *heatmaps = fc_json_object_set_object(root, "heatmaps");
     summary_json_length_heatmap(heatmaps, sink->cfg.length_qscore, barcode);
     summary_json_speed_heatmap(heatmaps, sink->cfg.speed_qscore, barcode);
-    summary_json_flagstats(root, sink, state);
+    summary_json_alignment(root, sink, state, engine);
 
     FILE *fp = summary_json_open_output(sink, barcode);
     char *json = fc_json_serialize_to_string(value);

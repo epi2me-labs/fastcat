@@ -122,8 +122,51 @@ FC_TEST(stats_engine_suite, test_stats_engine_aligned_metrics)
     TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->qual_stats));
     TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->acc_stats));
     TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->cov_stats));
+    TEST_ASSERT_EQUAL_UINT64(1, engine->acc_stats->counts[engine->acc_stats->n - 1]);
+    TEST_ASSERT_EQUAL_UINT64(1, engine->cov_stats->counts[engine->cov_stats->n - 1]);
 
     fc_stats_engine_destroy(engine);
     fc_read_destroy(fr);
+    sam_hdr_destroy(hdr);
+}
+
+FC_TEST(stats_engine_suite, test_stats_engine_alignment_histogram_populations)
+{
+    sam_hdr_t* hdr = sam_hdr_init();
+    sam_hdr_add_line(hdr, "HD", "VN", "1.6", NULL);
+    sam_hdr_add_line(hdr, "SQ", "SN", "chr1", "LN", "100", NULL);
+
+    bam1_t* mapped = build_mapped_read("mapped", "ACGTACGTAC", "!!!!!!!!!!", 0, 5);
+    bam1_t* unmapped = build_unmapped_read("unmapped", "ACGT", "!!!!");
+    fc_read* mapped_read = fc_read_init();
+    fc_read* unmapped_read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(mapped_read);
+    TEST_ASSERT_NOT_NULL(unmapped_read);
+    bam_destroy1(mapped_read->bam);
+    bam_destroy1(unmapped_read->bam);
+    mapped_read->bam = mapped;
+    unmapped_read->bam = unmapped;
+    fc_bam_ensure_mean_quality(mapped, false);
+    fc_bam_ensure_mean_quality(unmapped, false);
+    fc_read_reset_from_bam(mapped_read, hdr, NULL, NULL);
+    fc_read_reset_from_bam(unmapped_read, NULL, NULL, NULL);
+    mapped_read->meta->poly_tail_length = 7;
+
+    fc_stats_engine* engine = fc_stats_engine_create(true, true, 0.0f, 0.0f, false);
+    TEST_ASSERT_EQUAL_INT(FC_STATS_ALIGNED, fc_stats_engine_add_read(engine, mapped_read, hdr, NULL));
+    TEST_ASSERT_EQUAL_INT(FC_STATS_UNMAPPED, fc_stats_engine_add_read(engine, unmapped_read, NULL, NULL));
+
+    TEST_ASSERT_EQUAL_UINT64(1, engine->length_stats_unmapped->counts[4]);
+    TEST_ASSERT_EQUAL_UINT64(1, engine->qual_stats_unmapped->counts[0]);
+    TEST_ASSERT_EQUAL_UINT64(1, engine->polya_stats->counts[7]);
+    TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->acc_stats));
+    TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->cov_stats));
+    TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->length_stats_unmapped));
+    TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->qual_stats_unmapped));
+    TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->polya_stats));
+
+    fc_stats_engine_destroy(engine);
+    fc_read_destroy(mapped_read);
+    fc_read_destroy(unmapped_read);
     sam_hdr_destroy(hdr);
 }

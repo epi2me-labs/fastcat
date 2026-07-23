@@ -24,6 +24,11 @@ DATAFRAME_PATHS = (
     "$.channels.__data__",
     "$.distributions.read_length.__data__",
     "$.distributions.quality.__data__",
+    "$.alignment.distributions.accuracy.__data__",
+    "$.alignment.distributions.query_coverage.__data__",
+    "$.alignment.distributions.unmapped_read_length.__data__",
+    "$.alignment.distributions.unmapped_quality.__data__",
+    "$.alignment.distributions.poly_a_length.__data__",
     "$.time.__data__",
 )
 
@@ -134,7 +139,8 @@ def validate_document(document, schema):
     for path in DATAFRAME_PATHS:
         value = document
         for key in path.removeprefix("$.").split("."):
-            if value is None:
+            if value is None or key not in value:
+                value = None
                 break
             value = value[key]
         if value is None:
