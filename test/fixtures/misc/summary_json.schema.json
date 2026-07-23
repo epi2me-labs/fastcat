@@ -16,6 +16,9 @@
     "heatmaps"
   ],
   "properties": {
+    "schema_id": {
+      "const": "https://github.com/epi2me-labs/fastcat/schema/summary_json.schema.json"
+    },
     "schema_version": {
       "const": 1
     },
@@ -62,6 +65,9 @@
     },
     "alignment": {
       "$ref": "#/$defs/alignment"
+    },
+    "coverage": {
+      "$ref": "#/$defs/coverage"
     }
   },
   "additionalProperties": false,
@@ -127,6 +133,29 @@
         },
         "__ndarray__": {
           "$ref": "#/$defs/base64"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stringColumn": {
+      "type": "object",
+      "required": [
+        "name",
+        "dtype",
+        "data"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "dtype": {
+          "const": "string"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false
@@ -1372,6 +1401,199 @@
         },
         "duplex_forming": {
           "$ref": "#/$defs/nonNegativeInt"
+        }
+      }
+    },
+    "coverageSummaryColumns": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "$ref": "#/$defs/floatColumn",
+        "properties": {
+          "name": {
+            "pattern": "^[0-9]+x$"
+          }
+        }
+      },
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/stringColumn",
+          "properties": {
+            "name": {
+              "const": "chrom"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "start"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "end"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "length"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "bases"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "mean"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "min"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "max"
+            }
+          }
+        }
+      ]
+    },
+    "coverageDistributionColumns": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/stringColumn",
+          "properties": {
+            "name": {
+              "const": "chrom"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "depth"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "fraction"
+            }
+          }
+        }
+      ]
+    },
+    "coverageTarget": {
+      "type": "object",
+      "required": [
+        "name",
+        "thresholds",
+        "summary",
+        "distribution"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "thresholds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonNegativeInt"
+          }
+        },
+        "summary": {
+          "type": "object",
+          "required": [
+            "__data__"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "__data__": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/dataframe"
+                },
+                {
+                  "properties": {
+                    "columns": {
+                      "$ref": "#/$defs/coverageSummaryColumns"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "distribution": {
+          "type": "object",
+          "required": [
+            "__data__"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "__data__": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/dataframe"
+                },
+                {
+                  "properties": {
+                    "columns": {
+                      "$ref": "#/$defs/coverageDistributionColumns"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "targets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/coverageTarget"
+          }
         }
       }
     }

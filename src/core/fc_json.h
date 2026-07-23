@@ -40,6 +40,7 @@ fc_json_value_t *fc_json_bokeh_ndarray_f64(const double *values, size_t rows, si
 fc_json_value_t *fc_json_ndarray_f64_to_uint_adaptive(const double *values, size_t rows, size_t cols);
 fc_json_value_t *fc_json_column_uint_adaptive(const char *name, const size_t *values, size_t n);
 fc_json_value_t *fc_json_column_f64(const char *name, const double *values, size_t n);
+fc_json_value_t *fc_json_column_string(const char *name, const char *const *values, size_t n);
 void fc_json_entries_append_value(fc_json_array_t *entries, const char *key, fc_json_value_t *value);
 
 #endif

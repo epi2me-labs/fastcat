@@ -18,6 +18,7 @@
 #include "sink/common.h"
 
 #define FC_SUMMARY_JSON_SCHEMA_VERSION 1
+#define FC_SUMMARY_JSON_SCHEMA_ID "https://github.com/epi2me-labs/fastcat/schema/summary_json.schema.json"
 typedef struct {
     size_t n_refs;
     size_t **counts;
@@ -983,6 +984,122 @@ static void summary_json_alignment(
     summary_json_alignment_distributions(alignment, engine);
 }
 
+static void summary_json_coverage_table(
+    fc_json_object_t *object, const fc_coverage_summary_target *target)
+{
+    size_t n_rows = target->n_summary_rows;
+    const char **chrom = n_rows ? fc_alloc(n_rows, sizeof(*chrom), "coverage JSON summary chrom") : NULL;
+    size_t *start = n_rows ? fc_alloc(n_rows, sizeof(*start), "coverage JSON summary start") : NULL;
+    size_t *end = n_rows ? fc_alloc(n_rows, sizeof(*end), "coverage JSON summary end") : NULL;
+    size_t *length = n_rows ? fc_alloc(n_rows, sizeof(*length), "coverage JSON summary length") : NULL;
+    size_t *bases = n_rows ? fc_alloc(n_rows, sizeof(*bases), "coverage JSON summary bases") : NULL;
+    double *mean = n_rows ? fc_alloc(n_rows, sizeof(*mean), "coverage JSON summary mean") : NULL;
+    size_t *min = n_rows ? fc_alloc(n_rows, sizeof(*min), "coverage JSON summary min") : NULL;
+    size_t *max = n_rows ? fc_alloc(n_rows, sizeof(*max), "coverage JSON summary max") : NULL;
+
+    for (size_t row = 0; row < n_rows; ++row) {
+        const fc_coverage_summary_row *source = &target->summary_rows[row];
+        chrom[row] = source->chrom;
+        start[row] = source->start;
+        end[row] = source->end;
+        length[row] = source->length;
+        bases[row] = source->bases;
+        mean[row] = source->mean;
+        min[row] = source->min;
+        max[row] = source->max;
+    }
+
+    fc_json_object_t *data = fc_json_object_set_object(object, "__data__");
+    fc_json_array_t *shape = fc_json_object_set_array(data, "shape");
+    fc_json_array_append_number(shape, (double)n_rows);
+    fc_json_array_t *columns = fc_json_object_set_array(data, "columns");
+    fc_json_array_append_value(columns, fc_json_column_string("chrom", chrom, n_rows));
+    fc_json_array_append_value(columns, fc_json_column_uint_adaptive("start", start, n_rows));
+    fc_json_array_append_value(columns, fc_json_column_uint_adaptive("end", end, n_rows));
+    fc_json_array_append_value(columns, fc_json_column_uint_adaptive("length", length, n_rows));
+    fc_json_array_append_value(columns, fc_json_column_uint_adaptive("bases", bases, n_rows));
+    fc_json_array_append_value(columns, fc_json_column_f64("mean", mean, n_rows));
+    fc_json_array_append_value(columns, fc_json_column_uint_adaptive("min", min, n_rows));
+    fc_json_array_append_value(columns, fc_json_column_uint_adaptive("max", max, n_rows));
+    for (size_t threshold = 0; threshold < target->n_thresholds; ++threshold) {
+        char name[32];
+        FC_SNPRINTF_CHECK(name, sizeof(name), "%ux", target->thresholds[threshold]);
+        double *fractions = n_rows
+            ? fc_alloc(n_rows, sizeof(*fractions), "coverage JSON threshold fractions")
+            : NULL;
+        for (size_t row = 0; row < n_rows; ++row) {
+            fractions[row] = target->summary_rows[row].threshold_fractions[threshold];
+        }
+        fc_json_array_append_value(columns, fc_json_column_f64(name, fractions, n_rows));
+        free(fractions);
+    }
+
+    free(chrom);
+    free(start);
+    free(end);
+    free(length);
+    free(bases);
+    free(mean);
+    free(min);
+    free(max);
+}
+
+static void summary_json_coverage_distribution(
+    fc_json_object_t *object, const fc_coverage_summary_target *target)
+{
+    size_t n_rows = target->n_distribution_rows;
+    const char **chrom = n_rows
+        ? fc_alloc(n_rows, sizeof(*chrom), "coverage JSON distribution chrom")
+        : NULL;
+    size_t *depth = n_rows ? fc_alloc(n_rows, sizeof(*depth), "coverage JSON distribution depth") : NULL;
+    double *fraction = n_rows
+        ? fc_alloc(n_rows, sizeof(*fraction), "coverage JSON distribution fraction")
+        : NULL;
+    for (size_t row = 0; row < n_rows; ++row) {
+        chrom[row] = target->distribution_rows[row].chrom;
+        depth[row] = target->distribution_rows[row].depth;
+        fraction[row] = target->distribution_rows[row].fraction;
+    }
+
+    fc_json_object_t *data = fc_json_object_set_object(object, "__data__");
+    fc_json_array_t *shape = fc_json_object_set_array(data, "shape");
+    fc_json_array_append_number(shape, (double)n_rows);
+    fc_json_array_t *columns = fc_json_object_set_array(data, "columns");
+    fc_json_array_append_value(columns, fc_json_column_string("chrom", chrom, n_rows));
+    fc_json_array_append_value(columns, fc_json_column_uint_adaptive("depth", depth, n_rows));
+    fc_json_array_append_value(columns, fc_json_column_f64("fraction", fraction, n_rows));
+
+    free(chrom);
+    free(depth);
+    free(fraction);
+}
+
+static void summary_json_coverage(
+    fc_json_object_t *root, const fc_coverage_summaries *summaries, size_t barcode)
+{
+    const fc_coverage_summary *summary = fc_coverage_summaries_get(summaries, barcode);
+    if (NULL == summary) {
+        return;
+    }
+    fc_json_object_t *coverage = fc_json_object_set_object(root, "coverage");
+    fc_json_array_t *targets = fc_json_object_set_array(coverage, "targets");
+    for (size_t i = 0; i < summary->n_targets; ++i) {
+        const fc_coverage_summary_target *target = &summary->targets[i];
+        fc_json_value_t *value = fc_json_object_value();
+        fc_json_object_t *target_object = fc_json_get_object(value);
+        fc_json_object_set_string(target_object, "name", target->name);
+        fc_json_array_t *thresholds = fc_json_object_set_array(target_object, "thresholds");
+        for (size_t threshold = 0; threshold < target->n_thresholds; ++threshold) {
+            fc_json_array_append_number(thresholds, (double)target->thresholds[threshold]);
+        }
+        fc_json_object_t *table = fc_json_object_set_object(target_object, "summary");
+        summary_json_coverage_table(table, target);
+        fc_json_object_t *distribution = fc_json_object_set_object(target_object, "distribution");
+        summary_json_coverage_distribution(distribution, target);
+        fc_json_array_append_value(targets, value);
+    }
+}
+
 static FILE *summary_json_open_output(const summary_json_sink *sink, size_t barcode)
 {
     char *dir = sink->cfg.use_barcodes
@@ -1032,6 +1149,7 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
 
     fc_json_value_t *value = fc_json_object_value();
     fc_json_object_t *root = fc_json_get_object(value);
+    fc_json_object_set_string(root, "schema_id", FC_SUMMARY_JSON_SCHEMA_ID);
     fc_json_object_set_number(root, "schema_version", FC_SUMMARY_JSON_SCHEMA_VERSION);
 
     fc_json_object_t *summary = fc_json_object_set_object(root, "run_summary");
@@ -1086,6 +1204,7 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
     summary_json_length_heatmap(heatmaps, sink->cfg.length_qscore, barcode);
     summary_json_speed_heatmap(heatmaps, sink->cfg.speed_qscore, barcode);
     summary_json_alignment(root, sink, state, engine);
+    summary_json_coverage(root, sink->cfg.coverage_summaries, barcode);
 
     FILE *fp = summary_json_open_output(sink, barcode);
     char *json = fc_json_serialize_to_string(value);

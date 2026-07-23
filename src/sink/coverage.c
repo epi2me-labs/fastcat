@@ -15,7 +15,7 @@ typedef struct {
     char *output_root; // stripped output root
 } coverage_sink;
 
-static cov_writer coverage_create_writer(const coverage_sink *sink, size_t barcode)
+static cov_writer coverage_create_writer(coverage_sink *sink, size_t barcode)
 {
     char *dir = fc_sink_ensure_barcode_dir(sink->output_root, barcode);
     if (!dir) {
@@ -39,7 +39,8 @@ static cov_writer coverage_create_writer(const coverage_sink *sink, size_t barco
         sink->cfg.thresholds,
         sink->cfg.n_thresholds,
         sink->cfg.segments,
-        sink->cfg.n_segments);
+        sink->cfg.n_segments,
+        fc_coverage_summaries_prepare(sink->cfg.summaries, barcode));
     free(out_dir);
     return w;
 }
@@ -84,6 +85,21 @@ static void coverage_sink_destroy(void *ctx)
     free(sink);
 }
 
+static void coverage_sink_finish(void *ctx)
+{
+    coverage_sink *sink = (coverage_sink *)ctx;
+    if (sink->global_writer) {
+        destroy_coverage_writer(sink->global_writer);
+        sink->global_writer = NULL;
+    }
+    for (size_t i = 0; i < sink->cfg.barcode_count; ++i) {
+        if (sink->barcode_writers[i]) {
+            destroy_coverage_writer(sink->barcode_writers[i]);
+            sink->barcode_writers[i] = NULL;
+        }
+    }
+}
+
 fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts)
 {
     fc_sink sink = { 0 };
@@ -116,7 +132,8 @@ fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts)
             state->cfg.thresholds,
             state->cfg.n_thresholds,
             state->cfg.segments,
-            state->cfg.n_segments);
+            state->cfg.n_segments,
+            fc_coverage_summaries_prepare(state->cfg.summaries, 0));
         free(out_dir);
         state->global_writer = coverage;
         if (!state->global_writer) {
@@ -128,6 +145,7 @@ fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts)
     state->barcode_writers = fc_alloc(state->cfg.barcode_count, sizeof(cov_writer), "coverage barcode writers");
     sink.ctx = state;
     sink.add_read = coverage_sink_add_read;
+    sink.finish = coverage_sink_finish;
     sink.destroy = coverage_sink_destroy;
     return sink;
 }

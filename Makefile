@@ -1491,6 +1491,24 @@ test_bamstats_coverage_demux_layout: $(FASTCAT_BIN) samtools
 test_bamstats_coverage: test_bamstats_coverage_demux_layout
 
 
+.PHONY: test_bamstats_coverage_summary_json
+test_bamstats_coverage_summary_json: $(FASTCAT_BIN) samtools $(REPORT_VENV)/.deps test_summary_json_validator
+	@$(call TEST_DESC,Bamstats coverage summary.json tables)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/coverage_summary_json, \
+		cp $(TEST_FIXTURES_BAM)/coverage/coverage_demux.sam cov.sam && \
+		sed -e '/^@/!s/$$/\tCH:i:1\tMX:i:1\tDU:f:1.0\tST:Z:1970-01-01T00:00:00Z/' cov.sam > tagged.sam && \
+		printf 'chr1\t0\t200\n' > regions.bed && \
+		$(REPO_ROOT)/samtools view -bS tagged.sam | $(REPO_ROOT)/samtools sort -o cov.bam && \
+		$(REPO_ROOT)/samtools index cov.bam && \
+		$(RUN_BAMSTATS) cov.bam --coverage --segments 100 --coverage-beds regions.bed --coverage-names regions --output out --json-summary > /dev/null && \
+		test -s out/summary.json && \
+		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) out/summary.json && \
+		grep -q '"name":"global"' out/summary.json && \
+		grep -q '"name":"segments_100"' out/summary.json && \
+		grep -q '"name":"regions"' out/summary.json)
+test_bamstats_coverage: test_bamstats_coverage_summary_json
+
+
 .PHONY: test_bamstats_stdin_equiv
 test_bamstats_stdin_equiv: $(FASTCAT_BIN) samtools
 	@$(call TEST_DESC,Bamstats stdin BAM matches file input)

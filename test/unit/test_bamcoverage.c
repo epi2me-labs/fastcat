@@ -123,7 +123,7 @@ FC_TEST(bamcoverage_suite, test_coverage_process_exclude_flags)
     cov_writer w = init_coverage_writer(
         out_dir, false, false,
         BAM_FQCFAIL, 0, false,
-        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
 
     // process one allowed read and one excluded read
@@ -163,7 +163,7 @@ FC_TEST(bamcoverage_suite, test_coverage_process_include_flags)
     cov_writer w = init_coverage_writer(
         out_dir, false, false,
         0, BAM_FREVERSE, false,
-        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
 
     // process one non-matching forward read and one matching reverse read
@@ -206,7 +206,7 @@ FC_TEST(bamcoverage_suite, test_coverage_process_use_cigar_mixed_ops)
     cov_writer w = init_coverage_writer(
         out_dir, false, true,
         -1, -1, false,
-        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
 
     // 4M2I3M1D2M2N1M at POS=10. Covered ranges:
@@ -256,7 +256,7 @@ FC_TEST(bamcoverage_suite, test_coverage_process_end_marker_at_contig_len)
     cov_writer w = init_coverage_writer(
         out_dir, false, false,
         -1, -1, false,
-        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
 
     bam1_t *read = make_read("boundary", 0, 40, 10, NULL, 0, NULL);
@@ -292,7 +292,7 @@ FC_TEST(bamcoverage_suite, test_coverage_writer_init_destroy_no_data)
     cov_writer w = init_coverage_writer(
         out_dir, false, false,
         -1, -1, false,
-        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
 
     // writer starts in an uninitialized contig state
@@ -331,7 +331,7 @@ FC_TEST(bamcoverage_suite, test_coverage_thresholds_deduplicated)
         -1, -1, false,
         hdr, NULL, NULL, NULL, 0,
         thresholds, sizeof(thresholds) / sizeof(thresholds[0]),
-        NULL, 0);
+        NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
     TEST_ASSERT_EQUAL_UINT(3u, w->writers[0]->n_thresholds);
     TEST_ASSERT_EQUAL_UINT32_ARRAY(expected, w->writers[0]->thresholds, 3);
@@ -355,7 +355,7 @@ FC_TEST(bamcoverage_suite, test_coverage_summary_thresholds_handle_depth_above_i
     cov_writer w = init_coverage_writer(
         out_dir, false, false,
         -1, -1, false,
-        hdr, NULL, NULL, NULL, 0, thresholds, 4, NULL, 0);
+        hdr, NULL, NULL, NULL, 0, thresholds, 4, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
 
     for (int i = 0; i < 300; ++i) {
@@ -394,6 +394,48 @@ FC_TEST(bamcoverage_suite, test_coverage_summary_thresholds_handle_depth_above_i
     cleanup_output_dir(out_dir);
 }
 
+FC_TEST(bamcoverage_suite, test_coverage_summary_snapshot_preserves_numeric_precision)
+{
+    const int lengths[1] = { 7 };
+    char out_dir[] = "/tmp/fastcat_cov_snapshotXXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
+
+    bam_hdr_t *hdr = make_header(lengths, 1);
+    fc_coverage_summaries *summaries = fc_coverage_summaries_create(1);
+    cov_writer writer = init_coverage_writer(
+        out_dir, false, false,
+        -1, -1, false,
+        hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0,
+        fc_coverage_summaries_prepare(summaries, 0));
+    bam1_t *read = make_read("read", 0, 0, 3, NULL, 0, NULL);
+    coverage_process(writer, read);
+    bam_destroy1(read);
+    destroy_coverage_writer(writer);
+
+    const fc_coverage_summary *summary = fc_coverage_summaries_get(summaries, 0);
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL_size_t(1, summary->n_targets);
+    const fc_coverage_summary_target *target = &summary->targets[0];
+    TEST_ASSERT_EQUAL_STRING("global", target->name);
+    TEST_ASSERT_EQUAL_size_t(2, target->n_summary_rows);
+    TEST_ASSERT_EQUAL_STRING("chr1", target->summary_rows[0].chrom);
+    TEST_ASSERT_EQUAL_size_t(7, target->summary_rows[0].length);
+    TEST_ASSERT_EQUAL_size_t(3, target->summary_rows[0].bases);
+    TEST_ASSERT_EQUAL_DOUBLE(3.0 / 7.0, target->summary_rows[0].mean);
+    TEST_ASSERT_EQUAL_DOUBLE(3.0 / 7.0, target->summary_rows[0].threshold_fractions[0]);
+    TEST_ASSERT_EQUAL_STRING("global", target->summary_rows[1].chrom);
+    TEST_ASSERT_EQUAL_size_t(2, target->n_distribution_rows);
+    TEST_ASSERT_EQUAL_size_t(1, target->distribution_rows[0].depth);
+    TEST_ASSERT_EQUAL_DOUBLE(3.0 / 7.0, target->distribution_rows[0].fraction);
+    TEST_ASSERT_EQUAL_size_t(0, target->distribution_rows[1].depth);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, target->distribution_rows[1].fraction);
+
+    fc_coverage_summaries_destroy(summaries);
+    sam_hdr_destroy(hdr);
+    cleanup_output_dir(out_dir);
+}
+
 FC_TEST(bamcoverage_suite, test_coverage_process)
 {
     const int lengths[7] = { 120, 60, 180, 70, 220, 80, 260 };
@@ -413,7 +455,7 @@ FC_TEST(bamcoverage_suite, test_coverage_process)
         hdr, NULL,
         NULL, NULL, 0,
         NULL, 0,
-        NULL, 0);
+        NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
 
     size_t prev_buf_size = 0;

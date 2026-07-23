@@ -108,6 +108,7 @@ typedef struct {
     size_t n_segments;
     bool use_barcodes;
     size_t barcode_count;
+    fc_coverage_summaries *summaries;
 } fc_coverage_sink_opts;
 
 fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts);
@@ -180,6 +181,7 @@ typedef struct {
     fc_length_qscore_2d *length_qscore;
     fc_speed_qscore_2d *speed_qscore;
     fc_time_bin *time_bin;
+    const fc_coverage_summaries *coverage_summaries;
 } fc_summary_json_sink_opts;
 
 fc_sink fc_summary_json_sink_create(const fc_summary_json_sink_opts *opts);

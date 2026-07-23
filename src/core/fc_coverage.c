@@ -89,8 +89,143 @@ static size_t sort_and_deduplicate_thresholds(uint32_t *thresholds, size_t n_thr
     return n_thresholds - n_duplicates;
 }
 
+static fc_coverage_summary_target *coverage_summary_add_target(
+    fc_coverage_summary *summary, const char *name, const uint32_t *thresholds, size_t n_thresholds)
+{
+    if (NULL == summary) {
+        return NULL;
+    }
+    if (summary->n_targets == summary->cap_targets) {
+        size_t new_capacity = summary->cap_targets == 0 ? 4 : summary->cap_targets * 2;
+        summary->targets = fc_realloc(
+            summary->targets, new_capacity * sizeof(*summary->targets), "coverage summary targets");
+        memset(summary->targets + summary->cap_targets, 0,
+            (new_capacity - summary->cap_targets) * sizeof(*summary->targets));
+        summary->cap_targets = new_capacity;
+    }
+    fc_coverage_summary_target *target = &summary->targets[summary->n_targets++];
+    target->name = fc_strdup(name, "coverage summary target name");
+    target->n_thresholds = n_thresholds;
+    target->thresholds = fc_alloc(n_thresholds, sizeof(*target->thresholds), "coverage summary thresholds");
+    memcpy(target->thresholds, thresholds, n_thresholds * sizeof(*target->thresholds));
+    return target;
+}
+
+static void coverage_summary_add_row(
+    fc_coverage_summary_target *target, const bed_region reg, const int64_t *stats,
+    const int64_t *threshold_counts)
+{
+    if (NULL == target) {
+        return;
+    }
+    if (target->n_summary_rows == target->cap_summary_rows) {
+        size_t new_capacity = target->cap_summary_rows == 0 ? 16 : target->cap_summary_rows * 2;
+        target->summary_rows = fc_realloc(
+            target->summary_rows, new_capacity * sizeof(*target->summary_rows), "coverage summary rows");
+        target->cap_summary_rows = new_capacity;
+    }
+    fc_coverage_summary_row *row = &target->summary_rows[target->n_summary_rows++];
+    row->chrom = fc_strdup(reg->chr, "coverage summary chromosome");
+    row->start = (size_t)reg->start;
+    row->end = (size_t)reg->end;
+    row->length = (size_t)stats[3];
+    row->bases = (size_t)stats[2];
+    row->mean = stats[3] == 0 ? 0.0 : (double)stats[2] / stats[3];
+    row->min = (size_t)(stats[0] == INT64_MAX ? 0 : stats[0]);
+    row->max = (size_t)stats[1];
+    row->threshold_fractions = fc_alloc(
+        target->n_thresholds, sizeof(*row->threshold_fractions), "coverage summary threshold fractions");
+    for (size_t i = 0; i < target->n_thresholds; ++i) {
+        double fraction = stats[3] == 0 ? 0.0 : (double)threshold_counts[i] / stats[3];
+        row->threshold_fractions[i] = fraction;
+    }
+}
+
+static void coverage_summary_add_distribution(
+    fc_coverage_summary_target *target, const char *chrom, size_t depth, double fraction)
+{
+    if (NULL == target) {
+        return;
+    }
+    if (target->n_distribution_rows == target->cap_distribution_rows) {
+        size_t new_capacity = target->cap_distribution_rows == 0 ? 16 : target->cap_distribution_rows * 2;
+        target->distribution_rows = fc_realloc(target->distribution_rows,
+            new_capacity * sizeof(*target->distribution_rows), "coverage distribution rows");
+        target->cap_distribution_rows = new_capacity;
+    }
+    fc_coverage_distribution_row *row = &target->distribution_rows[target->n_distribution_rows++];
+    row->chrom = fc_strdup(chrom, "coverage distribution chromosome");
+    row->depth = depth;
+    row->fraction = fraction;
+}
+
+fc_coverage_summaries *fc_coverage_summaries_create(size_t barcode_count)
+{
+    fc_coverage_summaries *summaries = fc_alloc(1, sizeof(*summaries), "coverage summaries");
+    summaries->barcode_count = barcode_count ? barcode_count : 1;
+    summaries->by_barcode = fc_alloc(
+        summaries->barcode_count, sizeof(*summaries->by_barcode), "coverage summary barcodes");
+    return summaries;
+}
+
+static void coverage_summary_destroy(fc_coverage_summary *summary)
+{
+    if (NULL == summary) {
+        return;
+    }
+    for (size_t i = 0; i < summary->n_targets; ++i) {
+        fc_coverage_summary_target *target = &summary->targets[i];
+        free(target->name);
+        free(target->thresholds);
+        for (size_t j = 0; j < target->n_summary_rows; ++j) {
+            free(target->summary_rows[j].chrom);
+            free(target->summary_rows[j].threshold_fractions);
+        }
+        for (size_t j = 0; j < target->n_distribution_rows; ++j) {
+            free(target->distribution_rows[j].chrom);
+        }
+        free(target->summary_rows);
+        free(target->distribution_rows);
+    }
+    free(summary->targets);
+    free(summary);
+}
+
+void fc_coverage_summaries_destroy(fc_coverage_summaries *summaries)
+{
+    if (NULL == summaries) {
+        return;
+    }
+    for (size_t i = 0; i < summaries->barcode_count; ++i) {
+        coverage_summary_destroy(summaries->by_barcode[i]);
+    }
+    free(summaries->by_barcode);
+    free(summaries);
+}
+
+fc_coverage_summary *fc_coverage_summaries_prepare(fc_coverage_summaries *summaries, size_t barcode)
+{
+    if (NULL == summaries || barcode >= summaries->barcode_count) {
+        return NULL;
+    }
+    if (NULL == summaries->by_barcode[barcode]) {
+        summaries->by_barcode[barcode] = fc_alloc(1, sizeof(fc_coverage_summary), "coverage summary");
+    }
+    return summaries->by_barcode[barcode];
+}
+
+const fc_coverage_summary *fc_coverage_summaries_get(const fc_coverage_summaries *summaries, size_t barcode)
+{
+    if (NULL == summaries || barcode >= summaries->barcode_count) {
+        return NULL;
+    }
+    return summaries->by_barcode[barcode];
+}
+
 static inline void _write_summary(
-    FILE *fh_dist, FILE *fh_summary, const bed_region reg, const int64_t *stats, const int64_t *dist, size_t max_cover, uint32_t *thresholds, size_t n_thresholds)
+    FILE *fh_dist, FILE *fh_summary, fc_coverage_summary_target *snapshot,
+    const bed_region reg, const int64_t *stats, const int64_t *dist, size_t max_cover,
+    uint32_t *thresholds, size_t n_thresholds)
 {
     if (fh_dist == NULL && fh_summary == NULL) {
         return; // nothing to write
@@ -112,6 +247,7 @@ static inline void _write_summary(
                 continue; // mosdepth uses 8e-5 \:D/
             }
             fprintf(fh_dist, "%s\t%zu\t%.3f\n", reg->chr, cover, frac); // fh_dist only written for totals
+            coverage_summary_add_distribution(snapshot, reg->chr, (size_t)cover, frac);
         }
 
         // sparse CDF - mosdepth calls this "thresholds"
@@ -136,6 +272,8 @@ static inline void _write_summary(
     }
     fprintf(fh_summary, "\n");
 
+    coverage_summary_add_row(snapshot, reg, stats, thresh_counts);
+
     free(thresh_counts);
 }
 
@@ -152,13 +290,12 @@ static void _fill_skipped_regions(cov_writer w)
         cov_writer_region wr = w->writers[i];
         for (size_t j = wr->cur_region; j < wr->bed->n_regions; ++j) {
             bed_region reg = &wr->bed->regions[j];
-            char *region_name = wr->whole_chrom ? reg->chr : region_to_string(reg);
             if (reg->tid >= w->tid) {
                 break;
             }
             int64_t stats[4] = { 0, 0, 0, reg->end - reg->start };
             int64_t *dist = fc_alloc(wr->max_cover, sizeof(int64_t), "coverage region distribution");
-            _write_summary(wr->fh_dist, wr->fh_summary, reg, stats,
+            _write_summary(wr->fh_dist, wr->fh_summary, wr->summary_target, reg, stats,
                 dist, wr->max_cover, wr->thresholds, wr->n_thresholds);
             _write_bedgraph_line(wr->fh_fwd, reg->chr, reg->start, reg->end, 0);
             _write_bedgraph_line(wr->fh_rev, reg->chr, reg->start, reg->end, 0);
@@ -169,9 +306,6 @@ static void _fill_skipped_regions(cov_writer w)
             wr->stats[3] += stats[3];
             wr->dist[0] += (int64_t)(reg->end - reg->start);
             free(dist);
-            if (!wr->whole_chrom) {
-                free(region_name);
-            }
         }
     }
 }
@@ -208,8 +342,6 @@ static void _flush_contig(cov_writer w)
                 wr->cur_region = j + 1;
                 continue;
             }
-            char *region_name = wr->whole_chrom ? reg->chr : region_to_string(reg);
-
             // chromosome summary
             int64_t stats[4] = { INT64_MAX, 0, 0, reg->end - reg->start }; // min, max, total, positions
             size_t max_cover = wr->max_cover; // which goes up to all thresholds
@@ -234,7 +366,7 @@ static void _flush_contig(cov_writer w)
             }
 
             // summary stats including sparse (user-defined) coverage distribution
-            _write_summary(NULL, wr->fh_summary, reg, stats,
+            _write_summary(NULL, wr->fh_summary, wr->summary_target, reg, stats,
                 dist, max_cover, wr->thresholds, wr->n_thresholds);
 
             // update total stats - these get written on close
@@ -299,9 +431,6 @@ static void _flush_contig(cov_writer w)
                 }
             }
 
-            if (!wr->whole_chrom) {
-                free(region_name);
-            }
             wr->cur_region = j + 1;
 
         } // for each region in BED file
@@ -353,7 +482,7 @@ static void _reset_contig(cov_writer w, const int32_t tid)
 static cov_writer_region init_coverage_writer_region(
     const char *out_dir, const char *name, bool per_base, bool by_strand, const char *bed_fname,
     uint32_t *thresholds, size_t n_thresholds, uint32_t segment_length,
-    const bam_hdr_t *hdr, const htsThreadPool *pool)
+    const bam_hdr_t *hdr, const htsThreadPool *pool, fc_coverage_summary *summary)
 {
 
     if (mkdir_hier((char *)out_dir, true) == -1) {
@@ -392,6 +521,7 @@ static cov_writer_region init_coverage_writer_region(
             w->thresholds[i] = tmp[i];
         }
     }
+    w->summary_target = coverage_summary_add_target(summary, name, w->thresholds, w->n_thresholds);
     // min, max, total bases, num. positions
     w->stats[0] = INT64_MAX;
     w->stats[1] = 0;
@@ -470,7 +600,7 @@ void destroy_coverage_writer_region(cov_writer_region w)
     // distribution and thresholds files
     // make a region corresponding to the whole BED for writing distribution
     _bed_region reg = { w->name, 0, 0, w->stats[3] };
-    _write_summary(w->fh_dist, w->fh_summary, &reg, w->stats,
+    _write_summary(w->fh_dist, w->fh_summary, w->summary_target, &reg, w->stats,
         w->dist, w->max_cover, w->thresholds, w->n_thresholds);
     fclose(w->fh_dist);
     // fclose(w->fh_thresh);
@@ -507,7 +637,8 @@ cov_writer init_coverage_writer(
     const bam_hdr_t *hdr, const htsThreadPool *pool,
     const char **bed_files, const char **bed_names, size_t n_beds,
     uint32_t *thresholds, size_t n_thresholds,
-    uint32_t *segments, size_t n_segments)
+    uint32_t *segments, size_t n_segments,
+    fc_coverage_summary *summary)
 {
 
     kstring_t ks = KS_INITIALIZE;
@@ -547,6 +678,7 @@ cov_writer init_coverage_writer(
     w->diff_fwd = NULL;
     w->diff_rev = NULL;
     w->hdr = hdr;
+    w->summary = summary;
     _reset_contig(w, -1);
 
     w->n_beds = 1 + n_segments + n_beds;
@@ -555,7 +687,7 @@ cov_writer init_coverage_writer(
     w->writers[0] = init_coverage_writer_region(
         out_dir, "global", per_base, by_strand, NULL,
         thresholds, n_thresholds, 0,
-        hdr, pool);
+        hdr, pool, summary);
     // fixed length segments
     for (size_t i = 0; i < n_segments; ++i) {
         char seg_name[32]; // largest uint32 is 10 digits
@@ -564,7 +696,7 @@ cov_writer init_coverage_writer(
         w->writers[1 + i] = init_coverage_writer_region(
             seg_out_dir, seg_name, per_base, by_strand, NULL,
             thresholds, n_thresholds, segments[i],
-            hdr, pool);
+            hdr, pool, summary);
         free(seg_out_dir);
     }
     // followed by the BED files
@@ -575,7 +707,7 @@ cov_writer init_coverage_writer(
             w->writers[1 + n_segments + i] = init_coverage_writer_region(
                 bed_out_dir, bed_name, per_base, by_strand, bed_files[i],
                 thresholds, n_thresholds, 0,
-                hdr, pool);
+                hdr, pool, summary);
             free(bed_out_dir);
         }
     }

@@ -425,6 +425,20 @@ fc_json_value_t *fc_json_column_f64(const char *name, const double *values, size
     return fc_json_ndarray_value(name, "float64", (const uint8_t *)values, n * sizeof(*values), NULL, 0);
 }
 
+/* Encode a named dataframe string column directly, without binary ndarray packing. */
+fc_json_value_t *fc_json_column_string(const char *name, const char *const *values, size_t n)
+{
+    fc_json_value_t *value = fc_json_object_value();
+    fc_json_object_t *object = fc_json_get_object(value);
+    fc_json_object_set_string(object, "name", name);
+    fc_json_object_set_string(object, "dtype", "string");
+    fc_json_array_t *data = fc_json_object_set_array(object, "data");
+    for (size_t i = 0; i < n; ++i) {
+        fc_json_array_append_string(data, values ? values[i] : "");
+    }
+    return value;
+}
+
 /* Quantize a double matrix into the smallest unsigned dtype and attach its two-dimensional shape. */
 fc_json_value_t *fc_json_ndarray_f64_to_uint_adaptive(const double *values, size_t rows, size_t cols)
 {
