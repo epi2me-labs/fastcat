@@ -20,6 +20,7 @@ fc_json_array_t *fc_json_get_array(fc_json_value_t *value);
 void fc_json_value_free(fc_json_value_t *value);
 char *fc_json_serialize_to_string(const fc_json_value_t *value);
 
+/* Transfers value ownership; NULL writes a JSON null member. */
 void fc_json_object_set_value(fc_json_object_t *object, const char *key, fc_json_value_t *value);
 void fc_json_object_set_string(fc_json_object_t *object, const char *key, const char *value);
 void fc_json_object_set_number(fc_json_object_t *object, const char *key, double value);

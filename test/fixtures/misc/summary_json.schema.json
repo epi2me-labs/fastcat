@@ -60,11 +60,8 @@
     "heatmaps": {
       "$ref": "#/$defs/heatmaps"
     },
-    "flagstats": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/flagstat"
-      }
+    "alignment": {
+      "$ref": "#/$defs/alignment"
     }
   },
   "additionalProperties": false,
@@ -84,6 +81,11 @@
     "nonNegativeFloat": {
       "type": "number",
       "minimum": 0
+    },
+    "percentage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
     },
     "base64": {
       "type": "string",
@@ -250,6 +252,38 @@
           "properties": {
             "name": {
               "const": "yield_at_or_above_bp"
+            }
+          }
+        }
+      ]
+    },
+    "lengthPlainColumns": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "start"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "end"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "count"
             }
           }
         }
@@ -980,6 +1014,197 @@
               "type": "null"
             }
           ]
+        }
+      }
+    },
+    "alignmentCounts": {
+      "type": "object",
+      "required": [
+        "total",
+        "primary",
+        "secondary",
+        "supplementary",
+        "unmapped",
+        "qcfail",
+        "duplicate",
+        "duplex",
+        "duplex_forming"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "total": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "primary": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "secondary": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "supplementary": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "unmapped": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "qcfail": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "duplicate": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "duplex": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "duplex_forming": {
+          "$ref": "#/$defs/nonNegativeInt"
+        }
+      }
+    },
+    "alignmentFixedDistribution": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/distribution"
+        },
+        {
+          "required": [
+            "mean",
+            "median"
+          ],
+          "properties": {
+            "__data__": {
+              "properties": {
+                "columns": {
+                  "$ref": "#/$defs/qualityColumns"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "alignmentLengthDistribution": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/distribution"
+        },
+        {
+          "required": [
+            "median",
+            "overflow_start_bp",
+            "overflow_count"
+          ],
+          "properties": {
+            "__data__": {
+              "properties": {
+                "columns": {
+                  "$ref": "#/$defs/lengthPlainColumns"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "alignmentDistributions": {
+      "type": "object",
+      "required": [
+        "accuracy",
+        "query_coverage",
+        "unmapped_read_length",
+        "unmapped_quality",
+        "poly_a_length"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "accuracy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/alignmentFixedDistribution"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query_coverage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/alignmentFixedDistribution"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unmapped_read_length": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/alignmentLengthDistribution"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unmapped_quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/alignmentFixedDistribution"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "poly_a_length": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/alignmentLengthDistribution"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "alignment": {
+      "type": "object",
+      "required": [
+        "record_counts",
+        "mapped_record_count",
+        "mapped_record_percent",
+        "primary_mapped_record_count",
+        "primary_mapped_record_percent",
+        "per_reference_counts",
+        "distributions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "record_counts": {
+          "$ref": "#/$defs/alignmentCounts"
+        },
+        "mapped_record_count": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "mapped_record_percent": {
+          "$ref": "#/$defs/percentage"
+        },
+        "primary_mapped_record_count": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "primary_mapped_record_percent": {
+          "$ref": "#/$defs/percentage"
+        },
+        "per_reference_counts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flagstat"
+          }
+        },
+        "distributions": {
+          "$ref": "#/$defs/alignmentDistributions"
         }
       }
     },

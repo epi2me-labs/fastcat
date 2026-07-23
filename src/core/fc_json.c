@@ -191,11 +191,12 @@ char *fc_json_serialize_to_string(const fc_json_value_t *value)
     return serialized;
 }
 
-/* Transfer ownership of value into object under key. */
+/* Transfer ownership of value into object under key; NULL writes JSON null. */
 void fc_json_object_set_value(fc_json_object_t *object, const char *key, fc_json_value_t *value)
 {
     if (!value) {
-        FC_LOG_FATAL("Failed to allocate JSON value.");
+        fc_json_object_set_null(object, key);
+        return;
     }
     fc_json_check(json_object_set_value(object, key, value));
 }

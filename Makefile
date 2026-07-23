@@ -1465,14 +1465,14 @@ test_bamstats_core: test_bamstats_sample_column
 
 .PHONY: test_bamstats_summary_json_schema
 test_bamstats_summary_json_schema: $(FASTCAT_BIN) $(REPORT_VENV)/.deps tools/workflow_glue/validate_summary_json.py $(SUMMARY_JSON_SCHEMA)
-	@$(call TEST_DESC,Bamstats summary.json schema including flagstats)
+	@$(call TEST_DESC,Bamstats summary.json schema including alignment)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/summary_json_schema, \
 		printf "@r1 runid=12345678-1234-1234-1234-123456789012 basecall_model_version_id=model-a ch=1 mux=1 start_time=1970-01-01T00:00:00Z du=1.0\\nACGT\\n+\\nIIII\\n" > reads.fastq && \
 		$(RUN_FASTCAT) reads.fastq --output fastcat_out -B > reads.bam && \
 		$(RUN_BAMSTATS) reads.bam --output out --json-summary > /dev/null && \
 		test -s out/summary.json && \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) out/summary.json && \
-		$(REPORT_PY) -c 'import json; assert json.load(open("out/summary.json"))["flagstats"]')
+		$(REPORT_PY) -c 'import json; assert json.load(open("out/summary.json"))["alignment"]["per_reference_counts"]')
 test_bamstats_core: test_bamstats_summary_json_schema
 
 

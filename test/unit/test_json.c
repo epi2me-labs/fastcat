@@ -137,3 +137,16 @@ FC_TEST(json_suite, test_empty_adaptive_column_has_uint8_empty_payload)
     TEST_ASSERT_EQUAL_STRING("", json_object_get_string(object, "__ndarray__"));
     json_value_free(parsed);
 }
+
+FC_TEST(json_suite, test_object_set_value_null_writes_json_null)
+{
+    fc_json_value_t *value = fc_json_object_value();
+    fc_json_object_t *object = fc_json_get_object(value);
+    fc_json_object_set_value(object, "missing", NULL);
+
+    JSON_Value *parsed = round_trip_json_value(value);
+    object = json_value_get_object(parsed);
+    TEST_ASSERT_NOT_NULL(object);
+    TEST_ASSERT_EQUAL_INT(JSONNull, json_value_get_type(json_object_get_value(object, "missing")));
+    json_value_free(parsed);
+}
