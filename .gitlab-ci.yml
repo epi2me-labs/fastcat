@@ -91,6 +91,7 @@ report_browser_smoke:
         - export CHROME_BIN="$(find /ms-playwright -type f -name chrome -print -quit)"
         - test -n "$CHROME_BIN"
         - python3 tools/dev-tools check_report_browser --browser "$CHROME_BIN" demo/fastcat_out/fastcat_report.html
+        - python3 tools/dev-tools check_report_browser --browser "$CHROME_BIN" demo/aligned_out/fastcat_report.html
 
 pages:
     stage: release
@@ -100,7 +101,7 @@ pages:
     script:
         - rm -rf public
         - mkdir -p public
-        - cp -a demo/fastcat_out/fastcat_report.html public/index.html
+        - cp -a demo/aligned_out/fastcat_report.html public/index.html
     artifacts:
         paths:
             - public

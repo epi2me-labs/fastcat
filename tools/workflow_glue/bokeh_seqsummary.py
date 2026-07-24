@@ -212,6 +212,33 @@ def read_quality_plot(hist, color=None):
     return plot
 
 
+def alignment_histogram_plot(hist, x_min, x_max, x_label, color=None):
+    """Create a 0.2-percentage-point alignment histogram."""
+    mean_val = histogram_mean_midpoint(hist)
+    median_val = histogram_median(hist)
+    plot = ezc.histplot(
+        data=hist["start"],
+        weights=hist["count"],
+        binwidth=0.2,
+        binrange=(x_min, x_max),
+        color=color,
+    )
+    plot._fig.xaxis.axis_label = x_label
+    plot._fig.yaxis.axis_label = "Number of reads"
+    plot._fig.x_range.start = x_min
+    plot._fig.x_range.end = x_max
+    apply_scientific_count_formatter(plot._fig.yaxis[0])
+    plot._fig.add_layout(
+        Title(
+            text=f"Mean: {mean_val:.1f}%. Median: {median_val:.1f}%",
+            text_font_size=ReportFontSizes.SUBTITLE,
+            text_font=ReportFonts.PLOT,
+        ),
+        "above",
+    )
+    return plot
+
+
 def read_length_plot(hist, color=None):
     """Create the read-length histogram with a quantile-based x-range."""
     xmax_kb = _round_up_to(histogram_visible_max(hist) / 1000.0, LENGTH_XROUND_KB)

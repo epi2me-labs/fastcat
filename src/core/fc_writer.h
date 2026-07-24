@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+#include "core/fc_alignment_summary.h"
 #include "core/fc_channel_summary.h"
 #include "core/fc_iter.h"
 #include "core/fc_length_qscore_2d.h"
@@ -45,6 +46,8 @@ typedef struct {
 
 typedef struct {
     bool use_barcodes;
+    // Optional caller-owned model. The writer updates it once per dispatched BAM record.
+    fc_alignment_summary *alignment_summary;
     const fc_stats_engine_config *stats;
     bool run_summary;
     bool channel_summary;
@@ -59,6 +62,7 @@ typedef struct {
     size_t sink_capacity;
     bool use_barcodes;
     size_t barcode_count;
+    fc_alignment_summary *alignment_summary;
     bool stats_per_barcode;
     bool stats_cfg_set;
     fc_stats_engine **stats_engines;

@@ -2,3 +2,4 @@ ezcharts
 jsonschema>=4.23,<5
 numpy
 pandas
+pysam
