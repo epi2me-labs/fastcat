@@ -94,6 +94,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     // initialised below if we successfully create outputs
     htsThreadPool pool = { NULL, 0 };
     fc_writer *writer = NULL;
+    fc_alignment_summary *alignment_summary = NULL;
     fc_coverage_summaries *coverage_summaries = NULL;
     fc_iter file_iter = { 0 };
     bool hard_error = false;
@@ -206,8 +207,21 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .bin_size_s = args->time_bin_size_s,
         .kll_k = args->time_bin_k
     };
+    bool bam_input = (program == FC_PROGRAM_BAMSTATS) || (args->input_kind == FC_FILE_BAM);
+    if (bam_input) {
+        size_t n_refs = program == FC_PROGRAM_BAMSTATS && file_iter.bmi.hdr
+            ? (size_t)file_iter.bmi.hdr->n_targets
+            : 0;
+        size_t barcode_count = args->demultiplex ? FC_MAX_BARCODES : 1;
+        alignment_summary = fc_alignment_summary_create(
+            n_refs,
+            region_mode,
+            args->demultiplex,
+            barcode_count);
+    }
     fc_writer_config writer_cfg = {
         .use_barcodes = args->demultiplex,
+        .alignment_summary = alignment_summary,
         .stats = &stats_cfg,
         .run_summary = true,
         .channel_summary = true,
@@ -252,7 +266,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .sample = args->sample,
             .use_barcodes = args->demultiplex,
             .barcode_count = writer->barcode_count,
-            .bam_input = (program == FC_PROGRAM_BAMSTATS) || (args->input_kind == FC_FILE_BAM),
+            .bam_input = bam_input,
             .unmapped_override = (program == FC_PROGRAM_FASTCAT),
             .engines = writer->stats_engines,
             .engine_count = writer->stats_engine_count,
@@ -295,7 +309,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         fc_writer_add_sink(writer, fc_time_bin_sink_create(&time_bin_opts));
     }
 
-    // Alignment coverage must finish before JSON is written, so add this sink first.
+    // Coverage snapshots are consumed by later sink finalisers, so register their producer first.
     if (program == FC_PROGRAM_BAMSTATS && args->coverage) {
         coverage_summaries = fc_coverage_summaries_create(writer->barcode_count);
         fc_coverage_sink_opts cov_opts = {
@@ -328,7 +342,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .sample = args->sample,
             .use_barcodes = args->demultiplex,
             .barcode_count = writer->barcode_count,
-            .bam_input = (program == FC_PROGRAM_BAMSTATS) || (args->input_kind == FC_FILE_BAM),
+            .bam_input = bam_input,
             .unmapped_override = (program == FC_PROGRAM_FASTCAT),
             .region_mode = region_mode,
             .region_label = region_mode ? (args->region ? args->region : "bed_regions") : NULL,
@@ -340,6 +354,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .length_qscore = writer->length_qscore,
             .speed_qscore = writer->speed_qscore,
             .time_bin = writer->time_bin,
+            .alignment_summary = alignment_summary,
             .coverage_summaries = coverage_summaries
         };
         fc_writer_add_sink(writer, fc_summary_json_sink_create(&summary_json_opts));
@@ -358,7 +373,8 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .sample = args->sample,
             .hdr = file_iter.bmi.hdr,
             .use_barcodes = args->demultiplex,
-            .barcode_count = writer->barcode_count
+            .barcode_count = writer->barcode_count,
+            .alignment_summary = alignment_summary
         };
         fc_writer_add_sink(writer, fc_flagstats_sink_create(&flag_opts));
     }
@@ -438,7 +454,9 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .channel_summary = writer->channel_summary,
             .length_qscore = writer->length_qscore,
             .speed_qscore = writer->speed_qscore,
-            .time_bin = writer->time_bin
+            .time_bin = writer->time_bin,
+            .alignment_summary = alignment_summary,
+            .coverage_summaries = coverage_summaries
         };
         if (fc_write_html_reports(&report_opts) != 0) {
             hard_error = true;
@@ -470,6 +488,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
 
 cleanup:
     fc_writer_destroy(writer);
+    fc_alignment_summary_destroy(alignment_summary);
     fc_coverage_summaries_destroy(coverage_summaries);
     fc_iter_close(&file_iter);
     if (pool.pool) {

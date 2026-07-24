@@ -7,7 +7,6 @@
 
 #include "core/fc_channel_map.h"
 #include "core/fc_common.h"
-#include "core/fc_filter.h"
 #include "core/fc_iter.h"
 #include "core/fc_json.h"
 #include "core/fc_kll.h"
@@ -19,11 +18,6 @@
 
 #define FC_SUMMARY_JSON_SCHEMA_VERSION 1
 #define FC_SUMMARY_JSON_SCHEMA_ID "https://github.com/epi2me-labs/fastcat/schema/summary_json.schema.json"
-typedef struct {
-    size_t n_refs;
-    size_t **counts;
-    size_t *unmapped;
-} summary_flag_stats;
 
 typedef struct {
     kh_counter_t *run_ids;
@@ -56,14 +50,12 @@ typedef struct {
     size_t n_files;
     size_t cap_files;
     summary_file_accum current;
-    summary_flag_stats *flagstats;
 } summary_json_barcode;
 
 typedef struct {
     fc_summary_json_sink_opts cfg;
     char *output_root;
     char *sample;
-    size_t n_refs;
     summary_json_barcode *barcodes;
 } summary_json_sink;
 
@@ -91,60 +83,6 @@ static void summary_file_entry_destroy(summary_file_entry *entry)
     summary_counter_destroy(entry->run_ids);
     summary_counter_destroy(entry->basecallers);
     memset(entry, 0, sizeof(*entry));
-}
-
-static void summary_flag_stats_destroy(summary_flag_stats *stats)
-{
-    if (NULL == stats) {
-        return;
-    }
-    for (size_t i = 0; i < stats->n_refs; i++) {
-        free(stats->counts[i]);
-    }
-    free(stats->counts);
-    free(stats->unmapped);
-    free(stats);
-}
-
-static summary_flag_stats *summary_flag_stats_create(size_t n_refs, bool store_unmapped)
-{
-    summary_flag_stats *stats = fc_alloc(1, sizeof(*stats), "summary_json flagstats");
-    stats->n_refs = n_refs;
-    stats->counts = n_refs > 0 ? fc_alloc(n_refs, sizeof(*stats->counts), "summary_json flagstats counts") : NULL;
-    stats->unmapped = store_unmapped
-        ? fc_alloc(FC_FLAGSTAT_COUNT, sizeof(*stats->unmapped), "summary_json flagstats unmapped")
-        : NULL;
-    for (size_t i = 0; i < n_refs; i++) {
-        stats->counts[i] = fc_alloc(
-            FC_FLAGSTAT_COUNT,
-            sizeof(*stats->counts[i]),
-            "summary_json flagstats row");
-    }
-    return stats;
-}
-
-static void summary_flagstats_add_counts(const bam1_t *bam, size_t *counts, int duplex_code)
-{
-    counts[FC_FLAGSTAT_TOTAL] += 1;
-    counts[FC_FLAGSTAT_PRIMARY] += fc_is_primary(bam);
-    counts[FC_FLAGSTAT_SECONDARY] += ((bam->core.flag & BAM_FSECONDARY) != 0);
-    counts[FC_FLAGSTAT_SUPPLEMENTARY] += ((bam->core.flag & BAM_FSUPPLEMENTARY) != 0);
-    counts[FC_FLAGSTAT_UNMAPPED] += ((bam->core.flag & BAM_FUNMAP) != 0);
-    counts[FC_FLAGSTAT_QCFAIL] += ((bam->core.flag & BAM_FQCFAIL) != 0);
-    counts[FC_FLAGSTAT_DUPLICATE] += ((bam->core.flag & BAM_FDUP) != 0);
-    counts[FC_FLAGSTAT_DUPLEX] += (duplex_code == 1);
-    counts[FC_FLAGSTAT_DUPLEX_FORMING] += (duplex_code == -1);
-}
-
-static summary_flag_stats *summary_ensure_flagstats(summary_json_sink *sink, size_t barcode)
-{
-    if (barcode >= sink->cfg.barcode_count) {
-        return NULL;
-    }
-    if (NULL == sink->barcodes[barcode].flagstats) {
-        sink->barcodes[barcode].flagstats = summary_flag_stats_create(sink->n_refs, true);
-    }
-    return sink->barcodes[barcode].flagstats;
 }
 
 static void summary_counter_add(kh_counter_t **counter, const char *value)
@@ -245,7 +183,6 @@ static void summary_barcode_destroy(summary_json_barcode *state)
     }
     free(state->files);
     summary_file_accum_reset(&state->current);
-    summary_flag_stats_destroy(state->flagstats);
     memset(state, 0, sizeof(*state));
 }
 
@@ -849,13 +786,16 @@ static void summary_json_channels(fc_json_object_t *root, const fc_channel_summa
 static void summary_json_flagstats(
     fc_json_object_t *alignment,
     const summary_json_sink *sink,
-    const summary_json_barcode *state)
+    size_t barcode)
 {
     if (!sink->cfg.bam_input) {
         return;
     }
 
-    if (NULL == state->flagstats) {
+    const fc_alignment_counts *counts = fc_alignment_summary_for_output(
+        sink->cfg.alignment_summary,
+        barcode);
+    if (NULL == counts || !counts->seen) {
         fc_json_object_t *record_counts = fc_json_object_set_object(alignment, "record_counts");
         size_t zero_counts[FC_FLAGSTAT_COUNT] = { 0 };
         for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
@@ -869,52 +809,53 @@ static void summary_json_flagstats(
         return;
     }
 
-    size_t aggregate[FC_FLAGSTAT_COUNT] = { 0 };
-    size_t mapped_count = 0;
-    size_t primary_mapped_count = 0;
-    for (size_t i = 0; i < state->flagstats->n_refs; ++i) {
-        const size_t *counts = state->flagstats->counts[i];
-        for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
-            aggregate[col] += counts[col];
-        }
-        mapped_count += counts[FC_FLAGSTAT_TOTAL];
-        primary_mapped_count += counts[FC_FLAGSTAT_PRIMARY];
-    }
-    if (NULL != state->flagstats->unmapped) {
-        const size_t *counts = state->flagstats->unmapped;
-        for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
-            aggregate[col] += counts[col];
-        }
-    }
+    fc_alignment_totals totals = { 0 };
+    fc_alignment_counts_materialize(counts, &totals);
 
     fc_json_object_t *record_counts = fc_json_object_set_object(alignment, "record_counts");
     for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
-        fc_json_object_set_number(record_counts, fc_flagstat_column_names[col], (double)aggregate[col]);
+        fc_json_object_set_number(
+            record_counts,
+            fc_flagstat_column_names[col],
+            (double)totals.record_counts[col]);
     }
 
-    fc_json_object_set_number(alignment, "mapped_record_count", (double)mapped_count);
+    fc_json_object_set_number(
+        alignment,
+        "mapped_record_count",
+        (double)totals.mapped_record_count);
     fc_json_object_set_number(
         alignment,
         "mapped_record_percent",
-        aggregate[FC_FLAGSTAT_TOTAL] > 0 ? 100.0 * mapped_count / aggregate[FC_FLAGSTAT_TOTAL] : 0.0);
-    fc_json_object_set_number(alignment, "primary_mapped_record_count", (double)primary_mapped_count);
+        totals.record_counts[FC_FLAGSTAT_TOTAL] > 0
+            ? 100.0 * totals.mapped_record_count / totals.record_counts[FC_FLAGSTAT_TOTAL]
+            : 0.0);
+    fc_json_object_set_number(
+        alignment,
+        "primary_mapped_record_count",
+        (double)totals.primary_mapped_record_count);
     fc_json_object_set_number(
         alignment,
         "primary_mapped_record_percent",
-        aggregate[FC_FLAGSTAT_TOTAL] > 0 ? 100.0 * primary_mapped_count / aggregate[FC_FLAGSTAT_TOTAL] : 0.0);
+        totals.record_counts[FC_FLAGSTAT_TOTAL] > 0
+            ? 100.0 * totals.primary_mapped_record_count / totals.record_counts[FC_FLAGSTAT_TOTAL]
+            : 0.0);
 
     fc_json_array_t *rows = fc_json_object_set_array(alignment, "per_reference_counts");
     if (sink->cfg.region_mode) {
         fc_json_value_t *value = fc_json_object_value();
         fc_json_object_t *obj = fc_json_get_object(value);
         fc_json_object_set_string(obj, "ref", sink->cfg.region_label ? sink->cfg.region_label : "region");
-        const size_t *counts = state->flagstats->counts[0];
+        const size_t *row_counts = counts->reference_counts[0];
         for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
-            fc_json_object_set_number(obj, fc_flagstat_column_names[col], (double)counts[col]);
+            fc_json_object_set_number(
+                obj,
+                fc_flagstat_column_names[col],
+                (double)row_counts[col]);
         }
         fc_json_array_append_value(rows, value);
     } else {
-        for (size_t i = 0; i < state->flagstats->n_refs; i++) {
+        for (size_t i = 0; i < counts->n_refs; i++) {
             fc_json_value_t *value = fc_json_object_value();
             fc_json_object_t *obj = fc_json_get_object(value);
             const char *label = sink->cfg.hdr && i < (size_t)sink->cfg.hdr->n_targets
@@ -925,21 +866,26 @@ static void summary_json_flagstats(
                 FC_SNPRINTF_CHECK(tmp, sizeof(tmp), "%zu", i);
                 label = tmp;
             }
-            const size_t *counts = state->flagstats->counts[i];
+            const size_t *row_counts = counts->reference_counts[i];
             fc_json_object_set_string(obj, "ref", label);
             for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
-                fc_json_object_set_number(obj, fc_flagstat_column_names[col], (double)counts[col]);
+                fc_json_object_set_number(
+                    obj,
+                    fc_flagstat_column_names[col],
+                    (double)row_counts[col]);
             }
             fc_json_array_append_value(rows, value);
         }
     }
-    if (NULL != state->flagstats->unmapped) {
+    if (NULL != counts->unmapped_counts) {
         fc_json_value_t *value = fc_json_object_value();
         fc_json_object_t *obj = fc_json_get_object(value);
-        const size_t *counts = state->flagstats->unmapped;
         fc_json_object_set_string(obj, "ref", "*");
         for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
-            fc_json_object_set_number(obj, fc_flagstat_column_names[col], (double)counts[col]);
+            fc_json_object_set_number(
+                obj,
+                fc_flagstat_column_names[col],
+                (double)counts->unmapped_counts[col]);
         }
         fc_json_array_append_value(rows, value);
     }
@@ -972,7 +918,7 @@ static void summary_json_alignment_distributions(
 static void summary_json_alignment(
     fc_json_object_t *root,
     const summary_json_sink *sink,
-    const summary_json_barcode *state,
+    size_t barcode,
     const fc_stats_engine *engine)
 {
     if (!sink->cfg.bam_input) {
@@ -980,7 +926,7 @@ static void summary_json_alignment(
     }
 
     fc_json_object_t *alignment = fc_json_object_set_object(root, "alignment");
-    summary_json_flagstats(alignment, sink, state);
+    summary_json_flagstats(alignment, sink, barcode);
     summary_json_alignment_distributions(alignment, engine);
 }
 
@@ -1203,7 +1149,7 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
     fc_json_object_t *heatmaps = fc_json_object_set_object(root, "heatmaps");
     summary_json_length_heatmap(heatmaps, sink->cfg.length_qscore, barcode);
     summary_json_speed_heatmap(heatmaps, sink->cfg.speed_qscore, barcode);
-    summary_json_alignment(root, sink, state, engine);
+    summary_json_alignment(root, sink, barcode, engine);
     summary_json_coverage(root, sink->cfg.coverage_summaries, barcode);
 
     FILE *fp = summary_json_open_output(sink, barcode);
@@ -1242,30 +1188,6 @@ static void summary_json_sink_add_read(
     }
     summary_json_barcode *state = &sink->barcodes[barcode];
     summary_barcode_add_read(state, read);
-
-    if (!sink->cfg.bam_input) {
-        return;
-    }
-    summary_flag_stats *flagstats = summary_ensure_flagstats(sink, barcode);
-    if (NULL == flagstats) {
-        return;
-    }
-
-    bool is_unmapped = fc_is_unmapped(read->bam);
-    if (!is_unmapped) {
-        if (0 == flagstats->n_refs || NULL == flagstats->counts) {
-            return;
-        }
-        size_t tid = (size_t)read->bam->core.tid;
-        if (!sink->cfg.region_mode && tid >= flagstats->n_refs) {
-            return;
-        }
-        size_t *counts = sink->cfg.region_mode ? flagstats->counts[0] : flagstats->counts[tid];
-        summary_flagstats_add_counts(read->bam, counts, read->meta->duplex_code);
-    }
-    if (NULL != flagstats->unmapped && is_unmapped) {
-        summary_flagstats_add_counts(read->bam, flagstats->unmapped, read->meta->duplex_code);
-    }
 }
 
 static void summary_json_sink_end_file(void *ctx, const char *fname, const fc_file_stats *stats)
@@ -1331,7 +1253,6 @@ fc_sink fc_summary_json_sink_create(const fc_summary_json_sink_opts *opts)
         state->cfg.sample = state->sample;
     }
     state->barcodes = fc_alloc(state->cfg.barcode_count, sizeof(*state->barcodes), "summary_json barcodes");
-    state->n_refs = state->cfg.region_mode ? 1 : (state->cfg.hdr ? (size_t)state->cfg.hdr->n_targets : 0);
 
     sink.ctx = state;
     sink.begin_file = summary_json_sink_begin_file;

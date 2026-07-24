@@ -34,9 +34,11 @@ REPORT_REQS := tools/requirements.txt
 REPORT_MPLCONFIGDIR := $(REPORT_DIR)/mpl-cache
 REPORT_EXAMPLE_N ?= 2000
 REPORT_DEMO_N ?= 100000
+REPORT_ALIGNMENT_DEMO_N ?= 2000
 REPORT_DEMO_DURATION_S ?= 172800
 DEV_TOOLS_SCRIPT := $(REPO_ROOT)/tools/dev-tools
 DEV_TOOLS := python3 $(DEV_TOOLS_SCRIPT)
+SIMULATE_READS := $(REPORT_PY) $(DEV_TOOLS_SCRIPT) simulate_reads
 SUMMARY_JSON_SCHEMA := $(REPO_ROOT)/test/fixtures/misc/summary_json.schema.json
 SHELL := /bin/bash
 BUILD_MAKEFILES := Makefile
@@ -230,6 +232,7 @@ CORE_SRCS := \
 	src/core/fc_stats.c \
 	src/core/fc_quantile.c \
 	src/core/fc_kll.c \
+	src/core/fc_alignment_summary.c \
 	src/core/fc_channel_summary.c \
 	src/core/fc_channel_map.c \
 	src/core/fc_channel_map_data.c \
@@ -533,8 +536,8 @@ $(REPORT_VENV)/.deps: $(REPORT_REQS) $(REPORT_PY) | $(REPORT_MPLCONFIGDIR)
 .PHONY: report_venv
 report_venv: $(REPORT_VENV)/.deps  ## create the Python report venv
 
-$(REPORT_DIR)/template_example.fastq: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py | $(REPORT_DIR)
-	$(DEV_TOOLS) simulate_reads \
+$(REPORT_DIR)/template_example.fastq: $(REPORT_VENV)/.deps $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py | $(REPORT_DIR)
+	$(SIMULATE_READS) \
 		--n $(REPORT_EXAMPLE_N) \
 		--shape 2.6 \
 		--scale 30000 \
@@ -563,6 +566,30 @@ $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv: $(REPORT_DIR)/template_fastc
 $(REPORT_DIR)/template_fastcat/channel_summary.tsv: $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv
 	test -s $@
 
+$(REPORT_DIR)/template_bam/flagstats.tsv: $(FASTCAT_BIN) test/fixtures/bam/coverage/coverage_demux.sam test/fixtures/bam/coverage/report_regions.bed | $(REPORT_DIR)
+	rm -rf $(REPORT_DIR)/template_bam
+	$(FASTCAT_BIN) bam test/fixtures/bam/coverage/coverage_demux.sam \
+		--output $(REPORT_DIR)/template_bam \
+		--coverage \
+		--segments 100 \
+		--coverage-beds test/fixtures/bam/coverage/report_regions.bed \
+		--coverage-names regions \
+		> /dev/null
+
+TEMPLATE_BAM_REPORT_INPUTS = \
+	histograms/accuracy.hist \
+	histograms/coverage.hist \
+	coverage/global.summary.txt \
+	coverage/global.dist.txt \
+	coverage/segments_100/segments_100.summary.txt \
+	coverage/segments_100/segments_100.dist.txt \
+	coverage/regions/regions.summary.txt \
+	coverage/regions/regions.dist.txt
+TEMPLATE_BAM_REPORT_INPUT_PATHS = $(addprefix $(REPORT_DIR)/template_bam/,$(TEMPLATE_BAM_REPORT_INPUTS))
+
+$(TEMPLATE_BAM_REPORT_INPUT_PATHS): $(REPORT_DIR)/template_bam/flagstats.tsv
+	test -s $@
+
 $(REPORT_DIR)/template_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --template --out-dir $(REPORT_DIR)/template_inputs
 
@@ -572,7 +599,7 @@ $(REPORT_DIR)/template_inputs/run_summary.tsv: $(REPORT_DIR)/template_inputs/met
 $(REPORT_DIR)/example_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --out-dir $(REPORT_DIR)/example_inputs
 
-$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(TEMPLATE_BAM_REPORT_INPUT_PATHS) $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/template_fastcat/histograms \
@@ -581,6 +608,16 @@ $(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/templa
 		--speed-qscore-2d $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv \
 		--time-bin-summary $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv \
 		--channel-summary $(REPORT_DIR)/template_fastcat/channel_summary.tsv \
+		--alignment-stats $(REPORT_DIR)/template_bam/histograms \
+		--flagstats $(REPORT_DIR)/template_bam/flagstats.tsv \
+		--coverage-summary \
+			$(REPORT_DIR)/template_bam/coverage/global.summary.txt \
+			$(REPORT_DIR)/template_bam/coverage/segments_100/segments_100.summary.txt \
+			$(REPORT_DIR)/template_bam/coverage/regions/regions.summary.txt \
+		--coverage-distribution \
+			$(REPORT_DIR)/template_bam/coverage/global.dist.txt \
+			$(REPORT_DIR)/template_bam/coverage/segments_100/segments_100.dist.txt \
+			$(REPORT_DIR)/template_bam/coverage/regions/regions.dist.txt \
 		--metadata $(REPORT_DIR)/template_inputs/metadata.json \
 		--versions $(REPORT_DIR)/template_inputs/versions \
 		--params $(REPORT_DIR)/template_inputs/params.json \
@@ -639,7 +676,8 @@ report_vendor_template: $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT
 
 .PHONY: report_template_check
 report_template_check: $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py  ## verify the vendored report template assets are current
-	@tmp=$$(mktemp -d); \
+	@set -e; \
+	tmp=$$(mktemp -d); \
 	trap 'rm -rf "$$tmp"' EXIT; \
 	$(DEV_TOOLS) vendor_report_template \
 		--input $(REPORT_DIR)/template_wf_report.html \
@@ -647,8 +685,7 @@ report_template_check: $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT)
 		--source "$$tmp/fc_report_template_data.c" \
 		--verify-source src/core/fc_report_template_data.c \
 		--symbol fc_report_template_html; \
-	diff -u src/core/fc_report_template_data.h "$$tmp/fc_report_template_data.h"; \
-	true
+	diff -u src/core/fc_report_template_data.h "$$tmp/fc_report_template_data.h"
 
 .PHONY: report_template_staged
 report_template_staged:  ## refresh staged report-template C assets when their inputs change
@@ -666,6 +703,7 @@ report_template_staged:  ## refresh staged report-template C assets when their i
 		tools/workflow_glue/simulate_reads.py \
 		tools/workflow_glue/write_wf_report_inputs.py \
 		tools/workflow_glue/util.py \
+		test/fixtures/bam/coverage/report_regions.bed \
 		src/core/fc_report_template_data.c \
 		src/core/fc_report_template_data.h; then \
 		exit 0; \
@@ -729,7 +767,7 @@ test_unit: | $(HTSLIB_PATCH_STAMP)
 .PHONY: test_meta
 
 .PHONY: test_functional
-test_functional: test_fastcat test_bamstats test_bamindex test_fastlint test_meta demo  ## run integration tests
+test_functional: test_fastcat test_bamstats test_bamindex test_fastlint test_meta demo demo_ubam  ## run integration tests
 
 .PHONY: test_memory
 test_memory: test_fastcat_memory test_bamstats_memory test_bamindex_memory test_fastlint_memory
@@ -867,11 +905,11 @@ BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv run_summary.ts
 # report tests
 
 .PHONY: demo
-demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
+demo: $(FASTCAT_BIN) $(REPORT_VENV)/.deps test/fixtures/bam/coverage/report_simulated_regions.bed  ## generate FASTQ and aligned-BAM HTML report demos
 	@$(call TEST_DESC,HTML report demo)
 	rm -rf $(TEST_TMP_DIR)/report_html
 	mkdir -p $(TEST_TMP_DIR)/report_html
-	set -o pipefail; $(DEV_TOOLS) simulate_reads \
+	set -o pipefail; $(SIMULATE_READS) \
 		--n $(REPORT_DEMO_N) \
 		--run-duration-s $(REPORT_DEMO_DURATION_S) \
 		--sample-id simulated-data \
@@ -899,6 +937,8 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	grep -q "Cumulative base yield" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Read count" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Channel occupancy" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	grep -q 'id="fastcat-alignment-section".*style="display:none;"' $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
+	grep -q 'id="fastcat-coverage-section".*style="display:none;"' $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "__FASTCAT_" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "fc_patch_fastcat_report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Run configuration" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
@@ -920,14 +960,44 @@ demo: $(FASTCAT_BIN)  ## generate a synthetic FASTQ run and HTML report demo
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/channel_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/run_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/summary.json
+	$(SIMULATE_READS) \
+		--output-format sam \
+		--sam-coordinate-sort \
+		--n $(REPORT_ALIGNMENT_DEMO_N) \
+		--run-duration-s $(REPORT_DEMO_DURATION_S) \
+		--sample-id simulated-alignment-data \
+		--max-len 1000000 \
+		--seed 17 \
+		> $(TEST_TMP_DIR)/report_html/aligned_reads.sam
+	$(RUN_BAMSTATS) $(TEST_TMP_DIR)/report_html/aligned_reads.sam \
+		--output $(TEST_TMP_DIR)/report_html/aligned_out \
+		--coverage \
+		--coverage-beds test/fixtures/bam/coverage/report_simulated_regions.bed \
+		--coverage-names regions \
+		--html-report \
+		--json-summary \
+		> /dev/null
+	test -s $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -q 'id="fastcat-alignment-section".*style=""' $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -q 'id="fastcat-coverage-section".*style=""' $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -Eq 'data-fastcat-alignment-value="total-reads">[1-9][0-9]*<' $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -Eq 'data-fastcat-alignment-value="mapped-reads">[1-9][0-9]*<' $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -Eq 'data-fastcat-alignment-value="unmapped-reads">[1-9][0-9]*<' $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -q "Primary mappings" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -q "Alignment Concordance" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -q "Read alignment coverage" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -q "Whole reference" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -q "User-provided: regions" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	! grep -q "__FASTCAT_" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
 	rm -f $(TEST_TMP_DIR)/report_html/reads.fastq.gz
+	rm -f $(TEST_TMP_DIR)/report_html/aligned_reads.sam
 
 .PHONY: demo_ubam
-demo_ubam: $(FASTCAT_BIN) samtools  ## generate a synthetic unaligned BAM run and HTML report demo
+demo_ubam: $(FASTCAT_BIN) $(REPORT_VENV)/.deps samtools  ## generate a synthetic unaligned BAM run and HTML report demo
 	@$(call TEST_DESC,HTML report uBAM demo)
 	rm -rf $(TEST_TMP_DIR)/report_html_ubam
 	mkdir -p $(TEST_TMP_DIR)/report_html_ubam
-	set -o pipefail; $(DEV_TOOLS) simulate_reads \
+	set -o pipefail; $(SIMULATE_READS) \
 		--n $(REPORT_DEMO_N) \
 		--run-duration-s $(REPORT_DEMO_DURATION_S) \
 		--sample-id simulated-data \
@@ -949,17 +1019,22 @@ demo_ubam: $(FASTCAT_BIN) samtools  ## generate a synthetic unaligned BAM run an
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/channel_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/summary.json
-	grep -q $$'\\tunaligned bam\\t' $(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv
+	awk -F '\t' 'NR > 1 && $$2 == "unaligned bam" { found = 1 } END { exit !found }' \
+		$(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv || \
+		{ awk -F '\t' 'NR > 1 { print; exit }' $(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv; exit 1; }
 	grep -q "Input type" $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
 	grep -q "unaligned bam" $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
+	grep -q 'id="fastcat-alignment-section".*style="display:none;"' $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
+	grep -q 'id="fastcat-coverage-section".*style="display:none;"' $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
+	! grep -q "__FASTCAT_" $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
 	rm -f $(TEST_TMP_DIR)/report_html_ubam/reads.fastq.gz
 
 .PHONY: test_report_missing_metadata
-test_report_missing_metadata: $(FASTCAT_BIN)
+test_report_missing_metadata: $(FASTCAT_BIN) $(REPORT_VENV)/.deps
 	@$(call TEST_DESC,HTML report null-state with missing metadata)
 	rm -rf $(TEST_TMP_DIR)/report_missing_metadata
 	mkdir -p $(TEST_TMP_DIR)/report_missing_metadata
-	set -o pipefail; $(DEV_TOOLS) simulate_reads \
+	set -o pipefail; $(SIMULATE_READS) \
 		--n 200 \
 		--seed 11 \
 		--omit-metadata \

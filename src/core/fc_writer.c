@@ -20,6 +20,7 @@ fc_writer *fc_writer_create(const fc_writer_config *cfg)
 
     writer->use_barcodes = use_barcodes;
     writer->barcode_count = use_barcodes ? FC_MAX_BARCODES : 1;
+    writer->alignment_summary = cfg ? cfg->alignment_summary : NULL;
 
     writer->stats_per_barcode = use_barcodes;
     writer->stats_cfg_set = (stats_cfg != NULL);
@@ -131,6 +132,14 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
     ctx.is_unmapped = fc_is_unmapped(read->bam);
     ctx.is_primary_qc = fc_is_primary_qc_pass(read->bam);
     ctx.stats_kind = FC_STATS_SKIP;
+
+    if (writer->alignment_summary != NULL) {
+        fc_alignment_summary_add_read(
+            writer->alignment_summary,
+            ctx.barcode,
+            read->bam,
+            read->meta->duplex_code);
+    }
 
     if (writer->stats_engines) {
         size_t engine_idx = writer->stats_per_barcode ? ctx.barcode : 0;

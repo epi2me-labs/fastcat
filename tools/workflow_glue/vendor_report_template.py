@@ -17,8 +17,9 @@ RENDER_ITEMS_RE = re.compile(
 )
 DOCS_JSON_PLACEHOLDER = "__FASTCAT_BOKEH_DOCS_JSON__"
 BOUND_VALUE_SENTINEL = "__FASTCAT_DEADBEEF__"
+DOM_UUID_RE = re.compile(r"[0-9a-f]{32}")
 
-MIN_EXPECTED_FIGURES = 14
+MIN_EXPECTED_FIGURES = 17
 
 
 def deterministic_gzip(data):
@@ -352,6 +353,18 @@ def canonicalize_bokeh_ids(docs, bindings, html):
     return canonical_docs, html
 
 
+def canonicalize_generated_dom_ids(html):
+    """Replace wf-template UUIDs in DOM IDs and all of their references."""
+    replacements = {}
+    for dom_id in re.findall(r'\bid="([^"]+)"', html):
+        for token in DOM_UUID_RE.findall(dom_id):
+            if token not in replacements:
+                replacements[token] = f"dom{len(replacements)}"
+    for old, new in replacements.items():
+        html = html.replace(old, new)
+    return html
+
+
 def extract_bokeh_document(html):
     match = DOCS_JSON_RE.search(html)
     if not match:
@@ -373,6 +386,13 @@ def extract_bokeh_document(html):
     fig_quality = figure_by_axis_labels(figures, "Quality", "Number of reads", renderer_count=1, source_count=1)
     fig_length = figure_by_axis_labels(figures, "Read length / kb", "Number of reads", renderer_count=1, source_count=1)
     fig_yield = figure_by_axis_labels(figures, "Read length / kb", "Yield above length / Gbases", renderer_count=1, source_count=1)
+    fig_alignment_accuracy = figure_by_axis_labels(figures, "Alignment Concordance / %", "Number of reads", renderer_count=1, source_count=1)
+    fig_alignment_query_coverage = figure_by_axis_labels(figures, "Read alignment coverage / %", "Number of reads", renderer_count=1, source_count=1)
+    fig_coverage_depth = figure_by_axis_labels(
+        figures,
+        "Minimum Depth",
+        "Reference Positions Covered / %",
+        renderer_count=1)
     fig_time_yield = figure_by_axis_labels(figures, "Elapsed time / hours", "Cumulative base yield / Gbp", renderer_count=1, source_count=1)
     fig_time_yield_bin = figure_by_axis_labels(figures, "Elapsed time / hours", "Base yield / Gbp", renderer_count=1, source_count=1)
     fig_time_reads = figure_by_axis_labels(figures, "Elapsed time / hours", "Cumulative read count", renderer_count=1, source_count=1)
@@ -411,6 +431,29 @@ def extract_bokeh_document(html):
     add_subtitle_binding(bindings, "yield", fig_yield)
     add_numeric_range_bindings(bindings, "yield", fig_yield, "x")
     add_numeric_range_bindings(bindings, "yield", fig_yield, "y")
+
+    add_source_binding(bindings, "alignment_accuracy", fig_alignment_accuracy)
+    add_subtitle_binding(bindings, "alignment_accuracy", fig_alignment_accuracy)
+    add_numeric_range_bindings(bindings, "alignment_accuracy", fig_alignment_accuracy, "x")
+    add_numeric_range_bindings(bindings, "alignment_accuracy", fig_alignment_accuracy, "y")
+
+    add_source_binding(bindings, "alignment_query_coverage", fig_alignment_query_coverage)
+    add_subtitle_binding(bindings, "alignment_query_coverage", fig_alignment_query_coverage)
+    add_numeric_range_bindings(bindings, "alignment_query_coverage", fig_alignment_query_coverage, "x")
+    add_numeric_range_bindings(bindings, "alignment_query_coverage", fig_alignment_query_coverage, "y")
+
+    coverage_source = named_model(docs, "fastcat_coverage_source")
+    coverage_subtitle = named_model(docs, "fastcat_coverage_subtitle")
+    coverage_targets = named_model(docs, "fastcat_coverage_targets")
+    if (
+            coverage_source is None or coverage_subtitle is None
+            or coverage_targets is None):
+        raise RuntimeError("could not identify coverage target models")
+    add_binding(bindings, "coverage_depth.source.data", coverage_source, "data")
+    add_binding(bindings, "coverage_depth.subtitle.text", coverage_subtitle, "text")
+    add_numeric_range_bindings(bindings, "coverage_depth", fig_coverage_depth, "x")
+    add_numeric_range_bindings(bindings, "coverage_depth", fig_coverage_depth, "y")
+    add_binding(bindings, "coverage_depth.targets.data", coverage_targets, "data")
 
     add_source_binding(bindings, "length_qscore", fig_length_qscore)
     add_subtitle_binding(bindings, "length_qscore", fig_length_qscore, required=False)
@@ -544,6 +587,80 @@ def replace_params_table(html):
     return html
 
 
+def patch_conditional_section(html, heading, section_id, kind, display_placeholder):
+    """Give a report section and its menu link stable conditional markers."""
+    heading_marker = f">{heading}</h2>"
+    heading_pos = html.find(heading_marker)
+    if heading_pos < 0:
+        raise RuntimeError(f"could not find {heading!r} report section")
+    section_start = html.rfind("<section", 0, heading_pos)
+    section_end = html.find(">", section_start)
+    if section_start < 0 or section_end < 0:
+        raise RuntimeError(f"could not find section wrapper for {heading!r}")
+    opening = html[section_start:section_end + 1]
+    id_match = re.search(r'\bid="([^"]+)"', opening)
+    if not id_match:
+        raise RuntimeError(f"could not find section id for {heading!r}")
+    old_id = id_match.group(1)
+    opening = opening.replace(f'id="{old_id}"', f'id="{section_id}"', 1)
+    opening = opening[:-1] + (
+        f' data-fastcat-section="{kind}" '
+        f'style="{display_placeholder}">')
+    html = html[:section_start] + opening + html[section_end + 1:]
+
+    nav_pattern = re.compile(
+        rf'<a(?P<attrs>[^>]*href="#{re.escape(old_id)}"[^>]*)>'
+        rf'{re.escape(heading)}</a>')
+    nav_match = nav_pattern.search(html)
+    if not nav_match:
+        raise RuntimeError(f"could not find navigation link for {heading!r}")
+    attrs = nav_match.group("attrs").replace(
+        f'href="#{old_id}"', f'href="#{section_id}"')
+    replacement = (
+        f'<a{attrs} data-fastcat-section="{kind}" '
+        f'style="{display_placeholder}">{heading}</a>')
+    return html[:nav_match.start()] + replacement + html[nav_match.end():]
+
+
+def replace_alignment_values(html):
+    """Replace scaffold alignment values with runtime HTML placeholders."""
+    placeholders = {
+        "total-reads": "__FASTCAT_ALIGNMENT_TOTAL_READS_HTML__",
+        "mapped-reads": "__FASTCAT_ALIGNMENT_MAPPED_READS_HTML__",
+        "unmapped-reads": "__FASTCAT_ALIGNMENT_UNMAPPED_READS_HTML__",
+        "mapping-rate": "__FASTCAT_ALIGNMENT_MAPPING_RATE_HTML__",
+    }
+    for key, placeholder in placeholders.items():
+        pattern = re.compile(
+            rf'(<td[^>]*data-fastcat-alignment-value="{re.escape(key)}"[^>]*>)'
+            r'.*?(</td>)',
+            flags=re.DOTALL)
+        html, count = pattern.subn(rf"\1{placeholder}\2", html, count=1)
+        if count != 1:
+            raise RuntimeError(f"could not replace alignment value {key!r}")
+
+    details_pattern = re.compile(
+        r'(<tbody[^>]*data-fastcat-alignment-details=""[^>]*>)'
+        r'.*?(</tbody>)',
+        flags=re.DOTALL)
+    html, count = details_pattern.subn(
+        r"\1__FASTCAT_ALIGNMENT_DETAIL_ROWS__\2", html, count=1)
+    if count != 1:
+        raise RuntimeError("could not replace alignment detail rows")
+    return html
+
+
+def replace_coverage_tab_buttons(html):
+    """Replace the scaffold's placeholder tab with runtime-generated tabs."""
+    pattern = re.compile(
+        r'<li[^>]*>\s*<button[^>]*>__FASTCAT_COVERAGE_TAB_BUTTONS__</button>\s*</li>',
+        flags=re.DOTALL)
+    html, count = pattern.subn("__FASTCAT_COVERAGE_TAB_BUTTONS__", html, count=1)
+    if count != 1:
+        raise RuntimeError("could not replace coverage tab buttons")
+    return html
+
+
 def apply_fastcat_template_wording(html):
     html = html.replace("fastcat sequencing report", "Fastcat Sequencing QC Report")
     html = html.replace(
@@ -552,6 +669,20 @@ def apply_fastcat_template_wording(html):
     )
     html = remove_versions_panel(html)
     html = replace_params_table(html)
+    html = replace_alignment_values(html)
+    html = replace_coverage_tab_buttons(html)
+    html = patch_conditional_section(
+        html,
+        "Alignment statistics",
+        "fastcat-alignment-section",
+        "alignment",
+        "__FASTCAT_ALIGNMENT_DISPLAY__")
+    html = patch_conditional_section(
+        html,
+        "Depth of coverage",
+        "fastcat-coverage-section",
+        "coverage",
+        "__FASTCAT_COVERAGE_DISPLAY__")
     html = html.replace(" nextflow workflow (", " (")
     # The template's section menu is custom markup, not a Bootstrap dropdown.
     # Bootstrap ScrollSpy treats its items as dropdown entries and crashes when
@@ -706,6 +837,7 @@ const unsigned char {symbol}_docs_json_gz[] = {{
 def main(args):
     html = Path(args.input).read_text(encoding="utf-8")
     html = apply_fastcat_template_wording(html)
+    html = canonicalize_generated_dom_ids(html)
     html, docs_json, bindings = extract_bokeh_document(html)
 
     if args.template_output:

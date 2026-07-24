@@ -2,11 +2,13 @@
 import json
 from pathlib import Path
 
-from dominate.tags import b, p, table, tbody, td, th, thead, tr
+from bokeh.models import ColumnDataSource, CustomJS, HoverTool, Range1d, Title
+from dominate.tags import b, p, script, table, tbody, td, th, thead, tr
+from dominate.util import raw
 import ezcharts as ezc
 from ezcharts.components.ezchart import EZChart
 from ezcharts.components.reports import labs
-from ezcharts.layout.snippets import Tabs
+from ezcharts.layout.snippets import Grid, Tabs
 from ezcharts.layout.snippets.table import DataTable
 import numpy as np
 import pandas as pd
@@ -30,6 +32,48 @@ CHANNEL_MAP_PATHS = {
 
 
 patch_bokeh_plot_class(ezc.plots.BokehPlot)
+
+
+COVERAGE_TAB_SCRIPT = """
+document.addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-fastcat-coverage-target]");
+    if (tab == null) {
+        return;
+    }
+
+    const index = Number.parseInt(tab.dataset.fastcatCoverageTarget, 10);
+    const doc = Bokeh.documents[0];
+    const source = doc?.get_model_by_name("fastcat_coverage_source");
+    const targets = doc?.get_model_by_name("fastcat_coverage_targets");
+    const subtitle = doc?.get_model_by_name("fastcat_coverage_subtitle");
+    const xRange = doc?.get_model_by_name("fastcat_coverage_x_range");
+    const yRange = doc?.get_model_by_name("fastcat_coverage_y_range");
+    if (!Number.isInteger(index)
+            || [source, targets, subtitle, xRange, yRange].some((model) => model == null)
+            || index < 0 || index >= targets.data.x.length) {
+        return;
+    }
+
+    source.data = {
+        x: Array.from(targets.data.x[index]),
+        y: Array.from(targets.data.y[index]),
+    };
+    subtitle.text = targets.data.subtitle[index];
+    xRange.start = 0;
+    xRange.end = targets.data.x_end[index];
+    xRange.bounds = [0, targets.data.x_end[index]];
+    yRange.start = 0;
+    yRange.end = targets.data.y_end[index];
+    yRange.bounds = [0, targets.data.y_end[index]];
+    source.change.emit();
+
+    document.querySelectorAll("[data-fastcat-coverage-target]").forEach((button) => {
+        const active = button === tab;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+});
+"""
 
 
 def load_dense_heatmap(df, x, y, value, subtitle, null_message):
@@ -67,6 +111,167 @@ def simple_kv_table(rows):
                 with tr():
                     td(str(key))
                     td("" if value is None else str(value))
+
+
+def load_alignment_counts(path):
+    """Load shared flagstat output into report-level alignment counts."""
+    df = pd.read_csv(path, sep="\t")
+    count_columns = (
+        "total", "primary", "secondary", "supplementary", "unmapped",
+        "qcfail", "duplicate", "duplex", "duplex_forming")
+    for column in count_columns:
+        df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0).astype(int)
+
+    mapped = df[df["ref"] != "*"]
+    totals = {column: int(df[column].sum()) for column in count_columns}
+    mapped_records = int(mapped["total"].sum())
+    mapped_primary = int(mapped["primary"].sum())
+    unmapped_reads = totals["unmapped"]
+    total_reads = mapped_primary + unmapped_reads
+    mapping_rate = 100.0 * mapped_primary / total_reads if total_reads else 0.0
+    return {
+        **totals,
+        "mapped_records": mapped_records,
+        "mapped_primary": mapped_primary,
+        "total_reads": total_reads,
+        "mapping_rate": mapping_rate,
+    }
+
+
+def add_alignment_summary(path):
+    """Render alignment headline values and overlapping record categories."""
+    counts = load_alignment_counts(path)
+    headline = (
+        ("Total reads", counts["total_reads"], "total-reads"),
+        ("Reads mapped", counts["mapped_primary"], "mapped-reads"),
+        ("Unmapped reads", counts["unmapped"], "unmapped-reads"),
+        ("Mapping rate", f'{counts["mapping_rate"]:.2f}%', "mapping-rate"),
+    )
+    with table(cls="table table-sm"):
+        with thead():
+            with tr():
+                for label, _, _ in headline:
+                    th(label)
+        with tbody():
+            with tr():
+                for _, value, key in headline:
+                    td(str(value), **{"data-fastcat-alignment-value": key})
+
+    p("Record categories may overlap; their counts are not expected to sum to the total.")
+    detail_rows = (
+        ("Mapped records", counts["mapped_records"]),
+        ("Primary mappings", counts["primary"]),
+        ("Secondary mappings", counts["secondary"]),
+        ("Supplementary mappings", counts["supplementary"]),
+        ("Total records", counts["total"]),
+        ("QC-fail", counts["qcfail"]),
+        ("Duplicate", counts["duplicate"]),
+        ("Duplex", counts["duplex"]),
+        ("Duplex-forming", counts["duplex_forming"]),
+    )
+    with table(cls="table table-sm"):
+        with thead():
+            with tr():
+                th("Record category")
+                th("Count")
+        with tbody(**{"data-fastcat-alignment-details": ""}):
+            for label, value in detail_rows:
+                with tr():
+                    td(label)
+                    td(str(value))
+
+
+def add_alignment_plots(hist_dir):
+    """Render mapped-primary alignment accuracy and query-span histograms."""
+    accuracy = bokeh_seqsummary.load_histogram(hist_dir, "accuracy")
+    query_coverage = bokeh_seqsummary.load_histogram(hist_dir, "coverage")
+    with Grid(columns=2):
+        EZChart(bokeh_seqsummary.alignment_histogram_plot(
+            accuracy,
+            80.0,
+            100.0,
+            "Alignment Concordance / %",
+            color=FASTCAT_BLUE))
+        EZChart(bokeh_seqsummary.alignment_histogram_plot(
+            query_coverage,
+            0.0,
+            100.0,
+            "Read alignment coverage / %",
+            color=FASTCAT_BLUE))
+
+
+def load_coverage_targets(summary_paths, distribution_paths):
+    """Load aggregate legacy coverage tables for the scaffold CDF selector."""
+    if len(summary_paths) != len(distribution_paths):
+        raise ValueError(
+            "coverage summary and distribution path counts must match")
+    targets = []
+    for summary_path, distribution_path in zip(summary_paths, distribution_paths):
+        summary = pd.read_csv(summary_path, sep="\t")
+        distribution = pd.read_csv(
+            distribution_path,
+            sep="\t",
+            names=["chrom", "depth", "fraction"])
+        name = Path(distribution_path).name.removesuffix(".dist.txt")
+        mean_depth = float(summary.iloc[-1]["mean"]) if not summary.empty else 0.0
+        x = distribution["depth"].astype(float).tolist()
+        y = (100.0 * distribution["fraction"].astype(float)).tolist()
+        targets.append({
+            "name": name,
+            "x": x,
+            "y": y,
+            "subtitle": f"Mean depth: {mean_depth:.2f}×",
+            "x_end": max(x, default=1.0) or 1.0,
+            "y_end": 100.0,
+        })
+    return targets
+
+
+def add_coverage_plot(summary_paths, distribution_paths):
+    """Render one aggregate CDF figure controlled by a target selector."""
+    targets = load_coverage_targets(summary_paths, distribution_paths)
+    if not targets:
+        return
+
+    first = targets[0]
+    source = ColumnDataSource(
+        data={"x": first["x"], "y": first["y"]},
+        name="fastcat_coverage_source")
+    target_source = ColumnDataSource(
+        data={key: [target[key] for target in targets] for key in (
+            "name", "x", "y", "subtitle", "x_end", "y_end")},
+        name="fastcat_coverage_targets")
+    # Retain the target data source in the serialised Bokeh document; the
+    # report's HTML tabs use it to update the visible source at runtime.
+    source.js_on_change("data", CustomJS(args={"targets": target_source}, code=""))
+    plot = ezc.plots.BokehPlot(
+        x_range=Range1d(
+            0.0, first["x_end"], name="fastcat_coverage_x_range"),
+        y_range=Range1d(
+            0.0, first["y_end"], name="fastcat_coverage_y_range"))
+    plot._fig.xaxis.axis_label = "Minimum Depth"
+    plot._fig.yaxis.axis_label = "Reference Positions Covered / %"
+    renderer = plot._fig.line(
+        x="x", y="y", source=source, line_width=2, color=FASTCAT_BLUE)
+    hover = plot._fig.select_one(HoverTool)
+    if hover is None:
+        hover = HoverTool()
+        plot._fig.add_tools(hover)
+    hover.name = "fastcat_coverage_hover"
+    hover.renderers = [renderer]
+    hover.tooltips = [
+        ("Minimum Depth", "@x{0}"),
+        ("Reference Positions Covered / %", "@y{0.0}"),
+    ]
+    subtitle = Title(
+        text=first["subtitle"],
+        name="fastcat_coverage_subtitle")
+    plot._fig.add_layout(subtitle, "above")
+
+    tabs = Tabs()
+    with tabs.add_tab("__FASTCAT_COVERAGE_TAB_BUTTONS__"):
+        EZChart(plot, height="500px")
+    script(raw(COVERAGE_TAB_SCRIPT))
 
 
 def _summary_display_text(value, formatter=str, missing_text="(not set)"):
@@ -557,7 +762,8 @@ def main(args):
         report_title += f" for analysis group '{args.analysis_group}'"
     report = labs.LabsReport(
         report_title, "fastcat",
-        args.params, args.versions, args.wf_version)
+        args.params, args.versions, args.wf_version,
+        created_date="__FASTCAT_REPORT_DATE_HTML__")
 
     with open(args.metadata, "r") as f:
         metadata = json.load(f)
@@ -622,6 +828,21 @@ def main(args):
                 stats = stats[0]
                 samples_with_stats = samples_with_stats[0]
             bokeh_seqsummary.SeqSummary(stats, sample_names=samples_with_stats)
+
+    if args.alignment_stats and args.flagstats:
+        with report.add_section("Alignment statistics", "Alignment statistics"):
+            p(
+                "Read-level mapping statistics. Alignment distributions include "
+                "primary QC-passing mapped reads.")
+            add_alignment_summary(args.flagstats)
+            add_alignment_plots(args.alignment_stats)
+
+    if args.coverage_summary and args.coverage_distribution:
+        with report.add_section("Depth of coverage", "Depth of coverage"):
+            p(
+                "The cumulative depth distribution shows the percentage of reference "
+                "positions covered at or above each depth for the selected target set.")
+            add_coverage_plot(args.coverage_summary, args.coverage_distribution)
 
     if args.time_bin_summary:
         time_samples = samples_with_stats
@@ -700,6 +921,18 @@ def argparser():
     parser.add_argument(
         "--channel-summary", nargs="+",
         help="Fastcat channel_summary.tsv files, ordered as per entries in --metadata.")
+    parser.add_argument(
+        "--alignment-stats",
+        help="Fastcat BAM histogram directory containing accuracy and coverage histograms.")
+    parser.add_argument(
+        "--flagstats",
+        help="Fastcat flagstats.tsv used to scaffold alignment headline values.")
+    parser.add_argument(
+        "--coverage-summary", nargs="+",
+        help="Coverage summary tables ordered to match --coverage-distribution.")
+    parser.add_argument(
+        "--coverage-distribution", nargs="+",
+        help="Aggregate coverage distribution tables ordered to match --coverage-summary.")
     parser.add_argument(
         "--versions", required=True,
         help="directory containing CSVs containing name,version.")

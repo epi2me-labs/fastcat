@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "core/fc_alignment_summary.h"
 #include "core/fc_channel_summary.h"
 #include "core/fc_coverage.h"
 #include "core/fc_length_qscore_2d.h"
@@ -61,32 +62,9 @@ typedef struct {
     const bam_hdr_t *hdr;
     bool use_barcodes;
     size_t barcode_count;
+    // Caller-owned, populated by fc_writer before sink finalisation.
+    const fc_alignment_summary *alignment_summary;
 } fc_flagstats_sink_opts;
-
-typedef enum {
-    FC_FLAGSTAT_TOTAL,
-    FC_FLAGSTAT_PRIMARY,
-    FC_FLAGSTAT_SECONDARY,
-    FC_FLAGSTAT_SUPPLEMENTARY,
-    FC_FLAGSTAT_UNMAPPED,
-    FC_FLAGSTAT_QCFAIL,
-    FC_FLAGSTAT_DUPLICATE,
-    FC_FLAGSTAT_DUPLEX,
-    FC_FLAGSTAT_DUPLEX_FORMING,
-    FC_FLAGSTAT_COUNT
-} fc_flagstat_column;
-
-static const char *const fc_flagstat_column_names[FC_FLAGSTAT_COUNT] = {
-    "total",
-    "primary",
-    "secondary",
-    "supplementary",
-    "unmapped",
-    "qcfail",
-    "duplicate",
-    "duplex",
-    "duplex_forming"
-};
 
 fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts);
 
@@ -181,6 +159,8 @@ typedef struct {
     fc_length_qscore_2d *length_qscore;
     fc_speed_qscore_2d *speed_qscore;
     fc_time_bin *time_bin;
+    // Caller-owned, populated by fc_writer before sink finalisation.
+    const fc_alignment_summary *alignment_summary;
     const fc_coverage_summaries *coverage_summaries;
 } fc_summary_json_sink_opts;
 

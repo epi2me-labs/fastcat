@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <zlib.h>
 
 #include "htslib/kstring.h"
@@ -25,6 +26,10 @@
 #define FC_REPORT_LENGTH_BINS 100
 #define FC_REPORT_QUALITY_MIN 0.0
 #define FC_REPORT_QUALITY_WIDTH 0.2
+#define FC_REPORT_ALIGNMENT_WIDTH 0.2
+#define FC_REPORT_ACCURACY_MIN 80.0
+#define FC_REPORT_PERCENT_MIN 0.0
+#define FC_REPORT_PERCENT_MAX 100.0
 #define FC_REPORT_YIELD_THINNING 100
 #define FC_REPORT_LQ2D_COLOR_QUANTILE 0.995
 #define FC_REPORT_CHANNEL_COLOR_QUANTILE 0.995
@@ -304,6 +309,94 @@ static char *build_run_config_rows_html(const fc_report_config_entry *entries, s
 static char *format_report_count(size_t value)
 {
     return fc_asprintf("report count", "%zu", value);
+}
+
+static char *format_report_date(void)
+{
+    time_t now = time(NULL);
+    struct tm local = { 0 };
+    char text[11] = { 0 };
+    if (now == (time_t)-1
+        || localtime_r(&now, &local) == NULL
+        || strftime(text, sizeof(text), "%Y-%m-%d", &local) == 0) {
+        return fc_strdup("(unknown)", "report date");
+    }
+    return fc_strdup(text, "report date");
+}
+
+static char *build_alignment_detail_rows_html(const fc_alignment_totals *totals)
+{
+    static const struct {
+        const char *label;
+        fc_flagstat_column column;
+    } record_rows[] = {
+        { "Primary mappings", FC_FLAGSTAT_PRIMARY },
+        { "Secondary mappings", FC_FLAGSTAT_SECONDARY },
+        { "Supplementary mappings", FC_FLAGSTAT_SUPPLEMENTARY },
+        { "Total records", FC_FLAGSTAT_TOTAL },
+        { "QC-fail", FC_FLAGSTAT_QCFAIL },
+        { "Duplicate", FC_FLAGSTAT_DUPLICATE },
+        { "Duplex", FC_FLAGSTAT_DUPLEX },
+        { "Duplex-forming", FC_FLAGSTAT_DUPLEX_FORMING }
+    };
+    kstring_t ks = { 0, 0, NULL };
+    char count_text[32] = { 0 };
+    size_t mapped_records = totals ? totals->mapped_record_count : 0;
+    report_kputs(&ks, "<tr><td>Mapped records</td><td>");
+    FC_SNPRINTF_CHECK(count_text, sizeof(count_text), "%zu", mapped_records);
+    report_kputs(&ks, count_text);
+    report_kputs(&ks, "</td></tr>\n");
+    for (size_t i = 0; i < sizeof(record_rows) / sizeof(record_rows[0]); ++i) {
+        report_kputs(&ks, "<tr><td>");
+        report_kputs(&ks, record_rows[i].label);
+        report_kputs(&ks, "</td><td>");
+        FC_SNPRINTF_CHECK(count_text, sizeof(count_text), "%zu",
+            totals ? totals->record_counts[record_rows[i].column] : 0);
+        report_kputs(&ks, count_text);
+        report_kputs(&ks, "</td></tr>\n");
+    }
+    return report_steal(&ks);
+}
+
+static char *build_coverage_tab_buttons_html(const fc_coverage_summary *coverage)
+{
+    kstring_t ks = { 0, 0, NULL };
+    for (size_t i = 0; coverage && i < coverage->n_targets; ++i) {
+        const char *name = coverage->targets[i].name;
+        char *display_name = NULL;
+        size_t segment_length = 0;
+        if (name && strcmp(name, "global") == 0) {
+            display_name = fc_strdup("Whole reference", "coverage target display name");
+        } else if (name && sscanf(name, "segments_%zu", &segment_length) == 1) {
+            if (segment_length < 1000) {
+                display_name = fc_asprintf(
+                    "coverage target display name", "Fixed %zu bp segments", segment_length);
+            } else {
+                display_name = fc_asprintf(
+                    "coverage target display name", "Fixed %.3g kbp segments",
+                    (double)segment_length / 1e3);
+            }
+        } else {
+            display_name = fc_asprintf(
+                "coverage target display name", "User-provided: %s", name ? name : "coverage");
+        }
+        char index_text[32] = { 0 };
+        FC_SNPRINTF_CHECK(index_text, sizeof(index_text), "%zu", i);
+        report_kputs(&ks, "<li class=\"nav-item\" role=\"presentation\"><button class=\"");
+        report_kputs(&ks, "nav-link px-0 me-4 text-muted");
+        if (i == 0) {
+            report_kputs(&ks, " active");
+        }
+        report_kputs(&ks, "\" type=\"button\" role=\"tab\" data-fastcat-coverage-target=\"");
+        report_kputs(&ks, index_text);
+        report_kputs(&ks, "\" aria-selected=\"");
+        report_kputs(&ks, i == 0 ? "true" : "false");
+        report_kputs(&ks, "\">");
+        append_html_escaped(&ks, display_name);
+        report_kputs(&ks, "</button></li>\n");
+        free(display_name);
+    }
+    return report_steal(&ks);
 }
 
 static char *format_report_n50(size_t value)
@@ -771,6 +864,88 @@ static void update_quality_plot(JSON_Value *docs, const report_hist *quality)
     bokeh_set_string(docs, "quality.subtitle.text", subtitle);
     bokeh_set_range(docs, "quality.x_range", FC_REPORT_QUALITY_MIN, x_end);
     bokeh_set_range(docs, "quality.y_range", 0.0, y_end);
+}
+
+//
+// alignment plots
+//
+
+static fc_json_value_t *build_alignment_source_data_value(
+    const report_hist *hist,
+    double x_start,
+    double x_end,
+    char *subtitle,
+    size_t subtitle_size,
+    double *y_end)
+{
+    size_t bins = (size_t)ceil((x_end - x_start) / FC_REPORT_ALIGNMENT_WIDTH);
+    double *top = fc_alloc(bins, sizeof(*top), "report alignment top");
+    double *left = fc_alloc(bins, sizeof(*left), "report alignment left");
+    double *right = fc_alloc(bins, sizeof(*right), "report alignment right");
+    *y_end = 1.0;
+
+    for (size_t i = 0; i < bins; ++i) {
+        left[i] = x_start + (double)i * FC_REPORT_ALIGNMENT_WIDTH;
+        right[i] = left[i] + FC_REPORT_ALIGNMENT_WIDTH;
+    }
+    for (size_t i = 0; hist && i < hist->n; ++i) {
+        // Source widths are floats, so use each source bin's midpoint.
+        double value = 0.5 * (hist->bins[i].start + hist->bins[i].end);
+        if (value > x_end && hist->bins[i].start <= x_end) {
+            value = x_end;
+        }
+        if (value < x_start || value > x_end) {
+            continue;
+        }
+        size_t bin = value >= x_end
+            ? bins - 1
+            : (size_t)floor((value - x_start) / FC_REPORT_ALIGNMENT_WIDTH);
+        if (bin < bins) {
+            top[bin] += hist->bins[i].count;
+            if (top[bin] > *y_end) {
+                *y_end = top[bin];
+            }
+        }
+    }
+    *y_end *= 1.1;
+
+    FC_SNPRINTF_CHECK(subtitle, subtitle_size, "Mean: %.1f%%. Median: %.1f%%",
+        hist_mean_midpoint(hist), hist_median_start(hist));
+
+    report_source source = bokeh_source_create();
+    fc_json_entries_append_value(
+        source.entries, "top", fc_json_number_array_value(top, bins));
+    fc_json_entries_append_value(
+        source.entries, "left", fc_json_number_array_value(left, bins));
+    fc_json_entries_append_value(
+        source.entries, "right", fc_json_number_array_value(right, bins));
+    free(top);
+    free(left);
+    free(right);
+    return source.value;
+}
+
+static void update_alignment_plot(
+    JSON_Value *docs,
+    const char *name,
+    const report_hist *hist,
+    double x_start,
+    double x_end)
+{
+    char binding[128] = { 0 };
+    char subtitle[128] = { 0 };
+    double y_end = 1.0;
+
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.source.data", name);
+    bokeh_set_value(docs, binding,
+        build_alignment_source_data_value(
+            hist, x_start, x_end, subtitle, sizeof(subtitle), &y_end));
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.subtitle.text", name);
+    bokeh_set_string(docs, binding, subtitle);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.x_range", name);
+    bokeh_set_range(docs, binding, x_start, x_end);
+    FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.y_range", name);
+    bokeh_set_range(docs, binding, 0.0, y_end);
 }
 
 //
@@ -2130,16 +2305,112 @@ static void update_channel_bases_plot(
 }
 
 //
+// coverage depth plot
+//
+
+static double coverage_target_mean(const fc_coverage_summary_target *target)
+{
+    if (!target || target->n_summary_rows == 0) {
+        return 0.0;
+    }
+    return target->summary_rows[target->n_summary_rows - 1].mean;
+}
+
+static double coverage_target_max_depth(const fc_coverage_summary_target *target)
+{
+    double maximum = 0.0;
+    if (target) {
+        for (size_t i = 0; i < target->n_distribution_rows; ++i) {
+            double depth = (double)target->distribution_rows[i].depth;
+            if (depth > maximum) {
+                maximum = depth;
+            }
+        }
+    }
+    return maximum > 0.0 ? maximum : 1.0;
+}
+
+static fc_json_value_t *build_coverage_source_data_value(
+    const fc_coverage_summary_target *target)
+{
+    report_source source = bokeh_source_create();
+    report_column x = bokeh_source_add_array_column(&source, "x");
+    report_column y = bokeh_source_add_array_column(&source, "y");
+    if (target) {
+        for (size_t i = 0; i < target->n_distribution_rows; ++i) {
+            const fc_coverage_distribution_row *row = &target->distribution_rows[i];
+            fc_json_array_append_number(x.array, (double)row->depth);
+            fc_json_array_append_number(y.array, row->fraction * 100.0);
+        }
+    }
+    return source.value;
+}
+
+static fc_json_value_t *build_coverage_targets_data_value(
+    const fc_coverage_summary *coverage)
+{
+    report_source source = bokeh_source_create();
+    report_column names = bokeh_source_add_array_column(&source, "name");
+    report_column x = bokeh_source_add_array_column(&source, "x");
+    report_column y = bokeh_source_add_array_column(&source, "y");
+    report_column subtitles = bokeh_source_add_array_column(&source, "subtitle");
+    report_column x_end = bokeh_source_add_array_column(&source, "x_end");
+    report_column y_end = bokeh_source_add_array_column(&source, "y_end");
+
+    for (size_t target_index = 0; coverage && target_index < coverage->n_targets; ++target_index) {
+        const fc_coverage_summary_target *target = &coverage->targets[target_index];
+        fc_json_array_append_string(names.array, target->name ? target->name : "coverage");
+        fc_json_array_t *target_x = fc_json_array_append_array(x.array);
+        fc_json_array_t *target_y = fc_json_array_append_array(y.array);
+        for (size_t row_index = 0; row_index < target->n_distribution_rows; ++row_index) {
+            const fc_coverage_distribution_row *row = &target->distribution_rows[row_index];
+            fc_json_array_append_number(target_x, (double)row->depth);
+            fc_json_array_append_number(target_y, row->fraction * 100.0);
+        }
+        char subtitle[128] = { 0 };
+        FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "Mean depth: %.2f×",
+            coverage_target_mean(target));
+        fc_json_array_append_string(subtitles.array, subtitle);
+        fc_json_array_append_number(x_end.array, coverage_target_max_depth(target));
+        fc_json_array_append_number(y_end.array, 100.0);
+    }
+    return source.value;
+}
+
+static void update_coverage_plot(
+    JSON_Value *docs,
+    const fc_coverage_summary *coverage)
+{
+    const fc_coverage_summary_target *first = coverage && coverage->n_targets > 0
+        ? &coverage->targets[0]
+        : NULL;
+    char subtitle[128] = { 0 };
+    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "Mean depth: %.2f×",
+        coverage_target_mean(first));
+
+    bokeh_set_value(
+        docs, "coverage_depth.source.data", build_coverage_source_data_value(first));
+    bokeh_set_value(
+        docs, "coverage_depth.targets.data", build_coverage_targets_data_value(coverage));
+    bokeh_set_string(docs, "coverage_depth.subtitle.text", subtitle);
+    bokeh_set_range(docs, "coverage_depth.x_range", 0.0, coverage_target_max_depth(first));
+    bokeh_set_range(docs, "coverage_depth.y_range", 0.0, 100.0);
+}
+
+//
 // report assembly
 //
 
 static JSON_Value *build_report_bokeh_docs(
     const report_hist *length,
     const report_hist *quality,
+    const report_hist *accuracy,
+    const report_hist *query_coverage,
     const fc_channel_summary *channel_summary,
     const fc_length_qscore_2d *length_qscore,
     const fc_speed_qscore_2d *speed_qscore,
     const fc_time_bin *time_bin,
+    const fc_coverage_summary *coverage,
     size_t barcode)
 {
     char *docs_json = inflate_report_asset(
@@ -2171,6 +2442,19 @@ static JSON_Value *build_report_bokeh_docs(
     update_quality_plot(docs, quality);
     update_length_plot(docs, length);
     update_yield_plot(docs, length);
+    update_alignment_plot(
+        docs,
+        "alignment_accuracy",
+        accuracy,
+        FC_REPORT_ACCURACY_MIN,
+        FC_REPORT_PERCENT_MAX);
+    update_alignment_plot(
+        docs,
+        "alignment_query_coverage",
+        query_coverage,
+        FC_REPORT_PERCENT_MIN,
+        FC_REPORT_PERCENT_MAX);
+    update_coverage_plot(docs, coverage);
     update_length_qscore_plot(docs, length_qscore, barcode);
     update_speed_qscore_plot(docs, speed_qscore, barcode);
     update_time_yield_plot(docs, &time_table);
@@ -2197,6 +2481,8 @@ static char *render_report_html(
     const char *sample,
     const char *barcode,
     const fc_run_summary_row *summary,
+    const fc_alignment_totals *alignment,
+    const fc_coverage_summary *coverage,
     const fc_report_config_entry *run_config,
     size_t run_config_count)
 {
@@ -2218,6 +2504,8 @@ static char *render_report_html(
             ? summary->barcode_id
             : (barcode ? barcode : "unclassified"));
     char *version_html = html_escape(argp_program_version ? argp_program_version : "unknown");
+    char *report_date_text = format_report_date();
+    char *report_date_html = html_escape(report_date_text);
     char *run_config_rows_html = build_run_config_rows_html(run_config, run_config_count);
     char *run_duration_text = summary ? format_report_duration(summary->run_duration_s) : fc_strdup("(not set)", "report duration");
     char *yield_text = summary ? format_report_yield(summary->base_count) : fc_strdup("(not set)", "report yield");
@@ -2228,6 +2516,18 @@ static char *render_report_html(
     char *l10_text = summary ? format_report_count(summary->l10) : fc_strdup("(not set)", "report l10");
     char *l50_text = summary ? format_report_count(summary->l50) : fc_strdup("(not set)", "report l50");
     char *l90_text = summary ? format_report_count(summary->l90) : fc_strdup("(not set)", "report l90");
+    char *alignment_total_reads_text = format_report_count(
+        alignment ? alignment->read_count : 0);
+    char *alignment_mapped_reads_text = format_report_count(
+        alignment ? alignment->primary_mapped_record_count : 0);
+    char *alignment_unmapped_reads_text = format_report_count(
+        alignment ? alignment->record_counts[FC_FLAGSTAT_UNMAPPED] : 0);
+    char *alignment_mapping_rate_text = fc_asprintf(
+        "report mapping rate",
+        "%.2f%%",
+        100.0 * (alignment ? alignment->mapping_rate : 0.0));
+    char *alignment_detail_rows_html = build_alignment_detail_rows_html(alignment);
+    char *coverage_tab_buttons_html = build_coverage_tab_buttons_html(coverage);
     char *barcode_alias_html = html_escape(
         (summary && summary->barcode_alias && summary->barcode_alias[0] != '\0')
             ? summary->barcode_alias
@@ -2265,9 +2565,23 @@ static char *render_report_html(
     char *l10_html = html_escape(l10_text);
     char *l50_html = html_escape(l50_text);
     char *l90_html = html_escape(l90_text);
+    char *alignment_total_reads_html = html_escape(alignment_total_reads_text);
+    char *alignment_mapped_reads_html = html_escape(alignment_mapped_reads_text);
+    char *alignment_unmapped_reads_html = html_escape(alignment_unmapped_reads_text);
+    char *alignment_mapping_rate_html = html_escape(alignment_mapping_rate_text);
     char *docs_json_html = html_unescape_basic(docs_json ? docs_json : "{}");
+    bool has_alignment = alignment && alignment->primary_mapped_record_count > 0;
+    bool has_coverage = coverage && coverage->n_targets > 0;
 
     replace_all(&html, "__FASTCAT_BOKEH_DOCS_JSON__", docs_json_html);
+    replace_all(&html, "__FASTCAT_ALIGNMENT_DISPLAY__", has_alignment ? "" : "display:none;");
+    replace_all(&html, "__FASTCAT_COVERAGE_DISPLAY__", has_coverage ? "" : "display:none;");
+    replace_all(&html, "__FASTCAT_ALIGNMENT_TOTAL_READS_HTML__", alignment_total_reads_html);
+    replace_all(&html, "__FASTCAT_ALIGNMENT_MAPPED_READS_HTML__", alignment_mapped_reads_html);
+    replace_all(&html, "__FASTCAT_ALIGNMENT_UNMAPPED_READS_HTML__", alignment_unmapped_reads_html);
+    replace_all(&html, "__FASTCAT_ALIGNMENT_MAPPING_RATE_HTML__", alignment_mapping_rate_html);
+    replace_all(&html, "__FASTCAT_ALIGNMENT_DETAIL_ROWS__", alignment_detail_rows_html);
+    replace_all(&html, "__FASTCAT_COVERAGE_TAB_BUTTONS__", coverage_tab_buttons_html);
     replace_all(&html, "__FASTCAT_SAMPLE_ALIAS_HTML__", sample_html);
     replace_all(&html, "__FASTCAT_SAMPLE_BARCODE_HTML__", barcode_html);
     replace_all(&html, "__FASTCAT_BARCODE_ALIAS_HTML__", barcode_alias_html);
@@ -2287,6 +2601,7 @@ static char *render_report_html(
     replace_all(&html, "__FASTCAT_L50_HTML__", l50_html);
     replace_all(&html, "__FASTCAT_L90_HTML__", l90_html);
     replace_all(&html, "__FASTCAT_VERSION_HTML__", version_html);
+    replace_all(&html, "__FASTCAT_REPORT_DATE_HTML__", report_date_html);
     replace_all(&html, "__FASTCAT_RUN_CONFIG_ROWS__", run_config_rows_html);
 
     free(sample_html);
@@ -2307,6 +2622,12 @@ static char *render_report_html(
     free(l10_text);
     free(l50_text);
     free(l90_text);
+    free(alignment_total_reads_text);
+    free(alignment_mapped_reads_text);
+    free(alignment_unmapped_reads_text);
+    free(alignment_mapping_rate_text);
+    free(alignment_detail_rows_html);
+    free(coverage_tab_buttons_html);
     free(run_duration_html);
     free(yield_html);
     free(read_count_html);
@@ -2316,7 +2637,13 @@ static char *render_report_html(
     free(l10_html);
     free(l50_html);
     free(l90_html);
+    free(alignment_total_reads_html);
+    free(alignment_mapped_reads_html);
+    free(alignment_unmapped_reads_html);
+    free(alignment_mapping_rate_html);
     free(version_html);
+    free(report_date_text);
+    free(report_date_html);
     free(run_config_rows_html);
     free(docs_json_html);
     return html;
@@ -2357,12 +2684,17 @@ static int write_report_for_output_dir(
     const fc_length_qscore_2d *length_qscore,
     const fc_speed_qscore_2d *speed_qscore,
     const fc_time_bin *time_bin,
+    const fc_alignment_counts *alignment_counts,
+    const fc_coverage_summary *coverage,
     size_t barcode_index)
 {
     int rc = -1;
     report_hist length = { 0 };
     report_hist quality = { 0 };
+    report_hist accuracy = { 0 };
+    report_hist query_coverage = { 0 };
     fc_run_summary_row summary = { 0 };
+    fc_alignment_totals alignment = { 0 };
     char *report_path = fc_join_path(output_dir, FC_REPORT_NAME);
 
     if (!report_hist_from_read_stats(length_stats, &length)
@@ -2386,16 +2718,39 @@ static int write_report_for_output_dir(
         goto cleanup;
     }
 
+    if (engine && engine->acc_stats
+        && !report_hist_from_read_stats(engine->acc_stats, &accuracy)) {
+        FC_LOG_ERROR("Cannot write HTML report: invalid alignment-accuracy histogram for '%s'.", output_dir);
+        goto cleanup;
+    }
+    if (engine && engine->cov_stats
+        && !report_hist_from_read_stats(engine->cov_stats, &query_coverage)) {
+        FC_LOG_ERROR("Cannot write HTML report: invalid query-coverage histogram for '%s'.", output_dir);
+        goto cleanup;
+    }
+    fc_alignment_counts_materialize(alignment_counts, &alignment);
+
     JSON_Value *docs = build_report_bokeh_docs(
         &length,
         &quality,
+        &accuracy,
+        &query_coverage,
         channel_summary,
         length_qscore,
         speed_qscore,
         time_bin,
+        coverage,
         barcode_index);
     char *docs_json = docs ? fc_json_serialize_to_string(docs) : NULL;
-    char *html = render_report_html(docs_json, sample, barcode, &summary, run_config, run_config_count);
+    char *html = render_report_html(
+        docs_json,
+        sample,
+        barcode,
+        &summary,
+        &alignment,
+        coverage,
+        run_config,
+        run_config_count);
     if (html && write_text_file(report_path, html) == 0) {
         FC_LOG_INFO("Wrote HTML report '%s'.", report_path);
         rc = 0;
@@ -2410,6 +2765,8 @@ cleanup:
     fc_run_summary_row_destroy(&summary);
     report_hist_destroy(&length);
     report_hist_destroy(&quality);
+    report_hist_destroy(&accuracy);
+    report_hist_destroy(&query_coverage);
     free(report_path);
     return rc;
 }
@@ -2443,6 +2800,8 @@ int fc_write_html_reports(const fc_report_opts *opts)
             opts->length_qscore,
             opts->speed_qscore,
             opts->time_bin,
+            fc_alignment_summary_for_output(opts->alignment_summary, 0),
+            fc_coverage_summaries_get(opts->coverage_summaries, 0),
             0);
     }
 
@@ -2485,6 +2844,8 @@ int fc_write_html_reports(const fc_report_opts *opts)
                 opts->length_qscore,
                 opts->speed_qscore,
                 opts->time_bin,
+                fc_alignment_summary_for_output(opts->alignment_summary, barcode),
+                fc_coverage_summaries_get(opts->coverage_summaries, barcode),
                 barcode)
             != 0) {
             status = -1;
