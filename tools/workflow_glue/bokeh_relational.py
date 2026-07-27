@@ -2,7 +2,7 @@
 
 import numbers
 
-from bokeh.models import HoverTool, Title
+from bokeh.models import ColumnDataSource, HoverTool, Title
 from seaborn.relational import _LinePlotter
 
 from ezcharts.plots import BokehPlot, util
@@ -11,6 +11,29 @@ from .bokeh_style import ReportFontSizes, ReportFonts
 
 DEFAULT_PALETTE = util.choose_palette()
 DEFAULT_COLOR = DEFAULT_PALETTE[0]
+
+
+def add_vertical_hover_bands(plot, data=None, *, x, y, width, height, source=None):
+    """Make vertical regions of a line plot easy to hover without visible glyphs.
+
+    Each row defines one transparent rectangle. Its centre can follow the
+    plotted y value while a generous height keeps the whole x interval easy to
+    target. Callers retain their existing HoverTool text and data columns.
+
+    This is deliberately an opt-in helper for interval-like line data; it is a
+    candidate to move upstream to ezcharts.
+    """
+    if source is None:
+        source = ColumnDataSource(data)
+    renderer = plot._fig.rect(
+        x=x, y=y, width=width, height=height, source=source,
+        line_alpha=0.0, fill_alpha=0.0)
+    hover = plot._fig.select_one(HoverTool)
+    if hover is None:
+        hover = HoverTool()
+        plot._fig.add_tools(hover)
+    hover.renderers = [renderer]
+    return renderer
 
 
 class Mixin:

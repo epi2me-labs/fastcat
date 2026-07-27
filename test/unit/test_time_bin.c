@@ -369,3 +369,33 @@ FC_TEST(time_bin_suite, test_time_bin_speed_skips_invalid_durations_only)
     fc_time_bin_table_destroy(&table);
     fc_time_bin_destroy(model);
 }
+
+FC_TEST(time_bin_suite, test_time_bin_accuracy_uses_existing_timestamped_bins)
+{
+    fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
+    TEST_ASSERT_NOT_NULL(model);
+
+    add_time_bin_test_read(model, 0, "100", 100, 10.0, 2.0);
+    add_time_bin_test_read(model, 0, "105", 200, 20.0, 4.0);
+
+    bam1_t bam = { 0 };
+    read_meta meta = { .start_time = "100" };
+    fc_read read = { .bam = &bam, .meta = &meta };
+    fc_time_bin_add_accuracy(model, 0, &read, 90.0f);
+    meta.start_time = "105";
+    fc_time_bin_add_accuracy(model, 0, &read, 100.0f);
+    meta.start_time = "not-a-time";
+    fc_time_bin_add_accuracy(model, 0, &read, 50.0f);
+
+    TEST_ASSERT_TRUE(fc_time_bin_accuracy_seen(model, 0));
+    fc_time_bin_table table = { 0 };
+    TEST_ASSERT_EQUAL_INT(0, fc_time_bin_materialize(model, 0, &table));
+    TEST_ASSERT_EQUAL_size_t(1, table.n);
+    TEST_ASSERT_EQUAL_size_t(2, table.rows[0].accuracy_read_count);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 95.0, table.rows[0].accuracy_mean);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 95.0, table.rows[0].accuracy_quantiles.q50);
+    TEST_ASSERT_EQUAL_size_t(2, table.rows[0].read_count);
+
+    fc_time_bin_table_destroy(&table);
+    fc_time_bin_destroy(model);
+}

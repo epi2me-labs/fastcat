@@ -2,7 +2,7 @@
 
 import os
 
-from bokeh.models import CustomJSTickFormatter, NumeralTickFormatter, Title
+from bokeh.models import CustomJSTickFormatter, HoverTool, NumeralTickFormatter, Title
 import ezcharts as ezc
 from ezcharts.components.ezchart import EZChart
 from ezcharts.layout.base import Snippet
@@ -10,6 +10,7 @@ from ezcharts.layout.snippets import Grid, Tabs
 from ezcharts.plots.util import empty_plot
 import numpy as np
 import pandas as pd
+from . import bokeh_relational
 from .bokeh_style import ReportFontSizes, ReportFonts
 
 
@@ -188,6 +189,18 @@ def apply_fixed_precision_formatter(axis, fmt):
     axis.formatter = NumeralTickFormatter(format=fmt)
 
 
+def add_histogram_hover(plot, bin_label):
+    """Show each histogram bin's range as well as its count."""
+    hover = plot._fig.select_one(HoverTool)
+    if hover is None:
+        hover = HoverTool()
+        plot._fig.add_tools(hover)
+    hover.tooltips = [
+        (bin_label, "@left{0.00} to @right{0.00}"),
+        ("Count", "@top{0,0}"),
+    ]
+
+
 def read_quality_plot(hist, color=None):
     """Create the read-quality histogram with a quantile-based x-range."""
     xmax = _round_up_to(histogram_visible_max(hist), QUALITY_XROUND)
@@ -204,6 +217,7 @@ def read_quality_plot(hist, color=None):
     plot._fig.yaxis.axis_label = "Number of reads"
     plot._fig.x_range.start = QUALITY_XMIN
     plot._fig.x_range.end = xmax
+    add_histogram_hover(plot, "Quality")
     apply_scientific_count_formatter(plot._fig.yaxis[0])
     plot._fig.add_layout(
         Title(text=f"Mean: {mean_val:.1f}. Median: {median_val:.1f}", text_font_size=ReportFontSizes.SUBTITLE, text_font=ReportFonts.PLOT),
@@ -227,6 +241,7 @@ def alignment_histogram_plot(hist, x_min, x_max, x_label, color=None):
     plot._fig.yaxis.axis_label = "Number of reads"
     plot._fig.x_range.start = x_min
     plot._fig.x_range.end = x_max
+    add_histogram_hover(plot, x_label)
     apply_scientific_count_formatter(plot._fig.yaxis[0])
     plot._fig.add_layout(
         Title(
@@ -258,6 +273,7 @@ def read_length_plot(hist, color=None):
     plot._fig.yaxis.axis_label = "Number of reads"
     plot._fig.x_range.start = 0.0
     plot._fig.x_range.end = xmax_kb
+    add_histogram_hover(plot, "Read length / kb")
     apply_scientific_count_formatter(plot._fig.yaxis[0])
     plot._fig.add_layout(
         Title(
@@ -322,6 +338,24 @@ def base_yield_plot(hist, color=None):
     )
     plot._fig.xaxis.axis_label = "Read length / kb"
     plot._fig.yaxis.axis_label = "Yield above length / Gbases"
+    x_values = df["Read length / kb"].to_numpy(dtype=float)
+    if len(x_values) > 1:
+        widths = np.diff(x_values, append=x_values[-1])
+        widths[-1] = widths[-2]
+    else:
+        widths = np.array([1.0])
+    hover_df = df.copy()
+    hover_df["x"] = x_values
+    hover_df["y"] = df["Yield above length / Gbases"].to_numpy(dtype=float)
+    hover_df["width"] = widths
+    hover_df["height"] = max(float(hover_df["y"].max()), 1.0) * 2.0
+    bokeh_relational.add_vertical_hover_bands(
+        plot, hover_df, x="x", y="y", width="width", height="height")
+    hover = plot._fig.select_one(HoverTool)
+    hover.tooltips = [
+        ("Read length / kb", "@{Read length / kb}{0.00}"),
+        ("Yield above length / Gbases", "@{Yield above length / Gbases}{0.00}"),
+    ]
     plot._fig.x_range.start = 0.0
     plot._fig.x_range.end = xmax_kb
     plot._fig.add_layout(

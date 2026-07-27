@@ -385,25 +385,34 @@ def extract_bokeh_document(html):
 
     fig_quality = figure_by_axis_labels(figures, "Quality", "Number of reads", renderer_count=1, source_count=1)
     fig_length = figure_by_axis_labels(figures, "Read length / kb", "Number of reads", renderer_count=1, source_count=1)
-    fig_yield = figure_by_axis_labels(figures, "Read length / kb", "Yield above length / Gbases", renderer_count=1, source_count=1)
+    fig_yield = figure_by_axis_labels(figures, "Read length / kb", "Yield above length / Gbases", renderer_count=2, source_count=2)
     fig_alignment_accuracy = figure_by_axis_labels(figures, "Alignment Concordance / %", "Number of reads", renderer_count=1, source_count=1)
     fig_alignment_query_coverage = figure_by_axis_labels(figures, "Read alignment coverage / %", "Number of reads", renderer_count=1, source_count=1)
     fig_coverage_depth = figure_by_axis_labels(
         figures,
         "Minimum Depth",
         "Reference Positions Covered / %",
-        renderer_count=1)
-    fig_time_yield = figure_by_axis_labels(figures, "Elapsed time / hours", "Cumulative base yield / Gbp", renderer_count=1, source_count=1)
-    fig_time_yield_bin = figure_by_axis_labels(figures, "Elapsed time / hours", "Base yield / Gbp", renderer_count=1, source_count=1)
-    fig_time_reads = figure_by_axis_labels(figures, "Elapsed time / hours", "Cumulative read count", renderer_count=1, source_count=1)
-    fig_time_reads_bin = figure_by_axis_labels(figures, "Elapsed time / hours", "Read count", renderer_count=1, source_count=1)
-    fig_time_length = figure_by_axis_labels(figures, "Elapsed time / hours", "Read length / kb", renderer_count=8, source_count=1)
-    fig_time_qscore = figure_by_axis_labels(figures, "Elapsed time / hours", "Quality", renderer_count=8, source_count=1)
-    fig_time_speed = figure_by_axis_labels(figures, "Elapsed time / hours", "Translocation speed / bp/s", renderer_count=8, source_count=1)
-    fig_speed_qscore = figure_by_axis_labels(figures, "Translocation speed / bp/s", "Quality", renderer_count=1, source_count=1)
-    fig_length_qscore = figure_by_axis_labels(figures, "Read length / kb", "Quality", renderer_count=1, source_count=1)
+        renderer_count=2)
+    fig_time_yield = figure_by_axis_labels(figures, "Elapsed time / hours", "Cumulative base yield / Gbp", renderer_count=2, source_count=2)
+    fig_time_yield_bin = figure_by_axis_labels(figures, "Elapsed time / hours", "Base yield / Gbp", renderer_count=2, source_count=2)
+    fig_time_reads = figure_by_axis_labels(figures, "Elapsed time / hours", "Cumulative read count", renderer_count=2, source_count=2)
+    fig_time_reads_bin = figure_by_axis_labels(figures, "Elapsed time / hours", "Read count", renderer_count=2, source_count=2)
+    fig_time_length = figure_by_axis_labels(figures, "Elapsed time / hours", "Read length / kb", renderer_count=8, source_count=2)
+    fig_time_qscore = figure_by_axis_labels(figures, "Elapsed time / hours", "Quality", renderer_count=8, source_count=2)
+    fig_time_speed = figure_by_axis_labels(figures, "Elapsed time / hours", "Translocation speed / bp/s", renderer_count=8, source_count=2)
+    fig_time_accuracy = figure_by_axis_labels(figures, "Elapsed time / hours", "Alignment Concordance / %", renderer_count=8, source_count=2)
+    fig_speed_qscore = figure_by_axis_labels(figures, "Translocation speed / bp/s", "Quality", renderer_count=2, source_count=2)
+    fig_length_qscore = figure_by_axis_labels(figures, "Read length / kb", "Quality", renderer_count=2, source_count=2)
+    fig_accuracy_qscore = named_model(docs, "fastcat_accuracy_qscore")
+    if (
+            fig_accuracy_qscore is None
+            or fig_accuracy_qscore.get("name") != "Figure"
+            or len(embedded_sources(fig_accuracy_qscore)) != 2):
+        raise RuntimeError("could not identify alignment concordance heatmap")
     fig_channel_reads = None
-    fig_channel_bases = None
+    fig_channel_mean_length = None
+    fig_channel_mean_quality = None
+    fig_channel_mean_concordance = None
     for fig in figures:
         if axis_label(fig, "below") != "x" or axis_label(fig, "left") != "y":
             continue
@@ -412,10 +421,18 @@ def extract_bokeh_document(html):
         title = colorbar_title(fig)
         if title == "read count":
             fig_channel_reads = fig
-        elif title == "base count / 1 M":
-            fig_channel_bases = fig
-    if fig_channel_reads is None or fig_channel_bases is None:
-        raise RuntimeError("could not identify both channel occupancy figures")
+        elif title == "mean read length / kb":
+            fig_channel_mean_length = fig
+        elif title == "mean quality":
+            fig_channel_mean_quality = fig
+        elif title == "mean alignment concordance / Q":
+            fig_channel_mean_concordance = fig
+    if (
+            fig_channel_reads is None
+            or fig_channel_mean_length is None
+            or fig_channel_mean_quality is None
+            or fig_channel_mean_concordance is None):
+        raise RuntimeError("could not identify all channel occupancy figures")
 
     add_source_binding(bindings, "quality", fig_quality)
     add_subtitle_binding(bindings, "quality", fig_quality)
@@ -428,6 +445,7 @@ def extract_bokeh_document(html):
     add_numeric_range_bindings(bindings, "length", fig_length, "y")
 
     add_source_binding(bindings, "yield", fig_yield)
+    add_embedded_source_binding(bindings, "yield", fig_yield, 1, "hover_source")
     add_subtitle_binding(bindings, "yield", fig_yield)
     add_numeric_range_bindings(bindings, "yield", fig_yield, "x")
     add_numeric_range_bindings(bindings, "yield", fig_yield, "y")
@@ -443,19 +461,22 @@ def extract_bokeh_document(html):
     add_numeric_range_bindings(bindings, "alignment_query_coverage", fig_alignment_query_coverage, "y")
 
     coverage_source = named_model(docs, "fastcat_coverage_source")
+    coverage_hover_source = named_model(docs, "fastcat_coverage_hover_source")
     coverage_subtitle = named_model(docs, "fastcat_coverage_subtitle")
     coverage_targets = named_model(docs, "fastcat_coverage_targets")
     if (
-            coverage_source is None or coverage_subtitle is None
+            coverage_source is None or coverage_hover_source is None or coverage_subtitle is None
             or coverage_targets is None):
         raise RuntimeError("could not identify coverage target models")
     add_binding(bindings, "coverage_depth.source.data", coverage_source, "data")
+    add_binding(bindings, "coverage_depth.hover_source.data", coverage_hover_source, "data")
     add_binding(bindings, "coverage_depth.subtitle.text", coverage_subtitle, "text")
     add_numeric_range_bindings(bindings, "coverage_depth", fig_coverage_depth, "x")
     add_numeric_range_bindings(bindings, "coverage_depth", fig_coverage_depth, "y")
     add_binding(bindings, "coverage_depth.targets.data", coverage_targets, "data")
 
     add_source_binding(bindings, "length_qscore", fig_length_qscore)
+    add_embedded_source_binding(bindings, "length_qscore", fig_length_qscore, 1, "hover_source")
     add_subtitle_binding(bindings, "length_qscore", fig_length_qscore, required=False)
     add_heatmap_color_bindings(bindings, "length_qscore", fig_length_qscore)
     add_numeric_range_bindings(bindings, "length_qscore", fig_length_qscore, "x")
@@ -463,11 +484,20 @@ def extract_bokeh_document(html):
     add_null_state_bindings(bindings, "length_qscore", fig_length_qscore, colorbar=True)
 
     add_source_binding(bindings, "speed_qscore", fig_speed_qscore)
+    add_embedded_source_binding(bindings, "speed_qscore", fig_speed_qscore, 1, "hover_source")
     add_subtitle_binding(bindings, "speed_qscore", fig_speed_qscore, required=False)
     add_heatmap_color_bindings(bindings, "speed_qscore", fig_speed_qscore)
     add_numeric_range_bindings(bindings, "speed_qscore", fig_speed_qscore, "x")
     add_numeric_range_bindings(bindings, "speed_qscore", fig_speed_qscore, "y")
     add_null_state_bindings(bindings, "speed_qscore", fig_speed_qscore, colorbar=True)
+
+    add_source_binding(bindings, "accuracy_qscore", fig_accuracy_qscore)
+    add_embedded_source_binding(bindings, "accuracy_qscore", fig_accuracy_qscore, 1, "hover_source")
+    add_heatmap_color_bindings(bindings, "accuracy_qscore", fig_accuracy_qscore)
+    add_figure_attr_binding(bindings, "accuracy_qscore", fig_accuracy_qscore, "width")
+    add_numeric_range_bindings(bindings, "accuracy_qscore", fig_accuracy_qscore, "x")
+    add_numeric_range_bindings(bindings, "accuracy_qscore", fig_accuracy_qscore, "y")
+    add_null_state_bindings(bindings, "accuracy_qscore", fig_accuracy_qscore, colorbar=True)
 
     remove_lineplot_marker_renderers(fig_time_yield)
     remove_lineplot_marker_renderers(fig_time_yield_bin)
@@ -475,39 +505,52 @@ def extract_bokeh_document(html):
     remove_lineplot_marker_renderers(fig_time_reads_bin)
 
     add_source_binding(bindings, "time_yield", fig_time_yield)
+    add_embedded_source_binding(bindings, "time_yield", fig_time_yield, 1, "hover_source")
     add_numeric_range_bindings(bindings, "time_yield", fig_time_yield, "x")
     add_numeric_range_bindings(bindings, "time_yield", fig_time_yield, "y")
     add_null_state_bindings(bindings, "time_yield", fig_time_yield)
 
     add_source_binding(bindings, "time_yield_bin", fig_time_yield_bin)
+    add_embedded_source_binding(bindings, "time_yield_bin", fig_time_yield_bin, 1, "hover_source")
     add_numeric_range_bindings(bindings, "time_yield_bin", fig_time_yield_bin, "x")
     add_numeric_range_bindings(bindings, "time_yield_bin", fig_time_yield_bin, "y")
     add_null_state_bindings(bindings, "time_yield_bin", fig_time_yield_bin)
 
     add_source_binding(bindings, "time_reads", fig_time_reads)
+    add_embedded_source_binding(bindings, "time_reads", fig_time_reads, 1, "hover_source")
     add_numeric_range_bindings(bindings, "time_reads", fig_time_reads, "x")
     add_numeric_range_bindings(bindings, "time_reads", fig_time_reads, "y")
     add_null_state_bindings(bindings, "time_reads", fig_time_reads)
 
     add_source_binding(bindings, "time_reads_bin", fig_time_reads_bin)
+    add_embedded_source_binding(bindings, "time_reads_bin", fig_time_reads_bin, 1, "hover_source")
     add_numeric_range_bindings(bindings, "time_reads_bin", fig_time_reads_bin, "x")
     add_numeric_range_bindings(bindings, "time_reads_bin", fig_time_reads_bin, "y")
     add_null_state_bindings(bindings, "time_reads_bin", fig_time_reads_bin)
 
     add_source_binding(bindings, "time_length", fig_time_length)
+    add_embedded_source_binding(bindings, "time_length", fig_time_length, 1, "hover_source")
     add_numeric_range_bindings(bindings, "time_length", fig_time_length, "x")
     add_numeric_range_bindings(bindings, "time_length", fig_time_length, "y")
     add_null_state_bindings(bindings, "time_length", fig_time_length)
 
     add_source_binding(bindings, "time_qscore", fig_time_qscore)
+    add_embedded_source_binding(bindings, "time_qscore", fig_time_qscore, 1, "hover_source")
     add_numeric_range_bindings(bindings, "time_qscore", fig_time_qscore, "x")
     add_numeric_range_bindings(bindings, "time_qscore", fig_time_qscore, "y")
     add_null_state_bindings(bindings, "time_qscore", fig_time_qscore)
 
     add_source_binding(bindings, "time_speed", fig_time_speed)
+    add_embedded_source_binding(bindings, "time_speed", fig_time_speed, 1, "hover_source")
     add_numeric_range_bindings(bindings, "time_speed", fig_time_speed, "x")
     add_numeric_range_bindings(bindings, "time_speed", fig_time_speed, "y")
     add_null_state_bindings(bindings, "time_speed", fig_time_speed)
+
+    add_source_binding(bindings, "time_accuracy", fig_time_accuracy)
+    add_embedded_source_binding(bindings, "time_accuracy", fig_time_accuracy, 1, "hover_source")
+    add_numeric_range_bindings(bindings, "time_accuracy", fig_time_accuracy, "x")
+    add_numeric_range_bindings(bindings, "time_accuracy", fig_time_accuracy, "y")
+    add_null_state_bindings(bindings, "time_accuracy", fig_time_accuracy)
 
     add_source_binding(bindings, "channel_reads", fig_channel_reads)
     add_embedded_source_binding(bindings, "channel_reads", fig_channel_reads, 1, "hover_source")
@@ -518,14 +561,35 @@ def extract_bokeh_document(html):
     add_numeric_range_bindings(bindings, "channel_reads", fig_channel_reads, "y")
     add_null_state_bindings(bindings, "channel_reads", fig_channel_reads, colorbar=True)
 
-    add_source_binding(bindings, "channel_bases", fig_channel_bases)
-    add_embedded_source_binding(bindings, "channel_bases", fig_channel_bases, 1, "hover_source")
-    add_subtitle_binding(bindings, "channel_bases", fig_channel_bases)
-    add_heatmap_color_bindings(bindings, "channel_bases", fig_channel_bases)
-    add_figure_attr_binding(bindings, "channel_bases", fig_channel_bases, "width")
-    add_numeric_range_bindings(bindings, "channel_bases", fig_channel_bases, "x")
-    add_numeric_range_bindings(bindings, "channel_bases", fig_channel_bases, "y")
-    add_null_state_bindings(bindings, "channel_bases", fig_channel_bases, colorbar=True)
+    add_source_binding(bindings, "channel_mean_length", fig_channel_mean_length)
+    add_embedded_source_binding(
+        bindings, "channel_mean_length", fig_channel_mean_length, 1, "hover_source")
+    add_subtitle_binding(bindings, "channel_mean_length", fig_channel_mean_length)
+    add_heatmap_color_bindings(bindings, "channel_mean_length", fig_channel_mean_length)
+    add_figure_attr_binding(bindings, "channel_mean_length", fig_channel_mean_length, "width")
+    add_numeric_range_bindings(bindings, "channel_mean_length", fig_channel_mean_length, "x")
+    add_numeric_range_bindings(bindings, "channel_mean_length", fig_channel_mean_length, "y")
+    add_null_state_bindings(bindings, "channel_mean_length", fig_channel_mean_length, colorbar=True)
+
+    add_source_binding(bindings, "channel_mean_quality", fig_channel_mean_quality)
+    add_embedded_source_binding(
+        bindings, "channel_mean_quality", fig_channel_mean_quality, 1, "hover_source")
+    add_subtitle_binding(bindings, "channel_mean_quality", fig_channel_mean_quality)
+    add_heatmap_color_bindings(bindings, "channel_mean_quality", fig_channel_mean_quality)
+    add_figure_attr_binding(bindings, "channel_mean_quality", fig_channel_mean_quality, "width")
+    add_numeric_range_bindings(bindings, "channel_mean_quality", fig_channel_mean_quality, "x")
+    add_numeric_range_bindings(bindings, "channel_mean_quality", fig_channel_mean_quality, "y")
+    add_null_state_bindings(bindings, "channel_mean_quality", fig_channel_mean_quality, colorbar=True)
+
+    add_source_binding(bindings, "channel_mean_concordance", fig_channel_mean_concordance)
+    add_embedded_source_binding(
+        bindings, "channel_mean_concordance", fig_channel_mean_concordance, 1, "hover_source")
+    add_subtitle_binding(bindings, "channel_mean_concordance", fig_channel_mean_concordance)
+    add_heatmap_color_bindings(bindings, "channel_mean_concordance", fig_channel_mean_concordance)
+    add_figure_attr_binding(bindings, "channel_mean_concordance", fig_channel_mean_concordance, "width")
+    add_numeric_range_bindings(bindings, "channel_mean_concordance", fig_channel_mean_concordance, "x")
+    add_numeric_range_bindings(bindings, "channel_mean_concordance", fig_channel_mean_concordance, "y")
+    add_null_state_bindings(bindings, "channel_mean_concordance", fig_channel_mean_concordance, colorbar=True)
 
     scrub_bound_values(docs, bindings)
     assignment = f"const docs_json = {DOCS_JSON_PLACEHOLDER};\n        const render_items = "
@@ -661,6 +725,24 @@ def replace_coverage_tab_buttons(html):
     return html
 
 
+def patch_accuracy_tabs(html):
+    """Add runtime visibility markers to optional alignment-derived tabs."""
+    tabs = (
+        ("Alignment Concordance", "__FASTCAT_TIME_ACCURACY_DISPLAY__"),
+        ("Alignment concordance", "__FASTCAT_ACCURACY_QSCORE_DISPLAY__"),
+        ("Mean alignment concordance", "__FASTCAT_CHANNEL_CONCORDANCE_DISPLAY__"),
+    )
+    for index, (label, placeholder) in enumerate(tabs):
+        pattern = re.compile(rf'(<button[^>]*)>{re.escape(label)}(</button>)')
+        replacement = (
+            rf'\1 data-fastcat-accuracy-tab="{index}" style="{placeholder}">'
+            rf'{label}\2')
+        html, count = pattern.subn(replacement, html, count=1)
+        if count != 1:
+            raise RuntimeError(f"could not find {label!r} accuracy tab")
+    return html
+
+
 def apply_fastcat_template_wording(html):
     html = html.replace("fastcat sequencing report", "Fastcat Sequencing QC Report")
     html = html.replace(
@@ -671,6 +753,7 @@ def apply_fastcat_template_wording(html):
     html = replace_params_table(html)
     html = replace_alignment_values(html)
     html = replace_coverage_tab_buttons(html)
+    html = patch_accuracy_tabs(html)
     html = patch_conditional_section(
         html,
         "Alignment statistics",

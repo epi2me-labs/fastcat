@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from .bokeh_style import ReportFontSizes, ReportFonts
 from . import bokeh_null
+from . import bokeh_relational
 
 
 def _unsupported(**kwargs):
@@ -122,9 +123,17 @@ def ribbonplot(
     fig.line(
         x=x, y=upper, source=source,
         line_color=linecolor, line_alpha=0.6, line_width=1.0)
-    hover_renderer = fig.scatter(
-        x=x, y=q2, source=source,
-        size=10, line_alpha=0.0, fill_alpha=0.0)
+    hover_stats = stats.copy()
+    x_values = hover_stats[x].to_numpy(dtype=float)
+    if len(x_values) > 1:
+        widths = np.diff(x_values, append=x_values[-1])
+        widths[-1] = widths[-2]
+    else:
+        widths = np.array([1.0])
+    hover_stats["x"] = x_values
+    hover_stats["y"] = hover_stats[q2].to_numpy(dtype=float)
+    hover_stats["width"] = widths
+    hover_stats["height"] = max(y_range[1] - y_range[0], 1.0) * 2.0
 
     fig.xgrid.grid_line_alpha = 0.25
     fig.ygrid.grid_line_alpha = 0.25
@@ -132,7 +141,6 @@ def ribbonplot(
     fig.yaxis.axis_label = str(y).capitalize() if y is not None else ""
 
     hover = fig.select(dict(type=HoverTool))
-    hover.renderers = [hover_renderer]
     hover.tooltips = hover_items or [
         (str(x), f"@{{{x}}}{{0.00}}"),
         ("Q05", f"@{{{lower}}}{{0.00}}"),
@@ -141,6 +149,8 @@ def ribbonplot(
         ("Q75", f"@{{{q3}}}{{0.00}}"),
         ("Q95", f"@{{{upper}}}{{0.00}}"),
     ]
+    bokeh_relational.add_vertical_hover_bands(
+        plot, hover_stats, x="x", y="y", width="width", height="height")
 
     if subtitle:
         fig.add_layout(Title(text=subtitle, text_font_size=ReportFontSizes.SUBTITLE, text_font=ReportFonts.PLOT), "above")

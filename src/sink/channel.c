@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -35,14 +36,17 @@ static FILE *channel_open_output(const channel_sink *sink, size_t barcode)
 
 static void channel_write_table(const fc_channel_summary_table *table, FILE *fp)
 {
-    fprintf(fp, "channel\tmux\tread_count\tbase_count\n");
+    fprintf(
+        fp,
+        "channel\tmux\tread_count\tbase_count\tmean_quality\tmean_concordance_qscore\n");
     for (size_t i = 0; i < table->n; i++) {
         const fc_channel_summary_row *row = &table->rows[i];
-        fprintf(fp, "%zu\t%zu\t%zu\t%zu\n",
-            row->channel,
-            row->mux,
-            row->read_count,
-            row->base_count);
+        fprintf(fp, "%zu\t%zu\t%zu\t%zu\t%.3f\t", row->channel, row->mux,
+            row->read_count, row->base_count, row->mean_quality);
+        if (isfinite(row->mean_concordance_qscore)) {
+            fprintf(fp, "%.3f", row->mean_concordance_qscore);
+        }
+        fputc('\n', fp);
     }
 }
 

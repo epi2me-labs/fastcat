@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "core/fc_accuracy_qscore_2d.h"
 #include "core/fc_alignment_summary.h"
 #include "core/fc_channel_summary.h"
 #include "core/fc_coverage.h"
@@ -33,6 +34,7 @@ typedef struct {
     const fc_channel_summary *channel_summary;
     const fc_length_qscore_2d *length_qscore;
     const fc_speed_qscore_2d *speed_qscore;
+    const fc_accuracy_qscore_2d *accuracy_qscore;
     const fc_time_bin *time_bin;
     const fc_alignment_summary *alignment_summary;
     const fc_coverage_summaries *coverage_summaries;

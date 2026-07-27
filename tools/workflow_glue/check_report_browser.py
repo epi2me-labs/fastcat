@@ -39,17 +39,27 @@ window.addEventListener("load", () => {
             }
 
             const source = doc.get_model_by_name("fastcat_coverage_source");
+            const hoverSource = doc.get_model_by_name("fastcat_coverage_hover_source");
             const targets = doc.get_model_by_name("fastcat_coverage_targets");
             const subtitle = doc.get_model_by_name("fastcat_coverage_subtitle");
             const xRange = doc.get_model_by_name("fastcat_coverage_x_range");
             const yRange = doc.get_model_by_name("fastcat_coverage_y_range");
             const hover = doc.get_model_by_name("fastcat_coverage_hover");
-            if ([source, targets, subtitle, xRange, yRange, hover].some((model) => model == null)) {
+            if ([source, hoverSource, targets, subtitle, xRange, yRange, hover].some((model) => model == null)) {
                 throw new Error("coverage selector models are missing");
+            }
+            const accuracyTab = document.querySelector(
+                '[data-fastcat-accuracy-tab="1"]');
+            const alignmentSection = document.getElementById("fastcat-alignment-section");
+            const hasAccuracyPlot = accuracyTab != null
+                && alignmentSection != null
+                && alignmentSection.style.display !== "none";
+            if (hasAccuracyPlot) {
+                accuracyTab.click();
             }
             const hoverHasDataValues =
                 hover.renderers.length === 1
-                && hover.renderers[0].data_source === source
+                && hover.renderers[0].data_source === hoverSource
                 && JSON.stringify(hover.tooltips) === JSON.stringify([
                     ["Minimum Depth", "@x{0}"],
                     ["Reference Positions Covered / %", "@y{0.0}"],
@@ -68,12 +78,26 @@ window.addEventListener("load", () => {
                     const valid =
                         sameValues(source.data.x, targets.data.x[index])
                         && sameValues(source.data.y, targets.data.y[index])
+                        && sameValues(hoverSource.data.x, targets.data.hover_x[index])
+                        && sameValues(hoverSource.data.y, targets.data.hover_y[index])
+                        && sameValues(hoverSource.data.width, targets.data.hover_width[index])
+                        && sameValues(hoverSource.data.height, targets.data.hover_height[index])
                         && subtitle.text === targets.data.subtitle[index]
                         && xRange.end === targets.data.x_end[index]
                         && yRange.end === targets.data.y_end[index];
                     if (!valid) {
                         throw new Error(
                             "coverage selector did not update its plot models");
+                    }
+                    if (hasAccuracyPlot) {
+                        const accuracyFigure = doc.get_model_by_name(
+                            "fastcat_accuracy_qscore");
+                        const accuracyView = accuracyFigure == null
+                            ? null : Bokeh.index[accuracyFigure.id];
+                        if (accuracyView == null) {
+                            throw new Error(
+                                "alignment-concordance plot view is missing");
+                        }
                     }
                     finish("ok");
                 } catch (error) {
