@@ -34,8 +34,10 @@ REPORT_REQS := tools/requirements.txt
 REPORT_MPLCONFIGDIR := $(REPORT_DIR)/mpl-cache
 REPORT_EXAMPLE_N ?= 2000
 REPORT_DEMO_N ?= 100000
-REPORT_ALIGNMENT_DEMO_N ?= 2000
 REPORT_DEMO_DURATION_S ?= 172800
+REPORT_DEMO_DIR = $(TEST_TMP_DIR)/report_html
+REPORT_DEMO_FASTQ = $(REPORT_DEMO_DIR)/reads.fastq.gz
+REPORT_DEMO_SAM = $(REPORT_DEMO_DIR)/aligned_reads.sam
 DEV_TOOLS_SCRIPT := $(REPO_ROOT)/tools/dev-tools
 DEV_TOOLS := python3 $(DEV_TOOLS_SCRIPT)
 SIMULATE_READS := $(REPORT_PY) $(DEV_TOOLS_SCRIPT) simulate_reads
@@ -237,6 +239,7 @@ CORE_SRCS := \
 	src/core/fc_channel_map.c \
 	src/core/fc_channel_map_data.c \
 	src/core/fc_metric_qscore_2d.c \
+	src/core/fc_accuracy_qscore_2d.c \
 	src/core/fc_length_qscore_2d.c \
 	src/core/fc_run_summary.c \
 	src/core/fc_speed_qscore_2d.c \
@@ -269,6 +272,7 @@ CORE_SRCS := \
 	src/sink/channel.c \
 	src/sink/length_qscore_2d.c \
 	src/sink/speed_qscore_2d.c \
+	src/sink/accuracy_qscore_2d.c \
 	src/sink/time_bin.c \
 	src/sink/summary_json.c \
 	src/sink/hist.c \
@@ -576,7 +580,23 @@ $(REPORT_DIR)/template_bam/flagstats.tsv: $(FASTCAT_BIN) test/fixtures/bam/cover
 		--coverage-names regions \
 		> /dev/null
 
+$(REPORT_DIR)/template_alignment.sam: $(REPORT_VENV)/.deps $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py | $(REPORT_DIR)
+	$(SIMULATE_READS) \
+		--output-format sam \
+		--n 200 \
+		--shape 2.6 \
+		--scale 500 \
+		--seed 43 \
+		> $@
+
+$(REPORT_DIR)/template_bam_time/time_bin_summary.tsv: $(FASTCAT_BIN) $(REPORT_DIR)/template_alignment.sam | $(REPORT_DIR)
+	rm -rf $(REPORT_DIR)/template_bam_time
+	$(FASTCAT_BIN) bam $(REPORT_DIR)/template_alignment.sam \
+		--output $(REPORT_DIR)/template_bam_time \
+		> /dev/null
+
 TEMPLATE_BAM_REPORT_INPUTS = \
+	accuracy_qscore_2d.tsv \
 	histograms/accuracy.hist \
 	histograms/coverage.hist \
 	coverage/global.summary.txt \
@@ -599,15 +619,16 @@ $(REPORT_DIR)/template_inputs/run_summary.tsv: $(REPORT_DIR)/template_inputs/met
 $(REPORT_DIR)/example_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --out-dir $(REPORT_DIR)/example_inputs
 
-$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(TEMPLATE_BAM_REPORT_INPUT_PATHS) $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_bam_time/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(TEMPLATE_BAM_REPORT_INPUT_PATHS) $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--stats $(REPORT_DIR)/template_fastcat/histograms \
 		--run-summary $(REPORT_DIR)/template_inputs/run_summary.tsv \
 		--length-qscore-2d $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv \
 		--speed-qscore-2d $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv \
-		--time-bin-summary $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv \
-		--channel-summary $(REPORT_DIR)/template_fastcat/channel_summary.tsv \
+		--accuracy-qscore-2d $(REPORT_DIR)/template_bam/accuracy_qscore_2d.tsv \
+		--time-bin-summary $(REPORT_DIR)/template_bam_time/time_bin_summary.tsv \
+		--channel-summary $(REPORT_DIR)/template_bam_time/channel_summary.tsv \
 		--alignment-stats $(REPORT_DIR)/template_bam/histograms \
 		--flagstats $(REPORT_DIR)/template_bam/flagstats.tsv \
 		--coverage-summary \
@@ -904,20 +925,34 @@ BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv run_summary.ts
 ###
 # report tests
 
-.PHONY: demo
-demo: $(FASTCAT_BIN) $(REPORT_VENV)/.deps test/fixtures/bam/coverage/report_simulated_regions.bed  ## generate FASTQ and aligned-BAM HTML report demos
-	@$(call TEST_DESC,HTML report demo)
-	rm -rf $(TEST_TMP_DIR)/report_html
-	mkdir -p $(TEST_TMP_DIR)/report_html
+$(REPORT_DEMO_FASTQ): Makefile $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py $(REPORT_VENV)/.deps
+	@mkdir -p $(@D)
 	set -o pipefail; $(SIMULATE_READS) \
 		--n $(REPORT_DEMO_N) \
 		--run-duration-s $(REPORT_DEMO_DURATION_S) \
 		--sample-id simulated-data \
 		--max-len 1000000 \
 		--seed 7 \
-		| gzip -c > $(TEST_TMP_DIR)/report_html/reads.fastq.gz
-	$(RUN_FASTCAT) $(TEST_TMP_DIR)/report_html/reads.fastq.gz \
-		--output $(TEST_TMP_DIR)/report_html/fastcat_out \
+		| gzip -c > $@
+
+$(REPORT_DEMO_SAM): Makefile $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py $(REPORT_VENV)/.deps
+	@mkdir -p $(@D)
+	$(SIMULATE_READS) \
+		--output-format sam \
+		--sam-coordinate-sort \
+		--n $(REPORT_DEMO_N) \
+		--run-duration-s $(REPORT_DEMO_DURATION_S) \
+		--sample-id simulated-alignment-data \
+		--max-len 1000000 \
+		--seed 17 \
+		> $@
+
+.PHONY: demo
+demo: $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_SAM) test/fixtures/bam/coverage/report_simulated_regions.bed  ## generate FASTQ and aligned-BAM HTML report demos
+	@$(call TEST_DESC,HTML report demo)
+	rm -rf $(REPORT_DEMO_DIR)/fastcat_out $(REPORT_DEMO_DIR)/demux_out $(REPORT_DEMO_DIR)/aligned_out
+	$(RUN_FASTCAT) $(REPORT_DEMO_FASTQ) \
+		--output $(REPORT_DEMO_DIR)/fastcat_out \
 		--html-report \
 		--json-summary \
 		> /dev/null
@@ -947,8 +982,8 @@ demo: $(FASTCAT_BIN) $(REPORT_VENV)/.deps test/fixtures/bam/coverage/report_simu
 	! grep -q "fastcat workflow provided by Oxford Nanopore Technologies" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	! grep -q "nextflow workflow" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	grep -q "Bokeh" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
-	$(RUN_FASTCAT) $(TEST_TMP_DIR)/report_html/reads.fastq.gz \
-		--output $(TEST_TMP_DIR)/report_html/demux_out \
+	$(RUN_FASTCAT) $(REPORT_DEMO_FASTQ) \
+		--output $(REPORT_DEMO_DIR)/demux_out \
 		--demultiplex \
 		--html-report \
 		--json-summary \
@@ -960,17 +995,8 @@ demo: $(FASTCAT_BIN) $(REPORT_VENV)/.deps test/fixtures/bam/coverage/report_simu
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/channel_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/run_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/summary.json
-	$(SIMULATE_READS) \
-		--output-format sam \
-		--sam-coordinate-sort \
-		--n $(REPORT_ALIGNMENT_DEMO_N) \
-		--run-duration-s $(REPORT_DEMO_DURATION_S) \
-		--sample-id simulated-alignment-data \
-		--max-len 1000000 \
-		--seed 17 \
-		> $(TEST_TMP_DIR)/report_html/aligned_reads.sam
-	$(RUN_BAMSTATS) $(TEST_TMP_DIR)/report_html/aligned_reads.sam \
-		--output $(TEST_TMP_DIR)/report_html/aligned_out \
+	$(RUN_BAMSTATS) $(REPORT_DEMO_SAM) \
+		--output $(REPORT_DEMO_DIR)/aligned_out \
 		--coverage \
 		--coverage-beds test/fixtures/bam/coverage/report_simulated_regions.bed \
 		--coverage-names regions \
@@ -985,12 +1011,11 @@ demo: $(FASTCAT_BIN) $(REPORT_VENV)/.deps test/fixtures/bam/coverage/report_simu
 	grep -Eq 'data-fastcat-alignment-value="unmapped-reads">[1-9][0-9]*<' $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
 	grep -q "Primary mappings" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
 	grep -q "Alignment Concordance" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
+	grep -q "Alignment concordance" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
 	grep -q "Read alignment coverage" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
 	grep -q "Whole reference" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
 	grep -q "User-provided: regions" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
 	! grep -q "__FASTCAT_" $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
-	rm -f $(TEST_TMP_DIR)/report_html/reads.fastq.gz
-	rm -f $(TEST_TMP_DIR)/report_html/aligned_reads.sam
 
 .PHONY: demo_ubam
 demo_ubam: $(FASTCAT_BIN) $(REPORT_VENV)/.deps samtools  ## generate a synthetic unaligned BAM run and HTML report demo
@@ -1228,12 +1253,13 @@ test_fastcat_time_bin_summary: $(FASTCAT_BIN)
 		test -f out/time_bin_summary.tsv && \
 		test $$(wc -l < out/time_bin_summary.tsv) -eq 3 && \
 		awk 'BEGIN { FS = OFS = "\t"; prev_reads = -1; prev_bases = -1; } \
-			NR == 1 { if (NF != 30 || $$1 != "time_bin_start_s" || $$30 != "translocation_speed_q95") exit 1; next; } \
+			NR == 1 { if (NF != 39 || $$1 != "time_bin_start_s" || $$30 != "translocation_speed_q95" || $$31 != "accuracy_read_count" || $$39 != "accuracy_q95") exit 1; next; } \
 			{ \
-				if (NF != 30) exit 1; \
+				if (NF != 39) exit 1; \
 				if ($$1 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$2 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/) exit 1; \
 				if ($$3 < 0 || $$4 < 0 || $$5 < 0 || $$6 < 0) exit 1; \
 				if ($$22 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$23 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$24 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$25 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$26 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$27 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$28 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$29 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$30 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/) exit 1; \
+				if ($$31 != 0 || $$32 !~ /[Nn][Aa][Nn]/ || $$33 !~ /[Nn][Aa][Nn]/ || $$34 !~ /[Nn][Aa][Nn]/ || $$35 !~ /[Nn][Aa][Nn]/ || $$36 !~ /[Nn][Aa][Nn]/ || $$37 !~ /[Nn][Aa][Nn]/ || $$38 !~ /[Nn][Aa][Nn]/ || $$39 !~ /[Nn][Aa][Nn]/) exit 1; \
 				if (prev_reads >= 0 && ($$5 < prev_reads || $$6 < prev_bases)) exit 1; \
 				prev_reads = $$5; prev_bases = $$6; \
 				reads += $$3; bases += $$4; rows++; \
@@ -1260,9 +1286,9 @@ test_fastcat_channel_summary: $(FASTCAT_BIN)
 		$(RUN_FASTCAT) tiny.fastq --output out > /dev/null && \
 		test -f out/channel_summary.tsv && \
 		awk 'BEGIN { FS = OFS = "\t"; rows = 0; reads = 0; bases = 0; } \
-			NR == 1 { if (NF != 4 || $$1 != "channel" || $$4 != "base_count") exit 1; next; } \
+			NR == 1 { if (NF != 6 || $$1 != "channel" || $$4 != "base_count" || $$5 != "mean_quality" || $$6 != "mean_concordance_qscore") exit 1; next; } \
 			{ \
-				if (NF != 4) exit 1; \
+				if (NF != 6) exit 1; \
 				if ($$1 < prev_channel || ($$1 == prev_channel && $$2 < prev_mux)) exit 1; \
 				prev_channel = $$1; prev_mux = $$2; \
 				rows++; reads += $$3; bases += $$4; \
@@ -1272,6 +1298,7 @@ test_fastcat_channel_summary: $(FASTCAT_BIN)
 				if ($$1 == 12 && $$2 == 1 && $$4 != 10) exit 1; \
 				if ($$1 == 12 && $$2 == 3 && $$3 != 1) exit 1; \
 				if ($$1 == 12 && $$2 == 3 && $$4 != 3) exit 1; \
+				if ($$5 != "40.000" || $$6 != "") exit 1; \
 			} \
 			END { if (rows != 3 || reads != 4 || bases != 15) exit 1; }' out/channel_summary.tsv && \
 		printf "@u ch=1 mux=1\nACGT\n+\nIIII\n@b barcode=barcode0001 ch=2 mux=4\nAAAA\n+\nIIII\n" > demux.fastq && \

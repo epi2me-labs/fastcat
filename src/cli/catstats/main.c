@@ -203,6 +203,11 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .qgrid_points = args->length_qscore_qgrid,
         .smoothing_points = args->length_qscore_qsmooth
     };
+    fc_accuracy_qscore_2d_config accuracy_qscore_cfg = {
+        .kll_k = args->length_qscore_k,
+        .qgrid_points = args->length_qscore_qgrid,
+        .smoothing_points = args->length_qscore_qsmooth
+    };
     fc_time_bin_config time_bin_cfg = {
         .bin_size_s = args->time_bin_size_s,
         .kll_k = args->time_bin_k
@@ -227,6 +232,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .channel_summary = true,
         .length_qscore = &length_qscore_cfg,
         .speed_qscore = &speed_qscore_cfg,
+        .accuracy_qscore = bam_input ? &accuracy_qscore_cfg : NULL,
         .time_bin = &time_bin_cfg
     };
     writer = fc_writer_create(&writer_cfg);
@@ -299,6 +305,16 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         };
         fc_writer_add_sink(writer, fc_speed_qscore_2d_sink_create(&qts2d_opts));
 
+        if (writer->accuracy_qscore) {
+            fc_accuracy_qscore_2d_sink_opts aq2d_opts = {
+                .output_root = args->output_dir,
+                .use_barcodes = args->demultiplex,
+                .barcode_count = writer->barcode_count,
+                .model = writer->accuracy_qscore
+            };
+            fc_writer_add_sink(writer, fc_accuracy_qscore_2d_sink_create(&aq2d_opts));
+        }
+
         // time-binned summaries for yield and boxplot-style temporal QC
         fc_time_bin_sink_opts time_bin_opts = {
             .output_root = args->output_dir,
@@ -353,6 +369,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .channel_summary = writer->channel_summary,
             .length_qscore = writer->length_qscore,
             .speed_qscore = writer->speed_qscore,
+            .accuracy_qscore = writer->accuracy_qscore,
             .time_bin = writer->time_bin,
             .alignment_summary = alignment_summary,
             .coverage_summaries = coverage_summaries
@@ -454,6 +471,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .channel_summary = writer->channel_summary,
             .length_qscore = writer->length_qscore,
             .speed_qscore = writer->speed_qscore,
+            .accuracy_qscore = writer->accuracy_qscore,
             .time_bin = writer->time_bin,
             .alignment_summary = alignment_summary,
             .coverage_summaries = coverage_summaries

@@ -240,8 +240,11 @@ def class_qscore(rng, read_class, length, speed_nt_s, args, frac):
 
     if read_class == "good":
         base = args.q2 + 0.3 + time_shift
-        if rng.random() < 0.42:
-            base -= rng.uniform(1.0, 7.0)
+        mixture = rng.random()
+        if mixture < 0.44:
+            base -= rng.uniform(1.0, 8.0)
+        elif mixture > 0.94:
+            base += rng.uniform(6.5, 9.0)
         sigma = args.q2_sd * (0.72 + 0.18 * noise_scale)
         q = rng.gauss(base - 0.45 * speed_penalty, sigma)
     elif read_class == "mediocre":
@@ -252,8 +255,8 @@ def class_qscore(rng, read_class, length, speed_nt_s, args, frac):
         sigma = args.q1_sd * (0.85 + 0.20 * noise_scale)
         q = rng.gauss(base - 0.60 * speed_penalty, sigma)
     else:
-        base = 9.6 - 0.5 * smoothstep((frac - 0.65) / 0.35)
-        sigma = 1.05 + 0.18 * noise_scale
+        base = 7.2 - 0.4 * smoothstep((frac - 0.65) / 0.35)
+        sigma = 0.75 + 0.15 * noise_scale
         q = rng.gauss(base - 0.18 * speed_penalty, sigma)
 
     return clamp(q, args.q_min, args.q_max)
@@ -376,24 +379,50 @@ def sample_timestamp_offset_seconds(rng, args, read_index):
     return -tau * math.log1p(-u * cutoff)
 
 
+def alignment_error_count(rng, aligned_length, mean_q, args):
+    """Sample an NM count from the simulated read quality."""
+    concordance_qscore = max(0.0, mean_q)
+    error_probability = 10.0 ** (-concordance_qscore / 10.0)
+    expected = aligned_length * error_probability
+    standard_deviation = math.sqrt(
+        aligned_length * error_probability * (1.0 - error_probability))
+    return max(0, min(
+        aligned_length - 1,
+        int(round(rng.gauss(expected, standard_deviation)))))
+
+
 def primary_alignment_cigar(rng, length, mean_q, args):
-    """Create a valid clipped CIGAR and NM tag for one primary alignment."""
-    aligned_fraction = clamp(
-        rng.gauss(args.aligned_fraction_mean, args.aligned_fraction_sd),
-        args.aligned_fraction_min,
-        1.0)
+    """Create a valid clipped CIGAR and quality-calibrated NM tag."""
+    if args.aligned_fraction_sd == 0.0:
+        aligned_fraction = args.aligned_fraction_mean
+    else:
+        variance = args.aligned_fraction_sd ** 2
+        concentration = (
+            args.aligned_fraction_mean
+            * (1.0 - args.aligned_fraction_mean)
+            / variance
+            - 1.0)
+        aligned_fraction = rng.betavariate(
+            args.aligned_fraction_mean * concentration,
+            (1.0 - args.aligned_fraction_mean) * concentration)
+    aligned_fraction = max(args.aligned_fraction_min, aligned_fraction)
     clipped = int(round(length * (1.0 - aligned_fraction)))
     left_clip = rng.randint(0, clipped)
     right_clip = clipped - left_clip
     query_aligned = length - clipped
 
-    insertion = min(
+    errors = alignment_error_count(rng, query_aligned, mean_q, args)
+    max_insertion = min(
+        errors // 4,
         int(query_aligned * args.max_indel_fraction),
-        int(query_aligned * rng.uniform(0.0, args.insertion_rate_max)))
+        int(query_aligned * args.insertion_rate_max))
+    insertion = rng.randint(0, max_insertion)
     match = query_aligned - insertion
-    deletion = min(
+    max_deletion = min(
+        (errors - insertion) // 4,
         int(match * args.max_indel_fraction),
-        int(match * rng.uniform(0.0, args.deletion_rate_max)))
+        int(match * args.deletion_rate_max))
+    deletion = rng.randint(0, max_deletion)
     split = rng.randint(max(1, match // 4), max(1, 3 * match // 4))
     parts = []
     if left_clip:
@@ -407,24 +436,40 @@ def primary_alignment_cigar(rng, length, mean_q, args):
     if right_clip:
         parts.append(f"{right_clip}S")
 
-    error_rate = clamp(
-        args.error_rate_scale * math.exp(-args.error_rate_qscore_decay * mean_q),
-        args.error_rate_min,
-        args.error_rate_max)
-    substitutions = min(match - 1, int(round(match * error_rate)))
-    return "".join(parts), insertion + deletion + substitutions, match + deletion
+    return "".join(parts), errors, match + deletion
 
 
 def sam_header(args):
     """Build the compact two-reference header used for simulated alignments."""
+    read_groups = []
+    for index, barcode in enumerate(args.barcodes):
+        group = {
+            "ID": f"simulated_{index}",
+            "DS": f"runid={args.runid} basecall_model={args.model}",
+            "LB": args.sample_id or "simulated-data",
+            "PL": "ONT",
+            "PU": args.flow_cell_id,
+        }
+        if barcode != "unclassified":
+            group["SM"] = barcode
+        read_groups.append(group)
     return pysam.AlignmentHeader.from_dict({
         "HD": {"VN": "1.6", "SO": "coordinate" if args.sam_coordinate_sort else "unsorted"},
         "SQ": [
             {"SN": "chr1", "LN": args.sam_reference_length},
             {"SN": "chr2", "LN": args.sam_reference_length},
         ],
-        "RG": [{"ID": "simulated", "SM": args.sample_id or "simulated-data"}],
+        "RG": read_groups,
     })
+
+
+def read_group_id(args, barcode):
+    return f"simulated_{args.barcodes.index(barcode)}"
+
+
+def fastq_read_group_id(args, barcode):
+    suffix = "" if barcode == "unclassified" else f"_{barcode}"
+    return f"{args.runid}_{args.model}{suffix}"
 
 
 def sam_record(header, args, name, flag, reference, position, cigar, sequence, quality, tags):
@@ -456,6 +501,37 @@ def emit_sam_record(writer, records, record):
     records.append(record)
 
 
+def write_fastq_record(out, record, args, barcode, omit_metadata):
+    """Write an unaligned pysam record using ONT's FASTQ header convention."""
+    if omit_metadata:
+        out.write(f"@{record.query_name}\n")
+    else:
+        def fastq_tag(name, value, kind):
+            # pysam uses the narrowest BAM integer representation (for example
+            # C for small values); FASTQ comments use the portable SAM i type.
+            if kind in "cCsSiI":
+                kind = "i"
+            return f"{name}:{kind}:{value}"
+
+        record_tags = [
+            fastq_tag(name, value, kind)
+            for name, value, kind in record.get_tags(with_value_type=True)
+            if name != "RG"
+        ]
+        header_tags = [
+            f"RG:Z:{fastq_read_group_id(args, barcode)}",
+            f"DT:Z:{args.start_time}",
+            f"PU:Z:{args.flow_cell_id}",
+        ]
+        if args.sample_id:
+            header_tags.append(f"LB:Z:{args.sample_id}")
+        if barcode != "unclassified":
+            header_tags.append(f"SM:Z:{barcode}")
+        tags = "\t".join(header_tags + record_tags)
+        out.write(f"@{record.query_name} {tags}\n")
+    out.write(f"{record.query_sequence}\n+\n{record.qual}\n")
+
+
 def argparser():
     p = argparse.ArgumentParser(
         description="Stream synthetic FASTQ with gamma lengths and bimodal mean-q; emits qs:f tag.",
@@ -474,7 +550,7 @@ def argparser():
 
     qscore = p.add_argument_group("qscore distribution")
     qscore.add_argument("--q1", type=float, default=12.5, help="Mediocre-read qscore mean (default: 12.5)")
-    qscore.add_argument("--q2", type=float, default=27.8, help="Good-read qscore mean (default: 27.8)")
+    qscore.add_argument("--q2", type=float, default=20.5, help="Good-read qscore mean (default: 20.5)")
     qscore.add_argument("--q1-sd", type=float, default=2.1, help="Stddev around mediocre-read qscore mean (default: 2.1)")
     qscore.add_argument("--q2-sd", type=float, default=2.6, help="Stddev around good-read qscore mean (default: 2.6)")
     qscore.add_argument("--q1-weight", type=float, default=0.15, help="Legacy option; retained for compatibility (default: 0.15)")
@@ -542,8 +618,8 @@ def argparser():
 
     alignment = p.add_argument_group("SAM alignment simulation")
     alignment.add_argument(
-        "--aligned-rate", type=float, default=0.92,
-        help="Fraction of simulated reads with a primary alignment in SAM output (default: 0.92)")
+        "--aligned-rate", type=float, default=0.99,
+        help="Fraction of simulated reads with a primary alignment in SAM output (default: 0.99)")
     alignment.add_argument(
         "--secondary-rate", type=float, default=0.05,
         help="Fraction of primary alignments with an additional secondary record (default: 0.05)")
@@ -566,11 +642,11 @@ def argparser():
         "--second-reference-rate", type=float, default=1.0 / 3.0,
         help="Fraction of primary alignments placed on chr2 (default: 0.333)")
     alignment.add_argument(
-        "--aligned-fraction-mean", type=float, default=0.91,
-        help="Mean fraction of each mapped read represented by its alignment (default: 0.91)")
+        "--aligned-fraction-mean", type=float, default=0.956,
+        help="Mean fraction of each mapped read represented by its alignment (default: 0.956)")
     alignment.add_argument(
-        "--aligned-fraction-sd", type=float, default=0.10,
-        help="Standard deviation of mapped-read alignment fraction (default: 0.10)")
+        "--aligned-fraction-sd", type=float, default=0.06,
+        help="Standard deviation of mapped-read alignment fraction (default: 0.06)")
     alignment.add_argument(
         "--aligned-fraction-min", type=float, default=0.55,
         help="Minimum mapped-read alignment fraction after clamping (default: 0.55)")
@@ -583,18 +659,6 @@ def argparser():
     alignment.add_argument(
         "--max-indel-fraction", type=float, default=1.0 / 12.0,
         help="Hard maximum fraction of aligned bases represented by one indel type (default: 0.0833)")
-    alignment.add_argument(
-        "--error-rate-scale", type=float, default=0.17,
-        help="Alignment error-rate exponential scale (default: 0.17)")
-    alignment.add_argument(
-        "--error-rate-qscore-decay", type=float, default=0.12,
-        help="Alignment error-rate decay per Qscore (default: 0.12)")
-    alignment.add_argument(
-        "--error-rate-min", type=float, default=0.001,
-        help="Minimum simulated substitution error rate (default: 0.001)")
-    alignment.add_argument(
-        "--error-rate-max", type=float, default=0.14,
-        help="Maximum simulated substitution error rate (default: 0.14)")
     alignment.add_argument(
         "--sam-mapping-quality", type=int, default=60,
         help="Mapping quality for simulated mapped SAM records (default: 60)")
@@ -653,17 +717,18 @@ def validate_args(p, args):
             "aligned_rate", "secondary_rate", "supplementary_rate", "reverse_rate",
             "qcfail_rate", "duplicate_rate", "duplex_forming_rate", "second_reference_rate",
             "aligned_fraction_mean", "aligned_fraction_min", "insertion_rate_max",
-            "deletion_rate_max", "max_indel_fraction", "error_rate_min", "error_rate_max"):
+            "deletion_rate_max", "max_indel_fraction"):
         if not 0.0 <= getattr(args, option) <= 1.0:
             p.error(f"--{option.replace('_', '-')} must be in [0,1]")
     if args.aligned_fraction_sd < 0.0:
         p.error("--aligned-fraction-sd must be >= 0")
+    if (
+            args.aligned_fraction_sd > 0.0
+            and args.aligned_fraction_sd ** 2
+            >= args.aligned_fraction_mean * (1.0 - args.aligned_fraction_mean)):
+        p.error("--aligned-fraction-sd is too large for --aligned-fraction-mean")
     if args.aligned_fraction_min > 1.0:
         p.error("--aligned-fraction-min must be <= 1")
-    if args.error_rate_scale < 0.0 or args.error_rate_qscore_decay < 0.0:
-        p.error("--error-rate-scale and --error-rate-qscore-decay must be >= 0")
-    if args.error_rate_min > args.error_rate_max:
-        p.error("--error-rate-min must be <= --error-rate-max")
     if not 0 <= args.sam_mapping_quality <= 255:
         p.error("--sam-mapping-quality must be in [0,255]")
     if (
@@ -702,13 +767,11 @@ def main(args):
     channel_rng = random.Random(args.seed + 2_000_003)
     channel_sampler = build_channel_sampler(args.device, args.channels)
 
-    out = sys.stdout
     err = sys.stderr
-    sam_header_value = None
+    sam_header_value = sam_header(args)
     sam_writer = None
     sam_records = None
     if args.output_format == "sam":
-        sam_header_value = sam_header(args)
         sam_writer = pysam.AlignmentFile("-", "w", header=sam_header_value)
         if args.sam_coordinate_sort:
             sam_records = []
@@ -758,29 +821,22 @@ def main(args):
         qual = qchar * length
         duration_s = float(length) / speed_nt_s
 
-        # Keep tags SAM-like so fastcat ingest reads them as BAM aux fields directly.
+        # Construct one pysam record representation for both SAM and FASTQ output.
         st = iso8601_with_seconds(args.start_dt, time_s)
-        rg = f"{args.runid}_{args.model}"
-        if barcode and barcode != "unclassified":
-            rg = f"{rg}_{barcode}"
+        duplex_code = 1 if is_duplex else (
+            -1 if rng.random() < args.duplex_forming_rate else 0)
+        tags = [
+            ("RG", read_group_id(args, barcode)),
+            ("qs", round(mean_q, 4)),
+            ("du", round(duration_s, 6)),
+            ("rn", i),
+            ("ch", channel),
+            ("mx", mux),
+            ("st", st),
+            ("dx", duplex_code),
+        ]
+        name = f"{args.id_prefix}_{i:09d}"
         if args.output_format == "sam":
-            duplex_code = 1 if is_duplex else (
-                -1 if rng.random() < args.duplex_forming_rate else 0)
-            tags = [
-                ("RG", "simulated"),
-                ("RD", args.runid),
-                ("LB", args.sample_id or "simulated-data"),
-                ("PU", args.flow_cell_id),
-                ("QS", round(mean_q, 4)),
-                ("DU", round(duration_s, 6)),
-                ("RN", i),
-                ("CH", channel),
-                ("MX", mux),
-                ("ST", st),
-                ("SM", barcode),
-                ("DX", duplex_code),
-            ]
-            name = f"{args.id_prefix}_{i:09d}"
             if rng.random() < args.aligned_rate:
                 cigar, nm, reference_span = primary_alignment_cigar(rng, length, mean_q, args)
                 reference = "chr2" if rng.random() < args.second_reference_rate else "chr1"
@@ -824,26 +880,18 @@ def main(args):
                         sam_header_value, args, name, 4, "*", 0, None, seq, qual, tags))
                 alignment_counts["unmapped"] += 1
         else:
-            if args.omit_metadata:
-                out.write(f"@{args.id_prefix}_{i:09d}\n")
-            else:
-                sample_tag = f"LB:Z:{args.sample_id}\t" if args.sample_id else ""
-                flow_cell_tag = f"PU:Z:{args.flow_cell_id}\t" if args.flow_cell_id else ""
-                tags = (
-                    f"{sample_tag}"
-                    f"{flow_cell_tag}"
-                    f"qs:f:{mean_q:.4f}\t"
-                    f"du:f:{duration_s:.6f}\t"
-                    f"rn:i:{i}\t"
-                    f"ch:i:{channel}\t"
-                    f"mx:i:{mux}\t"
-                    f"st:Z:{st}\t"
-                    f"SM:Z:{barcode}\t"
-                    f"RG:Z:{rg}\t"
-                    f"dx:i:{is_duplex}"
-                )
-                out.write(f"@{args.id_prefix}_{i:09d} {tags}\n")
-            out.write(f"{seq}\n+\n{qual}\n")
+            record = sam_record(
+                sam_header_value,
+                args,
+                name,
+                4,
+                "*",
+                0,
+                None,
+                seq,
+                qual,
+                tags)
+            write_fastq_record(sys.stdout, record, args, barcode, args.omit_metadata)
 
         if args.progress_every > 0 and (i % args.progress_every) == 0:
             err.write(f"[simulate-reads] emitted {i} reads\n")

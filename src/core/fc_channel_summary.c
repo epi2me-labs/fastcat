@@ -1,15 +1,21 @@
 #include "core/fc_channel_summary.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "core/fc_common.h"
+#include "core/fc_filter.h"
 
 typedef struct {
     bool seen;
     size_t highest_channel;
     size_t *read_counts;
     size_t *base_counts;
+    size_t *quality_read_counts;
+    double *quality_sums;
+    size_t *concordance_read_counts;
+    double *concordance_sums;
     fc_channel_summary_skip_counts skipped;
 } fc_channel_summary_barcode_state;
 
@@ -37,6 +43,10 @@ static fc_channel_summary_barcode_state *channel_summary_ensure_barcode_state(
         size_t n_cells = FC_CHANNEL_SUMMARY_MAX_CHANNEL * FC_CHANNEL_SUMMARY_MUX_SLOTS;
         state->read_counts = fc_alloc(n_cells, sizeof(size_t), "channel_summary read counts");
         state->base_counts = fc_alloc(n_cells, sizeof(size_t), "channel_summary base counts");
+        state->quality_read_counts = fc_alloc(n_cells, sizeof(size_t), "channel_summary quality counts");
+        state->quality_sums = fc_alloc(n_cells, sizeof(double), "channel_summary quality sums");
+        state->concordance_read_counts = fc_alloc(n_cells, sizeof(size_t), "channel_summary concordance counts");
+        state->concordance_sums = fc_alloc(n_cells, sizeof(double), "channel_summary concordance sums");
         model->barcode_states[barcode] = state;
     }
     return model->barcode_states[barcode];
@@ -49,7 +59,44 @@ static void channel_summary_destroy_barcode_state(fc_channel_summary_barcode_sta
     }
     free(state->read_counts);
     free(state->base_counts);
+    free(state->quality_read_counts);
+    free(state->quality_sums);
+    free(state->concordance_read_counts);
+    free(state->concordance_sums);
     free(state);
+}
+
+static bool channel_summary_concordance_qscore(const fc_read *read, double *out)
+{
+    if (!fc_is_primary_qc_pass(read->bam) || read->meta->edit_distance < 0) {
+        return false;
+    }
+
+    size_t match = 0;
+    size_t ins = 0;
+    size_t del = 0;
+    uint32_t *cigar = bam_get_cigar(read->bam);
+    for (uint32_t i = 0; i < read->bam->core.n_cigar; ++i) {
+        uint32_t op = bam_cigar_op(cigar[i]);
+        size_t length = bam_cigar_oplen(cigar[i]);
+        if (op == BAM_CMATCH || op == BAM_CEQUAL || op == BAM_CDIFF) {
+            match += length;
+        } else if (op == BAM_CINS) {
+            ins += length;
+        } else if (op == BAM_CDEL) {
+            del += length;
+        }
+    }
+
+    size_t aligned_length = match + ins + del;
+    size_t edit_distance = (size_t)read->meta->edit_distance;
+    if (aligned_length == 0 || edit_distance > aligned_length) {
+        return false;
+    }
+    double error_rate = (double)edit_distance / (double)aligned_length;
+    *out = error_rate > 0.0 ? -10.0 * log10(error_rate) : 60.0;
+    *out = fmin(60.0, *out);
+    return isfinite(*out);
 }
 
 fc_channel_summary *fc_channel_summary_create(size_t barcode_count)
@@ -110,6 +157,15 @@ void fc_channel_summary_add_read(fc_channel_summary *model, size_t barcode, cons
     size_t idx = channel_summary_cell_index(channel, mux);
     state->read_counts[idx]++;
     state->base_counts[idx] += (size_t)read->bam->core.l_qseq;
+    if (isfinite(read->meta->mean_q) && read->meta->mean_q >= 0.0f) {
+        state->quality_read_counts[idx]++;
+        state->quality_sums[idx] += read->meta->mean_q;
+    }
+    double concordance_qscore = 0.0;
+    if (channel_summary_concordance_qscore(read, &concordance_qscore)) {
+        state->concordance_read_counts[idx]++;
+        state->concordance_sums[idx] += concordance_qscore;
+    }
     if (channel > state->highest_channel) {
         state->highest_channel = channel;
     }
@@ -178,7 +234,15 @@ int fc_channel_summary_materialize_sparse(
                 .channel = channel,
                 .mux = mux,
                 .read_count = read_count,
-                .base_count = base_count
+                .base_count = base_count,
+                .quality_read_count = state->quality_read_counts[idx],
+                .mean_quality = state->quality_read_counts[idx] > 0
+                    ? state->quality_sums[idx] / (double)state->quality_read_counts[idx]
+                    : NAN,
+                .concordance_read_count = state->concordance_read_counts[idx],
+                .mean_concordance_qscore = state->concordance_read_counts[idx] > 0
+                    ? state->concordance_sums[idx] / (double)state->concordance_read_counts[idx]
+                    : NAN
             };
         }
     }

@@ -571,7 +571,47 @@ static void summary_json_speed_heatmap(
     fc_speed_qscore_2d_matrix_destroy(&matrix);
 }
 
-static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, size_t barcode)
+static void summary_json_accuracy_heatmap(
+    fc_json_object_t *heatmaps,
+    const fc_accuracy_qscore_2d *model,
+    size_t barcode)
+{
+    if (NULL == model) {
+        return;
+    }
+    if (!fc_accuracy_qscore_2d_seen(model, barcode)) {
+        fc_json_object_set_null(heatmaps, "alignment_accuracy_quality");
+        return;
+    }
+
+    fc_accuracy_qscore_2d_matrix matrix = { 0 };
+    if (fc_accuracy_qscore_2d_materialize(model, barcode, &matrix) != 0) {
+        FC_LOG_FATAL("Failed to materialize alignment-accuracy heatmap for summary.json.");
+    }
+
+    fc_json_value_t *value = fc_json_object_value();
+    fc_json_object_t *obj = fc_json_get_object(value);
+    fc_json_object_set_string(obj, "x_label", "alignment_concordance_qscore");
+    fc_json_array_t *x_range = fc_json_object_set_array(obj, "x_range");
+    fc_json_array_append_number(x_range, matrix.x_lower);
+    fc_json_array_append_number(x_range, matrix.x_upper);
+    fc_json_object_set_string(obj, "y_label", "qscore");
+    fc_json_array_t *y_range = fc_json_object_set_array(obj, "y_range");
+    fc_json_array_append_number(y_range, 0.0);
+    fc_json_array_append_number(y_range, matrix.qscore_bins * matrix.qscore_width);
+    fc_json_object_set_value(
+        obj,
+        "__data__",
+        summary_json_heatmap_ndarray(matrix.counts, matrix.qscore_bins, matrix.x_bins));
+    fc_json_object_set_value(heatmaps, "alignment_accuracy_quality", value);
+    fc_accuracy_qscore_2d_matrix_destroy(&matrix);
+}
+
+static void summary_json_time(
+    fc_json_object_t *root,
+    const fc_time_bin *model,
+    size_t barcode,
+    bool include_accuracy)
 {
     if (NULL == model || !fc_time_bin_seen(model, barcode)) {
         fc_json_object_set_null(root, "time");
@@ -597,6 +637,7 @@ static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, 
     size_t *base_count = fc_alloc(table.n, sizeof(size_t), "base_count");
     size_t *cum_read = fc_alloc(table.n, sizeof(size_t), "cum_read");
     size_t *cum_base = fc_alloc(table.n, sizeof(size_t), "cum_base");
+    size_t *accuracy_read_count = fc_alloc(table.n, sizeof(size_t), "accuracy_read_count");
     double *time_start = fc_alloc(table.n, sizeof(double), "time_start");
     double *time_end = fc_alloc(table.n, sizeof(double), "time_end");
     double *len_mean = fc_alloc(table.n, sizeof(double), "len_mean");
@@ -623,6 +664,14 @@ static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, 
     double *spd_q75 = fc_alloc(table.n, sizeof(double), "spd_q75");
     double *spd_q90 = fc_alloc(table.n, sizeof(double), "spd_q90");
     double *spd_q95 = fc_alloc(table.n, sizeof(double), "spd_q95");
+    double *accuracy_mean = fc_alloc(table.n, sizeof(double), "accuracy_mean");
+    double *accuracy_q05 = fc_alloc(table.n, sizeof(double), "accuracy_q05");
+    double *accuracy_q10 = fc_alloc(table.n, sizeof(double), "accuracy_q10");
+    double *accuracy_q25 = fc_alloc(table.n, sizeof(double), "accuracy_q25");
+    double *accuracy_q50 = fc_alloc(table.n, sizeof(double), "accuracy_q50");
+    double *accuracy_q75 = fc_alloc(table.n, sizeof(double), "accuracy_q75");
+    double *accuracy_q90 = fc_alloc(table.n, sizeof(double), "accuracy_q90");
+    double *accuracy_q95 = fc_alloc(table.n, sizeof(double), "accuracy_q95");
 
     for (size_t i = 0; i < table.n; i++) {
         const fc_time_bin_row *row = &table.rows[i];
@@ -656,6 +705,15 @@ static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, 
         spd_q75[i] = row->speed_quantiles.q75;
         spd_q90[i] = row->speed_quantiles.q90;
         spd_q95[i] = row->speed_quantiles.q95;
+        accuracy_read_count[i] = row->accuracy_read_count;
+        accuracy_mean[i] = row->accuracy_mean;
+        accuracy_q05[i] = row->accuracy_quantiles.q05;
+        accuracy_q10[i] = row->accuracy_quantiles.q10;
+        accuracy_q25[i] = row->accuracy_quantiles.q25;
+        accuracy_q50[i] = row->accuracy_quantiles.q50;
+        accuracy_q75[i] = row->accuracy_quantiles.q75;
+        accuracy_q90[i] = row->accuracy_quantiles.q90;
+        accuracy_q95[i] = row->accuracy_quantiles.q95;
     }
 
     // Serialize as columnar table
@@ -694,6 +752,17 @@ static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, 
     fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_q75", spd_q75, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_q90", spd_q90, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("translocation_speed_q95", spd_q95, table.n));
+    if (include_accuracy) {
+        fc_json_array_append_value(columns, fc_json_column_uint_adaptive("accuracy_read_count", accuracy_read_count, table.n));
+        fc_json_array_append_value(columns, fc_json_column_f64("accuracy_mean", accuracy_mean, table.n));
+        fc_json_array_append_value(columns, fc_json_column_f64("accuracy_q05", accuracy_q05, table.n));
+        fc_json_array_append_value(columns, fc_json_column_f64("accuracy_q10", accuracy_q10, table.n));
+        fc_json_array_append_value(columns, fc_json_column_f64("accuracy_q25", accuracy_q25, table.n));
+        fc_json_array_append_value(columns, fc_json_column_f64("accuracy_q50", accuracy_q50, table.n));
+        fc_json_array_append_value(columns, fc_json_column_f64("accuracy_q75", accuracy_q75, table.n));
+        fc_json_array_append_value(columns, fc_json_column_f64("accuracy_q90", accuracy_q90, table.n));
+        fc_json_array_append_value(columns, fc_json_column_f64("accuracy_q95", accuracy_q95, table.n));
+    }
 
     free(time_start);
     free(time_end);
@@ -701,6 +770,7 @@ static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, 
     free(base_count);
     free(cum_read);
     free(cum_base);
+    free(accuracy_read_count);
     free(len_mean);
     free(len_q05);
     free(len_q10);
@@ -725,6 +795,14 @@ static void summary_json_time(fc_json_object_t *root, const fc_time_bin *model, 
     free(spd_q75);
     free(spd_q90);
     free(spd_q95);
+    free(accuracy_mean);
+    free(accuracy_q05);
+    free(accuracy_q10);
+    free(accuracy_q25);
+    free(accuracy_q50);
+    free(accuracy_q75);
+    free(accuracy_q90);
+    free(accuracy_q95);
 
     fc_time_bin_table_destroy(&table);
 }
@@ -1144,11 +1222,12 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
     fc_json_value_t *quality_distribution = summary_json_fixed_distribution_value(quality_stats);
     fc_json_object_set_value(distributions, "quality", quality_distribution);
 
-    summary_json_time(root, sink->cfg.time_bin, barcode);
+    summary_json_time(root, sink->cfg.time_bin, barcode, sink->cfg.accuracy_qscore != NULL);
 
     fc_json_object_t *heatmaps = fc_json_object_set_object(root, "heatmaps");
     summary_json_length_heatmap(heatmaps, sink->cfg.length_qscore, barcode);
     summary_json_speed_heatmap(heatmaps, sink->cfg.speed_qscore, barcode);
+    summary_json_accuracy_heatmap(heatmaps, sink->cfg.accuracy_qscore, barcode);
     summary_json_alignment(root, sink, barcode, engine);
     summary_json_coverage(root, sink->cfg.coverage_summaries, barcode);
 

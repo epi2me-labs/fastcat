@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "core/fc_accuracy_qscore_2d.h"
 #include "core/fc_alignment_summary.h"
 #include "core/fc_channel_summary.h"
 #include "core/fc_coverage.h"
@@ -128,6 +129,16 @@ typedef struct {
     const char *output_root;
     bool use_barcodes;
     size_t barcode_count;
+    fc_accuracy_qscore_2d *model;
+} fc_accuracy_qscore_2d_sink_opts;
+
+fc_sink fc_accuracy_qscore_2d_sink_create(
+    const fc_accuracy_qscore_2d_sink_opts *opts);
+
+typedef struct {
+    const char *output_root;
+    bool use_barcodes;
+    size_t barcode_count;
     fc_channel_summary *model;
 } fc_channel_summary_sink_opts;
 
@@ -158,6 +169,7 @@ typedef struct {
     fc_channel_summary *channel_summary;
     fc_length_qscore_2d *length_qscore;
     fc_speed_qscore_2d *speed_qscore;
+    fc_accuracy_qscore_2d *accuracy_qscore;
     fc_time_bin *time_bin;
     // Caller-owned, populated by fc_writer before sink finalisation.
     const fc_alignment_summary *alignment_summary;

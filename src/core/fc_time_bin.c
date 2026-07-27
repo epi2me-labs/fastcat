@@ -24,6 +24,9 @@ typedef struct {
     fc_kll_sketch *length;
     fc_kll_sketch *qscore;
     fc_kll_sketch *speed;
+    size_t accuracy_read_count;
+    double sum_accuracy;
+    fc_kll_sketch *accuracy;
 } fc_time_bin_accum;
 
 typedef struct {
@@ -107,6 +110,7 @@ static void time_bin_destroy_accum(fc_time_bin_accum *bin)
     fc_kll_destroy(bin->length);
     fc_kll_destroy(bin->qscore);
     fc_kll_destroy(bin->speed);
+    fc_kll_destroy(bin->accuracy);
 }
 
 static void time_bin_destroy_barcode_state(fc_time_bin_barcode_state *state)
@@ -166,6 +170,22 @@ static fc_time_bin_accum *time_bin_ensure_accum(
         bin->speed = fc_kll_create(model->kll_k);
     }
     return bin;
+}
+
+static fc_time_bin_accum *time_bin_find_accum(
+    fc_time_bin *model,
+    fc_time_bin_barcode_state *state,
+    double timestamp_s)
+{
+    if (!model || !state || !model->origin_set || !isfinite(timestamp_s)) {
+        return NULL;
+    }
+    double rel = (timestamp_s - model->origin_s) / model->bin_size_s;
+    int64_t bin_idx = (int64_t)floor(rel);
+    if (bin_idx < state->first_bin || bin_idx > state->last_bin) {
+        return NULL;
+    }
+    return &state->bins[(size_t)(bin_idx - state->first_bin)];
 }
 
 fc_time_bin *fc_time_bin_create(size_t barcode_count, double bin_size_s, size_t kll_k)
@@ -273,6 +293,30 @@ void fc_time_bin_add_read(fc_time_bin *model, size_t barcode, const fc_read *rea
     state->has_data = true;
 }
 
+void fc_time_bin_add_accuracy(fc_time_bin *model, size_t barcode, const fc_read *read, float accuracy)
+{
+    if (!model || !read || !read->meta || !isfinite(accuracy) || barcode >= model->barcode_count) {
+        return;
+    }
+    const char *timestamp = read->meta->start_time;
+    double timestamp_s = 0.0;
+    if (!timestamp || timestamp[0] == '\0' || !fc_time_bin_parse_timestamp(timestamp, &timestamp_s)) {
+        return;
+    }
+    fc_time_bin_barcode_state *state = model->barcode_states[barcode];
+    fc_time_bin_accum *bin = time_bin_find_accum(model, state, timestamp_s);
+    if (!bin) {
+        return;
+    }
+    if (!bin->accuracy) {
+        bin->accuracy = fc_kll_create(model->kll_k);
+    }
+    double value = fmin(100.0, fmax(0.0, (double)accuracy));
+    bin->accuracy_read_count++;
+    bin->sum_accuracy += value;
+    fc_kll_add(bin->accuracy, value);
+}
+
 bool fc_time_bin_seen(const fc_time_bin *model, size_t barcode)
 {
     if (NULL == model || barcode >= model->barcode_count
@@ -280,6 +324,23 @@ bool fc_time_bin_seen(const fc_time_bin *model, size_t barcode)
         return false;
     }
     return model->barcode_states[barcode]->seen;
+}
+
+bool fc_time_bin_accuracy_seen(const fc_time_bin *model, size_t barcode)
+{
+    if (NULL == model || barcode >= model->barcode_count) {
+        return false;
+    }
+    const fc_time_bin_barcode_state *state = model->barcode_states[barcode];
+    if (NULL == state) {
+        return false;
+    }
+    for (size_t i = 0; i < state->n_bins; ++i) {
+        if (state->bins[i].accuracy_read_count > 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 fc_time_bin_skip_counts fc_time_bin_skipped_counts(const fc_time_bin *model)
@@ -316,6 +377,8 @@ static void time_bin_set_empty_distribution(fc_time_bin_row *row)
     row->qscore_quantiles = time_bin_nan_quantiles();
     row->speed_mean = NAN;
     row->speed_quantiles = time_bin_nan_quantiles();
+    row->accuracy_mean = NAN;
+    row->accuracy_quantiles = time_bin_nan_quantiles();
 }
 
 int fc_time_bin_materialize(const fc_time_bin *model, size_t barcode, fc_time_bin_table *out)
@@ -364,6 +427,14 @@ int fc_time_bin_materialize(const fc_time_bin *model, size_t barcode, fc_time_bi
             row->speed_mean = bin->sum_speed / (double)bin->speed_count;
             row->speed_quantiles = fc_kll_compute_quantile_septuple(bin->speed);
         }
+        row->accuracy_read_count = bin->accuracy_read_count;
+        if (bin->accuracy_read_count > 0) {
+            row->accuracy_mean = bin->sum_accuracy / (double)bin->accuracy_read_count;
+            row->accuracy_quantiles = fc_kll_compute_quantile_septuple(bin->accuracy);
+        } else {
+            row->accuracy_mean = NAN;
+            row->accuracy_quantiles = time_bin_nan_quantiles();
+        }
     }
 
     return 0;
@@ -405,9 +476,12 @@ int fc_time_bin_materialize_merged(
         double sum_qscore = 0.0;
         double sum_speed = 0.0;
         size_t speed_count = 0;
+        double sum_accuracy = 0.0;
+        size_t accuracy_read_count = 0;
         fc_kll_sketch *length = fc_kll_create(model->kll_k);
         fc_kll_sketch *qscore = fc_kll_create(model->kll_k);
         fc_kll_sketch *speed = fc_kll_create(model->kll_k);
+        fc_kll_sketch *accuracy = fc_kll_create(model->kll_k);
 
         for (size_t j = start; j < end; j++) {
             const fc_time_bin_accum *bin = &state->bins[j];
@@ -417,9 +491,12 @@ int fc_time_bin_materialize_merged(
             sum_qscore += bin->sum_qscore;
             sum_speed += bin->sum_speed;
             speed_count += bin->speed_count;
+            sum_accuracy += bin->sum_accuracy;
+            accuracy_read_count += bin->accuracy_read_count;
             fc_kll_merge(length, bin->length);
             fc_kll_merge(qscore, bin->qscore);
             fc_kll_merge(speed, bin->speed);
+            fc_kll_merge(accuracy, bin->accuracy);
         }
 
         cumulative_reads += row->read_count;
@@ -441,11 +518,20 @@ int fc_time_bin_materialize_merged(
                 row->speed_mean = sum_speed / (double)speed_count;
                 row->speed_quantiles = fc_kll_compute_quantile_septuple(speed);
             }
+            row->accuracy_read_count = accuracy_read_count;
+            if (accuracy_read_count == 0) {
+                row->accuracy_mean = NAN;
+                row->accuracy_quantiles = time_bin_nan_quantiles();
+            } else {
+                row->accuracy_mean = sum_accuracy / (double)accuracy_read_count;
+                row->accuracy_quantiles = fc_kll_compute_quantile_septuple(accuracy);
+            }
         }
 
         fc_kll_destroy(length);
         fc_kll_destroy(qscore);
         fc_kll_destroy(speed);
+        fc_kll_destroy(accuracy);
     }
 
     return 0;

@@ -15,6 +15,7 @@ fc_writer *fc_writer_create(const fc_writer_config *cfg)
     bool channel_summary_enabled = cfg ? cfg->channel_summary : false;
     const fc_length_qscore_2d_config *length_qscore_cfg = cfg ? cfg->length_qscore : NULL;
     const fc_speed_qscore_2d_config *speed_qscore_cfg = cfg ? cfg->speed_qscore : NULL;
+    const fc_accuracy_qscore_2d_config *accuracy_qscore_cfg = cfg ? cfg->accuracy_qscore : NULL;
     const fc_time_bin_config *time_bin_cfg = cfg ? cfg->time_bin : NULL;
     bool use_barcodes = cfg ? cfg->use_barcodes : false;
 
@@ -67,6 +68,18 @@ fc_writer *fc_writer_create(const fc_writer_config *cfg)
             speed_qscore_cfg->smoothing_points);
         if (writer->speed_qscore == NULL) {
             FC_LOG_ERROR("Failed to create qscore/translocation-speed 2D model.");
+            fc_writer_destroy(writer);
+            return NULL;
+        }
+    }
+    if (accuracy_qscore_cfg != NULL) {
+        writer->accuracy_qscore = fc_accuracy_qscore_2d_create(
+            writer->barcode_count,
+            accuracy_qscore_cfg->kll_k,
+            accuracy_qscore_cfg->qgrid_points,
+            accuracy_qscore_cfg->smoothing_points);
+        if (writer->accuracy_qscore == NULL) {
+            FC_LOG_ERROR("Failed to create alignment-accuracy/qscore 2D model.");
             fc_writer_destroy(writer);
             return NULL;
         }
@@ -179,6 +192,14 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
             read->meta->mean_q);
     }
 
+    if (writer->accuracy_qscore != NULL && ctx.stats_kind == FC_STATS_ALIGNED) {
+        fc_accuracy_qscore_2d_add_read(
+            writer->accuracy_qscore,
+            ctx.barcode,
+            ctx.aligned.acc,
+            read->meta->mean_q);
+    }
+
     if (writer->run_summary != NULL) {
         size_t barcode = writer->use_barcodes ? ctx.barcode : 0;
         fc_run_summary_add_read(writer->run_summary, barcode, read);
@@ -192,6 +213,9 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
     if (writer->time_bin != NULL) {
         size_t barcode = writer->use_barcodes ? ctx.barcode : 0;
         fc_time_bin_add_read(writer->time_bin, barcode, read);
+        if (ctx.stats_kind == FC_STATS_ALIGNED) {
+            fc_time_bin_add_accuracy(writer->time_bin, barcode, read, ctx.aligned.acc);
+        }
     }
 
     for (size_t i = 0; i < writer->sink_count; i++) {
@@ -247,6 +271,7 @@ void fc_writer_destroy(fc_writer *writer)
     fc_channel_summary_destroy(writer->channel_summary);
     fc_length_qscore_2d_destroy(writer->length_qscore);
     fc_speed_qscore_2d_destroy(writer->speed_qscore);
+    fc_accuracy_qscore_2d_destroy(writer->accuracy_qscore);
     fc_time_bin_destroy(writer->time_bin);
     free(writer->sinks);
     free(writer);

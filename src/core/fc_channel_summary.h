@@ -18,6 +18,10 @@ typedef struct {
     size_t mux;
     size_t read_count;
     size_t base_count;
+    size_t quality_read_count;
+    double mean_quality;
+    size_t concordance_read_count;
+    double mean_concordance_qscore;
 } fc_channel_summary_row;
 
 typedef struct {

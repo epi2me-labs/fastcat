@@ -353,7 +353,7 @@
     "timeColumns": {
       "type": "array",
       "minItems": 30,
-      "maxItems": 30,
+      "maxItems": 39,
       "items": false,
       "prefixItems": [
         {
@@ -593,6 +593,78 @@
           "properties": {
             "name": {
               "const": "translocation_speed_q95"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "accuracy_read_count"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "accuracy_mean"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "accuracy_q05"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "accuracy_q10"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "accuracy_q25"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "accuracy_q50"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "accuracy_q75"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "accuracy_q90"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "accuracy_q95"
             }
           }
         }
@@ -1345,6 +1417,16 @@
           ]
         },
         "translocation_speed_quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/heatmap"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alignment_accuracy_quality": {
           "anyOf": [
             {
               "$ref": "#/$defs/heatmap"

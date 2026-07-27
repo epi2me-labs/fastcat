@@ -28,6 +28,7 @@
 #define FC_REPORT_QUALITY_WIDTH 0.2
 #define FC_REPORT_ALIGNMENT_WIDTH 0.2
 #define FC_REPORT_ACCURACY_MIN 80.0
+#define FC_REPORT_QUERY_COVERAGE_MIN 85.0
 #define FC_REPORT_PERCENT_MIN 0.0
 #define FC_REPORT_PERCENT_MAX 100.0
 #define FC_REPORT_YIELD_THINNING 100
@@ -42,6 +43,10 @@
 #define FC_REPORT_VISIBLE_PADDING 0.10
 #define FC_REPORT_QUALITY_XROUND 10.0
 #define FC_REPORT_LENGTH_XROUND_KB 5.0
+#define FC_REPORT_QSCORE_DEFAULT_MAX 40.0
+#define FC_REPORT_QSCORE_MID_MAX 50.0
+#define FC_REPORT_QSCORE_MAX 60.0
+#define FC_REPORT_QSCORE_TAIL_FRACTION 0.005
 
 typedef struct {
     double start;
@@ -65,6 +70,38 @@ typedef struct {
     fc_json_value_t *value;
     fc_json_array_t *array;
 } report_column;
+
+static report_source bokeh_source_create(void);
+static report_column bokeh_source_add_array_column(report_source *source,
+    const char *name);
+
+typedef struct {
+    report_source source;
+    report_column x;
+    report_column y;
+    report_column width;
+    report_column height;
+} report_hover_bands;
+
+static report_hover_bands report_hover_bands_create(void)
+{
+    report_hover_bands bands = { 0 };
+    bands.source = bokeh_source_create();
+    bands.x = bokeh_source_add_array_column(&bands.source, "x");
+    bands.y = bokeh_source_add_array_column(&bands.source, "y");
+    bands.width = bokeh_source_add_array_column(&bands.source, "width");
+    bands.height = bokeh_source_add_array_column(&bands.source, "height");
+    return bands;
+}
+
+static void report_hover_bands_append(report_hover_bands *bands,
+    double x, double y, double width, double height)
+{
+    fc_json_array_append_number(bands->x.array, x);
+    fc_json_array_append_number(bands->y.array, y);
+    fc_json_array_append_number(bands->width.array, width);
+    fc_json_array_append_number(bands->height.array, height);
+}
 
 // string helpers
 static void report_kputs(kstring_t *ks, const char *text)
@@ -113,7 +150,8 @@ static void report_hist_destroy(report_hist *hist)
     hist->total_count = 0.0;
 }
 
-static bool report_hist_push(report_hist *hist, double start, double end, double count)
+static bool report_hist_push(report_hist *hist, double start, double end,
+    double count)
 {
     if (!isfinite(start) || !isfinite(end) || !isfinite(count) || count < 0.0) {
         return false;
@@ -123,19 +161,17 @@ static bool report_hist_push(report_hist *hist, double start, double end, double
     }
     if (hist->n == hist->cap) {
         size_t new_cap = hist->cap ? hist->cap * 2 : 256;
-        hist->bins = fc_realloc(hist->bins, new_cap * sizeof(*hist->bins), "report histogram bins");
+        hist->bins = fc_realloc(hist->bins, new_cap * sizeof(*hist->bins),
+            "report histogram bins");
         hist->cap = new_cap;
     }
-    hist->bins[hist->n++] = (report_hist_bin) {
-        .start = start,
-        .end = end,
-        .count = count
-    };
+    hist->bins[hist->n++] = (report_hist_bin) { .start = start, .end = end, .count = count };
     hist->total_count += count;
     return true;
 }
 
-static bool report_hist_from_read_stats(const read_stats *stats, report_hist *hist)
+static bool report_hist_from_read_stats(const read_stats *stats,
+    report_hist *hist)
 {
     if (!stats || !hist) {
         return false;
@@ -175,9 +211,7 @@ static double read_stats_total_count(const read_stats *stats)
     return total;
 }
 
-static void select_report_stats(
-    const fc_stats_engine *engine,
-    bool bam_input,
+static void select_report_stats(const fc_stats_engine *engine, bool bam_input,
     bool unmapped_override,
     const read_stats **length,
     const read_stats **quality)
@@ -194,16 +228,13 @@ static void select_report_stats(
         return;
     }
 
-    if (read_stats_total_count(engine->length_stats) > 0.0
-        && read_stats_total_count(engine->qual_stats) > 0.0) {
+    if (read_stats_total_count(engine->length_stats) > 0.0 && read_stats_total_count(engine->qual_stats) > 0.0) {
         *length = engine->length_stats;
         *quality = engine->qual_stats;
         return;
     }
 
-    if (bam_input
-        && read_stats_total_count(engine->length_stats_unmapped) > 0.0
-        && read_stats_total_count(engine->qual_stats_unmapped) > 0.0) {
+    if (bam_input && read_stats_total_count(engine->length_stats_unmapped) > 0.0 && read_stats_total_count(engine->qual_stats_unmapped) > 0.0) {
         *length = engine->length_stats_unmapped;
         *quality = engine->qual_stats_unmapped;
         return;
@@ -288,11 +319,13 @@ static char *html_unescape_basic(const char *text)
     return report_steal(&ks);
 }
 
-static char *build_run_config_rows_html(const fc_report_config_entry *entries, size_t count)
+static char *build_run_config_rows_html(const fc_report_config_entry *entries,
+    size_t count)
 {
     kstring_t ks = { 0, 0, NULL };
     if (!entries || count == 0) {
-        report_kputs(&ks, "<tr><td>run configuration</td><td>not available</td></tr>\n");
+        report_kputs(&ks,
+            "<tr><td>run configuration</td><td>not available</td></tr>\n");
         return report_steal(&ks);
     }
 
@@ -316,29 +349,26 @@ static char *format_report_date(void)
     time_t now = time(NULL);
     struct tm local = { 0 };
     char text[11] = { 0 };
-    if (now == (time_t)-1
-        || localtime_r(&now, &local) == NULL
-        || strftime(text, sizeof(text), "%Y-%m-%d", &local) == 0) {
+    if (now == (time_t)-1 || localtime_r(&now, &local) == NULL || strftime(text, sizeof(text), "%Y-%m-%d", &local) == 0) {
         return fc_strdup("(unknown)", "report date");
     }
     return fc_strdup(text, "report date");
 }
 
-static char *build_alignment_detail_rows_html(const fc_alignment_totals *totals)
+static char *
+build_alignment_detail_rows_html(const fc_alignment_totals *totals)
 {
     static const struct {
         const char *label;
         fc_flagstat_column column;
-    } record_rows[] = {
-        { "Primary mappings", FC_FLAGSTAT_PRIMARY },
+    } record_rows[] = { { "Primary mappings", FC_FLAGSTAT_PRIMARY },
         { "Secondary mappings", FC_FLAGSTAT_SECONDARY },
         { "Supplementary mappings", FC_FLAGSTAT_SUPPLEMENTARY },
         { "Total records", FC_FLAGSTAT_TOTAL },
         { "QC-fail", FC_FLAGSTAT_QCFAIL },
         { "Duplicate", FC_FLAGSTAT_DUPLICATE },
         { "Duplex", FC_FLAGSTAT_DUPLEX },
-        { "Duplex-forming", FC_FLAGSTAT_DUPLEX_FORMING }
-    };
+        { "Duplex-forming", FC_FLAGSTAT_DUPLEX_FORMING } };
     kstring_t ks = { 0, 0, NULL };
     char count_text[32] = { 0 };
     size_t mapped_records = totals ? totals->mapped_record_count : 0;
@@ -351,14 +381,16 @@ static char *build_alignment_detail_rows_html(const fc_alignment_totals *totals)
         report_kputs(&ks, record_rows[i].label);
         report_kputs(&ks, "</td><td>");
         FC_SNPRINTF_CHECK(count_text, sizeof(count_text), "%zu",
-            totals ? totals->record_counts[record_rows[i].column] : 0);
+            totals ? totals->record_counts[record_rows[i].column]
+                   : 0);
         report_kputs(&ks, count_text);
         report_kputs(&ks, "</td></tr>\n");
     }
     return report_steal(&ks);
 }
 
-static char *build_coverage_tab_buttons_html(const fc_coverage_summary *coverage)
+static char *
+build_coverage_tab_buttons_html(const fc_coverage_summary *coverage)
 {
     kstring_t ks = { 0, 0, NULL };
     for (size_t i = 0; coverage && i < coverage->n_targets; ++i) {
@@ -369,25 +401,27 @@ static char *build_coverage_tab_buttons_html(const fc_coverage_summary *coverage
             display_name = fc_strdup("Whole reference", "coverage target display name");
         } else if (name && sscanf(name, "segments_%zu", &segment_length) == 1) {
             if (segment_length < 1000) {
-                display_name = fc_asprintf(
-                    "coverage target display name", "Fixed %zu bp segments", segment_length);
+                display_name = fc_asprintf("coverage target display name",
+                    "Fixed %zu bp segments", segment_length);
             } else {
-                display_name = fc_asprintf(
-                    "coverage target display name", "Fixed %.3g kbp segments",
+                display_name = fc_asprintf("coverage target display name",
+                    "Fixed %.3g kbp segments",
                     (double)segment_length / 1e3);
             }
         } else {
-            display_name = fc_asprintf(
-                "coverage target display name", "User-provided: %s", name ? name : "coverage");
+            display_name = fc_asprintf("coverage target display name",
+                "User-provided: %s", name ? name : "coverage");
         }
         char index_text[32] = { 0 };
         FC_SNPRINTF_CHECK(index_text, sizeof(index_text), "%zu", i);
-        report_kputs(&ks, "<li class=\"nav-item\" role=\"presentation\"><button class=\"");
+        report_kputs(
+            &ks, "<li class=\"nav-item\" role=\"presentation\"><button class=\"");
         report_kputs(&ks, "nav-link px-0 me-4 text-muted");
         if (i == 0) {
             report_kputs(&ks, " active");
         }
-        report_kputs(&ks, "\" type=\"button\" role=\"tab\" data-fastcat-coverage-target=\"");
+        report_kputs(
+            &ks, "\" type=\"button\" role=\"tab\" data-fastcat-coverage-target=\"");
         report_kputs(&ks, index_text);
         report_kputs(&ks, "\" aria-selected=\"");
         report_kputs(&ks, i == 0 ? "true" : "false");
@@ -443,7 +477,8 @@ static char *format_report_duration(double seconds)
     return fc_asprintf("report duration", "%zuh %zum %zus", hours, minutes, secs);
 }
 
-static void replace_all(char **html, const char *needle, const char *replacement)
+static void replace_all(char **html, const char *needle,
+    const char *replacement)
 {
     kstring_t ks = { 0, 0, NULL };
     const char *cursor = *html;
@@ -482,7 +517,8 @@ static report_source bokeh_source_create(void)
     return source;
 }
 
-static report_column bokeh_source_add_array_column(report_source *source, const char *name)
+static report_column bokeh_source_add_array_column(report_source *source,
+    const char *name)
 {
     report_column column = { 0 };
     column.value = fc_json_array_value();
@@ -529,7 +565,8 @@ static JSON_Object *bokeh_find_model(JSON_Value *value, const char *model_id)
     return NULL;
 }
 
-static void bokeh_set_value(JSON_Value *docs, const char *name, fc_json_value_t *value)
+static void bokeh_set_value(JSON_Value *docs, const char *name,
+    fc_json_value_t *value)
 {
     const fc_report_template_binding *binding = NULL;
     for (size_t i = 0; i < fc_report_template_html_binding_count; i++) {
@@ -546,13 +583,15 @@ static void bokeh_set_value(JSON_Value *docs, const char *name, fc_json_value_t 
     JSON_Object *model = bokeh_find_model(docs, binding->model_id);
     if (!model) {
         fc_json_value_free(value);
-        FC_LOG_FATAL("Bokeh model '%s' for binding '%s' is missing.", binding->model_id, name);
+        FC_LOG_FATAL("Bokeh model '%s' for binding '%s' is missing.",
+            binding->model_id, name);
     }
 
     JSON_Object *attrs = json_object_get_object(model, "attributes");
     if (!attrs) {
         fc_json_value_free(value);
-        FC_LOG_FATAL("Bokeh model '%s' has no attributes object.", binding->model_id);
+        FC_LOG_FATAL("Bokeh model '%s' has no attributes object.",
+            binding->model_id);
     }
 
     if (json_object_set_value(attrs, binding->attr, value) != JSONSuccess) {
@@ -560,7 +599,8 @@ static void bokeh_set_value(JSON_Value *docs, const char *name, fc_json_value_t 
     }
 }
 
-static void bokeh_set_string(JSON_Value *docs, const char *name, const char *text)
+static void bokeh_set_string(JSON_Value *docs, const char *name,
+    const char *text)
 {
     bokeh_set_value(docs, name, fc_json_string_value(text));
 }
@@ -580,7 +620,8 @@ static void bokeh_set_null(JSON_Value *docs, const char *name)
     bokeh_set_value(docs, name, fc_json_null_value());
 }
 
-static void bokeh_set_range(JSON_Value *docs, const char *prefix, double start, double end)
+static void bokeh_set_range(JSON_Value *docs, const char *prefix, double start,
+    double end)
 {
     char name[96];
     double bounds[2] = { start, end };
@@ -592,11 +633,8 @@ static void bokeh_set_range(JSON_Value *docs, const char *prefix, double start, 
     bokeh_set_value(docs, name, fc_json_number_array_value(bounds, 2));
 }
 
-static void bokeh_set_plot_null_state(
-    JSON_Value *docs,
-    const char *name,
-    const char *message,
-    bool has_colorbar)
+static void bokeh_set_plot_null_state(JSON_Value *docs, const char *name,
+    const char *message, bool has_colorbar)
 {
     char binding[128];
     FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.null.text", name);
@@ -619,9 +657,7 @@ static void bokeh_set_plot_null_state(
     }
 }
 
-static void bokeh_set_plot_data_state(
-    JSON_Value *docs,
-    const char *name,
+static void bokeh_set_plot_data_state(JSON_Value *docs, const char *name,
     bool has_colorbar,
     const char *toolbar_location)
 {
@@ -654,10 +690,8 @@ static void bokeh_set_plot_data_state(
 // embedded report template helpers
 //
 
-static char *inflate_report_asset(
-    const unsigned char *compressed,
-    size_t compressed_len,
-    size_t raw_len,
+static char *inflate_report_asset(const unsigned char *compressed,
+    size_t compressed_len, size_t raw_len,
     const char *label)
 {
     if (raw_len > SIZE_MAX - 1 || raw_len > UINT_MAX || compressed_len > UINT_MAX) {
@@ -793,11 +827,9 @@ static void format_length_stat(char *buf, size_t size, double value)
 // quality plot
 //
 
-static fc_json_value_t *build_quality_source_data_value(
-    const report_hist *quality,
-    char *subtitle,
-    size_t subtitle_size,
-    double *x_end,
+static fc_json_value_t *
+build_quality_source_data_value(const report_hist *quality, char *subtitle,
+    size_t subtitle_size, double *x_end,
     double *y_end)
 {
     double *top = NULL;
@@ -840,12 +872,12 @@ static fc_json_value_t *build_quality_source_data_value(
         hist_mean_midpoint(quality), hist_median_start(quality));
 
     report_source source = bokeh_source_create();
-    fc_json_entries_append_value(
-        source.entries, "top", fc_json_number_array_value(top, bins));
-    fc_json_entries_append_value(
-        source.entries, "left", fc_json_number_array_value(left, bins));
-    fc_json_entries_append_value(
-        source.entries, "right", fc_json_number_array_value(right, bins));
+    fc_json_entries_append_value(source.entries, "top",
+        fc_json_number_array_value(top, bins));
+    fc_json_entries_append_value(source.entries, "left",
+        fc_json_number_array_value(left, bins));
+    fc_json_entries_append_value(source.entries, "right",
+        fc_json_number_array_value(right, bins));
     free(top);
     free(left);
     free(right);
@@ -857,10 +889,9 @@ static void update_quality_plot(JSON_Value *docs, const report_hist *quality)
     char subtitle[128] = { 0 };
     double x_end = 1.0;
     double y_end = 1.0;
-    bokeh_set_value(
-        docs,
-        "quality.source.data",
-        build_quality_source_data_value(quality, subtitle, sizeof(subtitle), &x_end, &y_end));
+    bokeh_set_value(docs, "quality.source.data",
+        build_quality_source_data_value(
+            quality, subtitle, sizeof(subtitle), &x_end, &y_end));
     bokeh_set_string(docs, "quality.subtitle.text", subtitle);
     bokeh_set_range(docs, "quality.x_range", FC_REPORT_QUALITY_MIN, x_end);
     bokeh_set_range(docs, "quality.y_range", 0.0, y_end);
@@ -870,13 +901,10 @@ static void update_quality_plot(JSON_Value *docs, const report_hist *quality)
 // alignment plots
 //
 
-static fc_json_value_t *build_alignment_source_data_value(
-    const report_hist *hist,
-    double x_start,
-    double x_end,
-    char *subtitle,
-    size_t subtitle_size,
-    double *y_end)
+static fc_json_value_t *
+build_alignment_source_data_value(const report_hist *hist, double x_start,
+    double x_end, char *subtitle,
+    size_t subtitle_size, double *y_end)
 {
     size_t bins = (size_t)ceil((x_end - x_start) / FC_REPORT_ALIGNMENT_WIDTH);
     double *top = fc_alloc(bins, sizeof(*top), "report alignment top");
@@ -913,23 +941,20 @@ static fc_json_value_t *build_alignment_source_data_value(
         hist_mean_midpoint(hist), hist_median_start(hist));
 
     report_source source = bokeh_source_create();
-    fc_json_entries_append_value(
-        source.entries, "top", fc_json_number_array_value(top, bins));
-    fc_json_entries_append_value(
-        source.entries, "left", fc_json_number_array_value(left, bins));
-    fc_json_entries_append_value(
-        source.entries, "right", fc_json_number_array_value(right, bins));
+    fc_json_entries_append_value(source.entries, "top",
+        fc_json_number_array_value(top, bins));
+    fc_json_entries_append_value(source.entries, "left",
+        fc_json_number_array_value(left, bins));
+    fc_json_entries_append_value(source.entries, "right",
+        fc_json_number_array_value(right, bins));
     free(top);
     free(left);
     free(right);
     return source.value;
 }
 
-static void update_alignment_plot(
-    JSON_Value *docs,
-    const char *name,
-    const report_hist *hist,
-    double x_start,
+static void update_alignment_plot(JSON_Value *docs, const char *name,
+    const report_hist *hist, double x_start,
     double x_end)
 {
     char binding[128] = { 0 };
@@ -938,8 +963,9 @@ static void update_alignment_plot(
 
     FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.source.data", name);
     bokeh_set_value(docs, binding,
-        build_alignment_source_data_value(
-            hist, x_start, x_end, subtitle, sizeof(subtitle), &y_end));
+        build_alignment_source_data_value(hist, x_start, x_end,
+            subtitle, sizeof(subtitle),
+            &y_end));
     FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.subtitle.text", name);
     bokeh_set_string(docs, binding, subtitle);
     FC_SNPRINTF_CHECK(binding, sizeof(binding), "%s.x_range", name);
@@ -952,20 +978,18 @@ static void update_alignment_plot(
 // length plot
 //
 
-static fc_json_value_t *build_length_source_data_value(
-    const report_hist *length,
-    char *subtitle,
-    size_t subtitle_size,
-    double *x_start,
-    double *x_end,
-    double *y_end)
+static fc_json_value_t *
+build_length_source_data_value(const report_hist *length, char *subtitle,
+    size_t subtitle_size, double *x_start,
+    double *x_end, double *y_end)
 {
     double top[FC_REPORT_LENGTH_BINS] = { 0 };
     double left[FC_REPORT_LENGTH_BINS] = { 0 };
     double right[FC_REPORT_LENGTH_BINS] = { 0 };
 
     double min_kb = 0.0;
-    double max_kb = round_up_to(hist_visible_max(length) / 1000.0, FC_REPORT_LENGTH_XROUND_KB);
+    double max_kb = round_up_to(hist_visible_max(length) / 1000.0,
+        FC_REPORT_LENGTH_XROUND_KB);
     if (max_kb <= min_kb || !isfinite(max_kb)) {
         max_kb = 1.0;
     }
@@ -983,9 +1007,8 @@ static fc_json_value_t *build_length_source_data_value(
         if (value < min_kb || value > max_kb) {
             continue;
         }
-        size_t bin = (value >= max_kb)
-            ? FC_REPORT_LENGTH_BINS - 1
-            : (size_t)floor((value - min_kb) / width);
+        size_t bin = (value >= max_kb) ? FC_REPORT_LENGTH_BINS - 1
+                                       : (size_t)floor((value - min_kb) / width);
         if (bin < FC_REPORT_LENGTH_BINS) {
             top[bin] += length->bins[i].count;
             if (top[bin] > *y_end) {
@@ -996,26 +1019,32 @@ static fc_json_value_t *build_length_source_data_value(
     *y_end *= 1.1;
 
     uint64_t min_len = (length->n > 0) ? (uint64_t)llround(length->bins[0].start) : 0;
-    uint64_t max_len = (length->n > 0) ? (uint64_t)llround(length->bins[length->n - 1].start) : 0;
+    uint64_t max_len = (length->n > 0)
+        ? (uint64_t)llround(length->bins[length->n - 1].start)
+        : 0;
     char mean_text[32] = { 0 };
     char median_text[32] = { 0 };
     char min_text[32] = { 0 };
     char max_text[32] = { 0 };
     format_length_stat(mean_text, sizeof(mean_text), hist_mean_midpoint(length));
-    format_length_stat(median_text, sizeof(median_text), hist_median_start(length));
+    format_length_stat(median_text, sizeof(median_text),
+        hist_median_start(length));
     format_length_stat(min_text, sizeof(min_text), (double)min_len);
     format_length_stat(max_text, sizeof(max_text), (double)max_len);
     FC_SNPRINTF_CHECK(subtitle, subtitle_size,
-        "Mean: %s. Median: %s. Min: %s. Max: %s",
-        mean_text, median_text, min_text, max_text);
+        "Mean: %s. Median: %s. Min: %s. Max: %s", mean_text,
+        median_text, min_text, max_text);
 
     report_source source = bokeh_source_create();
     fc_json_entries_append_value(
-        source.entries, "top", fc_json_number_array_value(top, FC_REPORT_LENGTH_BINS));
+        source.entries, "top",
+        fc_json_number_array_value(top, FC_REPORT_LENGTH_BINS));
     fc_json_entries_append_value(
-        source.entries, "left", fc_json_number_array_value(left, FC_REPORT_LENGTH_BINS));
+        source.entries, "left",
+        fc_json_number_array_value(left, FC_REPORT_LENGTH_BINS));
     fc_json_entries_append_value(
-        source.entries, "right", fc_json_number_array_value(right, FC_REPORT_LENGTH_BINS));
+        source.entries, "right",
+        fc_json_number_array_value(right, FC_REPORT_LENGTH_BINS));
     return source.value;
 }
 
@@ -1025,10 +1054,10 @@ static void update_length_plot(JSON_Value *docs, const report_hist *length)
     double x_start = 0.0;
     double x_end = 1.0;
     double y_end = 1.0;
-    bokeh_set_value(
-        docs,
-        "length.source.data",
-        build_length_source_data_value(length, subtitle, sizeof(subtitle), &x_start, &x_end, &y_end));
+    bokeh_set_value(docs, "length.source.data",
+        build_length_source_data_value(length, subtitle,
+            sizeof(subtitle), &x_start,
+            &x_end, &y_end));
     bokeh_set_string(docs, "length.subtitle.text", subtitle);
     bokeh_set_range(docs, "length.x_range", x_start, x_end);
     bokeh_set_range(docs, "length.y_range", 0.0, y_end);
@@ -1055,8 +1084,7 @@ static double compute_n50_kb(const report_hist *length, double total_yield)
     return length->bins[0].start / 1000.0;
 }
 
-static fc_json_value_t *build_yield_source_data_value(
-    const report_hist *length,
+static fc_json_value_t *build_yield_source_data_value(const report_hist *length,
     char *subtitle,
     size_t subtitle_size,
     double *x_end,
@@ -1079,7 +1107,8 @@ static fc_json_value_t *build_yield_source_data_value(
             cumsum[i - 1] = total_yield;
         }
 
-        *x_end = round_up_to(hist_visible_max(length) / 1000.0, FC_REPORT_LENGTH_XROUND_KB);
+        *x_end = round_up_to(hist_visible_max(length) / 1000.0,
+            FC_REPORT_LENGTH_XROUND_KB);
         if (!isfinite(*x_end) || *x_end <= 0.0) {
             *x_end = 1.0;
         }
@@ -1124,12 +1153,15 @@ static fc_json_value_t *build_yield_source_data_value(
         *y_end = (isfinite(*y_end) && *y_end > 0.0) ? *y_end * 1.1 : 1.0;
     }
 
-    FC_SNPRINTF_CHECK(subtitle, subtitle_size, "Total yield: %.3g Gb.  N50: %.3gkb",
-        total_yield / 1e9, compute_n50_kb(length, total_yield));
+    FC_SNPRINTF_CHECK(subtitle, subtitle_size,
+        "Total yield: %.3g Gb.  N50: %.3gkb", total_yield / 1e9,
+        compute_n50_kb(length, total_yield));
 
     report_source source = bokeh_source_create();
-    fc_json_entries_append_value(source.entries, "x", fc_json_number_array_value(x, out_n));
-    fc_json_entries_append_value(source.entries, "y", fc_json_number_array_value(y, out_n));
+    fc_json_entries_append_value(source.entries, "x",
+        fc_json_number_array_value(x, out_n));
+    fc_json_entries_append_value(source.entries, "y",
+        fc_json_number_array_value(y, out_n));
 
     free(cumsum);
     free(x);
@@ -1137,15 +1169,65 @@ static fc_json_value_t *build_yield_source_data_value(
     return source.value;
 }
 
+static fc_json_value_t *build_yield_hover_source_data_value(
+    const report_hist *length, double y_end)
+{
+    report_hover_bands bands = report_hover_bands_create();
+    report_column length_kb = bokeh_source_add_array_column(&bands.source,
+        "Read length / kb");
+    report_column yield = bokeh_source_add_array_column(&bands.source,
+        "Yield above length / Gbases");
+    if (!length || length->n == 0) {
+        return bands.source.value;
+    }
+    double *cumsum = fc_alloc(length->n, sizeof(*cumsum),
+        "report yield hover cumsum");
+    double total = 0.0;
+    for (size_t i = length->n; i > 0; --i) {
+        total += length->bins[i - 1].start * length->bins[i - 1].count;
+        cumsum[i - 1] = total;
+    }
+    double x_end = round_up_to(hist_visible_max(length) / 1000.0,
+        FC_REPORT_LENGTH_XROUND_KB);
+    size_t step = length->n > FC_REPORT_YIELD_THINNING
+        ? length->n / FC_REPORT_YIELD_THINNING
+        : 1;
+    for (size_t i = 0; i < length->n; i += step) {
+        double x = length->bins[i].start / 1000.0;
+        if (x > x_end) {
+            continue;
+        }
+        size_t next = i + step;
+        while (next < length->n && length->bins[next].start / 1000.0 > x_end) {
+            next++;
+        }
+        double right = next < length->n
+            ? length->bins[next].start / 1000.0
+            : length->bins[i].end / 1000.0;
+        double width = right - x;
+        if (!isfinite(width) || width <= 0.0) {
+            width = length->bins[i].end / 1000.0 - x;
+        }
+        double value = cumsum[i] / 1e9;
+        report_hover_bands_append(&bands, x + width * 0.5, value, width,
+            y_end * 2.0);
+        fc_json_array_append_number(length_kb.array, x);
+        fc_json_array_append_number(yield.array, value);
+    }
+    free(cumsum);
+    return bands.source.value;
+}
+
 static void update_yield_plot(JSON_Value *docs, const report_hist *length)
 {
     char subtitle[160] = { 0 };
     double x_end = 1.0;
     double y_end = 1.0;
-    bokeh_set_value(
-        docs,
-        "yield.source.data",
-        build_yield_source_data_value(length, subtitle, sizeof(subtitle), &x_end, &y_end));
+    bokeh_set_value(docs, "yield.source.data",
+        build_yield_source_data_value(
+            length, subtitle, sizeof(subtitle), &x_end, &y_end));
+    bokeh_set_value(docs, "yield.hover_source.data",
+        build_yield_hover_source_data_value(length, y_end));
     bokeh_set_string(docs, "yield.subtitle.text", subtitle);
     bokeh_set_range(docs, "yield.x_range", 0.0, x_end);
     bokeh_set_range(docs, "yield.y_range", 0.0, y_end);
@@ -1166,7 +1248,86 @@ static fc_json_value_t *build_image_heatmap_empty_source_data_value(void)
     return source.value;
 }
 
-static fc_json_value_t *build_lq2d_image_ndarray_value(const fc_length_qscore_2d_matrix *matrix)
+static fc_json_value_t *build_metric_qscore_empty_hover_source_data_value(void)
+{
+    report_source source = bokeh_source_create();
+    bokeh_source_add_array_column(&source, "x");
+    bokeh_source_add_array_column(&source, "y");
+    bokeh_source_add_array_column(&source, "width");
+    bokeh_source_add_array_column(&source, "height");
+    bokeh_source_add_array_column(&source, "metric");
+    bokeh_source_add_array_column(&source, "quality");
+    bokeh_source_add_array_column(&source, "count");
+    return source.value;
+}
+
+static fc_json_value_t *build_metric_qscore_hover_source_data_value(
+    const fc_metric_qscore_2d_matrix *matrix, double x_scale)
+{
+    report_source source = bokeh_source_create();
+    report_column x = bokeh_source_add_array_column(&source, "x");
+    report_column y = bokeh_source_add_array_column(&source, "y");
+    report_column width = bokeh_source_add_array_column(&source, "width");
+    report_column height = bokeh_source_add_array_column(&source, "height");
+    report_column metric = bokeh_source_add_array_column(&source, "metric");
+    report_column quality = bokeh_source_add_array_column(&source, "quality");
+    report_column count = bokeh_source_add_array_column(&source, "count");
+    double x_width = (matrix->x_upper - matrix->x_lower)
+        / (double)matrix->x_bins;
+
+    for (size_t q = 0; q < matrix->qscore_bins; ++q) {
+        double qscore = ((double)q + 0.5) * matrix->qscore_width;
+        for (size_t x_bin = 0; x_bin < matrix->x_bins; ++x_bin) {
+            double x_value = matrix->x_lower
+                + ((double)x_bin + 0.5) * x_width;
+            double value = matrix->counts[q * matrix->x_bins + x_bin];
+            fc_json_array_append_number(x.array, x_value * x_scale);
+            fc_json_array_append_number(y.array, qscore);
+            fc_json_array_append_number(width.array, x_width * x_scale);
+            fc_json_array_append_number(height.array, matrix->qscore_width);
+            fc_json_array_append_number(metric.array, x_value * x_scale);
+            fc_json_array_append_number(quality.array, qscore);
+            fc_json_array_append_number(count.array,
+                isfinite(value) && value > 0.0 ? value : 0.0);
+        }
+    }
+    return source.value;
+}
+
+static double metric_qscore_axis_upper(const fc_metric_qscore_2d_matrix *matrix)
+{
+    double total = 0.0;
+    double above_default = 0.0;
+    double above_mid = 0.0;
+    for (size_t q = 0; q < matrix->qscore_bins; ++q) {
+        double qscore = (double)q * matrix->qscore_width;
+        for (size_t x = 0; x < matrix->x_bins; ++x) {
+            double value = matrix->counts[q * matrix->x_bins + x];
+            if (!isfinite(value) || value <= 0.0) {
+                continue;
+            }
+            total += value;
+            if (qscore >= FC_REPORT_QSCORE_DEFAULT_MAX) {
+                above_default += value;
+            }
+            if (qscore >= FC_REPORT_QSCORE_MID_MAX) {
+                above_mid += value;
+            }
+        }
+    }
+
+    double maximum = matrix->qscore_width * (double)matrix->qscore_bins;
+    if (total > 0.0 && above_mid / total >= FC_REPORT_QSCORE_TAIL_FRACTION) {
+        return fmin(FC_REPORT_QSCORE_MAX, maximum);
+    }
+    if (total > 0.0 && above_default / total >= FC_REPORT_QSCORE_TAIL_FRACTION) {
+        return fmin(FC_REPORT_QSCORE_MID_MAX, maximum);
+    }
+    return fmin(FC_REPORT_QSCORE_DEFAULT_MAX, maximum);
+}
+
+static fc_json_value_t *
+build_lq2d_image_ndarray_value(const fc_length_qscore_2d_matrix *matrix)
 {
     if (matrix->x_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->x_bins) {
         FC_LOG_FATAL("Length/qscore report image is too large.");
@@ -1182,13 +1343,13 @@ static fc_json_value_t *build_lq2d_image_ndarray_value(const fc_length_qscore_2d
         values[i] = count;
     }
 
-    fc_json_value_t *value = fc_json_bokeh_ndarray_f64(
-        values, matrix->qscore_bins, matrix->x_bins);
+    fc_json_value_t *value = fc_json_bokeh_ndarray_f64(values, matrix->qscore_bins, matrix->x_bins);
     free(values);
     return value;
 }
 
-static double lq2d_color_high_quantile(const fc_length_qscore_2d_matrix *matrix)
+static double
+lq2d_color_high_quantile(const fc_length_qscore_2d_matrix *matrix)
 {
     if (matrix->x_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->x_bins) {
         FC_LOG_FATAL("Length/qscore report image is too large.");
@@ -1219,21 +1380,17 @@ static double lq2d_color_high_quantile(const fc_length_qscore_2d_matrix *matrix)
     return (isfinite(high) && high > 0.0) ? high : 1.0;
 }
 
-static void update_length_qscore_plot(
-    JSON_Value *docs,
+static void update_length_qscore_plot(JSON_Value *docs,
     const fc_length_qscore_2d *model,
     size_t barcode)
 {
     if (!model || !fc_length_qscore_2d_seen(model, barcode)) {
-        bokeh_set_plot_null_state(
-            docs,
-            "length_qscore",
-            "No read length vs quality data available",
-            true);
-        bokeh_set_value(
-            docs,
-            "length_qscore.source.data",
+        bokeh_set_plot_null_state(docs, "length_qscore",
+            "No read length vs quality data available", true);
+        bokeh_set_value(docs, "length_qscore.source.data",
             build_image_heatmap_empty_source_data_value());
+        bokeh_set_value(docs, "length_qscore.hover_source.data",
+            build_metric_qscore_empty_hover_source_data_value());
         bokeh_set_number(docs, "length_qscore.color_mapper.high", 1.0);
         bokeh_set_range(docs, "length_qscore.x_range", 0.0, 1.0);
         bokeh_set_range(docs, "length_qscore.y_range", 0.0, 1.0);
@@ -1265,7 +1422,7 @@ static void update_length_qscore_plot(
     double x_start = 0.0;
     double y_start = 0.0;
     double x_end = matrix.x_upper / 1000.0;
-    double y_end = matrix.qscore_width * (double)matrix.qscore_bins;
+    double y_end = metric_qscore_axis_upper(&matrix);
 
     report_source source = bokeh_source_create();
     report_column image = bokeh_source_add_array_column(&source, "image");
@@ -1273,15 +1430,18 @@ static void update_length_qscore_plot(
     report_column y = bokeh_source_add_array_column(&source, "y");
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
-    fc_json_array_append_value(image.array, build_lq2d_image_ndarray_value(&matrix));
+    fc_json_array_append_value(image.array,
+        build_lq2d_image_ndarray_value(&matrix));
     fc_json_array_append_number(x.array, x_start);
     fc_json_array_append_number(y.array, y_start);
     fc_json_array_append_number(dw.array, x_end - x_start);
     fc_json_array_append_number(dh.array, y_end - y_start);
 
     bokeh_set_value(docs, "length_qscore.source.data", source.value);
-    bokeh_set_number(
-        docs, "length_qscore.color_mapper.high", color_high > 0.0 ? color_high : 1.0);
+    bokeh_set_value(docs, "length_qscore.hover_source.data",
+        build_metric_qscore_hover_source_data_value(&matrix, 0.001));
+    bokeh_set_number(docs, "length_qscore.color_mapper.high",
+        color_high > 0.0 ? color_high : 1.0);
     bokeh_set_range(docs, "length_qscore.x_range", x_start, x_end);
     bokeh_set_range(docs, "length_qscore.y_range", y_start, y_end);
     bokeh_set_plot_data_state(docs, "length_qscore", true, "right");
@@ -1289,15 +1449,16 @@ static void update_length_qscore_plot(
     fc_length_qscore_2d_matrix_destroy(&matrix);
 }
 
-static fc_json_value_t *build_qts2d_image_ndarray_value(
-    const fc_speed_qscore_2d_matrix *matrix)
+static fc_json_value_t *
+build_qts2d_image_ndarray_value(const fc_speed_qscore_2d_matrix *matrix)
 {
     if (matrix->x_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->x_bins) {
         FC_LOG_FATAL("Qscore/translocation-speed report image is too large.");
     }
 
     size_t n = matrix->x_bins * matrix->qscore_bins;
-    double *values = fc_alloc(n, sizeof(*values), "report qscore/translocation-speed image values");
+    double *values = fc_alloc(n, sizeof(*values),
+        "report qscore/translocation-speed image values");
     for (size_t i = 0; i < n; i++) {
         double count = matrix->counts[i];
         if (!isfinite(count) || count < 0.0) {
@@ -1306,13 +1467,13 @@ static fc_json_value_t *build_qts2d_image_ndarray_value(
         values[i] = count;
     }
 
-    fc_json_value_t *value = fc_json_bokeh_ndarray_f64(
-        values, matrix->qscore_bins, matrix->x_bins);
+    fc_json_value_t *value = fc_json_bokeh_ndarray_f64(values, matrix->qscore_bins, matrix->x_bins);
     free(values);
     return value;
 }
 
-static double qts2d_color_high_quantile(const fc_speed_qscore_2d_matrix *matrix)
+static double
+qts2d_color_high_quantile(const fc_speed_qscore_2d_matrix *matrix)
 {
     if (matrix->x_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->x_bins) {
         FC_LOG_FATAL("Qscore/translocation-speed report image is too large.");
@@ -1322,7 +1483,8 @@ static double qts2d_color_high_quantile(const fc_speed_qscore_2d_matrix *matrix)
         return 1.0;
     }
 
-    double *values = fc_alloc(n, sizeof(*values), "report qscore/translocation-speed color range");
+    double *values = fc_alloc(n, sizeof(*values),
+        "report qscore/translocation-speed color range");
     for (size_t i = 0; i < n; i++) {
         double value = matrix->counts[i];
         values[i] = (isfinite(value) && value > 0.0) ? value : 0.0;
@@ -1343,21 +1505,18 @@ static double qts2d_color_high_quantile(const fc_speed_qscore_2d_matrix *matrix)
     return (isfinite(high) && high > 0.0) ? high : 1.0;
 }
 
-static void update_speed_qscore_plot(
-    JSON_Value *docs,
+static void update_speed_qscore_plot(JSON_Value *docs,
     const fc_speed_qscore_2d *model,
     size_t barcode)
 {
     if (!model || !fc_speed_qscore_2d_seen(model, barcode)) {
         bokeh_set_plot_null_state(
-            docs,
-            "speed_qscore",
-            "No translocation speed vs quality data available",
-            true);
-        bokeh_set_value(
-            docs,
-            "speed_qscore.source.data",
+            docs, "speed_qscore",
+            "No translocation speed vs quality data available", true);
+        bokeh_set_value(docs, "speed_qscore.source.data",
             build_image_heatmap_empty_source_data_value());
+        bokeh_set_value(docs, "speed_qscore.hover_source.data",
+            build_metric_qscore_empty_hover_source_data_value());
         bokeh_set_number(docs, "speed_qscore.color_mapper.high", 1.0);
         bokeh_set_range(docs, "speed_qscore.x_range", 0.0, 1.0);
         bokeh_set_range(docs, "speed_qscore.y_range", 0.0, 1.0);
@@ -1365,8 +1524,7 @@ static void update_speed_qscore_plot(
     }
 
     fc_speed_qscore_2d_matrix matrix = { 0 };
-    if (fc_speed_qscore_2d_materialize(model, barcode, &matrix) != 0
-        || !matrix.counts) {
+    if (fc_speed_qscore_2d_materialize(model, barcode, &matrix) != 0 || !matrix.counts) {
         fc_speed_qscore_2d_matrix_destroy(&matrix);
         update_speed_qscore_plot(docs, NULL, barcode);
         return;
@@ -1391,7 +1549,7 @@ static void update_speed_qscore_plot(
     double x_start = matrix.x_lower;
     double y_start = 0.0;
     double x_end = matrix.x_upper;
-    double y_end = matrix.qscore_width * (double)matrix.qscore_bins;
+    double y_end = metric_qscore_axis_upper(&matrix);
 
     report_source source = bokeh_source_create();
     report_column image = bokeh_source_add_array_column(&source, "image");
@@ -1399,16 +1557,17 @@ static void update_speed_qscore_plot(
     report_column y = bokeh_source_add_array_column(&source, "y");
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
-    fc_json_array_append_value(image.array, build_qts2d_image_ndarray_value(&matrix));
+    fc_json_array_append_value(image.array,
+        build_qts2d_image_ndarray_value(&matrix));
     fc_json_array_append_number(x.array, x_start);
     fc_json_array_append_number(y.array, y_start);
     fc_json_array_append_number(dw.array, x_end - x_start);
     fc_json_array_append_number(dh.array, y_end - y_start);
 
     bokeh_set_value(docs, "speed_qscore.source.data", source.value);
-    bokeh_set_number(
-        docs,
-        "speed_qscore.color_mapper.high",
+    bokeh_set_value(docs, "speed_qscore.hover_source.data",
+        build_metric_qscore_hover_source_data_value(&matrix, 1.0));
+    bokeh_set_number(docs, "speed_qscore.color_mapper.high",
         color_high > 0.0 ? color_high : 1.0);
     bokeh_set_range(docs, "speed_qscore.x_range", x_start, x_end);
     bokeh_set_range(docs, "speed_qscore.y_range", y_start, y_end);
@@ -1417,11 +1576,89 @@ static void update_speed_qscore_plot(
     fc_speed_qscore_2d_matrix_destroy(&matrix);
 }
 
+static void update_accuracy_qscore_plot(JSON_Value *docs,
+    const fc_accuracy_qscore_2d *model,
+    size_t barcode)
+{
+    if (!model || !fc_accuracy_qscore_2d_seen(model, barcode)) {
+        bokeh_set_plot_null_state(
+            docs, "accuracy_qscore",
+            "No alignment concordance vs quality data available", true);
+        bokeh_set_value(docs, "accuracy_qscore.source.data",
+            build_image_heatmap_empty_source_data_value());
+        bokeh_set_value(docs, "accuracy_qscore.hover_source.data",
+            build_metric_qscore_empty_hover_source_data_value());
+        bokeh_set_number(docs, "accuracy_qscore.color_mapper.high", 1.0);
+        bokeh_set_number(docs, "accuracy_qscore.width", 620.0);
+        bokeh_set_range(docs, "accuracy_qscore.x_range", 0.0,
+            FC_REPORT_QSCORE_DEFAULT_MAX);
+        bokeh_set_range(docs, "accuracy_qscore.y_range", 0.0,
+            FC_REPORT_QSCORE_DEFAULT_MAX);
+        return;
+    }
+
+    fc_accuracy_qscore_2d_matrix matrix = { 0 };
+    if (fc_accuracy_qscore_2d_materialize(model, barcode, &matrix) != 0 || !matrix.counts) {
+        fc_accuracy_qscore_2d_matrix_destroy(&matrix);
+        update_accuracy_qscore_plot(docs, NULL, barcode);
+        return;
+    }
+
+    bool any_positive = false;
+    size_t n = matrix.x_bins * matrix.qscore_bins;
+    for (size_t i = 0; i < n; i++) {
+        if (isfinite(matrix.counts[i]) && matrix.counts[i] > 0.0) {
+            any_positive = true;
+            break;
+        }
+    }
+    if (!any_positive) {
+        fc_accuracy_qscore_2d_matrix_destroy(&matrix);
+        update_accuracy_qscore_plot(docs, NULL, barcode);
+        return;
+    }
+
+    report_source source = bokeh_source_create();
+    report_column image = bokeh_source_add_array_column(&source, "image");
+    report_column x = bokeh_source_add_array_column(&source, "x");
+    report_column y = bokeh_source_add_array_column(&source, "y");
+    report_column dw = bokeh_source_add_array_column(&source, "dw");
+    report_column dh = bokeh_source_add_array_column(&source, "dh");
+    fc_json_array_append_value(image.array,
+        build_qts2d_image_ndarray_value(&matrix));
+    fc_json_array_append_number(x.array, matrix.x_lower);
+    fc_json_array_append_number(y.array, 0.0);
+    fc_json_array_append_number(dw.array, matrix.x_upper - matrix.x_lower);
+    fc_json_array_append_number(dh.array,
+        matrix.qscore_width * (double)matrix.qscore_bins);
+
+    double qscore_end = metric_qscore_axis_upper(&matrix);
+
+    bokeh_set_value(docs, "accuracy_qscore.source.data", source.value);
+    bokeh_set_value(docs, "accuracy_qscore.hover_source.data",
+        build_metric_qscore_hover_source_data_value(&matrix, 1.0));
+    bokeh_set_number(docs, "accuracy_qscore.color_mapper.high",
+        qts2d_color_high_quantile(&matrix));
+    bokeh_set_number(docs, "accuracy_qscore.width", 620.0);
+    bokeh_set_range(docs, "accuracy_qscore.x_range", 0.0, qscore_end);
+    bokeh_set_range(docs, "accuracy_qscore.y_range", 0.0, qscore_end);
+    bokeh_set_string(docs, "accuracy_qscore.null.text", "");
+    bokeh_set_bool(docs, "accuracy_qscore.null.visible", false);
+    bokeh_set_bool(docs, "accuracy_qscore.x_axis.visible", true);
+    bokeh_set_bool(docs, "accuracy_qscore.y_axis.visible", true);
+    bokeh_set_bool(docs, "accuracy_qscore.x_grid.visible", false);
+    bokeh_set_bool(docs, "accuracy_qscore.y_grid.visible", false);
+    bokeh_set_null(docs, "accuracy_qscore.toolbar_location");
+    bokeh_set_bool(docs, "accuracy_qscore.colorbar.visible", true);
+    fc_accuracy_qscore_2d_matrix_destroy(&matrix);
+}
+
 //
 // time plots
 //
 
-static void __attribute__((unused)) format_report_hours(double hours, char *buf, size_t size)
+static void __attribute__((unused)) format_report_hours(double hours, char *buf,
+    size_t size)
 {
     double rounded = round(hours);
     if (fabs(hours - rounded) < 1e-9) {
@@ -1445,7 +1682,8 @@ static void __attribute__((unused)) format_report_hours(double hours, char *buf,
     }
 }
 
-static void __attribute__((unused)) format_time_bin_label(const fc_time_bin_row *row, char *buf, size_t size)
+static void __attribute__((unused))
+format_time_bin_label(const fc_time_bin_row *row, char *buf, size_t size)
 {
     char start[32] = { 0 };
     char end[32] = { 0 };
@@ -1456,21 +1694,16 @@ static void __attribute__((unused)) format_time_bin_label(const fc_time_bin_row 
 
 static bool time_quantiles_valid(const fc_time_bin_quantiles *q)
 {
-    return q && isfinite(q->q05) && isfinite(q->q25) && isfinite(q->q50)
-        && isfinite(q->q75) && isfinite(q->q95);
+    return q && isfinite(q->q05) && isfinite(q->q25) && isfinite(q->q50) && isfinite(q->q75) && isfinite(q->q95);
 }
 
 static bool time_box_row_valid(const fc_time_bin_row *row, bool length)
 {
-    return row && row->read_count > 0
-        && time_quantiles_valid(length ? &row->length_quantiles : &row->qscore_quantiles);
+    return row && row->read_count > 0 && time_quantiles_valid(length ? &row->length_quantiles : &row->qscore_quantiles);
 }
 
-static void time_box_y_range(
-    const fc_time_bin_table *table,
-    bool length,
-    double *start,
-    double *end)
+static void time_box_y_range(const fc_time_bin_table *table, bool length,
+    double *start, double *end)
 {
     double y_min = INFINITY;
     double y_max = -INFINITY;
@@ -1515,17 +1748,20 @@ static void time_box_y_range(
     }
 }
 
-static void update_time_yield_plot(JSON_Value *docs, const fc_time_bin_table *table)
+static void update_time_yield_plot(JSON_Value *docs,
+    const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
     report_column x = bokeh_source_add_array_column(&source, "x");
     report_column y = bokeh_source_add_array_column(&source, "y");
+    report_column time_end_h = bokeh_source_add_array_column(&source, "time_end_h");
     double y_end = 0.0;
     bool has_points = false;
 
     if (table && table->n > 0) {
         fc_json_array_append_number(x.array, 0.0);
         fc_json_array_append_number(y.array, 0.0);
+        fc_json_array_append_number(time_end_h.array, 0.0);
         has_points = true;
     }
 
@@ -1535,12 +1771,15 @@ static void update_time_yield_plot(JSON_Value *docs, const fc_time_bin_table *ta
         y_end = (double)row->cumulative_base_count / 1e9;
         fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(y.array, y_end);
+        fc_json_array_append_number(time_end_h.array, end_h);
         has_points = true;
     }
 
     bokeh_set_value(docs, "time_yield.source.data", source.value);
 
-    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
+    double x_end = (table && table->n > 0)
+        ? table->rows[table->n - 1].time_bin_end_s / 3600.0
+        : 1.0;
     if (!isfinite(x_end) || x_end <= 0.0) {
         x_end = 1.0;
     }
@@ -1549,21 +1788,62 @@ static void update_time_yield_plot(JSON_Value *docs, const fc_time_bin_table *ta
     } else {
         y_end *= 1.1;
     }
+    report_hover_bands bands = report_hover_bands_create();
+    report_column hover_time_end_h = bokeh_source_add_array_column(&bands.source,
+        "time_end_h");
+    for (size_t i = 0; table && i < table->n; ++i) {
+        const fc_time_bin_row *row = &table->rows[i];
+        double start_h = row->time_bin_start_s / 3600.0;
+        double end_h = row->time_bin_end_s / 3600.0;
+        double value = (double)row->cumulative_base_count / 1e9;
+        report_hover_bands_append(&bands, (start_h + end_h) * 0.5, value,
+            end_h - start_h, y_end * 2.0);
+        fc_json_array_append_number(hover_time_end_h.array, end_h);
+    }
+    bokeh_set_value(docs, "time_yield.hover_source.data", bands.source.value);
     bokeh_set_range(docs, "time_yield.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_yield.y_range", 0.0, y_end);
     if (has_points) {
         bokeh_set_plot_data_state(docs, "time_yield", false, "right");
     } else {
         bokeh_set_plot_null_state(
-            docs, "time_yield", "No cumulative base yield through time data available", false);
+            docs, "time_yield",
+            "No cumulative base yield through time data available", false);
     }
 }
 
-static void update_time_yield_bin_plot(JSON_Value *docs, const fc_time_bin_table *table)
+static fc_json_value_t *build_time_bin_hover_source_data_value(
+    const fc_time_bin_table *table, bool base_yield, double y_max)
+{
+    report_hover_bands bands = report_hover_bands_create();
+    report_column elapsed_time_h = bokeh_source_add_array_column(&bands.source,
+        "elapsed time (hours)");
+    report_column value = bokeh_source_add_array_column(&bands.source,
+        base_yield ? "Base yield / Gbp" : "Read count");
+    for (size_t i = 0; table && i < table->n; ++i) {
+        const fc_time_bin_row *row = &table->rows[i];
+        double start_h = row->time_bin_start_s / 3600.0;
+        double end_h = row->time_bin_end_s / 3600.0;
+        double y_value = base_yield ? (double)row->base_count / 1e9
+                                    : (double)row->read_count;
+        report_hover_bands_append(&bands, (start_h + end_h) * 0.5,
+            y_value, end_h - start_h, y_max * 2.0);
+        fc_json_array_append_number(elapsed_time_h.array, end_h);
+        fc_json_array_append_number(value.array, y_value);
+    }
+    return bands.source.value;
+}
+
+static void update_time_yield_bin_plot(JSON_Value *docs,
+    const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
     report_column x = bokeh_source_add_array_column(&source, "x");
     report_column y = bokeh_source_add_array_column(&source, "y");
+    report_column elapsed_time_h = bokeh_source_add_array_column(&source,
+        "elapsed time (hours)");
+    report_column base_yield = bokeh_source_add_array_column(&source,
+        "Base yield / Gbp");
     double y_max = 0.0;
     bool has_points = false;
 
@@ -1576,6 +1856,8 @@ static void update_time_yield_bin_plot(JSON_Value *docs, const fc_time_bin_table
         }
         fc_json_array_append_number(x.array, start_h);
         fc_json_array_append_number(y.array, y_value);
+        fc_json_array_append_number(elapsed_time_h.array, start_h);
+        fc_json_array_append_number(base_yield.array, y_value);
         has_points = true;
     }
 
@@ -1584,12 +1866,16 @@ static void update_time_yield_bin_plot(JSON_Value *docs, const fc_time_bin_table
         double y_value = (double)table->rows[table->n - 1].base_count / 1e9;
         fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(y.array, y_value);
+        fc_json_array_append_number(elapsed_time_h.array, end_h);
+        fc_json_array_append_number(base_yield.array, y_value);
         has_points = true;
     }
 
     bokeh_set_value(docs, "time_yield_bin.source.data", source.value);
 
-    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
+    double x_end = (table && table->n > 0)
+        ? table->rows[table->n - 1].time_bin_end_s / 3600.0
+        : 1.0;
     if (!isfinite(x_end) || x_end <= 0.0) {
         x_end = 1.0;
     }
@@ -1598,21 +1884,26 @@ static void update_time_yield_bin_plot(JSON_Value *docs, const fc_time_bin_table
     } else {
         y_max *= 1.1;
     }
+    bokeh_set_value(docs, "time_yield_bin.hover_source.data",
+        build_time_bin_hover_source_data_value(table, true, y_max));
     bokeh_set_range(docs, "time_yield_bin.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_yield_bin.y_range", 0.0, y_max);
     if (has_points) {
         bokeh_set_plot_data_state(docs, "time_yield_bin", false, "right");
     } else {
-        bokeh_set_plot_null_state(
-            docs, "time_yield_bin", "No base yield through time data available", false);
+        bokeh_set_plot_null_state(docs, "time_yield_bin",
+            "No base yield through time data available",
+            false);
     }
 }
 
-static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *table)
+static void update_time_reads_plot(JSON_Value *docs,
+    const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
     report_column x = bokeh_source_add_array_column(&source, "x");
     report_column y = bokeh_source_add_array_column(&source, "y");
+    report_column time_end_h = bokeh_source_add_array_column(&source, "time_end_h");
     double y_end = 0.0;
     bool has_points = false;
 
@@ -1623,15 +1914,19 @@ static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *ta
         if (i == 0 && end_h > 0.0) {
             fc_json_array_append_number(x.array, 0.0);
             fc_json_array_append_number(y.array, 0.0);
+            fc_json_array_append_number(time_end_h.array, 0.0);
         }
         fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(y.array, y_end);
+        fc_json_array_append_number(time_end_h.array, end_h);
         has_points = true;
     }
 
     bokeh_set_value(docs, "time_reads.source.data", source.value);
 
-    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
+    double x_end = (table && table->n > 0)
+        ? table->rows[table->n - 1].time_bin_end_s / 3600.0
+        : 1.0;
     if (!isfinite(x_end) || x_end <= 0.0) {
         x_end = 1.0;
     }
@@ -1640,21 +1935,40 @@ static void update_time_reads_plot(JSON_Value *docs, const fc_time_bin_table *ta
     } else {
         y_end *= 1.1;
     }
+    report_hover_bands bands = report_hover_bands_create();
+    report_column hover_time_end_h = bokeh_source_add_array_column(&bands.source,
+        "time_end_h");
+    for (size_t i = 0; table && i < table->n; ++i) {
+        const fc_time_bin_row *row = &table->rows[i];
+        double start_h = row->time_bin_start_s / 3600.0;
+        double end_h = row->time_bin_end_s / 3600.0;
+        double value = (double)row->cumulative_read_count;
+        report_hover_bands_append(&bands, (start_h + end_h) * 0.5, value,
+            end_h - start_h, y_end * 2.0);
+        fc_json_array_append_number(hover_time_end_h.array, end_h);
+    }
+    bokeh_set_value(docs, "time_reads.hover_source.data", bands.source.value);
     bokeh_set_range(docs, "time_reads.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_reads.y_range", 0.0, y_end);
     if (has_points) {
         bokeh_set_plot_data_state(docs, "time_reads", false, "right");
     } else {
         bokeh_set_plot_null_state(
-            docs, "time_reads", "No cumulative read count through time data available", false);
+            docs, "time_reads",
+            "No cumulative read count through time data available", false);
     }
 }
 
-static void update_time_reads_bin_plot(JSON_Value *docs, const fc_time_bin_table *table)
+static void update_time_reads_bin_plot(JSON_Value *docs,
+    const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
     report_column x = bokeh_source_add_array_column(&source, "x");
     report_column y = bokeh_source_add_array_column(&source, "y");
+    report_column elapsed_time_h = bokeh_source_add_array_column(&source,
+        "elapsed time (hours)");
+    report_column read_count = bokeh_source_add_array_column(&source,
+        "Read count");
     double y_max = 0.0;
     bool has_points = false;
 
@@ -1667,6 +1981,8 @@ static void update_time_reads_bin_plot(JSON_Value *docs, const fc_time_bin_table
         }
         fc_json_array_append_number(x.array, start_h);
         fc_json_array_append_number(y.array, y_value);
+        fc_json_array_append_number(elapsed_time_h.array, start_h);
+        fc_json_array_append_number(read_count.array, y_value);
         has_points = true;
     }
 
@@ -1675,12 +1991,16 @@ static void update_time_reads_bin_plot(JSON_Value *docs, const fc_time_bin_table
         double y_value = (double)table->rows[table->n - 1].read_count;
         fc_json_array_append_number(x.array, end_h);
         fc_json_array_append_number(y.array, y_value);
+        fc_json_array_append_number(elapsed_time_h.array, end_h);
+        fc_json_array_append_number(read_count.array, y_value);
         has_points = true;
     }
 
     bokeh_set_value(docs, "time_reads_bin.source.data", source.value);
 
-    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
+    double x_end = (table && table->n > 0)
+        ? table->rows[table->n - 1].time_bin_end_s / 3600.0
+        : 1.0;
     if (!isfinite(x_end) || x_end <= 0.0) {
         x_end = 1.0;
     }
@@ -1689,17 +2009,82 @@ static void update_time_reads_bin_plot(JSON_Value *docs, const fc_time_bin_table
     } else {
         y_max *= 1.1;
     }
+    bokeh_set_value(docs, "time_reads_bin.hover_source.data",
+        build_time_bin_hover_source_data_value(table, false, y_max));
     bokeh_set_range(docs, "time_reads_bin.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_reads_bin.y_range", 0.0, y_max);
     if (has_points) {
         bokeh_set_plot_data_state(docs, "time_reads_bin", false, "right");
     } else {
-        bokeh_set_plot_null_state(
-            docs, "time_reads_bin", "No read count through time data available", false);
+        bokeh_set_plot_null_state(docs, "time_reads_bin",
+            "No read count through time data available",
+            false);
     }
 }
 
-static void update_time_length_ribbon_plot(JSON_Value *docs, const fc_time_bin_table *table)
+static bool time_speed_box_row_valid(const fc_time_bin_row *row);
+
+typedef enum {
+    REPORT_TIME_RIBBON_LENGTH,
+    REPORT_TIME_RIBBON_QUALITY,
+    REPORT_TIME_RIBBON_ACCURACY,
+    REPORT_TIME_RIBBON_SPEED,
+} report_time_ribbon;
+
+static fc_json_value_t *build_time_ribbon_hover_source_data_value(
+    const fc_time_bin_table *table, report_time_ribbon ribbon,
+    const char *metric_name, double y_start, double y_end)
+{
+    report_hover_bands bands = report_hover_bands_create();
+    report_column elapsed_time = bokeh_source_add_array_column(&bands.source,
+        "elapsed time (hours)");
+    report_column read_count = bokeh_source_add_array_column(&bands.source,
+        "read_count");
+    report_column q05 = bokeh_source_add_array_column(&bands.source, "q05");
+    report_column q25 = bokeh_source_add_array_column(&bands.source, "q25");
+    report_column q50 = bokeh_source_add_array_column(&bands.source, metric_name);
+    report_column q75 = bokeh_source_add_array_column(&bands.source, "q75");
+    report_column q95 = bokeh_source_add_array_column(&bands.source, "q95");
+    double height = fmax((y_end - y_start) * 2.0, 1.0);
+
+    for (size_t i = 0; table && i < table->n; ++i) {
+        const fc_time_bin_row *row = &table->rows[i];
+        const fc_time_bin_quantiles *q = NULL;
+        double scale = 1.0;
+        size_t count = row->read_count;
+        if (ribbon == REPORT_TIME_RIBBON_LENGTH && time_box_row_valid(row, true)) {
+            q = &row->length_quantiles;
+            scale = 1000.0;
+        } else if (ribbon == REPORT_TIME_RIBBON_QUALITY && time_box_row_valid(row, false)) {
+            q = &row->qscore_quantiles;
+        } else if (ribbon == REPORT_TIME_RIBBON_ACCURACY
+            && row->accuracy_read_count > 0
+            && time_quantiles_valid(&row->accuracy_quantiles)) {
+            q = &row->accuracy_quantiles;
+            count = row->accuracy_read_count;
+        } else if (ribbon == REPORT_TIME_RIBBON_SPEED && time_speed_box_row_valid(row)) {
+            q = &row->speed_quantiles;
+        }
+        if (!q) {
+            continue;
+        }
+        double start_h = row->time_bin_start_s / 3600.0;
+        double end_h = row->time_bin_end_s / 3600.0;
+        report_hover_bands_append(&bands, (start_h + end_h) * 0.5,
+            q->q50 / scale, end_h - start_h, height);
+        fc_json_array_append_number(elapsed_time.array, end_h);
+        fc_json_array_append_number(read_count.array, (double)count);
+        fc_json_array_append_number(q05.array, q->q05 / scale);
+        fc_json_array_append_number(q25.array, q->q25 / scale);
+        fc_json_array_append_number(q50.array, q->q50 / scale);
+        fc_json_array_append_number(q75.array, q->q75 / scale);
+        fc_json_array_append_number(q95.array, q->q95 / scale);
+    }
+    return bands.source.value;
+}
+
+static void update_time_length_ribbon_plot(JSON_Value *docs,
+    const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
     report_column x = bokeh_source_add_array_column(&source, "elapsed time (hours)");
@@ -1746,7 +2131,9 @@ static void update_time_length_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
         has_points = true;
     }
 
-    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
+    double x_end = (table && table->n > 0)
+        ? table->rows[table->n - 1].time_bin_end_s / 3600.0
+        : 1.0;
     double y_start = 0.0;
     double y_end = 1.0;
     time_box_y_range(table, true, &y_start, &y_end);
@@ -1754,17 +2141,22 @@ static void update_time_length_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
         x_end = 1.0;
     }
     bokeh_set_value(docs, "time_length.source.data", source.value);
+    bokeh_set_value(docs, "time_length.hover_source.data",
+        build_time_ribbon_hover_source_data_value(table,
+            REPORT_TIME_RIBBON_LENGTH, "Read length / kb", y_start, y_end));
     bokeh_set_range(docs, "time_length.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_length.y_range", y_start, y_end);
     if (has_points) {
         bokeh_set_plot_data_state(docs, "time_length", false, "right");
     } else {
-        bokeh_set_plot_null_state(
-            docs, "time_length", "No read length through time data available", false);
+        bokeh_set_plot_null_state(docs, "time_length",
+            "No read length through time data available",
+            false);
     }
 }
 
-static void update_time_qscore_ribbon_plot(JSON_Value *docs, const fc_time_bin_table *table)
+static void update_time_qscore_ribbon_plot(JSON_Value *docs,
+    const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
     report_column x = bokeh_source_add_array_column(&source, "elapsed time (hours)");
@@ -1806,7 +2198,9 @@ static void update_time_qscore_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
         has_points = true;
     }
 
-    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
+    double x_end = (table && table->n > 0)
+        ? table->rows[table->n - 1].time_bin_end_s / 3600.0
+        : 1.0;
     double y_start = 0.0;
     double y_end = 1.0;
     time_box_y_range(table, false, &y_start, &y_end);
@@ -1814,13 +2208,67 @@ static void update_time_qscore_ribbon_plot(JSON_Value *docs, const fc_time_bin_t
         x_end = 1.0;
     }
     bokeh_set_value(docs, "time_qscore.source.data", source.value);
+    bokeh_set_value(docs, "time_qscore.hover_source.data",
+        build_time_ribbon_hover_source_data_value(table,
+            REPORT_TIME_RIBBON_QUALITY, "Quality", y_start, y_end));
     bokeh_set_range(docs, "time_qscore.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_qscore.y_range", y_start, y_end);
     if (has_points) {
         bokeh_set_plot_data_state(docs, "time_qscore", false, "right");
     } else {
+        bokeh_set_plot_null_state(docs, "time_qscore",
+            "No quality through time data available", false);
+    }
+}
+
+static void update_time_accuracy_ribbon_plot(JSON_Value *docs,
+    const fc_time_bin_table *table)
+{
+    report_source source = bokeh_source_create();
+    report_column x = bokeh_source_add_array_column(&source, "elapsed time (hours)");
+    report_column read_count = bokeh_source_add_array_column(&source, "read_count");
+    report_column q05 = bokeh_source_add_array_column(&source, "q05");
+    report_column q25 = bokeh_source_add_array_column(&source, "q25");
+    report_column q50 = bokeh_source_add_array_column(&source, "Alignment Concordance / %");
+    report_column q75 = bokeh_source_add_array_column(&source, "q75");
+    report_column q95 = bokeh_source_add_array_column(&source, "q95");
+    bool has_points = false;
+
+    for (size_t i = 0; table && i < table->n; i++) {
+        const fc_time_bin_row *row = &table->rows[i];
+        if (row->accuracy_read_count == 0 || !time_quantiles_valid(&row->accuracy_quantiles)) {
+            continue;
+        }
+        const fc_time_bin_quantiles *q = &row->accuracy_quantiles;
+        fc_json_array_append_number(x.array, row->time_bin_end_s / 3600.0);
+        fc_json_array_append_number(read_count.array,
+            (double)row->accuracy_read_count);
+        fc_json_array_append_number(q05.array, q->q05);
+        fc_json_array_append_number(q25.array, q->q25);
+        fc_json_array_append_number(q50.array, q->q50);
+        fc_json_array_append_number(q75.array, q->q75);
+        fc_json_array_append_number(q95.array, q->q95);
+        has_points = true;
+    }
+
+    double x_end = (table && table->n > 0)
+        ? table->rows[table->n - 1].time_bin_end_s / 3600.0
+        : 1.0;
+    if (!isfinite(x_end) || x_end <= 0.0) {
+        x_end = 1.0;
+    }
+    bokeh_set_value(docs, "time_accuracy.source.data", source.value);
+    bokeh_set_value(docs, "time_accuracy.hover_source.data",
+        build_time_ribbon_hover_source_data_value(table,
+            REPORT_TIME_RIBBON_ACCURACY, "Alignment Concordance / %", 80.0, 100.0));
+    bokeh_set_range(docs, "time_accuracy.x_range", 0.0, x_end);
+    bokeh_set_range(docs, "time_accuracy.y_range", 80.0, 100.0);
+    if (has_points) {
+        bokeh_set_plot_data_state(docs, "time_accuracy", false, "right");
+    } else {
         bokeh_set_plot_null_state(
-            docs, "time_qscore", "No quality through time data available", false);
+            docs, "time_accuracy",
+            "No alignment concordance through time data available", false);
     }
 }
 
@@ -1829,10 +2277,8 @@ static bool time_speed_box_row_valid(const fc_time_bin_row *row)
     return row && row->read_count > 0 && time_quantiles_valid(&row->speed_quantiles);
 }
 
-static void time_speed_box_y_range(
-    const fc_time_bin_table *table,
-    double *start,
-    double *end)
+static void time_speed_box_y_range(const fc_time_bin_table *table,
+    double *start, double *end)
 {
     double y_min = INFINITY;
     double y_max = -INFINITY;
@@ -1874,7 +2320,8 @@ static void time_speed_box_y_range(
     }
 }
 
-static void update_time_speed_ribbon_plot(JSON_Value *docs, const fc_time_bin_table *table)
+static void update_time_speed_ribbon_plot(JSON_Value *docs,
+    const fc_time_bin_table *table)
 {
     report_source source = bokeh_source_create();
     report_column x = bokeh_source_add_array_column(&source, "elapsed time (hours)");
@@ -1916,7 +2363,9 @@ static void update_time_speed_ribbon_plot(JSON_Value *docs, const fc_time_bin_ta
         has_points = true;
     }
 
-    double x_end = (table && table->n > 0) ? table->rows[table->n - 1].time_bin_end_s / 3600.0 : 1.0;
+    double x_end = (table && table->n > 0)
+        ? table->rows[table->n - 1].time_bin_end_s / 3600.0
+        : 1.0;
     double y_start = 0.0;
     double y_end = 1.0;
     time_speed_box_y_range(table, &y_start, &y_end);
@@ -1924,13 +2373,17 @@ static void update_time_speed_ribbon_plot(JSON_Value *docs, const fc_time_bin_ta
         x_end = 1.0;
     }
     bokeh_set_value(docs, "time_speed.source.data", source.value);
+    bokeh_set_value(docs, "time_speed.hover_source.data",
+        build_time_ribbon_hover_source_data_value(table,
+            REPORT_TIME_RIBBON_SPEED, "Translocation speed / bp/s", y_start, y_end));
     bokeh_set_range(docs, "time_speed.x_range", 0.0, x_end);
     bokeh_set_range(docs, "time_speed.y_range", y_start, y_end);
     if (has_points) {
         bokeh_set_plot_data_state(docs, "time_speed", false, "right");
     } else {
         bokeh_set_plot_null_state(
-            docs, "time_speed", "No translocation speed through time data available", false);
+            docs, "time_speed",
+            "No translocation speed through time data available", false);
     }
 }
 
@@ -1944,22 +2397,33 @@ static size_t report_channel_cell_index(size_t channel, size_t mux)
 }
 
 static void report_channel_accumulate_lookup(
-    double *read_lookup,
-    double *base_lookup,
-    const fc_channel_summary_row *row)
+    double *read_lookup, double *base_lookup, double *quality_count_lookup,
+    double *quality_sum_lookup, double *concordance_count_lookup,
+    double *concordance_sum_lookup, const fc_channel_summary_row *row)
 {
-    if (row->channel == 0 || row->channel > FC_CHANNEL_SUMMARY_MAX_CHANNEL
-        || row->mux > FC_CHANNEL_SUMMARY_MAX_MUX) {
+    if (row->channel == 0 || row->channel > FC_CHANNEL_SUMMARY_MAX_CHANNEL || row->mux > FC_CHANNEL_SUMMARY_MAX_MUX) {
         return;
     }
 
     if (row->mux == FC_CHANNEL_SUMMARY_UNKNOWN_MUX) {
         double read_share = (double)row->read_count / (double)FC_CHANNEL_SUMMARY_MAX_MUX;
         double base_share = (double)row->base_count / (double)FC_CHANNEL_SUMMARY_MAX_MUX;
+        double quality_count_share = (double)row->quality_read_count / (double)FC_CHANNEL_SUMMARY_MAX_MUX;
+        double quality_sum_share = row->quality_read_count > 0
+            ? row->mean_quality * quality_count_share
+            : 0.0;
+        double concordance_count_share = (double)row->concordance_read_count / (double)FC_CHANNEL_SUMMARY_MAX_MUX;
+        double concordance_sum_share = row->concordance_read_count > 0
+            ? row->mean_concordance_qscore * concordance_count_share
+            : 0.0;
         for (size_t mux = 1; mux <= FC_CHANNEL_SUMMARY_MAX_MUX; mux++) {
             size_t idx = report_channel_cell_index(row->channel, mux);
             read_lookup[idx] += read_share;
             base_lookup[idx] += base_share;
+            quality_count_lookup[idx] += quality_count_share;
+            quality_sum_lookup[idx] += quality_sum_share;
+            concordance_count_lookup[idx] += concordance_count_share;
+            concordance_sum_lookup[idx] += concordance_sum_share;
         }
         return;
     }
@@ -1967,6 +2431,14 @@ static void report_channel_accumulate_lookup(
     size_t idx = report_channel_cell_index(row->channel, row->mux);
     read_lookup[idx] += (double)row->read_count;
     base_lookup[idx] += (double)row->base_count;
+    quality_count_lookup[idx] += (double)row->quality_read_count;
+    if (row->quality_read_count > 0) {
+        quality_sum_lookup[idx] += row->mean_quality * (double)row->quality_read_count;
+    }
+    concordance_count_lookup[idx] += (double)row->concordance_read_count;
+    if (row->concordance_read_count > 0) {
+        concordance_sum_lookup[idx] += row->mean_concordance_qscore * (double)row->concordance_read_count;
+    }
 }
 
 static fc_json_value_t *build_channel_empty_source_data_value(void)
@@ -2016,6 +2488,15 @@ static double channel_color_high_quantile(const double *values, size_t n)
     return (isfinite(high) && high > 0.0) ? high : 1.0;
 }
 
+static double channel_color_high_round_up(double high)
+{
+    const double step = 5.0;
+    if (!isfinite(high) || high <= 0.0) {
+        return step;
+    }
+    return ceil(high / step) * step;
+}
+
 static double channel_plot_width(double aspect_ratio)
 {
     // keep this in sync with the python channel-heatmap sizing contract
@@ -2028,16 +2509,80 @@ static double channel_plot_width(double aspect_ratio)
     return width;
 }
 
-static void update_channel_reads_plot(
-    JSON_Value *docs,
+typedef enum {
+    FC_CHANNEL_MAP_MEAN_LENGTH,
+    FC_CHANNEL_MAP_MEAN_QUALITY,
+    FC_CHANNEL_MAP_MEAN_CONCORDANCE
+} fc_channel_map_metric;
+
+static void channel_plot_key(char *key, size_t key_size, const char *plot,
+    const char *property)
+{
+    FC_SNPRINTF_CHECK(key, key_size, "%s.%s", plot, property);
+}
+
+static void channel_plot_set_value(JSON_Value *docs, const char *plot,
+    const char *property,
+    fc_json_value_t *value)
+{
+    char key[128];
+    channel_plot_key(key, sizeof(key), plot, property);
+    bokeh_set_value(docs, key, value);
+}
+
+static void channel_plot_set_number(JSON_Value *docs, const char *plot,
+    const char *property, double value)
+{
+    char key[128];
+    channel_plot_key(key, sizeof(key), plot, property);
+    bokeh_set_number(docs, key, value);
+}
+
+static void channel_plot_set_string(JSON_Value *docs, const char *plot,
+    const char *property, const char *value)
+{
+    char key[128];
+    channel_plot_key(key, sizeof(key), plot, property);
+    bokeh_set_string(docs, key, value);
+}
+
+static void channel_plot_set_bool(JSON_Value *docs, const char *plot,
+    const char *property, bool value)
+{
+    char key[128];
+    channel_plot_key(key, sizeof(key), plot, property);
+    bokeh_set_bool(docs, key, value);
+}
+
+static void channel_plot_set_null(JSON_Value *docs, const char *plot,
+    const char *property)
+{
+    char key[128];
+    channel_plot_key(key, sizeof(key), plot, property);
+    bokeh_set_null(docs, key);
+}
+
+static void channel_plot_set_range(JSON_Value *docs, const char *plot,
+    const char *axis, double start, double end)
+{
+    char property[32];
+    FC_SNPRINTF_CHECK(property, sizeof(property), "%s_range", axis);
+    char key[128];
+    channel_plot_key(key, sizeof(key), plot, property);
+    bokeh_set_range(docs, key, start, end);
+}
+
+static void update_channel_reads_plot(JSON_Value *docs,
     const fc_channel_summary *model,
     size_t barcode)
 {
     if (!model || !fc_channel_summary_seen(model, barcode)) {
-        bokeh_set_plot_null_state(
-            docs, "channel_reads", "No channel occupancy data available", true);
-        bokeh_set_value(docs, "channel_reads.source.data", build_channel_empty_source_data_value());
-        bokeh_set_value(docs, "channel_reads.hover_source.data", build_channel_empty_hover_source_data_value());
+        bokeh_set_plot_null_state(docs, "channel_reads",
+            "No channel occupancy data available", true);
+        bokeh_set_value(docs, "channel_reads.source.data",
+            build_channel_empty_source_data_value());
+        bokeh_set_value(docs, "channel_reads.hover_source.data",
+            build_channel_empty_hover_source_data_value());
         bokeh_set_string(docs, "channel_reads.subtitle.text", "");
         bokeh_set_number(docs, "channel_reads.color_mapper.high", 1.0);
         bokeh_set_number(docs, "channel_reads.width", 500.0);
@@ -2064,8 +2609,18 @@ static void update_channel_reads_plot(
     size_t lookup_n = FC_CHANNEL_SUMMARY_MAX_CHANNEL * FC_CHANNEL_SUMMARY_MUX_SLOTS;
     double *read_lookup = fc_alloc(lookup_n, sizeof(*read_lookup), "report channel read lookup");
     double *base_lookup = fc_alloc(lookup_n, sizeof(*base_lookup), "report channel base lookup");
+    double *quality_count_lookup = fc_alloc(
+        lookup_n, sizeof(*quality_count_lookup), "report channel quality counts");
+    double *quality_sum_lookup = fc_alloc(lookup_n, sizeof(*quality_sum_lookup),
+        "report channel quality sums");
+    double *concordance_count_lookup = fc_alloc(lookup_n, sizeof(*concordance_count_lookup),
+        "report channel concordance counts");
+    double *concordance_sum_lookup = fc_alloc(lookup_n, sizeof(*concordance_sum_lookup),
+        "report channel concordance sums");
     for (size_t i = 0; i < table.n; i++) {
-        report_channel_accumulate_lookup(read_lookup, base_lookup, &table.rows[i]);
+        report_channel_accumulate_lookup(
+            read_lookup, base_lookup, quality_count_lookup, quality_sum_lookup,
+            concordance_count_lookup, concordance_sum_lookup, &table.rows[i]);
     }
 
     size_t n_cells = map->row_count * FC_CHANNEL_SUMMARY_MAX_MUX;
@@ -2099,12 +2654,8 @@ static void update_channel_reads_plot(
             double base_value = base_lookup[idx];
             double plot_x = 0.0;
             double plot_y = 0.0;
-            fc_channel_map_project(
-                map,
-                (double)row->x[mx - 1],
-                (double)row->y[mx - 1],
-                &plot_x,
-                &plot_y);
+            fc_channel_map_project(map, (double)row->x[mx - 1],
+                (double)row->y[mx - 1], &plot_x, &plot_y);
             size_t x_idx = (size_t)llround(plot_x - map->x_min);
             size_t y_idx = (size_t)llround(plot_y - map->y_min);
             image[y_idx * x_bins + x_idx] = value;
@@ -2124,10 +2675,7 @@ static void update_channel_reads_plot(
     }
 
     char subtitle[160];
-    FC_SNPRINTF_CHECK(
-        subtitle,
-        sizeof(subtitle),
-        "%zu sequencing wells",
+    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "%zu sequencing wells",
         occupied);
 
     report_source source = bokeh_source_create();
@@ -2136,7 +2684,8 @@ static void update_channel_reads_plot(
     report_column y = bokeh_source_add_array_column(&source, "y");
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
-    fc_json_array_append_value(image_col.array, fc_json_bokeh_ndarray_f64(image, y_bins, x_bins));
+    fc_json_array_append_value(image_col.array,
+        fc_json_bokeh_ndarray_f64(image, y_bins, x_bins));
     fc_json_array_append_number(x.array, map->x_min - 0.5);
     fc_json_array_append_number(y.array, map->y_min - 0.5);
     fc_json_array_append_number(dw.array, (double)x_bins);
@@ -2145,11 +2694,15 @@ static void update_channel_reads_plot(
     bokeh_set_value(docs, "channel_reads.source.data", source.value);
     bokeh_set_value(docs, "channel_reads.hover_source.data", hover_source.value);
     bokeh_set_string(docs, "channel_reads.subtitle.text", subtitle);
-    bokeh_set_number(docs, "channel_reads.color_mapper.high", channel_color_high_quantile(color_values, n_cells));
+    bokeh_set_number(docs, "channel_reads.color_mapper.high",
+        channel_color_high_quantile(color_values, n_cells));
     double aspect_ratio = ((map->x_max - map->x_min) + 1.0) / ((map->y_max - map->y_min) + 1.0);
-    bokeh_set_number(docs, "channel_reads.width", channel_plot_width(aspect_ratio));
-    bokeh_set_range(docs, "channel_reads.x_range", map->x_min - 0.5, map->x_max + 0.5);
-    bokeh_set_range(docs, "channel_reads.y_range", map->y_min - 0.5, map->y_max + 0.5);
+    bokeh_set_number(docs, "channel_reads.width",
+        channel_plot_width(aspect_ratio));
+    bokeh_set_range(docs, "channel_reads.x_range", map->x_min - 0.5,
+        map->x_max + 0.5);
+    bokeh_set_range(docs, "channel_reads.y_range", map->y_min - 0.5,
+        map->y_max + 0.5);
     bokeh_set_string(docs, "channel_reads.null.text", "");
     bokeh_set_bool(docs, "channel_reads.null.visible", false);
     bokeh_set_bool(docs, "channel_reads.x_axis.visible", false);
@@ -2163,58 +2716,72 @@ static void update_channel_reads_plot(
     free(color_values);
     free(read_lookup);
     free(base_lookup);
+    free(quality_count_lookup);
+    free(quality_sum_lookup);
+    free(concordance_count_lookup);
+    free(concordance_sum_lookup);
     fc_channel_summary_table_destroy(&table);
 }
 
-static void update_channel_bases_plot(
-    JSON_Value *docs,
+static double update_channel_mean_plot(JSON_Value *docs,
     const fc_channel_summary *model,
-    size_t barcode)
+    size_t barcode, const char *plot,
+    fc_channel_map_metric metric)
 {
     if (!model || !fc_channel_summary_seen(model, barcode)) {
-        bokeh_set_plot_null_state(
-            docs, "channel_bases", "No channel occupancy data available", true);
-        bokeh_set_value(docs, "channel_bases.source.data", build_channel_empty_source_data_value());
-        bokeh_set_value(docs, "channel_bases.hover_source.data", build_channel_empty_hover_source_data_value());
-        bokeh_set_string(docs, "channel_bases.subtitle.text", "");
-        bokeh_set_number(docs, "channel_bases.color_mapper.high", 1.0);
-        bokeh_set_number(docs, "channel_bases.width", 500.0);
-        bokeh_set_range(docs, "channel_bases.x_range", 0.0, 1.0);
-        bokeh_set_range(docs, "channel_bases.y_range", 0.0, 1.0);
-        return;
+        bokeh_set_plot_null_state(docs, plot, "No channel occupancy data available",
+            true);
+        channel_plot_set_value(docs, plot, "source.data",
+            build_channel_empty_source_data_value());
+        channel_plot_set_value(docs, plot, "hover_source.data",
+            build_channel_empty_hover_source_data_value());
+        channel_plot_set_string(docs, plot, "subtitle.text", "");
+        channel_plot_set_number(docs, plot, "color_mapper.high", 1.0);
+        channel_plot_set_number(docs, plot, "width", 500.0);
+        channel_plot_set_range(docs, plot, "x", 0.0, 1.0);
+        channel_plot_set_range(docs, plot, "y", 0.0, 1.0);
+        return 1.0;
     }
 
     fc_channel_summary_table table = { 0 };
     if (fc_channel_summary_materialize_sparse(model, barcode, &table) != 0 || table.n == 0) {
         fc_channel_summary_table_destroy(&table);
-        update_channel_bases_plot(docs, NULL, barcode);
-        return;
+        return update_channel_mean_plot(docs, NULL, barcode, plot, metric);
     }
 
     const fc_channel_map *map = fc_channel_map_get(
         fc_channel_map_device_for_channel(table.highest_channel));
     if (!map || !map->rows || map->row_count == 0) {
         fc_channel_summary_table_destroy(&table);
-        update_channel_bases_plot(docs, NULL, barcode);
-        return;
+        return update_channel_mean_plot(docs, NULL, barcode, plot, metric);
     }
 
     size_t lookup_n = FC_CHANNEL_SUMMARY_MAX_CHANNEL * FC_CHANNEL_SUMMARY_MUX_SLOTS;
     double *read_lookup = fc_alloc(lookup_n, sizeof(*read_lookup), "report channel read lookup");
     double *base_lookup = fc_alloc(lookup_n, sizeof(*base_lookup), "report channel base lookup");
+    double *quality_count_lookup = fc_alloc(
+        lookup_n, sizeof(*quality_count_lookup), "report channel quality counts");
+    double *quality_sum_lookup = fc_alloc(lookup_n, sizeof(*quality_sum_lookup),
+        "report channel quality sums");
+    double *concordance_count_lookup = fc_alloc(lookup_n, sizeof(*concordance_count_lookup),
+        "report channel concordance counts");
+    double *concordance_sum_lookup = fc_alloc(lookup_n, sizeof(*concordance_sum_lookup),
+        "report channel concordance sums");
     for (size_t i = 0; i < table.n; i++) {
-        report_channel_accumulate_lookup(read_lookup, base_lookup, &table.rows[i]);
+        report_channel_accumulate_lookup(
+            read_lookup, base_lookup, quality_count_lookup, quality_sum_lookup,
+            concordance_count_lookup, concordance_sum_lookup, &table.rows[i]);
     }
 
     size_t n_cells = map->row_count * FC_CHANNEL_SUMMARY_MAX_MUX;
-    double *color_values = fc_alloc(n_cells, sizeof(*color_values), "report channel base colors");
+    double *color_values = fc_alloc(n_cells, sizeof(*color_values), "report channel mean colors");
     size_t x_bins = (size_t)llround(map->x_max - map->x_min) + 1;
     size_t y_bins = (size_t)llround(map->y_max - map->y_min) + 1;
     if (x_bins != 0 && y_bins > SIZE_MAX / x_bins) {
         FC_LOG_FATAL("Channel occupancy report image is too large.");
     }
     size_t image_n = x_bins * y_bins;
-    double *image = fc_alloc(image_n, sizeof(*image), "report channel base image");
+    double *image = fc_alloc(image_n, sizeof(*image), "report channel mean image");
     for (size_t i = 0; i < image_n; i++) {
         image[i] = NAN;
     }
@@ -2234,15 +2801,18 @@ static void update_channel_bases_plot(
         for (size_t mx = 1; mx <= FC_CHANNEL_SUMMARY_MAX_MUX; mx++) {
             size_t idx = report_channel_cell_index((size_t)row->channel, mx);
             double read_value = read_lookup[idx];
-            double value = base_lookup[idx] / 1e6;
+            double value = 0.0;
+            if (metric == FC_CHANNEL_MAP_MEAN_LENGTH && read_value > 0.0) {
+                value = base_lookup[idx] / read_value / 1000.0;
+            } else if (metric == FC_CHANNEL_MAP_MEAN_QUALITY && quality_count_lookup[idx] > 0.0) {
+                value = quality_sum_lookup[idx] / quality_count_lookup[idx];
+            } else if (metric == FC_CHANNEL_MAP_MEAN_CONCORDANCE && concordance_count_lookup[idx] > 0.0) {
+                value = concordance_sum_lookup[idx] / concordance_count_lookup[idx];
+            }
             double plot_x = 0.0;
             double plot_y = 0.0;
-            fc_channel_map_project(
-                map,
-                (double)row->x[mx - 1],
-                (double)row->y[mx - 1],
-                &plot_x,
-                &plot_y);
+            fc_channel_map_project(map, (double)row->x[mx - 1],
+                (double)row->y[mx - 1], &plot_x, &plot_y);
             size_t x_idx = (size_t)llround(plot_x - map->x_min);
             size_t y_idx = (size_t)llround(plot_y - map->y_min);
             image[y_idx * x_bins + x_idx] = value;
@@ -2262,10 +2832,7 @@ static void update_channel_bases_plot(
     }
 
     char subtitle[160];
-    FC_SNPRINTF_CHECK(
-        subtitle,
-        sizeof(subtitle),
-        "%zu sequencing wells",
+    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "%zu sequencing wells",
         occupied);
 
     report_source source = bokeh_source_create();
@@ -2274,34 +2841,42 @@ static void update_channel_bases_plot(
     report_column y = bokeh_source_add_array_column(&source, "y");
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
-    fc_json_array_append_value(image_col.array, fc_json_bokeh_ndarray_f64(image, y_bins, x_bins));
+    fc_json_array_append_value(image_col.array,
+        fc_json_bokeh_ndarray_f64(image, y_bins, x_bins));
     fc_json_array_append_number(x.array, map->x_min - 0.5);
     fc_json_array_append_number(y.array, map->y_min - 0.5);
     fc_json_array_append_number(dw.array, (double)x_bins);
     fc_json_array_append_number(dh.array, (double)y_bins);
 
-    bokeh_set_value(docs, "channel_bases.source.data", source.value);
-    bokeh_set_value(docs, "channel_bases.hover_source.data", hover_source.value);
-    bokeh_set_string(docs, "channel_bases.subtitle.text", subtitle);
-    bokeh_set_number(docs, "channel_bases.color_mapper.high", channel_color_high_quantile(color_values, n_cells));
+    channel_plot_set_value(docs, plot, "source.data", source.value);
+    channel_plot_set_value(docs, plot, "hover_source.data", hover_source.value);
+    channel_plot_set_string(docs, plot, "subtitle.text", subtitle);
+    double color_high = channel_color_high_quantile(color_values, n_cells);
+    channel_plot_set_number(docs, plot, "color_mapper.high", color_high);
     double aspect_ratio = ((map->x_max - map->x_min) + 1.0) / ((map->y_max - map->y_min) + 1.0);
-    bokeh_set_number(docs, "channel_bases.width", channel_plot_width(aspect_ratio));
-    bokeh_set_range(docs, "channel_bases.x_range", map->x_min - 0.5, map->x_max + 0.5);
-    bokeh_set_range(docs, "channel_bases.y_range", map->y_min - 0.5, map->y_max + 0.5);
-    bokeh_set_string(docs, "channel_bases.null.text", "");
-    bokeh_set_bool(docs, "channel_bases.null.visible", false);
-    bokeh_set_bool(docs, "channel_bases.x_axis.visible", false);
-    bokeh_set_bool(docs, "channel_bases.y_axis.visible", false);
-    bokeh_set_bool(docs, "channel_bases.x_grid.visible", false);
-    bokeh_set_bool(docs, "channel_bases.y_grid.visible", false);
-    bokeh_set_null(docs, "channel_bases.toolbar_location");
-    bokeh_set_bool(docs, "channel_bases.colorbar.visible", true);
+    channel_plot_set_number(docs, plot, "width",
+        channel_plot_width(aspect_ratio));
+    channel_plot_set_range(docs, plot, "x", map->x_min - 0.5, map->x_max + 0.5);
+    channel_plot_set_range(docs, plot, "y", map->y_min - 0.5, map->y_max + 0.5);
+    channel_plot_set_string(docs, plot, "null.text", "");
+    channel_plot_set_bool(docs, plot, "null.visible", false);
+    channel_plot_set_bool(docs, plot, "x_axis.visible", false);
+    channel_plot_set_bool(docs, plot, "y_axis.visible", false);
+    channel_plot_set_bool(docs, plot, "x_grid.visible", false);
+    channel_plot_set_bool(docs, plot, "y_grid.visible", false);
+    channel_plot_set_null(docs, plot, "toolbar_location");
+    channel_plot_set_bool(docs, plot, "colorbar.visible", true);
 
     free(image);
     free(color_values);
     free(read_lookup);
     free(base_lookup);
+    free(quality_count_lookup);
+    free(quality_sum_lookup);
+    free(concordance_count_lookup);
+    free(concordance_sum_lookup);
     fc_channel_summary_table_destroy(&table);
+    return color_high;
 }
 
 //
@@ -2316,7 +2891,8 @@ static double coverage_target_mean(const fc_coverage_summary_target *target)
     return target->summary_rows[target->n_summary_rows - 1].mean;
 }
 
-static double coverage_target_max_depth(const fc_coverage_summary_target *target)
+static double
+coverage_target_max_depth(const fc_coverage_summary_target *target)
 {
     double maximum = 0.0;
     if (target) {
@@ -2330,8 +2906,8 @@ static double coverage_target_max_depth(const fc_coverage_summary_target *target
     return maximum > 0.0 ? maximum : 1.0;
 }
 
-static fc_json_value_t *build_coverage_source_data_value(
-    const fc_coverage_summary_target *target)
+static fc_json_value_t *
+build_coverage_source_data_value(const fc_coverage_summary_target *target)
 {
     report_source source = bokeh_source_create();
     report_column x = bokeh_source_add_array_column(&source, "x");
@@ -2339,6 +2915,9 @@ static fc_json_value_t *build_coverage_source_data_value(
     if (target) {
         for (size_t i = 0; i < target->n_distribution_rows; ++i) {
             const fc_coverage_distribution_row *row = &target->distribution_rows[i];
+            if (row->depth == 0) {
+                continue;
+            }
             fc_json_array_append_number(x.array, (double)row->depth);
             fc_json_array_append_number(y.array, row->fraction * 100.0);
         }
@@ -2346,8 +2925,25 @@ static fc_json_value_t *build_coverage_source_data_value(
     return source.value;
 }
 
-static fc_json_value_t *build_coverage_targets_data_value(
-    const fc_coverage_summary *coverage)
+static fc_json_value_t *
+build_coverage_hover_source_data_value(const fc_coverage_summary_target *target)
+{
+    report_hover_bands bands = report_hover_bands_create();
+    if (target) {
+        for (size_t i = 0; i < target->n_distribution_rows; ++i) {
+            const fc_coverage_distribution_row *row = &target->distribution_rows[i];
+            if (row->depth == 0) {
+                continue;
+            }
+            report_hover_bands_append(&bands, (double)row->depth,
+                row->fraction * 100.0, 1.0, 200.0);
+        }
+    }
+    return bands.source.value;
+}
+
+static fc_json_value_t *
+build_coverage_targets_data_value(const fc_coverage_summary *coverage)
 {
     report_source source = bokeh_source_create();
     report_column names = bokeh_source_add_array_column(&source, "name");
@@ -2356,16 +2952,34 @@ static fc_json_value_t *build_coverage_targets_data_value(
     report_column subtitles = bokeh_source_add_array_column(&source, "subtitle");
     report_column x_end = bokeh_source_add_array_column(&source, "x_end");
     report_column y_end = bokeh_source_add_array_column(&source, "y_end");
+    report_column hover_x = bokeh_source_add_array_column(&source, "hover_x");
+    report_column hover_y = bokeh_source_add_array_column(&source, "hover_y");
+    report_column hover_width = bokeh_source_add_array_column(&source, "hover_width");
+    report_column hover_height = bokeh_source_add_array_column(&source, "hover_height");
 
-    for (size_t target_index = 0; coverage && target_index < coverage->n_targets; ++target_index) {
+    for (size_t target_index = 0; coverage && target_index < coverage->n_targets;
+        ++target_index) {
         const fc_coverage_summary_target *target = &coverage->targets[target_index];
-        fc_json_array_append_string(names.array, target->name ? target->name : "coverage");
+        fc_json_array_append_string(names.array,
+            target->name ? target->name : "coverage");
         fc_json_array_t *target_x = fc_json_array_append_array(x.array);
         fc_json_array_t *target_y = fc_json_array_append_array(y.array);
-        for (size_t row_index = 0; row_index < target->n_distribution_rows; ++row_index) {
+        fc_json_array_t *target_hover_x = fc_json_array_append_array(hover_x.array);
+        fc_json_array_t *target_hover_y = fc_json_array_append_array(hover_y.array);
+        fc_json_array_t *target_hover_width = fc_json_array_append_array(hover_width.array);
+        fc_json_array_t *target_hover_height = fc_json_array_append_array(hover_height.array);
+        for (size_t row_index = 0; row_index < target->n_distribution_rows;
+            ++row_index) {
             const fc_coverage_distribution_row *row = &target->distribution_rows[row_index];
+            if (row->depth == 0) {
+                continue;
+            }
             fc_json_array_append_number(target_x, (double)row->depth);
             fc_json_array_append_number(target_y, row->fraction * 100.0);
+            fc_json_array_append_number(target_hover_x, (double)row->depth);
+            fc_json_array_append_number(target_hover_y, row->fraction * 100.0);
+            fc_json_array_append_number(target_hover_width, 1.0);
+            fc_json_array_append_number(target_hover_height, 200.0);
         }
         char subtitle[128] = { 0 };
         FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "Mean depth: %.2f×",
@@ -2377,23 +2991,23 @@ static fc_json_value_t *build_coverage_targets_data_value(
     return source.value;
 }
 
-static void update_coverage_plot(
-    JSON_Value *docs,
+static void update_coverage_plot(JSON_Value *docs,
     const fc_coverage_summary *coverage)
 {
-    const fc_coverage_summary_target *first = coverage && coverage->n_targets > 0
-        ? &coverage->targets[0]
-        : NULL;
+    const fc_coverage_summary_target *first = coverage && coverage->n_targets > 0 ? &coverage->targets[0] : NULL;
     char subtitle[128] = { 0 };
     FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "Mean depth: %.2f×",
         coverage_target_mean(first));
 
-    bokeh_set_value(
-        docs, "coverage_depth.source.data", build_coverage_source_data_value(first));
-    bokeh_set_value(
-        docs, "coverage_depth.targets.data", build_coverage_targets_data_value(coverage));
+    bokeh_set_value(docs, "coverage_depth.source.data",
+        build_coverage_source_data_value(first));
+    bokeh_set_value(docs, "coverage_depth.hover_source.data",
+        build_coverage_hover_source_data_value(first));
+    bokeh_set_value(docs, "coverage_depth.targets.data",
+        build_coverage_targets_data_value(coverage));
     bokeh_set_string(docs, "coverage_depth.subtitle.text", subtitle);
-    bokeh_set_range(docs, "coverage_depth.x_range", 0.0, coverage_target_max_depth(first));
+    bokeh_set_range(docs, "coverage_depth.x_range", 1.0,
+        coverage_target_max_depth(first));
     bokeh_set_range(docs, "coverage_depth.y_range", 0.0, 100.0);
 }
 
@@ -2402,22 +3016,18 @@ static void update_coverage_plot(
 //
 
 static JSON_Value *build_report_bokeh_docs(
-    const report_hist *length,
-    const report_hist *quality,
-    const report_hist *accuracy,
-    const report_hist *query_coverage,
+    const report_hist *length, const report_hist *quality,
+    const report_hist *accuracy, const report_hist *query_coverage,
     const fc_channel_summary *channel_summary,
     const fc_length_qscore_2d *length_qscore,
     const fc_speed_qscore_2d *speed_qscore,
-    const fc_time_bin *time_bin,
-    const fc_coverage_summary *coverage,
-    size_t barcode)
+    const fc_accuracy_qscore_2d *accuracy_qscore, const fc_time_bin *time_bin,
+    const fc_coverage_summary *coverage, size_t barcode)
 {
     char *docs_json = inflate_report_asset(
         fc_report_template_html_docs_json_gz,
         fc_report_template_html_docs_json_gz_len,
-        fc_report_template_html_docs_json_len,
-        "Bokeh document JSON");
+        fc_report_template_html_docs_json_len, "Bokeh document JSON");
     if (!docs_json) {
         return NULL;
     }
@@ -2432,9 +3042,7 @@ static JSON_Value *build_report_bokeh_docs(
     }
 
     fc_time_bin_table time_boxes = { 0 };
-    if (time_bin
-        && fc_time_bin_materialize_merged(time_bin, barcode, FC_REPORT_TIME_BOX_MAX_BINS, &time_boxes)
-            != 0) {
+    if (time_bin && fc_time_bin_materialize_merged(time_bin, barcode, FC_REPORT_TIME_BOX_MAX_BINS, &time_boxes) != 0) {
         fc_time_bin_table_destroy(&time_boxes);
         memset(&time_boxes, 0, sizeof(time_boxes));
     }
@@ -2442,30 +3050,36 @@ static JSON_Value *build_report_bokeh_docs(
     update_quality_plot(docs, quality);
     update_length_plot(docs, length);
     update_yield_plot(docs, length);
-    update_alignment_plot(
-        docs,
-        "alignment_accuracy",
-        accuracy,
-        FC_REPORT_ACCURACY_MIN,
-        FC_REPORT_PERCENT_MAX);
-    update_alignment_plot(
-        docs,
-        "alignment_query_coverage",
-        query_coverage,
-        FC_REPORT_PERCENT_MIN,
-        FC_REPORT_PERCENT_MAX);
+    update_alignment_plot(docs, "alignment_accuracy", accuracy,
+        FC_REPORT_ACCURACY_MIN, FC_REPORT_PERCENT_MAX);
+    update_alignment_plot(docs, "alignment_query_coverage", query_coverage,
+        FC_REPORT_QUERY_COVERAGE_MIN, FC_REPORT_PERCENT_MAX);
     update_coverage_plot(docs, coverage);
     update_length_qscore_plot(docs, length_qscore, barcode);
     update_speed_qscore_plot(docs, speed_qscore, barcode);
+    update_accuracy_qscore_plot(docs, accuracy_qscore, barcode);
     update_time_yield_plot(docs, &time_table);
     update_time_yield_bin_plot(docs, &time_table);
     update_time_reads_plot(docs, &time_table);
     update_time_reads_bin_plot(docs, &time_table);
     update_time_length_ribbon_plot(docs, &time_boxes);
     update_time_qscore_ribbon_plot(docs, &time_boxes);
+    update_time_accuracy_ribbon_plot(docs, &time_boxes);
     update_time_speed_ribbon_plot(docs, &time_boxes);
     update_channel_reads_plot(docs, channel_summary, barcode);
-    update_channel_bases_plot(docs, channel_summary, barcode);
+    update_channel_mean_plot(docs, channel_summary, barcode,
+        "channel_mean_length", FC_CHANNEL_MAP_MEAN_LENGTH);
+    double quality_color_high = update_channel_mean_plot(docs, channel_summary, barcode,
+        "channel_mean_quality", FC_CHANNEL_MAP_MEAN_QUALITY);
+    double concordance_color_high = update_channel_mean_plot(docs, channel_summary, barcode,
+        "channel_mean_concordance",
+        FC_CHANNEL_MAP_MEAN_CONCORDANCE);
+    double shared_color_high = channel_color_high_round_up(
+        fmax(quality_color_high, concordance_color_high));
+    channel_plot_set_number(docs, "channel_mean_quality", "color_mapper.high",
+        shared_color_high);
+    channel_plot_set_number(docs, "channel_mean_concordance", "color_mapper.high",
+        shared_color_high);
 
     fc_time_bin_table_destroy(&time_boxes);
     fc_time_bin_table_destroy(&time_table);
@@ -2477,20 +3091,15 @@ static JSON_Value *build_report_bokeh_docs(
 //
 
 static char *render_report_html(
-    const char *docs_json,
-    const char *sample,
-    const char *barcode,
-    const fc_run_summary_row *summary,
-    const fc_alignment_totals *alignment,
-    const fc_coverage_summary *coverage,
-    const fc_report_config_entry *run_config,
+    const char *docs_json, const char *sample, const char *barcode,
+    const fc_run_summary_row *summary, const fc_alignment_totals *alignment,
+    const fc_coverage_summary *coverage, bool has_time_accuracy,
+    bool has_accuracy_qscore, const fc_report_config_entry *run_config,
     size_t run_config_count)
 {
     char *html = inflate_report_asset(
-        fc_report_template_html_gz,
-        fc_report_template_html_gz_len,
-        fc_report_template_html_len,
-        "HTML template");
+        fc_report_template_html_gz, fc_report_template_html_gz_len,
+        fc_report_template_html_len, "HTML template");
     if (!html) {
         return NULL;
     }
@@ -2507,24 +3116,30 @@ static char *render_report_html(
     char *report_date_text = format_report_date();
     char *report_date_html = html_escape(report_date_text);
     char *run_config_rows_html = build_run_config_rows_html(run_config, run_config_count);
-    char *run_duration_text = summary ? format_report_duration(summary->run_duration_s) : fc_strdup("(not set)", "report duration");
-    char *yield_text = summary ? format_report_yield(summary->base_count) : fc_strdup("(not set)", "report yield");
-    char *read_count_text = summary ? format_report_count(summary->read_count) : fc_strdup("(not set)", "report read count");
-    char *n10_text = summary ? format_report_n50(summary->n10_bp) : fc_strdup("(not set)", "report n10");
-    char *n50_text = summary ? format_report_n50(summary->n50_bp) : fc_strdup("(not set)", "report n50");
-    char *n90_text = summary ? format_report_n50(summary->n90_bp) : fc_strdup("(not set)", "report n90");
-    char *l10_text = summary ? format_report_count(summary->l10) : fc_strdup("(not set)", "report l10");
-    char *l50_text = summary ? format_report_count(summary->l50) : fc_strdup("(not set)", "report l50");
-    char *l90_text = summary ? format_report_count(summary->l90) : fc_strdup("(not set)", "report l90");
-    char *alignment_total_reads_text = format_report_count(
-        alignment ? alignment->read_count : 0);
+    char *run_duration_text = summary ? format_report_duration(summary->run_duration_s)
+                                      : fc_strdup("(not set)", "report duration");
+    char *yield_text = summary ? format_report_yield(summary->base_count)
+                               : fc_strdup("(not set)", "report yield");
+    char *read_count_text = summary ? format_report_count(summary->read_count)
+                                    : fc_strdup("(not set)", "report read count");
+    char *n10_text = summary ? format_report_n50(summary->n10_bp)
+                             : fc_strdup("(not set)", "report n10");
+    char *n50_text = summary ? format_report_n50(summary->n50_bp)
+                             : fc_strdup("(not set)", "report n50");
+    char *n90_text = summary ? format_report_n50(summary->n90_bp)
+                             : fc_strdup("(not set)", "report n90");
+    char *l10_text = summary ? format_report_count(summary->l10)
+                             : fc_strdup("(not set)", "report l10");
+    char *l50_text = summary ? format_report_count(summary->l50)
+                             : fc_strdup("(not set)", "report l50");
+    char *l90_text = summary ? format_report_count(summary->l90)
+                             : fc_strdup("(not set)", "report l90");
+    char *alignment_total_reads_text = format_report_count(alignment ? alignment->read_count : 0);
     char *alignment_mapped_reads_text = format_report_count(
         alignment ? alignment->primary_mapped_record_count : 0);
     char *alignment_unmapped_reads_text = format_report_count(
         alignment ? alignment->record_counts[FC_FLAGSTAT_UNMAPPED] : 0);
-    char *alignment_mapping_rate_text = fc_asprintf(
-        "report mapping rate",
-        "%.2f%%",
+    char *alignment_mapping_rate_text = fc_asprintf("report mapping rate", "%.2f%%",
         100.0 * (alignment ? alignment->mapping_rate : 0.0));
     char *alignment_detail_rows_html = build_alignment_detail_rows_html(alignment);
     char *coverage_tab_buttons_html = build_coverage_tab_buttons_html(coverage);
@@ -2532,12 +3147,10 @@ static char *render_report_html(
         (summary && summary->barcode_alias && summary->barcode_alias[0] != '\0')
             ? summary->barcode_alias
             : "(not found)");
-    char *run_id_html = html_escape(
-        (summary && summary->run_id && summary->run_id[0] != '\0')
+    char *run_id_html = html_escape((summary && summary->run_id && summary->run_id[0] != '\0')
             ? summary->run_id
             : "(not found)");
-    char *basecaller_html = html_escape(
-        (summary && summary->basecaller_model && summary->basecaller_model[0] != '\0')
+    char *basecaller_html = html_escape((summary && summary->basecaller_model && summary->basecaller_model[0] != '\0')
             ? summary->basecaller_model
             : "(not found)");
     char *modbase_html = html_escape(
@@ -2552,8 +3165,7 @@ static char *render_report_html(
         (summary && summary->flow_cell_id && summary->flow_cell_id[0] != '\0')
             ? summary->flow_cell_id
             : "(not found)");
-    char *run_date_html = html_escape(
-        (summary && summary->run_date && summary->run_date[0] != '\0')
+    char *run_date_html = html_escape((summary && summary->run_date && summary->run_date[0] != '\0')
             ? summary->run_date
             : "(not found)");
     char *run_duration_html = html_escape(run_duration_text);
@@ -2574,14 +3186,28 @@ static char *render_report_html(
     bool has_coverage = coverage && coverage->n_targets > 0;
 
     replace_all(&html, "__FASTCAT_BOKEH_DOCS_JSON__", docs_json_html);
-    replace_all(&html, "__FASTCAT_ALIGNMENT_DISPLAY__", has_alignment ? "" : "display:none;");
-    replace_all(&html, "__FASTCAT_COVERAGE_DISPLAY__", has_coverage ? "" : "display:none;");
-    replace_all(&html, "__FASTCAT_ALIGNMENT_TOTAL_READS_HTML__", alignment_total_reads_html);
-    replace_all(&html, "__FASTCAT_ALIGNMENT_MAPPED_READS_HTML__", alignment_mapped_reads_html);
-    replace_all(&html, "__FASTCAT_ALIGNMENT_UNMAPPED_READS_HTML__", alignment_unmapped_reads_html);
-    replace_all(&html, "__FASTCAT_ALIGNMENT_MAPPING_RATE_HTML__", alignment_mapping_rate_html);
-    replace_all(&html, "__FASTCAT_ALIGNMENT_DETAIL_ROWS__", alignment_detail_rows_html);
-    replace_all(&html, "__FASTCAT_COVERAGE_TAB_BUTTONS__", coverage_tab_buttons_html);
+    replace_all(&html, "__FASTCAT_ALIGNMENT_DISPLAY__",
+        has_alignment ? "" : "display:none;");
+    replace_all(&html, "__FASTCAT_COVERAGE_DISPLAY__",
+        has_coverage ? "" : "display:none;");
+    replace_all(&html, "__FASTCAT_TIME_ACCURACY_DISPLAY__",
+        has_time_accuracy ? "" : "display:none;");
+    replace_all(&html, "__FASTCAT_ACCURACY_QSCORE_DISPLAY__",
+        has_accuracy_qscore ? "" : "display:none;");
+    replace_all(&html, "__FASTCAT_CHANNEL_CONCORDANCE_DISPLAY__",
+        has_alignment ? "" : "display:none;");
+    replace_all(&html, "__FASTCAT_ALIGNMENT_TOTAL_READS_HTML__",
+        alignment_total_reads_html);
+    replace_all(&html, "__FASTCAT_ALIGNMENT_MAPPED_READS_HTML__",
+        alignment_mapped_reads_html);
+    replace_all(&html, "__FASTCAT_ALIGNMENT_UNMAPPED_READS_HTML__",
+        alignment_unmapped_reads_html);
+    replace_all(&html, "__FASTCAT_ALIGNMENT_MAPPING_RATE_HTML__",
+        alignment_mapping_rate_html);
+    replace_all(&html, "__FASTCAT_ALIGNMENT_DETAIL_ROWS__",
+        alignment_detail_rows_html);
+    replace_all(&html, "__FASTCAT_COVERAGE_TAB_BUTTONS__",
+        coverage_tab_buttons_html);
     replace_all(&html, "__FASTCAT_SAMPLE_ALIAS_HTML__", sample_html);
     replace_all(&html, "__FASTCAT_SAMPLE_BARCODE_HTML__", barcode_html);
     replace_all(&html, "__FASTCAT_BARCODE_ALIAS_HTML__", barcode_alias_html);
@@ -2654,7 +3280,8 @@ static int write_text_file(const char *path, const char *text)
     ensure_parent_dir_exists(path);
     FILE *fp = fopen(path, "w");
     if (!fp) {
-        FC_LOG_ERROR("Cannot open report '%s' for writing: %s", path, strerror(errno));
+        FC_LOG_ERROR("Cannot open report '%s' for writing: %s", path,
+            strerror(errno));
         return -1;
     }
     if (fputs(text, fp) == EOF) {
@@ -2670,23 +3297,17 @@ static int write_text_file(const char *path, const char *text)
 }
 
 static int write_report_for_output_dir(
-    const char *output_dir,
-    const char *sample,
-    const char *barcode,
-    const fc_stats_engine *engine,
-    bool bam_input,
-    const read_stats *length_stats,
-    const read_stats *quality_stats,
-    const fc_report_config_entry *run_config,
-    size_t run_config_count,
+    const char *output_dir, const char *sample, const char *barcode,
+    const fc_stats_engine *engine, bool bam_input,
+    const read_stats *length_stats, const read_stats *quality_stats,
+    const fc_report_config_entry *run_config, size_t run_config_count,
     const fc_run_summary *run_summary,
     const fc_channel_summary *channel_summary,
     const fc_length_qscore_2d *length_qscore,
     const fc_speed_qscore_2d *speed_qscore,
-    const fc_time_bin *time_bin,
+    const fc_accuracy_qscore_2d *accuracy_qscore, const fc_time_bin *time_bin,
     const fc_alignment_counts *alignment_counts,
-    const fc_coverage_summary *coverage,
-    size_t barcode_index)
+    const fc_coverage_summary *coverage, size_t barcode_index)
 {
     int rc = -1;
     report_hist length = { 0 };
@@ -2697,60 +3318,47 @@ static int write_report_for_output_dir(
     fc_alignment_totals alignment = { 0 };
     char *report_path = fc_join_path(output_dir, FC_REPORT_NAME);
 
-    if (!report_hist_from_read_stats(length_stats, &length)
-        || !report_hist_from_read_stats(quality_stats, &quality)
-        || length.total_count <= 0.0 || quality.total_count <= 0.0) {
-        FC_LOG_ERROR("Cannot write HTML report: no in-memory length/quality histograms for '%s'.", output_dir);
+    if (!report_hist_from_read_stats(length_stats, &length) || !report_hist_from_read_stats(quality_stats, &quality) || length.total_count <= 0.0 || quality.total_count <= 0.0) {
+        FC_LOG_ERROR("Cannot write HTML report: no in-memory length/quality "
+                     "histograms for '%s'.",
+            output_dir);
         goto cleanup;
     }
 
-    if (fc_run_summary_materialize(
-            run_summary,
-            barcode_index,
-            engine,
-            bam_input,
-            length_stats,
-            sample,
-            barcode,
+    if (fc_run_summary_materialize(run_summary, barcode_index, engine, bam_input,
+            length_stats, sample, barcode,
             &summary)
         != 0) {
-        FC_LOG_ERROR("Cannot write HTML report: failed to materialize run summary for '%s'.", output_dir);
+        FC_LOG_ERROR(
+            "Cannot write HTML report: failed to materialize run summary for '%s'.",
+            output_dir);
         goto cleanup;
     }
 
-    if (engine && engine->acc_stats
-        && !report_hist_from_read_stats(engine->acc_stats, &accuracy)) {
-        FC_LOG_ERROR("Cannot write HTML report: invalid alignment-accuracy histogram for '%s'.", output_dir);
+    if (engine && engine->acc_stats && !report_hist_from_read_stats(engine->acc_stats, &accuracy)) {
+        FC_LOG_ERROR("Cannot write HTML report: invalid alignment-accuracy "
+                     "histogram for '%s'.",
+            output_dir);
         goto cleanup;
     }
-    if (engine && engine->cov_stats
-        && !report_hist_from_read_stats(engine->cov_stats, &query_coverage)) {
-        FC_LOG_ERROR("Cannot write HTML report: invalid query-coverage histogram for '%s'.", output_dir);
+    if (engine && engine->cov_stats && !report_hist_from_read_stats(engine->cov_stats, &query_coverage)) {
+        FC_LOG_ERROR(
+            "Cannot write HTML report: invalid query-coverage histogram for '%s'.",
+            output_dir);
         goto cleanup;
     }
     fc_alignment_counts_materialize(alignment_counts, &alignment);
 
     JSON_Value *docs = build_report_bokeh_docs(
-        &length,
-        &quality,
-        &accuracy,
-        &query_coverage,
-        channel_summary,
-        length_qscore,
-        speed_qscore,
-        time_bin,
-        coverage,
+        &length, &quality, &accuracy, &query_coverage, channel_summary,
+        length_qscore, speed_qscore, accuracy_qscore, time_bin, coverage,
         barcode_index);
     char *docs_json = docs ? fc_json_serialize_to_string(docs) : NULL;
     char *html = render_report_html(
-        docs_json,
-        sample,
-        barcode,
-        &summary,
-        &alignment,
-        coverage,
-        run_config,
-        run_config_count);
+        docs_json, sample, barcode, &summary, &alignment, coverage,
+        fc_time_bin_accuracy_seen(time_bin, barcode_index),
+        accuracy_qscore && fc_accuracy_qscore_2d_seen(accuracy_qscore, barcode_index),
+        run_config, run_config_count);
     if (html && write_text_file(report_path, html) == 0) {
         FC_LOG_INFO("Wrote HTML report '%s'.", report_path);
         rc = 0;
@@ -2784,25 +3392,16 @@ int fc_write_html_reports(const fc_report_opts *opts)
         }
         const read_stats *length = NULL;
         const read_stats *quality = NULL;
-        select_report_stats(opts->engines[0], opts->bam_input, opts->unmapped_override, &length, &quality);
+        select_report_stats(opts->engines[0], opts->bam_input,
+            opts->unmapped_override, &length, &quality);
         return write_report_for_output_dir(
-            opts->output_root,
-            opts->sample,
-            "unclassified",
-            opts->engines[0],
-            opts->bam_input,
-            length,
-            quality,
-            opts->run_config,
-            opts->run_config_count,
-            opts->run_summary,
-            opts->channel_summary,
-            opts->length_qscore,
-            opts->speed_qscore,
+            opts->output_root, opts->sample, "unclassified", opts->engines[0],
+            opts->bam_input, length, quality, opts->run_config,
+            opts->run_config_count, opts->run_summary, opts->channel_summary,
+            opts->length_qscore, opts->speed_qscore, opts->accuracy_qscore,
             opts->time_bin,
             fc_alignment_summary_for_output(opts->alignment_summary, 0),
-            fc_coverage_summaries_get(opts->coverage_summaries, 0),
-            0);
+            fc_coverage_summaries_get(opts->coverage_summaries, 0), 0);
     }
 
     int status = 0;
@@ -2823,27 +3422,19 @@ int fc_write_html_reports(const fc_report_opts *opts)
         }
         const read_stats *length = NULL;
         const read_stats *quality = NULL;
-        select_report_stats(opts->engines[barcode], opts->bam_input, opts->unmapped_override, &length, &quality);
+        select_report_stats(opts->engines[barcode], opts->bam_input,
+            opts->unmapped_override, &length, &quality);
         bool active = read_stats_total_count(length) > 0.0 && read_stats_total_count(quality) > 0.0;
         if (!active) {
             continue;
         }
         char *barcode_dir = fc_join_path(opts->output_root, barcode_name);
         if (write_report_for_output_dir(
-                barcode_dir,
-                opts->sample ? opts->sample : barcode_name,
-                barcode_name,
-                opts->engines[barcode],
-                opts->bam_input,
-                length,
-                quality,
-                opts->run_config,
-                opts->run_config_count,
-                opts->run_summary,
-                opts->channel_summary,
-                opts->length_qscore,
-                opts->speed_qscore,
-                opts->time_bin,
+                barcode_dir, opts->sample ? opts->sample : barcode_name,
+                barcode_name, opts->engines[barcode], opts->bam_input, length,
+                quality, opts->run_config, opts->run_config_count,
+                opts->run_summary, opts->channel_summary, opts->length_qscore,
+                opts->speed_qscore, opts->accuracy_qscore, opts->time_bin,
                 fc_alignment_summary_for_output(opts->alignment_summary, barcode),
                 fc_coverage_summaries_get(opts->coverage_summaries, barcode),
                 barcode)
