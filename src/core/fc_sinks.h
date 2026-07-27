@@ -99,67 +99,6 @@ typedef struct {
     size_t barcode_count;
     bool bam_input;
     bool unmapped_override;
-    fc_stats_engine **engines;
-    size_t engine_count;
-    fc_run_summary *model;
-} fc_run_summary_sink_opts;
-
-fc_sink fc_run_summary_sink_create(const fc_run_summary_sink_opts *opts);
-
-typedef struct {
-    const char *output_root;
-    bool use_barcodes;
-    size_t barcode_count;
-    fc_length_qscore_2d *model;
-} fc_length_qscore_2d_sink_opts;
-
-fc_sink fc_length_qscore_2d_sink_create(const fc_length_qscore_2d_sink_opts *opts);
-
-typedef struct {
-    const char *output_root;
-    bool use_barcodes;
-    size_t barcode_count;
-    fc_speed_qscore_2d *model;
-} fc_speed_qscore_2d_sink_opts;
-
-fc_sink fc_speed_qscore_2d_sink_create(
-    const fc_speed_qscore_2d_sink_opts *opts);
-
-typedef struct {
-    const char *output_root;
-    bool use_barcodes;
-    size_t barcode_count;
-    fc_accuracy_qscore_2d *model;
-} fc_accuracy_qscore_2d_sink_opts;
-
-fc_sink fc_accuracy_qscore_2d_sink_create(
-    const fc_accuracy_qscore_2d_sink_opts *opts);
-
-typedef struct {
-    const char *output_root;
-    bool use_barcodes;
-    size_t barcode_count;
-    fc_channel_summary *model;
-} fc_channel_summary_sink_opts;
-
-fc_sink fc_channel_summary_sink_create(const fc_channel_summary_sink_opts *opts);
-
-typedef struct {
-    const char *output_root;
-    bool use_barcodes;
-    size_t barcode_count;
-    fc_time_bin *model;
-} fc_time_bin_sink_opts;
-
-fc_sink fc_time_bin_sink_create(const fc_time_bin_sink_opts *opts);
-
-typedef struct {
-    const char *output_root;
-    const char *sample;
-    bool use_barcodes;
-    size_t barcode_count;
-    bool bam_input;
-    bool unmapped_override;
     bool region_mode;
     const char *region_label;
     const bam_hdr_t *hdr;

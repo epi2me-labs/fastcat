@@ -24,6 +24,7 @@ typedef struct {
     bool has_time;
     size_t read_count;
     size_t base_count;
+    uint64_t filter_counts[NUM_FAILURE_CODES];
 } fc_run_summary_state;
 
 struct fc_run_summary {
@@ -275,6 +276,16 @@ void fc_run_summary_add_read(fc_run_summary *model, size_t barcode, const fc_rea
     }
 }
 
+void fc_run_summary_add_filter_event(fc_run_summary *model, size_t barcode, failure_code code)
+{
+    if (!model || barcode >= model->barcode_count || code >= NUM_FAILURE_CODES) {
+        return;
+    }
+    fc_run_summary_state *state = &model->states[barcode];
+    state->seen = true;
+    state->filter_counts[code]++;
+}
+
 bool fc_run_summary_seen(const fc_run_summary *model, size_t barcode)
 {
     return NULL != model && barcode < model->barcode_count && model->states[barcode].seen;
@@ -329,6 +340,12 @@ int fc_run_summary_materialize(
         : (state->has_time ? fmax(0.0, state->max_time_s - state->min_time_s) : NAN);
     out->read_count = state->read_count;
     out->base_count = state->base_count;
+    out->records_seen = state->filter_counts[R_RECORD_SEEN];
+    out->records_passed_filters = state->filter_counts[R_RECORD_OK];
+    out->records_too_long = state->filter_counts[R_TOO_LONG];
+    out->records_too_short = state->filter_counts[R_TOO_SHORT];
+    out->records_low_quality = state->filter_counts[R_LOW_QUALITY];
+    out->records_dust_masked = state->filter_counts[R_DUST_MASKED];
     compute_nxx_lxx(length_stats, out);
     return 0;
 }

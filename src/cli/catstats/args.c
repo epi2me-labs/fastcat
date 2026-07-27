@@ -44,7 +44,6 @@ enum {
     KEY_TIME_BIN_SIZE,
     KEY_TIME_BIN_K,
     KEY_HTML_REPORT,
-    KEY_JSON_SUMMARY,
     KEY_NO_LEGACY_OUTPUTS
 };
 
@@ -72,10 +71,8 @@ typedef struct {
         { "per-read", 'p', 0, 0, "Write per-read TSV (large). Disabled by default.", 12 }, \
         { "html-report", KEY_HTML_REPORT, 0, 0, \
             "Write a single-sample HTML report using aggregate fastcat histograms.", 13 }, \
-        { "json-summary", KEY_JSON_SUMMARY, 0, 0, \
-            "Write structured summary.json output (similar to --html-report).", 13 }, \
         { "no-legacy-outputs", KEY_NO_LEGACY_OUTPUTS, 0, 0, \
-            "Disable legacy TSV summary outputs (run_summary.tsv, channel_summary.tsv, etc.). Use with --json-summary.", 13 }
+            "Disable legacy counter and histogram summary outputs; summary.json is still written.", 13 }
 
 #define SHARED_FILTER_OPTIONS \
     { "min-length", 'a', "MIN READ LENGTH", 0, \
@@ -149,10 +146,10 @@ static struct argp_option fastcat_options[] = {
     { "max-length", 'b', "MAX READ LENGTH", 0,
         "Maximum read length to output (excluded reads remain listed in summaries).", 20 },
 
-    { 0, 0, 0, 0, "Histogram Sketch Options: controls length_qscore_2d.tsv detail vs smoothness.", 30 },
+    { 0, 0, 0, 0, "Histogram Sketch Options: controls summary.json heatmap detail vs smoothness.", 30 },
     SHARED_HISTOGRAM_OPTIONS,
 
-    { 0, 0, 0, 0, "Time Summary Options: controls time_bin_summary.tsv resolution and quantile accuracy.", 35 },
+    { 0, 0, 0, 0, "Time Summary Options: controls summary.json time-series resolution and quantile accuracy.", 35 },
     SHARED_TIME_OPTIONS,
 
     { 0, 0, 0, 0, "Logging options:", 40 },
@@ -182,10 +179,10 @@ static struct argp_option bam_options[] = {
     { "max-length", KEY_MAX_LENGTH_LONG, "MAX READ LENGTH", 0,
         "Maximum read length to output (excluded reads remain listed in summaries).", 20 },
 
-    { 0, 0, 0, 0, "Histogram Sketch Options: controls length_qscore_2d.tsv detail vs smoothness.", 30 },
+    { 0, 0, 0, 0, "Histogram Sketch Options: controls summary.json heatmap detail vs smoothness.", 30 },
     SHARED_HISTOGRAM_OPTIONS,
 
-    { 0, 0, 0, 0, "Time Summary Options: controls time_bin_summary.tsv resolution and quantile accuracy.", 35 },
+    { 0, 0, 0, 0, "Time Summary Options: controls summary.json time-series resolution and quantile accuracy.", 35 },
     SHARED_TIME_OPTIONS,
 
     { 0, 0, 0, 0, "Coverage calculation options:", 40 },
@@ -221,7 +218,6 @@ static fc_catstats_args default_args(void)
     args.demultiplex = false;
     args.per_read = false;
     args.html_report = false;
-    args.json_summary = false;
     args.no_legacy_outputs = false;
     args.threads = 1;
     args.verbose = false;
@@ -298,9 +294,6 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         break;
     case KEY_HTML_REPORT:
         arguments->html_report = true;
-        break;
-    case KEY_JSON_SUMMARY:
-        arguments->json_summary = true;
         break;
     case KEY_NO_LEGACY_OUTPUTS:
         arguments->no_legacy_outputs = true;

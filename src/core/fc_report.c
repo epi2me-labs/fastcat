@@ -3055,6 +3055,16 @@ static char *render_report_html(
                                : fc_strdup("(not set)", "report yield");
     char *read_count_text = summary ? format_report_count(summary->read_count)
                                     : fc_strdup("(not set)", "report read count");
+    char *records_seen_text = summary ? format_report_count(summary->records_seen)
+                                      : fc_strdup("(not set)", "report records seen");
+    char *records_too_long_text = summary ? format_report_count(summary->records_too_long)
+                                          : fc_strdup("(not set)", "report records too long");
+    char *records_too_short_text = summary ? format_report_count(summary->records_too_short)
+                                           : fc_strdup("(not set)", "report records too short");
+    char *records_low_quality_text = summary ? format_report_count(summary->records_low_quality)
+                                             : fc_strdup("(not set)", "report records low quality");
+    char *records_dust_masked_text = summary ? format_report_count(summary->records_dust_masked)
+                                             : fc_strdup("(not set)", "report records dust masked");
     char *n10_text = summary ? format_report_n50(summary->n10_bp)
                              : fc_strdup("(not set)", "report n10");
     char *n50_text = summary ? format_report_n50(summary->n50_bp)
@@ -3104,6 +3114,11 @@ static char *render_report_html(
     char *run_duration_html = html_escape(run_duration_text);
     char *yield_html = html_escape(yield_text);
     char *read_count_html = html_escape(read_count_text);
+    char *records_seen_html = html_escape(records_seen_text);
+    char *records_too_long_html = html_escape(records_too_long_text);
+    char *records_too_short_html = html_escape(records_too_short_text);
+    char *records_low_quality_html = html_escape(records_low_quality_text);
+    char *records_dust_masked_html = html_escape(records_dust_masked_text);
     char *n10_html = html_escape(n10_text);
     char *n50_html = html_escape(n50_text);
     char *n90_html = html_escape(n90_text);
@@ -3153,6 +3168,11 @@ static char *render_report_html(
     replace_all(&html, "__FASTCAT_RUN_DURATION_HTML__", run_duration_html);
     replace_all(&html, "__FASTCAT_YIELD_HTML__", yield_html);
     replace_all(&html, "__FASTCAT_READ_COUNT_HTML__", read_count_html);
+    replace_all(&html, "__FASTCAT_RECORDS_SEEN_HTML__", records_seen_html);
+    replace_all(&html, "__FASTCAT_RECORDS_TOO_LONG_HTML__", records_too_long_html);
+    replace_all(&html, "__FASTCAT_RECORDS_TOO_SHORT_HTML__", records_too_short_html);
+    replace_all(&html, "__FASTCAT_RECORDS_LOW_QUALITY_HTML__", records_low_quality_html);
+    replace_all(&html, "__FASTCAT_RECORDS_DUST_MASKED_HTML__", records_dust_masked_html);
     replace_all(&html, "__FASTCAT_N10_HTML__", n10_html);
     replace_all(&html, "__FASTCAT_N50_HTML__", n50_html);
     replace_all(&html, "__FASTCAT_N90_HTML__", n90_html);
@@ -3175,6 +3195,11 @@ static char *render_report_html(
     free(run_duration_text);
     free(yield_text);
     free(read_count_text);
+    free(records_seen_text);
+    free(records_too_long_text);
+    free(records_too_short_text);
+    free(records_low_quality_text);
+    free(records_dust_masked_text);
     free(n10_text);
     free(n50_text);
     free(n90_text);
@@ -3190,6 +3215,11 @@ static char *render_report_html(
     free(run_duration_html);
     free(yield_html);
     free(read_count_html);
+    free(records_seen_html);
+    free(records_too_long_html);
+    free(records_too_short_html);
+    free(records_low_quality_html);
+    free(records_dust_masked_html);
     free(n10_html);
     free(n50_html);
     free(n90_html);

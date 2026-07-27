@@ -87,13 +87,10 @@ static void summary_file_entry_destroy(summary_file_entry *entry)
 
 static void summary_counter_add(kh_counter_t **counter, const char *value)
 {
-    if (NULL == value || '\0' == value[0]) {
-        return;
-    }
     if (NULL == *counter) {
         *counter = kh_counter_init();
     }
-    kh_counter_increment(*counter, (char *)value);
+    kh_counter_increment(*counter, (char *)(value ? value : ""));
 }
 
 static void summary_file_accum_add_read(summary_file_accum *accum, const fc_read *read)
@@ -623,6 +620,12 @@ static void summary_json_time(
         FC_LOG_FATAL("Failed to materialize time section for summary.json.");
     }
 
+    if (table.n == 0) {
+        fc_time_bin_table_destroy(&table);
+        fc_json_object_set_null(root, "time");
+        return;
+    }
+
     fc_json_object_t *time = fc_json_object_set_object(root, "time");
 
     fc_time_bin_skip_counts skipped = fc_time_bin_skipped_counts(model);
@@ -819,6 +822,12 @@ static void summary_json_channels(fc_json_object_t *root, const fc_channel_summa
         FC_LOG_FATAL("Failed to materialize channel section for summary.json.");
     }
 
+    if (table.n == 0) {
+        fc_channel_summary_table_destroy(&table);
+        fc_json_object_set_null(root, "channels");
+        return;
+    }
+
     fc_json_object_t *channels = fc_json_object_set_object(root, "channels");
     fc_json_object_set_string(channels, "device", summary_channel_device_name(table.highest_channel));
 
@@ -838,6 +847,12 @@ static void summary_json_channels(fc_json_object_t *root, const fc_channel_summa
     size_t *mux_arr = fc_alloc(table.n, sizeof(size_t), "mux array");
     size_t *read_count_arr = fc_alloc(table.n, sizeof(size_t), "read_count array");
     size_t *base_count_arr = fc_alloc(table.n, sizeof(size_t), "base_count array");
+    size_t *quality_read_count_arr = fc_alloc(table.n, sizeof(size_t), "quality_read_count array");
+    double *mean_quality_arr = fc_alloc(table.n, sizeof(double), "mean_quality array");
+    size_t *concordance_read_count_arr = fc_alloc(
+        table.n, sizeof(size_t), "concordance_read_count array");
+    double *mean_concordance_qscore_arr = fc_alloc(
+        table.n, sizeof(double), "mean_concordance_qscore array");
 
     for (size_t i = 0; i < table.n; i++) {
         const fc_channel_summary_row *row = &table.rows[i];
@@ -845,6 +860,10 @@ static void summary_json_channels(fc_json_object_t *root, const fc_channel_summa
         mux_arr[i] = row->mux;
         read_count_arr[i] = row->read_count;
         base_count_arr[i] = row->base_count;
+        quality_read_count_arr[i] = row->quality_read_count;
+        mean_quality_arr[i] = row->mean_quality;
+        concordance_read_count_arr[i] = row->concordance_read_count;
+        mean_concordance_qscore_arr[i] = row->mean_concordance_qscore;
     }
 
     fc_json_array_t *columns = fc_json_object_set_array(data, "columns");
@@ -852,11 +871,23 @@ static void summary_json_channels(fc_json_object_t *root, const fc_channel_summa
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("mux", mux_arr, table.n));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("read_count", read_count_arr, table.n));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("base_count", base_count_arr, table.n));
+    fc_json_array_append_value(
+        columns, fc_json_column_uint_adaptive("quality_read_count", quality_read_count_arr, table.n));
+    fc_json_array_append_value(columns, fc_json_column_f64("mean_quality", mean_quality_arr, table.n));
+    fc_json_array_append_value(
+        columns,
+        fc_json_column_uint_adaptive("concordance_read_count", concordance_read_count_arr, table.n));
+    fc_json_array_append_value(
+        columns, fc_json_column_f64("mean_concordance_qscore", mean_concordance_qscore_arr, table.n));
 
     free(channel_arr);
     free(mux_arr);
     free(read_count_arr);
     free(base_count_arr);
+    free(quality_read_count_arr);
+    free(mean_quality_arr);
+    free(concordance_read_count_arr);
+    free(mean_concordance_qscore_arr);
 
     fc_channel_summary_table_destroy(&table);
 }
@@ -1189,6 +1220,12 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
     fc_json_object_set_number(summary, "run_duration_s", row.run_duration_s);
     fc_json_object_set_number(summary, "read_count", (double)row.read_count);
     fc_json_object_set_number(summary, "base_count", (double)row.base_count);
+    fc_json_object_set_number(summary, "records_seen", (double)row.records_seen);
+    fc_json_object_set_number(summary, "records_passed_filters", (double)row.records_passed_filters);
+    fc_json_object_set_number(summary, "records_too_long", (double)row.records_too_long);
+    fc_json_object_set_number(summary, "records_too_short", (double)row.records_too_short);
+    fc_json_object_set_number(summary, "records_low_quality", (double)row.records_low_quality);
+    fc_json_object_set_number(summary, "records_dust_masked", (double)row.records_dust_masked);
     fc_json_object_set_number(summary, "n5_bp", (double)row.n5_bp);
     fc_json_object_set_number(summary, "n10_bp", (double)row.n10_bp);
     fc_json_object_set_number(summary, "n25_bp", (double)row.n25_bp);

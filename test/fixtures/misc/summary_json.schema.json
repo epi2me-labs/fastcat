@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/epi2me-labs/fastcat/schema/summary_json.schema.json",
   "title": "fastcat summary.json v1",
-  "description": "Schema for --json-summary. Dataframe and ndarray payloads are base64-encoded native little-endian values; count columns may use adaptive unsigned integer dtypes.",
+  "description": "Schema for the always-written summary.json aggregate summary. Dataframe and ndarray payloads are base64-encoded native little-endian values; count columns may use adaptive unsigned integer dtypes.",
   "type": "object",
   "required": [
     "schema_version",
@@ -208,8 +208,8 @@
     },
     "channelColumns": {
       "type": "array",
-      "minItems": 4,
-      "maxItems": 4,
+      "minItems": 8,
+      "maxItems": 8,
       "items": false,
       "prefixItems": [
         {
@@ -241,6 +241,38 @@
           "properties": {
             "name": {
               "const": "base_count"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "quality_read_count"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "mean_quality"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/adaptiveColumn",
+          "properties": {
+            "name": {
+              "const": "concordance_read_count"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/floatColumn",
+          "properties": {
+            "name": {
+              "const": "mean_concordance_qscore"
             }
           }
         }
@@ -754,6 +786,12 @@
         "run_duration_s",
         "read_count",
         "base_count",
+        "records_seen",
+        "records_passed_filters",
+        "records_too_long",
+        "records_too_short",
+        "records_low_quality",
+        "records_dust_masked",
         "n5_bp",
         "n10_bp",
         "n25_bp",
@@ -844,6 +882,24 @@
           "$ref": "#/$defs/nonNegativeInt"
         },
         "base_count": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "records_seen": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "records_passed_filters": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "records_too_long": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "records_too_short": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "records_low_quality": {
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "records_dust_masked": {
           "$ref": "#/$defs/nonNegativeInt"
         },
         "n5_bp": {

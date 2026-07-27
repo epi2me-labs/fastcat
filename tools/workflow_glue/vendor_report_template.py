@@ -20,6 +20,19 @@ BOUND_VALUE_SENTINEL = "__FASTCAT_DEADBEEF__"
 DOM_UUID_RE = re.compile(r"[0-9a-f]{32}")
 
 MIN_EXPECTED_FIGURES = 17
+_MODEL_INDEX = {}
+
+
+def index_models(value):
+    """Index Bokeh's top-level model objects so ``{\"id\": ...}`` refs resolve."""
+    if isinstance(value, dict):
+        if "id" in value and "attributes" in value:
+            _MODEL_INDEX[value["id"]] = value
+        for item in value.values():
+            index_models(item)
+    elif isinstance(value, list):
+        for item in value:
+            index_models(item)
 
 
 def deterministic_gzip(data):
@@ -102,13 +115,18 @@ def figure_by_subtitle(figures, subtitle, source_count=None):
 
 def embedded_sources(fig):
     sources = []
+    source_ids = set()
     for renderer in fig.get("attributes", {}).get("renderers", []):
         source = renderer.get("attributes", {}).get("data_source")
+        if isinstance(source, dict) and set(source) == {"id"}:
+            source = _MODEL_INDEX.get(source["id"])
         if (
                 isinstance(source, dict)
                 and source.get("type") == "object"
-                and source.get("name") == "ColumnDataSource"):
+                and source.get("name") == "ColumnDataSource"
+                and source.get("id") not in source_ids):
             sources.append(source)
+            source_ids.add(source["id"])
     return sources
 
 
@@ -376,6 +394,8 @@ def extract_bokeh_document(html):
     docs_json = docs_json.replace("\\'", "'")
     docs_json = docs_json.replace("\\\\", "\\")
     docs = json.loads(docs_json)
+    _MODEL_INDEX.clear()
+    index_models(docs)
     figures = bokeh_figures(docs)
     if len(figures) < MIN_EXPECTED_FIGURES:
         raise RuntimeError(

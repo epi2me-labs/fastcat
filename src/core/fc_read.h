@@ -56,6 +56,13 @@ int kseq_to_bam(bam1_t *b, kseq_t *seq);
 // Expects mean quality tag policy to have been applied by the caller.
 void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const fc_bam_rg_cache *rg_cache, const kstring_t *orig_comment);
 
+// Return the demultiplexing barcode index without constructing full read metadata.
+// This is used while accounting for reads rejected before normal metadata parsing.
+size_t fc_read_barcode_index_from_bam(
+    const bam1_t *bam,
+    const bam_hdr_t *hdr,
+    const fc_bam_rg_cache *rg_cache);
+
 // Return SAM-style auxiliary tags text, lazily materialized and cached on first use.
 const kstring_t *fc_read_get_tags_str(const fc_read *read);
 

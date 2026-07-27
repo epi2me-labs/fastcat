@@ -19,6 +19,7 @@ from . import bokeh_matrix
 from . import bokeh_null
 from . import bokeh_ribbon
 from . import bokeh_seqsummary
+from . import summary_json
 from .bokeh_style import patch_bokeh_plot_class
 from .util import get_main_logger, get_named_logger, wf_parser  # noqa: ABS101
 
@@ -30,6 +31,33 @@ CHANNEL_MAP_PATHS = {
     "minion": CHANNEL_MAP_ROOT / "asicb512fx_channel_map.csv",
     "promethion": CHANNEL_MAP_ROOT / "3000_opx_channel_map.csv",
 }
+
+
+def summary_dataframe(summary, *path):
+    """Decode one typed dataframe nested in a summary JSON document."""
+    value = summary
+    for key in path:
+        if value is None:
+            return None
+        value = value.get(key)
+    if value is None:
+        return None
+    return summary_json.decode_dataframe(value["__data__"])
+
+
+def summary_distribution(summary, name):
+    return summary_dataframe(summary, "distributions", name)
+
+
+def summary_alignment_distribution(summary, name):
+    return summary_dataframe(summary, "alignment", "distributions", name)
+
+
+def summary_heatmap(summary, name):
+    heatmap = summary.get("heatmaps", {}).get(name)
+    if heatmap is None:
+        return None
+    return heatmap, summary_json.decode_ndarray(heatmap["__data__"])
 
 
 patch_bokeh_plot_class(ezc.plots.BokehPlot)
@@ -143,19 +171,19 @@ def simple_kv_table(rows):
                     td("" if value is None else str(value))
 
 
-def load_alignment_counts(path):
-    """Load shared flagstat output into report-level alignment counts."""
-    df = pd.read_csv(path, sep="\t")
+def load_alignment_counts(summary):
+    """Load report-level alignment counts from summary.json."""
+    alignment = summary.get("alignment")
+    if alignment is None:
+        return None
     count_columns = (
         "total", "primary", "secondary", "supplementary", "unmapped",
         "qcfail", "duplicate", "duplex", "duplex_forming")
-    for column in count_columns:
-        df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0).astype(int)
-
-    mapped = df[df["ref"] != "*"]
-    totals = {column: int(df[column].sum()) for column in count_columns}
-    mapped_records = int(mapped["total"].sum())
-    mapped_primary = int(mapped["primary"].sum())
+    totals = {
+        column: int(alignment["record_counts"].get(column, 0))
+        for column in count_columns}
+    mapped_records = int(alignment.get("mapped_record_count", 0))
+    mapped_primary = int(alignment.get("primary_mapped_record_count", 0))
     unmapped_reads = totals["unmapped"]
     total_reads = mapped_primary + unmapped_reads
     mapping_rate = 100.0 * mapped_primary / total_reads if total_reads else 0.0
@@ -168,9 +196,9 @@ def load_alignment_counts(path):
     }
 
 
-def add_alignment_summary(path):
+def add_alignment_summary(summary):
     """Render alignment headline values and overlapping record categories."""
-    counts = load_alignment_counts(path)
+    counts = load_alignment_counts(summary)
     headline = (
         ("Total reads", counts["total_reads"], "total-reads"),
         ("Reads mapped", counts["mapped_primary"], "mapped-reads"),
@@ -211,10 +239,10 @@ def add_alignment_summary(path):
                     td(str(value))
 
 
-def add_alignment_plots(hist_dir):
+def add_alignment_plots(summary):
     """Render mapped-primary alignment concordance and query-span histograms."""
-    accuracy = bokeh_seqsummary.load_histogram(hist_dir, "accuracy")
-    query_coverage = bokeh_seqsummary.load_histogram(hist_dir, "coverage")
+    accuracy = summary_alignment_distribution(summary, "accuracy")
+    query_coverage = summary_alignment_distribution(summary, "query_coverage")
     with Grid(columns=2):
         EZChart(bokeh_seqsummary.alignment_histogram_plot(
             accuracy,
@@ -230,20 +258,14 @@ def add_alignment_plots(hist_dir):
             color=FASTCAT_BLUE))
 
 
-def load_coverage_targets(summary_paths, distribution_paths):
-    """Load aggregate legacy coverage tables for the scaffold CDF selector."""
-    if len(summary_paths) != len(distribution_paths):
-        raise ValueError(
-            "coverage summary and distribution path counts must match")
+def load_coverage_targets(summary):
+    """Load coverage CDF targets from summary.json."""
     targets = []
-    for summary_path, distribution_path in zip(summary_paths, distribution_paths):
-        summary = pd.read_csv(summary_path, sep="\t")
-        distribution = pd.read_csv(
-            distribution_path,
-            sep="\t",
-            names=["chrom", "depth", "fraction"])
-        name = Path(distribution_path).name.removesuffix(".dist.txt")
-        mean_depth = float(summary.iloc[-1]["mean"]) if not summary.empty else 0.0
+    for target in summary.get("coverage", {}).get("targets", []):
+        table = summary_json.decode_dataframe(target["summary"]["__data__"])
+        distribution = summary_json.decode_dataframe(target["distribution"]["__data__"])
+        name = target["name"]
+        mean_depth = float(table.iloc[-1]["mean"]) if not table.empty else 0.0
         distribution = distribution[distribution["depth"] > 0]
         x = distribution["depth"].astype(float).tolist()
         y = (100.0 * distribution["fraction"].astype(float)).tolist()
@@ -263,9 +285,9 @@ def load_coverage_targets(summary_paths, distribution_paths):
     return targets
 
 
-def add_coverage_plot(summary_paths, distribution_paths):
+def add_coverage_plot(summary):
     """Render one aggregate CDF figure controlled by a target selector."""
-    targets = load_coverage_targets(summary_paths, distribution_paths)
+    targets = load_coverage_targets(summary)
     if not targets:
         return
 
@@ -373,12 +395,14 @@ def _format_l_range(row, center, lower, upper):
         f"{_summary_display_text(row.get(upper), format_count)})")
 
 
-def load_run_summary(path):
-    """Load fastcat run_summary.tsv and format the top summary table."""
-    df = pd.read_csv(path, sep="\t", dtype=str).fillna("")
-    if df.empty:
-        return []
-    row = df.iloc[0].to_dict()
+def load_run_summary(summary, overrides=None):
+    """Format the summary.json run-summary object for the top table."""
+    row = summary["run_summary"].copy()
+    if overrides:
+        row.update(overrides)
+    for key in ("run_ids", "basecaller_models", "modbase_models", "flow_cell_ids"):
+        if isinstance(row.get(key), list):
+            row[key] = "; ".join(row[key])
     discovered = lambda key, formatter=str: _summary_display_text(
         row.get(key), formatter, "(not found)")
     rows = [
@@ -386,107 +410,96 @@ def load_run_summary(path):
         ("Input type", _summary_display_text(row.get("input_type"))),
         ("Barcode ID", _summary_display_text(row.get("barcode_id"))),
         ("Barcode alias", discovered("barcode_alias")),
-        ("Run ID", discovered("run_id")),
-        ("Basecaller model", discovered("basecaller_model")),
+        ("Run ID", discovered("run_ids")),
+        ("Basecaller model", discovered("basecaller_models")),
         ("Modbase models", discovered("modbase_models")),
-        ("Flowcell ID", discovered("flow_cell_id")),
+        ("Flowcell ID", discovered("flow_cell_ids")),
         ("Run date", discovered("run_date")),
         ("Run duration", discovered("run_duration_s", _format_duration_seconds)),
         ("Yield", _summary_display_text(row.get("base_count"), _format_yield_bases)),
-        ("Read count", _summary_display_text(row.get("read_count"), lambda v: f"{int(float(v))}")),
         ("N50 (N10-N90)", _format_n_range(row, "n50_bp", "n10_bp", "n90_bp")),
         ("L50 (L10-L90)", _format_l_range(row, "l50", "l10", "l90")),
+        ("Read count", _summary_display_text(row.get("read_count"), lambda v: f"{int(float(v))}")),
+        ("Records seen", _summary_display_text(row.get("records_seen"), lambda v: f"{int(float(v))}")),
+        ("Too long", _summary_display_text(row.get("records_too_long"), lambda v: f"{int(float(v))}")),
+        ("Too short", _summary_display_text(row.get("records_too_short"), lambda v: f"{int(float(v))}")),
+        ("Low quality", _summary_display_text(row.get("records_low_quality"), lambda v: f"{int(float(v))}")),
+        ("Dust masked", _summary_display_text(row.get("records_dust_masked"), lambda v: f"{int(float(v))}")),
     ]
     return rows
 
 
-def load_length_qscore_heatmap(path):
-    """Load fastcat length/qscore TSV into a Bokeh heatmap matrix."""
-    df = pd.read_csv(path, sep="\t")
-    df["Read length / kb"] = (df["length_bin_start"] + df["length_bin_end"]) * 0.0005
-    df["Quality"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
-    plot = load_dense_heatmap(
-        df,
-        "Read length / kb",
-        "Quality",
-        "count",
-        "",
-        "No read length vs quality data available",
-        image_hover_items=[
-            ("Read length / kb", "@x{custom}"),
-            ("Quality", "@y{custom}"),
-            ("Count", "@image{0.0}"),
-        ])
-    plot._fig.name = "fastcat_length_qscore"
-    plot._fig.y_range.end = qscore_heatmap_upper(df)
-    return plot
+def qscore_heatmap_upper(matrix, y_range):
+    """Choose a Q-score ceiling only when its high-Q tail is material."""
+    total = float(np.maximum(matrix, 0.0).sum())
+    if total <= 0.0:
+        return 40.0
+    y_bins = matrix.shape[0]
+    starts = np.linspace(y_range[0], y_range[1], y_bins, endpoint=False)
+    if matrix[starts >= 50.0].sum() / total >= 0.005:
+        return 60.0
+    if matrix[starts >= 40.0].sum() / total >= 0.005:
+        return 50.0
+    return 40.0
 
 
-def load_speed_qscore_heatmap(path):
-    """Load fastcat qscore/translocation-speed TSV into a Bokeh heatmap matrix."""
-    df = pd.read_csv(path, sep="\t")
-    df["Translocation speed / bp/s"] = (
-        df["speed_bin_start"] + df["speed_bin_end"]) * 0.5
-    df["Quality"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
-    plot = load_dense_heatmap(
-        df,
-        "Translocation speed / bp/s",
-        "Quality",
-        "count",
-        "",
-        "No translocation speed vs quality data available",
-        image_hover_items=[
-            ("Translocation speed / bp/s", "@x{custom}"),
-            ("Quality", "@y{custom}"),
-            ("Count", "@image{0.0}"),
-        ])
-    plot._fig.name = "fastcat_speed_qscore"
-    plot._fig.y_range.end = qscore_heatmap_upper(df)
-    return plot
-
-
-def load_accuracy_qscore_heatmap(path):
-    """Load fastcat alignment-concordance/qscore TSV into a Bokeh heatmap matrix."""
-    df = pd.read_csv(path, sep="\t")
-    df["Alignment Concordance / Q"] = (
-        df["concordance_qscore_bin_start"]
-        + df["concordance_qscore_bin_end"]) * 0.5
-    df["Quality"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
-    data = df.pivot(
-        index="Alignment Concordance / Q",
-        columns="Quality",
-        values="count")
+def load_summary_heatmap(summary, name, x_label, null_message, match_aspect=False, x_scale=1.0):
+    """Render one summary.json heatmap ndarray without recreating a TSV table."""
+    decoded = summary_heatmap(summary, name)
+    if decoded is None:
+        return bokeh_null.null_plot(null_message, x_label, "Quality")
+    metadata, matrix = decoded
+    x_range = metadata["x_range"]
+    y_range = metadata["y_range"]
+    x = np.linspace(x_range[0], x_range[1], matrix.shape[1], endpoint=False)
+    x += (x_range[1] - x_range[0]) / (2.0 * matrix.shape[1])
+    x *= x_scale
+    y = np.linspace(y_range[0], y_range[1], matrix.shape[0], endpoint=False)
+    y += (y_range[1] - y_range[0]) / (2.0 * matrix.shape[0])
+    data = pd.DataFrame(matrix.T, index=x, columns=y)
+    data.index.name = x_label
+    data.columns.name = "Quality"
     plot = bokeh_matrix.heatmap(
         data,
         annot=False,
         vmax_quantile=0.995,
-        cbar_kws={"title": "Read count"},
-        match_aspect=True,
-        hide_toolbar=True,
+        cbar_kws={"title": "Count"},
+        match_aspect=match_aspect,
+        hide_toolbar=match_aspect,
         image_hover_items=[
-            ("Alignment concordance / Q", "@x{custom}"),
+            (x_label, "@x{custom}"),
             ("Quality", "@y{custom}"),
             ("Count", "@image{0.0}"),
         ])
-    plot._fig.name = "fastcat_accuracy_qscore"
-    qscore_end = qscore_heatmap_upper(df)
-    plot._fig.x_range.end = qscore_end
+    qscore_end = qscore_heatmap_upper(matrix, y_range)
     plot._fig.y_range.end = qscore_end
     return plot
 
 
-def qscore_heatmap_upper(df):
-    """Choose a Q-score ceiling only when its high-Q tail is material."""
-    counts = pd.to_numeric(df["count"], errors="coerce").clip(lower=0.0).fillna(0.0)
-    starts = pd.to_numeric(df["qscore_bin_start"], errors="coerce")
-    total = counts.sum()
-    if total <= 0.0:
-        return 40.0
-    if counts[starts >= 50.0].sum() / total >= 0.005:
-        return 60.0
-    if counts[starts >= 40.0].sum() / total >= 0.005:
-        return 50.0
-    return 40.0
+def load_length_qscore_heatmap(summary):
+    plot = load_summary_heatmap(
+        summary, "read_length_quality", "Read length / kb",
+        "No read length vs quality data available", x_scale=0.001)
+    plot._fig.name = "fastcat_length_qscore"
+    return plot
+
+
+def load_speed_qscore_heatmap(summary):
+    plot = load_summary_heatmap(
+        summary, "translocation_speed_quality", "Translocation speed / bp/s",
+        "No translocation speed vs quality data available")
+    plot._fig.name = "fastcat_speed_qscore"
+    return plot
+
+
+def load_accuracy_qscore_heatmap(summary):
+    plot = load_summary_heatmap(
+        summary, "alignment_accuracy_quality", "Alignment concordance / Q",
+        "No alignment concordance vs quality data available", match_aspect=True)
+    plot._fig.name = "fastcat_accuracy_qscore"
+    qscore_end = plot._fig.y_range.end
+    plot._fig.x_range.end = qscore_end
+    return plot
 
 
 def accuracy_qscore_chart_styles(plot):
@@ -510,9 +523,19 @@ def format_hours(value):
     return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
-def load_time_bin_summary(path):
-    """Load fastcat time_bin_summary.tsv and add plotting columns."""
-    df = pd.read_csv(path, sep="\t")
+def load_time_bin_summary(summary):
+    """Decode summary.json time data and add plotting columns."""
+    df = summary_dataframe(summary, "time")
+    if df is None:
+        return pd.DataFrame()
+    df = df.rename(columns={
+        "quality_mean": "qscore_mean",
+        "quality_q05": "qscore_q05",
+        "quality_q25": "qscore_q25",
+        "quality_q50": "qscore_q50",
+        "quality_q75": "qscore_q75",
+        "quality_q95": "qscore_q95",
+    })
     numeric_cols = (
         "time_bin_start_s", "time_bin_end_s", "read_count", "base_count",
         "cumulative_read_count", "cumulative_base_count",
@@ -590,8 +613,8 @@ def load_channel_map(name):
     return orient_channel_cells(name, pd.DataFrame(cells))
 
 
-def load_channel_summary_heatmap(path, metric):
-    df = pd.read_csv(path, sep="\t")
+def load_channel_summary_heatmap(channel_summary, metric):
+    df = channel_summary.copy()
     if df.empty:
         return bokeh_null.null_plot("No channel occupancy data available")
     else:
@@ -837,9 +860,9 @@ def quantile_ribbonplot(df, prefix, ylabel):
     return plot
 
 
-def add_time_bin_plots(path):
+def add_time_bin_plots(summary):
     """Add time-bin plots for one sample to the current report section."""
-    df = load_time_bin_summary(path)
+    df = load_time_bin_summary(summary)
 
     tabs = Tabs()
     with tabs.add_tab("Yield"):
@@ -879,11 +902,14 @@ def add_time_bin_plots(path):
         EZChart(accuracy_plot, height="420px")
 
 
-def add_channel_summary_plots(path):
+def add_channel_summary_plots(summary):
     """Add channel occupancy plots for one sample."""
-    reads_plot = load_channel_summary_heatmap(path, "read_count")
-    mean_length_plot = load_channel_summary_heatmap(path, "mean_read_length")
-    channel_summary = pd.read_csv(path, sep="\t")
+    channel_summary = summary_dataframe(summary, "channels")
+    if channel_summary is None:
+        EZChart(bokeh_null.null_plot("No channel occupancy data available"))
+        return
+    reads_plot = load_channel_summary_heatmap(channel_summary, "read_count")
+    mean_length_plot = load_channel_summary_heatmap(channel_summary, "mean_read_length")
     has_quality = "mean_quality" in channel_summary.columns
     has_concordance = (
         "mean_concordance_qscore" in channel_summary.columns
@@ -901,11 +927,12 @@ def add_channel_summary_plots(path):
             height="auto",
             additional_styles=aspect_matched_chart_styles(mean_length_plot))
     if has_quality:
-        mean_quality_plot = load_channel_summary_heatmap(path, "mean_quality")
+        mean_quality_plot = load_channel_summary_heatmap(channel_summary, "mean_quality")
     else:
         mean_quality_plot = None
     if has_concordance:
-        mean_concordance_plot = load_channel_summary_heatmap(path, "mean_concordance_qscore")
+        mean_concordance_plot = load_channel_summary_heatmap(
+            channel_summary, "mean_concordance_qscore")
     else:
         mean_concordance_plot = None
     mean_metric_plots = [
@@ -930,16 +957,16 @@ def add_channel_summary_plots(path):
                 additional_styles=aspect_matched_chart_styles(mean_concordance_plot))
 
 
-def add_quality_diagnostics_plots(length_qscore_path, speed_qscore_path, accuracy_qscore_path=None):
+def add_quality_diagnostics_plots(summary):
     """Add quality diagnostic heatmaps to a shared tab set."""
     tabs = Tabs()
     with tabs.add_tab("Translocation speed"):
-        EZChart(load_speed_qscore_heatmap(speed_qscore_path), height="650px")
+        EZChart(load_speed_qscore_heatmap(summary), height="650px")
     with tabs.add_tab("Read length"):
-        EZChart(load_length_qscore_heatmap(length_qscore_path), height="650px")
-    if accuracy_qscore_path:
+        EZChart(load_length_qscore_heatmap(summary), height="650px")
+    if summary_heatmap(summary, "alignment_accuracy_quality") is not None:
         with tabs.add_tab("Alignment concordance"):
-            plot = load_accuracy_qscore_heatmap(accuracy_qscore_path)
+            plot = load_accuracy_qscore_heatmap(summary)
             EZChart(
                 plot,
                 height="auto",
@@ -972,7 +999,14 @@ def main(args):
         } for d in metadata], key=lambda x: x["sample"])
 
     sample_names = [d['sample'] for d in sample_details]
-    samples_with_stats = tuple(d["alias"] for d in metadata if d["has_stats"])
+    summaries = [summary_json.load(path) for path in args.summary_json]
+    if len(summaries) != len(metadata):
+        raise ValueError("--summary-json inputs must match --metadata entries")
+    samples_with_stats = tuple(d["alias"] for d in metadata)
+    run_summary_overrides = None
+    if args.run_summary_overrides:
+        with open(args.run_summary_overrides, encoding="utf-8") as handle:
+            run_summary_overrides = json.load(handle)
 
     if grouped:
         with report.add_section(
@@ -1011,88 +1045,83 @@ def main(args):
                 p(error)
 
     with report.add_section("Run summary", "Run summary"):
-        if args.run_summary:
-            simple_kv_table(load_run_summary(args.run_summary[0]))
-        else:
-            detail = sample_details[0]
-            simple_kv_table([
-                ("Sample ID", detail["sample"]),
-                ("Barcode ID", detail["barcode"]),
-            ])
+        simple_kv_table(load_run_summary(summaries[0], run_summary_overrides))
 
-    if args.stats:
-        with report.add_section("Run statistics", "Run statistics"):
-            stats = tuple(args.stats)
-            if len(stats) == 1:
-                stats = stats[0]
-                samples_with_stats = samples_with_stats[0]
-            bokeh_seqsummary.SeqSummary(stats, sample_names=samples_with_stats)
+    with report.add_section("Run statistics", "Run statistics"):
+        stats = tuple({
+            "read_length": summary_distribution(summary, "read_length"),
+            "quality": summary_distribution(summary, "quality"),
+        } for summary in summaries)
+        if len(stats) == 1:
+            stats = stats[0]
+            samples_with_stats = samples_with_stats[0]
+        bokeh_seqsummary.SeqSummary(stats, sample_names=samples_with_stats)
 
-    if args.alignment_stats and args.flagstats:
+    alignment_summaries = [summary for summary in summaries if summary.get("alignment")]
+    if alignment_summaries:
         with report.add_section("Alignment statistics", "Alignment statistics"):
             p(
                 "Read-level mapping statistics. Alignment distributions include "
                 "primary QC-passing mapped reads.")
-            add_alignment_summary(args.flagstats)
-            add_alignment_plots(args.alignment_stats)
+            if len(alignment_summaries) == 1:
+                add_alignment_summary(alignment_summaries[0])
+                add_alignment_plots(alignment_summaries[0])
+            else:
+                tabs = Tabs()
+                for sample, summary in zip(samples_with_stats, alignment_summaries):
+                    with tabs.add_tab(sample):
+                        add_alignment_summary(summary)
+                        add_alignment_plots(summary)
 
-    if args.coverage_summary and args.coverage_distribution:
+    coverage_summaries = [summary for summary in summaries if summary.get("coverage", {}).get("targets")]
+    if coverage_summaries:
         with report.add_section("Depth of coverage", "Depth of coverage"):
             p(
                 "The cumulative depth distribution shows the percentage of reference "
                 "positions covered at or above each depth for the selected target set.")
-            add_coverage_plot(args.coverage_summary, args.coverage_distribution)
+            if len(coverage_summaries) == 1:
+                add_coverage_plot(coverage_summaries[0])
+            else:
+                tabs = Tabs()
+                for sample, summary in zip(samples_with_stats, coverage_summaries):
+                    with tabs.add_tab(sample):
+                        add_coverage_plot(summary)
 
-    if args.time_bin_summary:
-        time_samples = samples_with_stats
-        if isinstance(time_samples, str):
-            time_samples = (time_samples,)
-
+    time_summaries = [summary for summary in summaries if summary.get("time")]
+    if time_summaries:
         with report.add_section("Sequencing over time", "Sequencing over time"):
-            if len(args.time_bin_summary) == 1:
-                add_time_bin_plots(args.time_bin_summary[0])
+            if len(time_summaries) == 1:
+                add_time_bin_plots(time_summaries[0])
             else:
                 tabs = Tabs()
-                for sample, path in zip(time_samples, args.time_bin_summary):
+                for sample, summary in zip(samples_with_stats, time_summaries):
                     with tabs.add_tab(sample):
-                        add_time_bin_plots(path)
+                        add_time_bin_plots(summary)
 
-    if args.length_qscore_2d and args.speed_qscore_2d:
-        heatmap_samples = samples_with_stats
-        if isinstance(heatmap_samples, str):
-            heatmap_samples = (heatmap_samples,)
-
+    heatmap_summaries = [
+        summary for summary in summaries
+        if summary_heatmap(summary, "read_length_quality")
+        and summary_heatmap(summary, "translocation_speed_quality")]
+    if heatmap_summaries:
         with report.add_section("Quality diagnostics", "Quality diagnostics"):
-            if len(args.length_qscore_2d) == 1 and len(args.speed_qscore_2d) == 1:
-                add_quality_diagnostics_plots(
-                    args.length_qscore_2d[0],
-                    args.speed_qscore_2d[0],
-                    args.accuracy_qscore_2d[0] if args.accuracy_qscore_2d else None)
+            if len(heatmap_summaries) == 1:
+                add_quality_diagnostics_plots(heatmap_summaries[0])
             else:
                 tabs = Tabs()
-                for index, (sample, length_path, speed_path) in enumerate(zip(
-                        heatmap_samples,
-                        args.length_qscore_2d,
-                        args.speed_qscore_2d)):
+                for sample, summary in zip(samples_with_stats, heatmap_summaries):
                     with tabs.add_tab(sample):
-                        accuracy_path = (
-                            args.accuracy_qscore_2d[index]
-                            if args.accuracy_qscore_2d else None)
-                        add_quality_diagnostics_plots(length_path, speed_path, accuracy_path)
+                        add_quality_diagnostics_plots(summary)
 
-    if args.channel_summary:
-        channel_samples = samples_with_stats
-        if isinstance(channel_samples, str):
-            channel_samples = (channel_samples,)
-
+    channel_summaries = [summary for summary in summaries if summary.get("channels")]
+    if channel_summaries:
         with report.add_section("Channel occupancy", "Channel occupancy"):
-            if len(args.channel_summary) == 1:
-                add_channel_summary_plots(args.channel_summary[0])
+            if len(channel_summaries) == 1:
+                add_channel_summary_plots(channel_summaries[0])
             else:
                 tabs = Tabs()
-                for sample, path in zip(channel_samples, args.channel_summary):
+                for sample, summary in zip(samples_with_stats, channel_summaries):
                     with tabs.add_tab(sample):
-                        add_channel_summary_plots(path)
+                        add_channel_summary_plots(summary)
 
     report.write(args.report)
     logger.info(f"Report written to {args.report}.")
@@ -1104,41 +1133,14 @@ def argparser():
     parser.add_argument("report", help="Report output file")
     parser.add_argument("--analysis_group", help="Analysis group name.")
     parser.add_argument(
-        "--stats", nargs='+',
-        help="Fastcat histogram directory or per-read stats, ordered as per entries in --metadata.")
-    parser.add_argument(
         "--metadata", required=True,
         help="sample metadata")
     parser.add_argument(
-        "--run-summary", nargs="+",
-        help="Fastcat run_summary.tsv files, ordered as per entries in --metadata.")
+        "--summary-json", nargs="+", required=True,
+        help="Fastcat summary.json files, ordered as per entries in --metadata.")
     parser.add_argument(
-        "--length-qscore-2d", nargs="+",
-        help="Fastcat length_qscore_2d.tsv files, ordered as per entries in --metadata.")
-    parser.add_argument(
-        "--speed-qscore-2d", nargs="+",
-        help="Fastcat speed_qscore_2d.tsv files, ordered as per entries in --metadata.")
-    parser.add_argument(
-        "--accuracy-qscore-2d", nargs="+",
-        help="Fastcat accuracy_qscore_2d.tsv files, ordered as per entries in --metadata.")
-    parser.add_argument(
-        "--time-bin-summary", nargs="+",
-        help="Fastcat time_bin_summary.tsv files, ordered as per entries in --metadata.")
-    parser.add_argument(
-        "--channel-summary", nargs="+",
-        help="Fastcat channel_summary.tsv files, ordered as per entries in --metadata.")
-    parser.add_argument(
-        "--alignment-stats",
-        help="Fastcat BAM histogram directory containing accuracy and coverage histograms.")
-    parser.add_argument(
-        "--flagstats",
-        help="Fastcat flagstats.tsv used to scaffold alignment headline values.")
-    parser.add_argument(
-        "--coverage-summary", nargs="+",
-        help="Coverage summary tables ordered to match --coverage-distribution.")
-    parser.add_argument(
-        "--coverage-distribution", nargs="+",
-        help="Aggregate coverage distribution tables ordered to match --coverage-summary.")
+        "--run-summary-overrides",
+        help="Workflow-owned JSON display overrides used when vendoring the HTML template.")
     parser.add_argument(
         "--versions", required=True,
         help="directory containing CSVs containing name,version.")

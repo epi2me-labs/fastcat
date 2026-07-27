@@ -17,6 +17,8 @@
 #include "core/fc_read.h"
 #include "core/fc_regiter.h"
 
+typedef struct fc_run_summary fc_run_summary;
+
 typedef enum {
     FC_FILE_FASTQ = 0,
     FC_FILE_BAM
@@ -66,6 +68,8 @@ typedef struct {
     const char *region; /* "chr:start-end" */
     const char *bed; /* BED filepath */
     htsThreadPool *thread_pool; /* optional: attach thread pool to BAM handle */
+    bool use_barcodes; /* route per-read filter counts by barcode */
+    fc_run_summary *run_summary; /* per-barcode filtering counters */
 } fc_iter_opts;
 
 typedef struct {
