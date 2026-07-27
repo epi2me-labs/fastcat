@@ -1248,52 +1248,6 @@ static fc_json_value_t *build_image_heatmap_empty_source_data_value(void)
     return source.value;
 }
 
-static fc_json_value_t *build_metric_qscore_empty_hover_source_data_value(void)
-{
-    report_source source = bokeh_source_create();
-    bokeh_source_add_array_column(&source, "x");
-    bokeh_source_add_array_column(&source, "y");
-    bokeh_source_add_array_column(&source, "width");
-    bokeh_source_add_array_column(&source, "height");
-    bokeh_source_add_array_column(&source, "metric");
-    bokeh_source_add_array_column(&source, "quality");
-    bokeh_source_add_array_column(&source, "count");
-    return source.value;
-}
-
-static fc_json_value_t *build_metric_qscore_hover_source_data_value(
-    const fc_metric_qscore_2d_matrix *matrix, double x_scale)
-{
-    report_source source = bokeh_source_create();
-    report_column x = bokeh_source_add_array_column(&source, "x");
-    report_column y = bokeh_source_add_array_column(&source, "y");
-    report_column width = bokeh_source_add_array_column(&source, "width");
-    report_column height = bokeh_source_add_array_column(&source, "height");
-    report_column metric = bokeh_source_add_array_column(&source, "metric");
-    report_column quality = bokeh_source_add_array_column(&source, "quality");
-    report_column count = bokeh_source_add_array_column(&source, "count");
-    double x_width = (matrix->x_upper - matrix->x_lower)
-        / (double)matrix->x_bins;
-
-    for (size_t q = 0; q < matrix->qscore_bins; ++q) {
-        double qscore = ((double)q + 0.5) * matrix->qscore_width;
-        for (size_t x_bin = 0; x_bin < matrix->x_bins; ++x_bin) {
-            double x_value = matrix->x_lower
-                + ((double)x_bin + 0.5) * x_width;
-            double value = matrix->counts[q * matrix->x_bins + x_bin];
-            fc_json_array_append_number(x.array, x_value * x_scale);
-            fc_json_array_append_number(y.array, qscore);
-            fc_json_array_append_number(width.array, x_width * x_scale);
-            fc_json_array_append_number(height.array, matrix->qscore_width);
-            fc_json_array_append_number(metric.array, x_value * x_scale);
-            fc_json_array_append_number(quality.array, qscore);
-            fc_json_array_append_number(count.array,
-                isfinite(value) && value > 0.0 ? value : 0.0);
-        }
-    }
-    return source.value;
-}
-
 static double metric_qscore_axis_upper(const fc_metric_qscore_2d_matrix *matrix)
 {
     double total = 0.0;
@@ -1326,24 +1280,37 @@ static double metric_qscore_axis_upper(const fc_metric_qscore_2d_matrix *matrix)
     return fmin(FC_REPORT_QSCORE_DEFAULT_MAX, maximum);
 }
 
-static fc_json_value_t *
-build_lq2d_image_ndarray_value(const fc_length_qscore_2d_matrix *matrix)
+static size_t metric_qscore_visible_bin_count(
+    const fc_metric_qscore_2d_matrix *matrix,
+    double upper)
 {
-    if (matrix->x_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->x_bins) {
-        FC_LOG_FATAL("Length/qscore report image is too large.");
+    if (!(upper > 0.0) || !(matrix->qscore_width > 0.0)) {
+        return 0;
+    }
+    size_t bins = (size_t)ceil(upper / matrix->qscore_width);
+    return bins < matrix->qscore_bins ? bins : matrix->qscore_bins;
+}
+
+static fc_json_value_t *build_metric_qscore_image_ndarray_value(
+    const fc_metric_qscore_2d_matrix *matrix,
+    size_t qscore_bins,
+    size_t x_bins)
+{
+    if (qscore_bins == 0 || x_bins == 0 || qscore_bins > matrix->qscore_bins
+        || x_bins > matrix->x_bins || x_bins > SIZE_MAX / qscore_bins) {
+        FC_LOG_FATAL("Invalid metric/qscore report image dimensions.");
     }
 
-    size_t n = matrix->x_bins * matrix->qscore_bins;
-    double *values = fc_alloc(n, sizeof(*values), "report length/qscore image values");
-    for (size_t i = 0; i < n; i++) {
-        double count = matrix->counts[i];
-        if (!isfinite(count) || count < 0.0) {
-            count = 0.0;
+    size_t n = x_bins * qscore_bins;
+    double *values = fc_alloc(n, sizeof(*values), "report metric/qscore image values");
+    for (size_t q = 0; q < qscore_bins; ++q) {
+        for (size_t x = 0; x < x_bins; ++x) {
+            double count = matrix->counts[q * matrix->x_bins + x];
+            values[q * x_bins + x] = isfinite(count) && count > 0.0 ? count : 0.0;
         }
-        values[i] = count;
     }
 
-    fc_json_value_t *value = fc_json_bokeh_ndarray_f64(values, matrix->qscore_bins, matrix->x_bins);
+    fc_json_value_t *value = fc_json_bokeh_ndarray_f32(values, qscore_bins, x_bins);
     free(values);
     return value;
 }
@@ -1389,8 +1356,6 @@ static void update_length_qscore_plot(JSON_Value *docs,
             "No read length vs quality data available", true);
         bokeh_set_value(docs, "length_qscore.source.data",
             build_image_heatmap_empty_source_data_value());
-        bokeh_set_value(docs, "length_qscore.hover_source.data",
-            build_metric_qscore_empty_hover_source_data_value());
         bokeh_set_number(docs, "length_qscore.color_mapper.high", 1.0);
         bokeh_set_range(docs, "length_qscore.x_range", 0.0, 1.0);
         bokeh_set_range(docs, "length_qscore.y_range", 0.0, 1.0);
@@ -1423,6 +1388,7 @@ static void update_length_qscore_plot(JSON_Value *docs,
     double y_start = 0.0;
     double x_end = matrix.x_upper / 1000.0;
     double y_end = metric_qscore_axis_upper(&matrix);
+    size_t qscore_bins = metric_qscore_visible_bin_count(&matrix, y_end);
 
     report_source source = bokeh_source_create();
     report_column image = bokeh_source_add_array_column(&source, "image");
@@ -1431,15 +1397,13 @@ static void update_length_qscore_plot(JSON_Value *docs,
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
     fc_json_array_append_value(image.array,
-        build_lq2d_image_ndarray_value(&matrix));
+        build_metric_qscore_image_ndarray_value(&matrix, qscore_bins, matrix.x_bins));
     fc_json_array_append_number(x.array, x_start);
     fc_json_array_append_number(y.array, y_start);
     fc_json_array_append_number(dw.array, x_end - x_start);
     fc_json_array_append_number(dh.array, y_end - y_start);
 
     bokeh_set_value(docs, "length_qscore.source.data", source.value);
-    bokeh_set_value(docs, "length_qscore.hover_source.data",
-        build_metric_qscore_hover_source_data_value(&matrix, 0.001));
     bokeh_set_number(docs, "length_qscore.color_mapper.high",
         color_high > 0.0 ? color_high : 1.0);
     bokeh_set_range(docs, "length_qscore.x_range", x_start, x_end);
@@ -1447,29 +1411,6 @@ static void update_length_qscore_plot(JSON_Value *docs,
     bokeh_set_plot_data_state(docs, "length_qscore", true, "right");
 
     fc_length_qscore_2d_matrix_destroy(&matrix);
-}
-
-static fc_json_value_t *
-build_qts2d_image_ndarray_value(const fc_speed_qscore_2d_matrix *matrix)
-{
-    if (matrix->x_bins != 0 && matrix->qscore_bins > SIZE_MAX / matrix->x_bins) {
-        FC_LOG_FATAL("Qscore/translocation-speed report image is too large.");
-    }
-
-    size_t n = matrix->x_bins * matrix->qscore_bins;
-    double *values = fc_alloc(n, sizeof(*values),
-        "report qscore/translocation-speed image values");
-    for (size_t i = 0; i < n; i++) {
-        double count = matrix->counts[i];
-        if (!isfinite(count) || count < 0.0) {
-            count = 0.0;
-        }
-        values[i] = count;
-    }
-
-    fc_json_value_t *value = fc_json_bokeh_ndarray_f64(values, matrix->qscore_bins, matrix->x_bins);
-    free(values);
-    return value;
 }
 
 static double
@@ -1515,8 +1456,6 @@ static void update_speed_qscore_plot(JSON_Value *docs,
             "No translocation speed vs quality data available", true);
         bokeh_set_value(docs, "speed_qscore.source.data",
             build_image_heatmap_empty_source_data_value());
-        bokeh_set_value(docs, "speed_qscore.hover_source.data",
-            build_metric_qscore_empty_hover_source_data_value());
         bokeh_set_number(docs, "speed_qscore.color_mapper.high", 1.0);
         bokeh_set_range(docs, "speed_qscore.x_range", 0.0, 1.0);
         bokeh_set_range(docs, "speed_qscore.y_range", 0.0, 1.0);
@@ -1550,6 +1489,7 @@ static void update_speed_qscore_plot(JSON_Value *docs,
     double y_start = 0.0;
     double x_end = matrix.x_upper;
     double y_end = metric_qscore_axis_upper(&matrix);
+    size_t qscore_bins = metric_qscore_visible_bin_count(&matrix, y_end);
 
     report_source source = bokeh_source_create();
     report_column image = bokeh_source_add_array_column(&source, "image");
@@ -1558,15 +1498,13 @@ static void update_speed_qscore_plot(JSON_Value *docs,
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
     fc_json_array_append_value(image.array,
-        build_qts2d_image_ndarray_value(&matrix));
+        build_metric_qscore_image_ndarray_value(&matrix, qscore_bins, matrix.x_bins));
     fc_json_array_append_number(x.array, x_start);
     fc_json_array_append_number(y.array, y_start);
     fc_json_array_append_number(dw.array, x_end - x_start);
     fc_json_array_append_number(dh.array, y_end - y_start);
 
     bokeh_set_value(docs, "speed_qscore.source.data", source.value);
-    bokeh_set_value(docs, "speed_qscore.hover_source.data",
-        build_metric_qscore_hover_source_data_value(&matrix, 1.0));
     bokeh_set_number(docs, "speed_qscore.color_mapper.high",
         color_high > 0.0 ? color_high : 1.0);
     bokeh_set_range(docs, "speed_qscore.x_range", x_start, x_end);
@@ -1586,8 +1524,6 @@ static void update_accuracy_qscore_plot(JSON_Value *docs,
             "No alignment concordance vs quality data available", true);
         bokeh_set_value(docs, "accuracy_qscore.source.data",
             build_image_heatmap_empty_source_data_value());
-        bokeh_set_value(docs, "accuracy_qscore.hover_source.data",
-            build_metric_qscore_empty_hover_source_data_value());
         bokeh_set_number(docs, "accuracy_qscore.color_mapper.high", 1.0);
         bokeh_set_number(docs, "accuracy_qscore.width", 620.0);
         bokeh_set_range(docs, "accuracy_qscore.x_range", 0.0,
@@ -1624,19 +1560,16 @@ static void update_accuracy_qscore_plot(JSON_Value *docs,
     report_column y = bokeh_source_add_array_column(&source, "y");
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
+    double qscore_end = metric_qscore_axis_upper(&matrix);
+    size_t qscore_bins = metric_qscore_visible_bin_count(&matrix, qscore_end);
     fc_json_array_append_value(image.array,
-        build_qts2d_image_ndarray_value(&matrix));
+        build_metric_qscore_image_ndarray_value(&matrix, qscore_bins, qscore_bins));
     fc_json_array_append_number(x.array, matrix.x_lower);
     fc_json_array_append_number(y.array, 0.0);
-    fc_json_array_append_number(dw.array, matrix.x_upper - matrix.x_lower);
-    fc_json_array_append_number(dh.array,
-        matrix.qscore_width * (double)matrix.qscore_bins);
-
-    double qscore_end = metric_qscore_axis_upper(&matrix);
+    fc_json_array_append_number(dw.array, qscore_end - matrix.x_lower);
+    fc_json_array_append_number(dh.array, qscore_end);
 
     bokeh_set_value(docs, "accuracy_qscore.source.data", source.value);
-    bokeh_set_value(docs, "accuracy_qscore.hover_source.data",
-        build_metric_qscore_hover_source_data_value(&matrix, 1.0));
     bokeh_set_number(docs, "accuracy_qscore.color_mapper.high",
         qts2d_color_high_quantile(&matrix));
     bokeh_set_number(docs, "accuracy_qscore.width", 620.0);
@@ -2675,7 +2608,7 @@ static void update_channel_reads_plot(JSON_Value *docs,
     }
 
     char subtitle[160];
-    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "%zu sequencing wells",
+    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "%zu Sequencing Wells",
         occupied);
 
     report_source source = bokeh_source_create();
@@ -2685,7 +2618,7 @@ static void update_channel_reads_plot(JSON_Value *docs,
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
     fc_json_array_append_value(image_col.array,
-        fc_json_bokeh_ndarray_f64(image, y_bins, x_bins));
+        fc_json_bokeh_ndarray_f32(image, y_bins, x_bins));
     fc_json_array_append_number(x.array, map->x_min - 0.5);
     fc_json_array_append_number(y.array, map->y_min - 0.5);
     fc_json_array_append_number(dw.array, (double)x_bins);
@@ -2832,7 +2765,7 @@ static double update_channel_mean_plot(JSON_Value *docs,
     }
 
     char subtitle[160];
-    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "%zu sequencing wells",
+    FC_SNPRINTF_CHECK(subtitle, sizeof(subtitle), "%zu Sequencing Wells",
         occupied);
 
     report_source source = bokeh_source_create();
@@ -2842,7 +2775,7 @@ static double update_channel_mean_plot(JSON_Value *docs,
     report_column dw = bokeh_source_add_array_column(&source, "dw");
     report_column dh = bokeh_source_add_array_column(&source, "dh");
     fc_json_array_append_value(image_col.array,
-        fc_json_bokeh_ndarray_f64(image, y_bins, x_bins));
+        fc_json_bokeh_ndarray_f32(image, y_bins, x_bins));
     fc_json_array_append_number(x.array, map->x_min - 0.5);
     fc_json_array_append_number(y.array, map->y_min - 0.5);
     fc_json_array_append_number(dw.array, (double)x_bins);

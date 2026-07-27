@@ -31,6 +31,59 @@ window.addEventListener("load", () => {
             if (doc == null) {
                 throw new Error("Bokeh document is missing");
             }
+
+            const heatmapDetails = [
+                ["fastcat_length_qscore", "Read length / kb"],
+                ["fastcat_speed_qscore", "Translocation speed / bp/s"],
+            ];
+            const accuracyFigure = doc.get_model_by_name("fastcat_accuracy_qscore");
+            if (accuracyFigure != null) {
+                heatmapDetails.push([
+                    "fastcat_accuracy_qscore", "Alignment concordance / Q"]);
+            }
+            for (const [name, xLabel] of heatmapDetails) {
+                const figure = doc.get_model_by_name(name);
+                const renderer = figure?.renderers?.[0];
+                const source = renderer?.data_source;
+                const hover = figure?.toolbar?.tools?.find(
+                    (tool) => tool.renderers?.length === 1 && tool.renderers[0] === renderer);
+                const fields = source == null ? [] : Object.keys(source.data).sort();
+                const expectedTooltips = [
+                    [xLabel, "@x{custom}"],
+                    ["Quality", "@y{custom}"],
+                    ["Count", "@image{0.0}"],
+                ];
+                if (
+                        figure == null || figure.renderers.length !== 1
+                        || renderer.glyph?.type !== "Image"
+                        || JSON.stringify(fields) !== JSON.stringify(["dh", "dw", "image", "x", "y"])
+                        || hover == null
+                        || JSON.stringify(hover.tooltips) !== JSON.stringify(expectedTooltips)) {
+                    throw new Error(`${name} does not use direct image hover data`);
+                }
+                const cell = {index: 0, i: 0, j: 0, flat_index: 0};
+                const image = source.data.image[0];
+                if (image == null) {
+                    continue;
+                }
+                const x = Number(hover.formatters["@x"].format(
+                    source.data.x[0], "custom", {image_index: cell}));
+                const y = Number(hover.formatters["@y"].format(
+                    source.data.y[0], "custom", {image_index: cell}));
+                const expectedX = source.data.x[0] + source.data.dw[0] / image.shape[1] / 2;
+                const expectedY = source.data.y[0] + source.data.dh[0] / image.shape[0] / 2;
+                if (Math.abs(x - expectedX) > 0.001 || Math.abs(y - expectedY) > 0.1) {
+                    throw new Error(`${name} hover coordinates do not use image cells`);
+                }
+                if (Math.abs(source.data.dh[0] / image.shape[0] - 0.5) > 1e-9) {
+                    throw new Error(`${name} embeds quality bins outside its visible range`);
+                }
+                if (name === "fastcat_accuracy_qscore"
+                        && Math.abs(source.data.dw[0] / image.shape[1] - 0.5) > 1e-9) {
+                    throw new Error(`${name} embeds concordance bins outside its visible range`);
+                }
+            }
+
             const coverageTabs = Array.from(
                 document.querySelectorAll("[data-fastcat-coverage-target]"));
             if (coverageTabs.length < 2) {

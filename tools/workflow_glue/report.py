@@ -87,7 +87,7 @@ document.addEventListener("click", (event) => {
 
 def load_dense_heatmap(
         df, x, y, value, subtitle, null_message, match_aspect=False,
-        hover_data=None, hover_items=None):
+        hover_data=None, hover_items=None, image_hover_items=None):
     """Load a dense rectangular TSV into a Bokeh heatmap matrix."""
     if df.empty:
         return bokeh_null.null_plot(null_message, x, y)
@@ -106,11 +106,12 @@ def load_dense_heatmap(
         data,
         annot=False,
         vmax_quantile=0.995,
-        cbar_kws={"title": "count"},
+        cbar_kws={"title": "Count"},
         subtitle=subtitle,
         match_aspect=match_aspect,
         hover_data=hover_data,
-        hover_items=hover_items)
+        hover_items=hover_items,
+        image_hover_items=image_hover_items)
 
 
 def aspect_matched_chart_styles(plot):
@@ -404,15 +405,6 @@ def load_length_qscore_heatmap(path):
     df = pd.read_csv(path, sep="\t")
     df["Read length / kb"] = (df["length_bin_start"] + df["length_bin_end"]) * 0.0005
     df["Quality"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
-    hover_data = pd.DataFrame({
-        "x": df["Read length / kb"],
-        "y": df["Quality"],
-        "width": (df["length_bin_end"] - df["length_bin_start"]) * 0.001,
-        "height": df["qscore_bin_end"] - df["qscore_bin_start"],
-        "metric": df["Read length / kb"],
-        "quality": df["Quality"],
-        "count": df["count"],
-    })
     plot = load_dense_heatmap(
         df,
         "Read length / kb",
@@ -420,12 +412,12 @@ def load_length_qscore_heatmap(path):
         "count",
         "",
         "No read length vs quality data available",
-        hover_data=hover_data,
-        hover_items=[
-            ("Read length / kb", "@metric{0.000}"),
-            ("Quality", "@quality{0.0}"),
-            ("count", "@count{0.0}"),
+        image_hover_items=[
+            ("Read length / kb", "@x{custom}"),
+            ("Quality", "@y{custom}"),
+            ("Count", "@image{0.0}"),
         ])
+    plot._fig.name = "fastcat_length_qscore"
     plot._fig.y_range.end = qscore_heatmap_upper(df)
     return plot
 
@@ -436,15 +428,6 @@ def load_speed_qscore_heatmap(path):
     df["Translocation speed / bp/s"] = (
         df["speed_bin_start"] + df["speed_bin_end"]) * 0.5
     df["Quality"] = (df["qscore_bin_start"] + df["qscore_bin_end"]) * 0.5
-    hover_data = pd.DataFrame({
-        "x": df["Translocation speed / bp/s"],
-        "y": df["Quality"],
-        "width": df["speed_bin_end"] - df["speed_bin_start"],
-        "height": df["qscore_bin_end"] - df["qscore_bin_start"],
-        "metric": df["Translocation speed / bp/s"],
-        "quality": df["Quality"],
-        "count": df["count"],
-    })
     plot = load_dense_heatmap(
         df,
         "Translocation speed / bp/s",
@@ -452,12 +435,12 @@ def load_speed_qscore_heatmap(path):
         "count",
         "",
         "No translocation speed vs quality data available",
-        hover_data=hover_data,
-        hover_items=[
-            ("Translocation speed / bp/s", "@metric{0.0}"),
-            ("Quality", "@quality{0.0}"),
-            ("count", "@count{0.0}"),
+        image_hover_items=[
+            ("Translocation speed / bp/s", "@x{custom}"),
+            ("Quality", "@y{custom}"),
+            ("Count", "@image{0.0}"),
         ])
+    plot._fig.name = "fastcat_speed_qscore"
     plot._fig.y_range.end = qscore_heatmap_upper(df)
     return plot
 
@@ -473,28 +456,17 @@ def load_accuracy_qscore_heatmap(path):
         index="Alignment Concordance / Q",
         columns="Quality",
         values="count")
-    hover_data = pd.DataFrame({
-        "x": df["Alignment Concordance / Q"],
-        "y": df["Quality"],
-        "width": df["concordance_qscore_bin_end"]
-            - df["concordance_qscore_bin_start"],
-        "height": df["qscore_bin_end"] - df["qscore_bin_start"],
-        "metric": df["Alignment Concordance / Q"],
-        "quality": df["Quality"],
-        "count": df["count"],
-    })
     plot = bokeh_matrix.heatmap(
         data,
         annot=False,
         vmax_quantile=0.995,
-        cbar_kws={"title": "read count"},
+        cbar_kws={"title": "Read count"},
         match_aspect=True,
         hide_toolbar=True,
-        hover_data=hover_data,
-        hover_items=[
-            ("Alignment concordance / Q", "@metric{0.0}"),
-            ("Quality", "@quality{0.0}"),
-            ("count", "@count{0.0}"),
+        image_hover_items=[
+            ("Alignment concordance / Q", "@x{custom}"),
+            ("Quality", "@y{custom}"),
+            ("Count", "@image{0.0}"),
         ])
     plot._fig.name = "fastcat_accuracy_qscore"
     qscore_end = qscore_heatmap_upper(df)
@@ -651,7 +623,7 @@ def load_channel_summary_heatmap(path, metric):
     merged = cells.merge(df, on=["channel", "mux"], how="left")
     merged["read_count"] = merged["read_count"].fillna(0.0)
     merged["base_count"] = merged["base_count"].fillna(0.0)
-    color_title = "read count"
+    color_title = "Read count"
     value_format = "@count{0}"
     if metric == "mean_read_length":
         merged["count"] = np.divide(
@@ -659,15 +631,15 @@ def load_channel_summary_heatmap(path, metric):
             merged["read_count"],
             out=np.zeros(len(merged), dtype=float),
             where=merged["read_count"] > 0.0) / 1000.0
-        color_title = "mean read length / kb"
+        color_title = "Mean read length / kb"
         value_format = "@count{0.0}"
     elif metric == "mean_quality":
         merged["count"] = merged["mean_quality"].fillna(0.0)
-        color_title = "mean quality"
+        color_title = "Mean quality"
         value_format = "@count{0.0}"
     elif metric == "mean_concordance_qscore":
         merged["count"] = merged["mean_concordance_qscore"].fillna(0.0)
-        color_title = "mean alignment concordance / Q"
+        color_title = "Mean alignment concordance / Q"
         value_format = "@count{0.0}"
     else:
         merged["count"] = merged[metric]
@@ -683,7 +655,7 @@ def load_channel_summary_heatmap(path, metric):
     occupied = ((merged["read_count"] > 0.0) | (merged["base_count"] > 0.0)).sum()
     if occupied == 0:
         return bokeh_null.null_plot("No channel occupancy data available")
-    subtitle = f"{int(occupied)} sequencing wells"
+    subtitle = f"{int(occupied)} Sequencing Wells"
 
     return bokeh_matrix.heatmap(
         data,
@@ -696,8 +668,8 @@ def load_channel_summary_heatmap(path, metric):
         hide_toolbar=True,
         hover_data=merged[["x", "y", "width", "height", "channel", "mux", "count"]],
         hover_items=[
-            ("channel", "@channel{0}"),
-            ("mux", "@mux{0}"),
+            ("Channel", "@channel{0}"),
+            ("Mux", "@mux{0}"),
             (color_title, value_format),
         ])
 
@@ -853,11 +825,11 @@ def quantile_ribbonplot(df, prefix, ylabel):
         hover_items=[
             ("Elapsed time / hours", f"@{{{x}}}{{0.00}}"),
             ("Read count", "@read_count{0}"),
-            ("Q05", "@q05{0.00}"),
-            ("Q25", "@q25{0.00}"),
-            ("Q50", f"@{{{y}}}{{0.00}}"),
-            ("Q75", "@q75{0.00}"),
             ("Q95", "@q95{0.00}"),
+            ("Q75", "@q75{0.00}"),
+            ("Q50", f"@{{{y}}}{{0.00}}"),
+            ("Q25", "@q25{0.00}"),
+            ("Q05", "@q05{0.00}"),
         ])
     if plot is not None:
         plot._fig.xaxis.axis_label = "Elapsed time / hours"
