@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "core/fc_failures.h"
 #include "core/fc_read.h"
 #include "core/fc_stats.h"
 #include "core/fc_stats_engine.h"
@@ -37,12 +38,19 @@ typedef struct {
     size_t l75;
     size_t l90;
     size_t l95;
+    uint64_t records_seen;
+    uint64_t records_passed_filters;
+    uint64_t records_too_long;
+    uint64_t records_too_short;
+    uint64_t records_low_quality;
+    uint64_t records_dust_masked;
 } fc_run_summary_row;
 
 fc_run_summary *fc_run_summary_create(size_t barcode_count);
 void fc_run_summary_destroy(fc_run_summary *model);
 
 void fc_run_summary_add_read(fc_run_summary *model, size_t barcode, const fc_read *read);
+void fc_run_summary_add_filter_event(fc_run_summary *model, size_t barcode, failure_code code);
 
 bool fc_run_summary_seen(const fc_run_summary *model, size_t barcode);
 

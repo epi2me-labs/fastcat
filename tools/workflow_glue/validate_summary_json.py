@@ -3,22 +3,13 @@
 import argparse
 import base64
 import copy
-import gzip
-import json
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from jsonschema import Draft202012Validator
 
+from . import summary_json
 
-DTYPE_WIDTHS = {
-    "uint8": 1,
-    "uint16": 2,
-    "uint32": 4,
-    "uint64": 8,
-    "float64": 8,
-}
 
 DATAFRAME_PATHS = (
     "$.channels.__data__",
@@ -63,12 +54,6 @@ def argparser():
     return parser
 
 
-def load_json(path):
-    opener = gzip.open if path.suffix == ".gz" else open
-    with opener(path, "rt") as handle:
-        return json.load(handle)
-
-
 def decode_payload(data, path, element_count, dtype):
     """Decode an ndarray payload and verify its expected byte length."""
     try:
@@ -76,7 +61,7 @@ def decode_payload(data, path, element_count, dtype):
     except (ValueError, TypeError) as error:
         return None, f"{path}.__ndarray__: invalid base64 payload ({error})"
 
-    expected_bytes = element_count * DTYPE_WIDTHS[dtype]
+    expected_bytes = element_count * summary_json.DTYPE_WIDTHS[dtype]
     if len(payload) != expected_bytes:
         return None, (f"{path}.__ndarray__: expected {expected_bytes} bytes for "
                       f"{element_count} elements and {dtype}, got {len(payload)}")
@@ -99,22 +84,11 @@ def decode_dataframe(data, path):
     errors = []
     for index, column in enumerate(data["columns"]):
         column_path = f"{path}.columns[{index}]"
-        if column["dtype"] == "string":
-            values = column.get("data")
-            if not isinstance(values, list) or len(values) != row_count:
-                errors.append(
-                    f"{column_path}.data: expected {row_count} strings")
-                continue
-            if not all(isinstance(value, str) for value in values):
-                errors.append(f"{column_path}.data: expected only strings")
-                continue
-            arrays[column["name"]] = pd.Series(values, dtype="string")
-            continue
-        payload, error = decode_payload(column, column_path, row_count, column["dtype"])
-        if error is not None:
-            errors.append(error)
-            continue
-        arrays[column["name"]] = np.frombuffer(payload, dtype=column["dtype"])
+        try:
+            arrays[column["name"]] = summary_json.decode_dataframe({
+                "shape": [row_count], "columns": [column]}).iloc[:, 0]
+        except (KeyError, TypeError, ValueError) as error:
+            errors.append(f"{column_path}: {error}")
 
     if errors:
         return None, errors
@@ -202,7 +176,7 @@ def compare_documents(actual, expected, mask_barcode, path_root):
 
 def validate_path(path, schema, schema_path):
     """Load and validate one document, returning it on success."""
-    document = load_json(path)
+    document = summary_json.load(path)
     errors = validate_document(document, schema)
     if errors:
         messages = "\n".join(f"  {error}" for error in errors)
@@ -212,7 +186,7 @@ def validate_path(path, schema, schema_path):
 
 
 def main(args):
-    schema = load_json(args.schema)
+    schema = summary_json.load(args.schema)
     Draft202012Validator.check_schema(schema)
 
     if args.expected is not None and len(args.summary_json) != 1:

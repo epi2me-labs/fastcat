@@ -21,6 +21,59 @@ static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment);
 static void read_meta_set_caller(read_meta *meta, bool mod, const char *caller, size_t caller_len);
 static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr, const fc_bam_rg_cache *rg_cache);
 
+typedef struct {
+    char *barcode;
+    char *read_group;
+    bool barcode_seen;
+    bool read_group_seen;
+} bam_barcode_tags;
+
+static size_t barcode_index_from_string(const char *barcode)
+{
+    if (!barcode || strncmp(barcode, "barcode", 7) != 0) {
+        return 0;
+    }
+    size_t value = 0;
+    return fc_parse_size_strict(barcode + 7, &value) && value < FC_MAX_BARCODES ? value : 0;
+}
+
+static void bam_barcode_tags_add(bam_barcode_tags *tags, const uint8_t *aux)
+{
+    if (!tags || !aux) {
+        return;
+    }
+    const char *raw_tag = bam_aux_tag(aux);
+    char tag[3] = {
+        (char)toupper((unsigned char)raw_tag[0]),
+        (char)toupper((unsigned char)raw_tag[1]),
+        '\0'
+    };
+    if (bam_aux_type(aux) != 'Z') {
+        return;
+    }
+    if (strcmp(tag, "SM") == 0 || strcmp(tag, "BC") == 0) {
+        tags->barcode = bam_aux2Z(aux);
+        tags->barcode_seen = true;
+    } else if (strcmp(tag, "RG") == 0) {
+        tags->read_group = bam_aux2Z(aux);
+        tags->read_group_seen = true;
+    }
+}
+
+static void bam_barcode_tags_from_bam(const bam1_t *bam, bam_barcode_tags *tags)
+{
+    if (!tags) {
+        return;
+    }
+    memset(tags, 0, sizeof(*tags));
+    if (!bam) {
+        return;
+    }
+    for (uint8_t *aux = bam_aux_first(bam); aux; aux = bam_aux_next(bam, aux)) {
+        bam_barcode_tags_add(tags, aux);
+    }
+}
+
 fc_read *fc_read_init(void)
 {
     fc_read *read = fc_alloc(1, sizeof(*read), "read");
@@ -61,6 +114,31 @@ void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const fc_bam_rg
     }
     read_meta_reset(read->meta, orig_comment);
     read_meta_populate_from_bam(read->meta, read->bam, hdr, rg_cache);
+}
+
+size_t fc_read_barcode_index_from_bam(
+    const bam1_t *bam,
+    const bam_hdr_t *hdr,
+    const fc_bam_rg_cache *rg_cache)
+{
+    (void)hdr;
+    if (!bam) {
+        return 0;
+    }
+
+    bam_barcode_tags tags;
+    bam_barcode_tags_from_bam(bam, &tags);
+
+    if (tags.barcode && tags.barcode[0] != '\0') {
+        return barcode_index_from_string(tags.barcode);
+    }
+    if (tags.read_group && tags.read_group[0] != '\0' && rg_cache) {
+        const fc_bam_rg_entry *entry = fc_bam_rg_cache_find(rg_cache, tags.read_group);
+        if (entry && entry->sm && entry->sm[0] != '\0') {
+            return barcode_index_from_string(entry->sm);
+        }
+    }
+    return 0;
 }
 
 // NOTE: This function is NOT thread-safe due to lazy initialization of tags_str.
@@ -191,8 +269,10 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
     if (NULL == meta || NULL == b) {
         return;
     }
+    bam_barcode_tags barcode_tags = { 0 };
     uint8_t *aux = bam_aux_first(b);
     while (aux != NULL) {
+        bam_barcode_tags_add(&barcode_tags, aux);
         const char *t = bam_aux_tag(aux);
         char tag[3];
         tag[2] = '\0';
@@ -209,9 +289,7 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             ierr = (ival == 0 && errno == EINVAL);
         }
 
-        if ((strcmp(tag, "RG") == 0) && type == 'Z') {
-            meta->rg = bam_aux2Z(aux);
-        } else if ((strcmp(tag, "RD") == 0) && type == 'Z') {
+        if ((strcmp(tag, "RD") == 0) && type == 'Z') {
             meta->runid = bam_aux2Z(aux);
         } else if ((strcmp(tag, "ST") == 0) && type == 'Z') {
             meta->start_time = bam_aux2Z(aux);
@@ -219,23 +297,6 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             meta->flow_cell_id = bam_aux2Z(aux);
         } else if (strcmp(tag, "LB") == 0 && type == 'Z') {
             meta->sample_id = bam_aux2Z(aux);
-        } else if (((strcmp(tag, "SM") == 0) || (strcmp(tag, "BC") == 0)) && type == 'Z') {
-            meta->barcode = bam_aux2Z(aux);
-            // Default to unclassified (0) unless we parse a valid barcode number
-            meta->ibarcode = 0;
-            if (meta->barcode == NULL) {
-                // Corrupted aux tag - treat as unclassified rather than crashing
-                FC_LOG_WARN("Read '%s' has malformed barcode tag, treating as unclassified.",
-                    bam_get_qname(b));
-            } else if (strncmp(meta->barcode, "barcode", 7) == 0) {
-                const char *num_str = meta->barcode + 7;
-                size_t val = 0;
-                if (fc_parse_size_strict(num_str, &val) && val < FC_MAX_BARCODES) {
-                    meta->ibarcode = val;
-                } else {
-                    FC_LOG_WARN("Malformed barcode '%s', treating as unclassified", meta->barcode);
-                }
-            }
         } else if (((strcmp(tag, "BA") == 0) || (strcmp(tag, "AL") == 0)) && type == 'Z') {
             meta->barcode_alias = bam_aux2Z(aux);
         } else if (strcmp(tag, "RN") == 0 && !ierr) {
@@ -274,6 +335,27 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             }
         }
         aux = bam_aux_next(b, aux);
+    }
+
+    if (barcode_tags.read_group_seen) {
+        meta->rg = barcode_tags.read_group ? barcode_tags.read_group : "";
+    }
+    if (barcode_tags.barcode_seen) {
+        meta->barcode = barcode_tags.barcode;
+        meta->ibarcode = 0;
+        if (meta->barcode == NULL) {
+            FC_LOG_WARN("Read '%s' has malformed barcode tag, treating as unclassified.",
+                bam_get_qname(b));
+            meta->barcode = "";
+        } else if (strncmp(meta->barcode, "barcode", 7) == 0) {
+            const char *num_str = meta->barcode + 7;
+            size_t val = 0;
+            if (fc_parse_size_strict(num_str, &val) && val < FC_MAX_BARCODES) {
+                meta->ibarcode = val;
+            } else {
+                FC_LOG_WARN("Malformed barcode '%s', treating as unclassified", meta->barcode);
+            }
+        }
     }
 
     bool good_align = fc_is_primary_qc_pass(b);

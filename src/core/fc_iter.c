@@ -14,6 +14,7 @@
 #include "core/fc_filter.h"
 #include "core/fc_input_list.h"
 #include "core/fc_log.h"
+#include "core/fc_run_summary.h"
 #include "core/kseq_gz.h"
 
 void fc_file_stats_init(fc_file_stats *stats)
@@ -59,6 +60,14 @@ static inline void fc_iter_accum_add(size_t len, float mean_q,
     stats->min_length = (stats->min_length < len) ? stats->min_length : len;
     stats->max_length = (stats->max_length > len) ? stats->max_length : len;
     kahan_sum(q_sum, mean_q, q_comp);
+}
+
+static inline void fc_iter_record_filter_event(
+    const fc_iter_opts *opts, size_t barcode, failure_code code)
+{
+    if (opts && opts->run_summary) {
+        fc_run_summary_add_filter_event(opts->run_summary, opts->use_barcodes ? barcode : 0, code);
+    }
 }
 
 static inline bool fc_iter_filter_length(size_t len, size_t min_len, size_t max_len, fc_file_stats *stats)
@@ -144,7 +153,7 @@ static bool fc_iter_process_bam_record(
     fc_read *out, const bam_hdr_t *hdr, const kstring_t *orig_comment,
     const fc_bam_rg_cache *rg_cache,
     const fc_iter_opts *opts, bool apply_filters, fc_file_stats *stats,
-    double *q_sum, double *q_comp, dust_buffer *dust)
+    double *q_sum, double *q_comp, dust_buffer *dust, size_t barcode)
 {
     size_t len = (size_t)out->bam->core.l_qseq;
     float mean_q = fc_bam_ensure_mean_quality(out->bam, opts->force_recalc_qual);
@@ -152,17 +161,22 @@ static bool fc_iter_process_bam_record(
     // we've already filtered out reads with missing quality scores
     if (!isfinite(mean_q)) {
         stats->failures[R_LOW_QUALITY]++;
+        fc_iter_record_filter_event(opts, barcode, R_LOW_QUALITY);
         return false;
     }
 
     if (apply_filters) {
         if (!fc_iter_filter_length(len, opts->min_length, opts->max_length, stats)) {
+            fc_iter_record_filter_event(
+                opts, barcode, len > opts->max_length ? R_TOO_LONG : R_TOO_SHORT);
             return false;
         }
         if (!fc_iter_filter_quality(mean_q, opts->min_qscore, stats)) {
+            fc_iter_record_filter_event(opts, barcode, R_LOW_QUALITY);
             return false;
         }
         if (!fc_iter_filter_dust_bam(out->bam, opts, stats, dust)) {
+            fc_iter_record_filter_event(opts, barcode, R_DUST_MASKED);
             return false;
         }
         if (opts->tag_name[0] != '\0') {
@@ -184,16 +198,28 @@ static bool fc_iter_process_bam_record(
 
 static bool fastq_iter_process_record(fc_fastq_iter *iter, fc_read *out)
 {
-    return fc_iter_process_bam_record(out, NULL, &iter->seq->comment, NULL,
+    size_t barcode = fc_read_barcode_index_from_bam(out->bam, NULL, NULL);
+    fc_iter_record_filter_event(&iter->opts, barcode, R_RECORD_SEEN);
+    bool accepted = fc_iter_process_bam_record(out, NULL, &iter->seq->comment, NULL,
         &iter->opts, iter->apply_filters, &iter->stats,
-        &iter->q_sum, &iter->q_comp, &iter->dust);
+        &iter->q_sum, &iter->q_comp, &iter->dust, barcode);
+    if (accepted) {
+        fc_iter_record_filter_event(&iter->opts, barcode, R_RECORD_OK);
+    }
+    return accepted;
 }
 
 static bool bam_iter_process_record(fc_bam_iter *iter, fc_read *out)
 {
-    return fc_iter_process_bam_record(out, iter->hdr, NULL, iter->rg_cache,
+    size_t barcode = fc_read_barcode_index_from_bam(out->bam, iter->hdr, iter->rg_cache);
+    fc_iter_record_filter_event(&iter->opts, barcode, R_RECORD_SEEN);
+    bool accepted = fc_iter_process_bam_record(out, iter->hdr, NULL, iter->rg_cache,
         &iter->opts, iter->apply_filters, &iter->stats,
-        &iter->q_sum, &iter->q_comp, &iter->dust);
+        &iter->q_sum, &iter->q_comp, &iter->dust, barcode);
+    if (accepted) {
+        fc_iter_record_filter_event(&iter->opts, barcode, R_RECORD_OK);
+    }
+    return accepted;
 }
 
 static int fc_iter_finish_common(

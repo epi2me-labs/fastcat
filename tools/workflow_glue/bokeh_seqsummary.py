@@ -103,6 +103,9 @@ def sum_hists(hists):
 
 def load_summary_histograms(path):
     """Load quality and length histograms, including unmapped if available."""
+    if isinstance(path, dict):
+        return path["read_length"], path["quality"]
+
     quality = load_histogram(path, "quality")
     length = load_histogram(path, "length")
 

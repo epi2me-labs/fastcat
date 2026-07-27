@@ -62,17 +62,33 @@ def main(args):
     (out_dir / "metadata.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     if args.template:
-        (out_dir / "run_summary.tsv").write_text(
-            "sample_id\tinput_type\tbarcode_id\tbarcode_alias\trun_id\tbasecaller_model\tmodbase_models\tflow_cell_id\trun_date\t"
-            "run_duration_s\tread_count\tbase_count\t"
-            "n5_bp\tn10_bp\tn25_bp\tn50_bp\tn75_bp\tn90_bp\tn95_bp\t"
-            "l5\tl10\tl25\tl50\tl75\tl90\tl95\n"
-            f"{alias}\t{TEMPLATE_INPUT_TYPE}\t{barcode}\t{TEMPLATE_BARCODE_ALIAS}\t{TEMPLATE_RUN_ID}\t"
-            f"{TEMPLATE_BASECALLER}\t{TEMPLATE_MODBASE}\t{TEMPLATE_FLOW_CELL_ID}\t{TEMPLATE_RUN_DATE}\t"
-            f"{TEMPLATE_RUN_DURATION}\t{TEMPLATE_READ_COUNT}\t{TEMPLATE_YIELD}\t"
-            f"\t{TEMPLATE_N10}\t\t{TEMPLATE_N50}\t\t{TEMPLATE_N90}\t\t"
-            f"\t{TEMPLATE_L10}\t\t{TEMPLATE_L50}\t\t{TEMPLATE_L90}\t\n",
-            encoding="utf-8")
+        overrides = {
+            "sample_id": alias,
+            "input_type": TEMPLATE_INPUT_TYPE,
+            "barcode_id": barcode,
+            "barcode_alias": TEMPLATE_BARCODE_ALIAS,
+            "run_ids": TEMPLATE_RUN_ID,
+            "basecaller_models": TEMPLATE_BASECALLER,
+            "modbase_models": TEMPLATE_MODBASE,
+            "flow_cell_ids": TEMPLATE_FLOW_CELL_ID,
+            "run_date": TEMPLATE_RUN_DATE,
+            "run_duration_s": TEMPLATE_RUN_DURATION,
+            "read_count": TEMPLATE_READ_COUNT,
+            "base_count": TEMPLATE_YIELD,
+            "records_seen": "__FASTCAT_RECORDS_SEEN_HTML__",
+            "records_too_long": "__FASTCAT_RECORDS_TOO_LONG_HTML__",
+            "records_too_short": "__FASTCAT_RECORDS_TOO_SHORT_HTML__",
+            "records_low_quality": "__FASTCAT_RECORDS_LOW_QUALITY_HTML__",
+            "records_dust_masked": "__FASTCAT_RECORDS_DUST_MASKED_HTML__",
+            "n10_bp": TEMPLATE_N10,
+            "n50_bp": TEMPLATE_N50,
+            "n90_bp": TEMPLATE_N90,
+            "l10": TEMPLATE_L10,
+            "l50": TEMPLATE_L50,
+            "l90": TEMPLATE_L90,
+        }
+        (out_dir / "run_summary_overrides.json").write_text(
+            json.dumps(overrides, indent=2) + "\n", encoding="utf-8")
     (out_dir / "params.json").write_text(
         json.dumps(params, indent=2) + "\n", encoding="utf-8")
     (versions_dir / "versions.txt").write_text(

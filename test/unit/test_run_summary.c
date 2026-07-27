@@ -215,6 +215,33 @@ FC_TEST(run_summary_suite, test_run_summary_classifies_bam_input_type)
     fc_run_summary_destroy(model);
 }
 
+FC_TEST(run_summary_suite, test_run_summary_materializes_filter_counts_per_barcode)
+{
+    fc_run_summary *model = fc_run_summary_create(2);
+    TEST_ASSERT_NOT_NULL(model);
+
+    fc_run_summary_add_filter_event(model, 1, R_RECORD_SEEN);
+    fc_run_summary_add_filter_event(model, 1, R_RECORD_SEEN);
+    fc_run_summary_add_filter_event(model, 1, R_RECORD_SEEN);
+    fc_run_summary_add_filter_event(model, 1, R_RECORD_OK);
+    fc_run_summary_add_filter_event(model, 1, R_TOO_SHORT);
+    fc_run_summary_add_filter_event(model, 1, R_LOW_QUALITY);
+    fc_run_summary_add_filter_event(model, 0, R_RECORD_SEEN);
+
+    fc_run_summary_row row = { 0 };
+    TEST_ASSERT_EQUAL_INT(0,
+        fc_run_summary_materialize(model, 1, NULL, false, NULL, "sample", "barcode0001", &row));
+    TEST_ASSERT_EQUAL_UINT64(3, row.records_seen);
+    TEST_ASSERT_EQUAL_UINT64(1, row.records_passed_filters);
+    TEST_ASSERT_EQUAL_UINT64(0, row.records_too_long);
+    TEST_ASSERT_EQUAL_UINT64(1, row.records_too_short);
+    TEST_ASSERT_EQUAL_UINT64(1, row.records_low_quality);
+    TEST_ASSERT_EQUAL_UINT64(0, row.records_dust_masked);
+
+    fc_run_summary_row_destroy(&row);
+    fc_run_summary_destroy(model);
+}
+
 FC_TEST(run_summary_suite, test_run_summary_nxx_lxx_metrics)
 {
     fc_run_summary *model = fc_run_summary_create(1);

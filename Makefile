@@ -268,12 +268,6 @@ CORE_SRCS := \
 	src/sink/perread.c \
 	src/sink/perfile.c \
 	src/sink/counter.c \
-	src/sink/run_summary.c \
-	src/sink/channel.c \
-	src/sink/length_qscore_2d.c \
-	src/sink/speed_qscore_2d.c \
-	src/sink/accuracy_qscore_2d.c \
-	src/sink/time_bin.c \
 	src/sink/summary_json.c \
 	src/sink/hist.c \
 	src/sink/coverage.c \
@@ -551,130 +545,60 @@ $(REPORT_DIR)/template_example.fastq: $(REPORT_VENV)/.deps $(DEV_TOOLS_SCRIPT) t
 		--seed 42 \
 		> $@
 
-$(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv: $(FASTCAT_BIN) $(REPORT_DIR)/template_example.fastq | $(REPORT_DIR)
-	rm -rf $(REPORT_DIR)/template_fastcat
-	$(FASTCAT_BIN) fastq $(REPORT_DIR)/template_example.fastq \
-		--sample __FASTCAT_SAMPLE_ALIAS_HTML__ \
-		--output $(REPORT_DIR)/template_fastcat \
-		> /dev/null
-
-$(REPORT_DIR)/template_fastcat/histograms/length.hist: $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv
-	test -s $@
-
-$(REPORT_DIR)/template_fastcat/time_bin_summary.tsv: $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv
-	test -s $@
-
-$(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv: $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv
-	test -s $@
-
-$(REPORT_DIR)/template_fastcat/channel_summary.tsv: $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv
-	test -s $@
-
-$(REPORT_DIR)/template_bam/flagstats.tsv: $(FASTCAT_BIN) test/fixtures/bam/coverage/coverage_demux.sam test/fixtures/bam/coverage/report_regions.bed | $(REPORT_DIR)
-	rm -rf $(REPORT_DIR)/template_bam
-	$(FASTCAT_BIN) bam test/fixtures/bam/coverage/coverage_demux.sam \
-		--output $(REPORT_DIR)/template_bam \
-		--coverage \
-		--segments 100 \
-		--coverage-beds test/fixtures/bam/coverage/report_regions.bed \
-		--coverage-names regions \
-		> /dev/null
-
 $(REPORT_DIR)/template_alignment.sam: $(REPORT_VENV)/.deps $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py | $(REPORT_DIR)
 	$(SIMULATE_READS) \
 		--output-format sam \
+		--sam-coordinate-sort \
 		--n 200 \
 		--shape 2.6 \
 		--scale 500 \
+		--run-duration-s 172800 \
 		--seed 43 \
 		> $@
 
-$(REPORT_DIR)/template_bam_time/time_bin_summary.tsv: $(FASTCAT_BIN) $(REPORT_DIR)/template_alignment.sam | $(REPORT_DIR)
-	rm -rf $(REPORT_DIR)/template_bam_time
+$(REPORT_DIR)/template_bam/summary.json: $(FASTCAT_BIN) $(REPORT_DIR)/template_alignment.sam test/fixtures/bam/coverage/report_simulated_regions.bed | $(REPORT_DIR)
+	rm -rf $(REPORT_DIR)/template_bam
 	$(FASTCAT_BIN) bam $(REPORT_DIR)/template_alignment.sam \
-		--output $(REPORT_DIR)/template_bam_time \
+		--output $(REPORT_DIR)/template_bam \
+		--coverage \
+		--segments 100 \
+		--coverage-beds test/fixtures/bam/coverage/report_simulated_regions.bed \
+		--coverage-names regions \
 		> /dev/null
-
-TEMPLATE_BAM_REPORT_INPUTS = \
-	accuracy_qscore_2d.tsv \
-	histograms/accuracy.hist \
-	histograms/coverage.hist \
-	coverage/global.summary.txt \
-	coverage/global.dist.txt \
-	coverage/segments_100/segments_100.summary.txt \
-	coverage/segments_100/segments_100.dist.txt \
-	coverage/regions/regions.summary.txt \
-	coverage/regions/regions.dist.txt
-TEMPLATE_BAM_REPORT_INPUT_PATHS = $(addprefix $(REPORT_DIR)/template_bam/,$(TEMPLATE_BAM_REPORT_INPUTS))
-
-$(TEMPLATE_BAM_REPORT_INPUT_PATHS): $(REPORT_DIR)/template_bam/flagstats.tsv
 	test -s $@
 
 $(REPORT_DIR)/template_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --template --out-dir $(REPORT_DIR)/template_inputs
 
-$(REPORT_DIR)/template_inputs/run_summary.tsv: $(REPORT_DIR)/template_inputs/metadata.json
+$(REPORT_DIR)/template_inputs/run_summary_overrides.json: $(REPORT_DIR)/template_inputs/metadata.json
 	test -s $@
 
 $(REPORT_DIR)/example_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --out-dir $(REPORT_DIR)/example_inputs
 
-$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_bam_time/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(TEMPLATE_BAM_REPORT_INPUT_PATHS) $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary.tsv $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_bam/summary.json $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary_overrides.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/summary_json.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
-		--stats $(REPORT_DIR)/template_fastcat/histograms \
-		--run-summary $(REPORT_DIR)/template_inputs/run_summary.tsv \
-		--length-qscore-2d $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv \
-		--speed-qscore-2d $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv \
-		--accuracy-qscore-2d $(REPORT_DIR)/template_bam/accuracy_qscore_2d.tsv \
-		--time-bin-summary $(REPORT_DIR)/template_bam_time/time_bin_summary.tsv \
-		--channel-summary $(REPORT_DIR)/template_bam_time/channel_summary.tsv \
-		--alignment-stats $(REPORT_DIR)/template_bam/histograms \
-		--flagstats $(REPORT_DIR)/template_bam/flagstats.tsv \
-		--coverage-summary \
-			$(REPORT_DIR)/template_bam/coverage/global.summary.txt \
-			$(REPORT_DIR)/template_bam/coverage/segments_100/segments_100.summary.txt \
-			$(REPORT_DIR)/template_bam/coverage/regions/regions.summary.txt \
-		--coverage-distribution \
-			$(REPORT_DIR)/template_bam/coverage/global.dist.txt \
-			$(REPORT_DIR)/template_bam/coverage/segments_100/segments_100.dist.txt \
-			$(REPORT_DIR)/template_bam/coverage/regions/regions.dist.txt \
+		--summary-json $(REPORT_DIR)/template_bam/summary.json \
+		--run-summary-overrides $(REPORT_DIR)/template_inputs/run_summary_overrides.json \
 		--metadata $(REPORT_DIR)/template_inputs/metadata.json \
 		--versions $(REPORT_DIR)/template_inputs/versions \
 		--params $(REPORT_DIR)/template_inputs/params.json \
 		--wf_version __FASTCAT_VERSION_HTML__
 
-$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_fastcat/histograms/length.hist $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv $(REPORT_DIR)/template_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_bam/summary.json $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/summary_json.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
-		--stats $(REPORT_DIR)/template_fastcat/histograms \
-		--run-summary $(REPORT_DIR)/template_fastcat/run_summary.tsv \
-		--length-qscore-2d $(REPORT_DIR)/template_fastcat/length_qscore_2d.tsv \
-		--speed-qscore-2d $(REPORT_DIR)/template_fastcat/speed_qscore_2d.tsv \
-		--time-bin-summary $(REPORT_DIR)/template_fastcat/time_bin_summary.tsv \
-		--channel-summary $(REPORT_DIR)/template_fastcat/channel_summary.tsv \
+		--summary-json $(REPORT_DIR)/template_bam/summary.json \
 		--metadata $(REPORT_DIR)/example_inputs/metadata.json \
 		--versions $(REPORT_DIR)/example_inputs/versions \
 		--params $(REPORT_DIR)/example_inputs/params.json \
 		--wf_version dev
 
-$(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv: $(FASTCAT_BIN) $(REPORT_DIR)/template_example.fastq | $(REPORT_DIR)
-	rm -rf $(REPORT_DIR)/time_preview_fastcat
-	$(FASTCAT_BIN) fastq $(REPORT_DIR)/template_example.fastq \
-		--sample __FASTCAT_SAMPLE_ALIAS_HTML__ \
-		--time-bin-size 60 \
-		--output $(REPORT_DIR)/time_preview_fastcat \
-		> /dev/null
-
-$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv $(REPORT_DIR)/time_preview_fastcat/channel_summary.tsv $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_bam/summary.json $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/summary_json.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
-		--stats $(REPORT_DIR)/time_preview_fastcat/histograms \
-		--run-summary $(REPORT_DIR)/time_preview_fastcat/run_summary.tsv \
-		--length-qscore-2d $(REPORT_DIR)/time_preview_fastcat/length_qscore_2d.tsv \
-		--speed-qscore-2d $(REPORT_DIR)/time_preview_fastcat/speed_qscore_2d.tsv \
-		--time-bin-summary $(REPORT_DIR)/time_preview_fastcat/time_bin_summary.tsv \
-		--channel-summary $(REPORT_DIR)/time_preview_fastcat/channel_summary.tsv \
+		--summary-json $(REPORT_DIR)/template_bam/summary.json \
 		--metadata $(REPORT_DIR)/example_inputs/metadata.json \
 		--versions $(REPORT_DIR)/example_inputs/versions \
 		--params $(REPORT_DIR)/example_inputs/params.json \
@@ -716,6 +640,7 @@ report_template_staged:  ## refresh staged report-template C assets when their i
 		tools/workflow_glue/__init__.py \
 		tools/workflow_glue/vendor_report_template.py \
 		tools/workflow_glue/report.py \
+		tools/workflow_glue/summary_json.py \
 		tools/workflow_glue/bokeh_relational.py \
 		tools/workflow_glue/bokeh_matrix.py \
 		tools/workflow_glue/bokeh_boxplot.py \
@@ -724,7 +649,7 @@ report_template_staged:  ## refresh staged report-template C assets when their i
 		tools/workflow_glue/simulate_reads.py \
 		tools/workflow_glue/write_wf_report_inputs.py \
 		tools/workflow_glue/util.py \
-		test/fixtures/bam/coverage/report_regions.bed \
+		test/fixtures/bam/coverage/report_simulated_regions.bed \
 		src/core/fc_report_template_data.c \
 		src/core/fc_report_template_data.h; then \
 		exit 0; \
@@ -877,8 +802,6 @@ define TEST_DEMUX_SINGLE_EQUIV
 			diff plain_out/$$f demux_out/barcode0001/$$f || exit 1; \
 		elif [[ "$$f" == "per_read.tsv" ]]; then \
 			$(call $(4),plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
-		elif [[ "$$f" == "run_summary.tsv" ]]; then \
-			$(call COMPARE_TABLES_SKIP_THIRD,plain_out/$$f,demux_out/barcode0001/$$f,$(3)_$$f) || exit 1; \
 		elif [[ "$$f" == "summary.json" ]]; then \
 			$(call COMPARE_JSON,plain_out/$$f,demux_out/barcode0001/$$f,mask_barcode) || exit 1; \
 		else \
@@ -918,14 +841,14 @@ define TEST_METADATA
 	popd > /dev/null
 endef
 # Expected files to compare (excluding per_file.tsv which only exists at top level)
-FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv run_summary.tsv summary.json channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist
-BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv run_summary.tsv summary.json channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv time_bin_summary.tsv histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
+FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv summary.json histograms/length.hist histograms/quality.hist
+BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv summary.json histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
 
 
 ###
 # report tests
 
-$(REPORT_DEMO_FASTQ): Makefile $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py $(REPORT_VENV)/.deps
+$(REPORT_DEMO_FASTQ): $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py $(REPORT_VENV)/.deps
 	@mkdir -p $(@D)
 	set -o pipefail; $(SIMULATE_READS) \
 		--n $(REPORT_DEMO_N) \
@@ -935,7 +858,7 @@ $(REPORT_DEMO_FASTQ): Makefile $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_
 		--seed 7 \
 		| gzip -c > $@
 
-$(REPORT_DEMO_SAM): Makefile $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py $(REPORT_VENV)/.deps
+$(REPORT_DEMO_SAM): $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py $(REPORT_VENV)/.deps
 	@mkdir -p $(@D)
 	$(SIMULATE_READS) \
 		--output-format sam \
@@ -948,20 +871,14 @@ $(REPORT_DEMO_SAM): Makefile $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_re
 		> $@
 
 .PHONY: demo
-demo: $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_SAM) test/fixtures/bam/coverage/report_simulated_regions.bed  ## generate FASTQ and aligned-BAM HTML report demos
+demo: report_vendor_template $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_SAM) test/fixtures/bam/coverage/report_simulated_regions.bed  ## generate FASTQ and aligned-BAM HTML report demos
 	@$(call TEST_DESC,HTML report demo)
 	rm -rf $(REPORT_DEMO_DIR)/fastcat_out $(REPORT_DEMO_DIR)/demux_out $(REPORT_DEMO_DIR)/aligned_out
 	$(RUN_FASTCAT) $(REPORT_DEMO_FASTQ) \
 		--output $(REPORT_DEMO_DIR)/fastcat_out \
 		--html-report \
-		--json-summary \
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
-	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/length_qscore_2d.tsv
-	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/speed_qscore_2d.tsv
-	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/time_bin_summary.tsv
-	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/channel_summary.tsv
-	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/run_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/summary.json
 	# TODO: these HTML content greps are brittle; prefer structural checks or remove low-value text assertions
 	grep -q "Fastcat Sequencing QC Report" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
@@ -986,14 +903,8 @@ demo: $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_SAM) test/fixtures/bam/c
 		--output $(REPORT_DEMO_DIR)/demux_out \
 		--demultiplex \
 		--html-report \
-		--json-summary \
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/fastcat_report.html
-	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/length_qscore_2d.tsv
-	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/speed_qscore_2d.tsv
-	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/time_bin_summary.tsv
-	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/channel_summary.tsv
-	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/run_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/summary.json
 	$(RUN_BAMSTATS) $(REPORT_DEMO_SAM) \
 		--output $(REPORT_DEMO_DIR)/aligned_out \
@@ -1001,7 +912,6 @@ demo: $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_SAM) test/fixtures/bam/c
 		--coverage-beds test/fixtures/bam/coverage/report_simulated_regions.bed \
 		--coverage-names regions \
 		--html-report \
-		--json-summary \
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
 	grep -q 'id="fastcat-alignment-section".*style=""' $(TEST_TMP_DIR)/report_html/aligned_out/fastcat_report.html
@@ -1035,18 +945,10 @@ demo_ubam: $(FASTCAT_BIN) $(REPORT_VENV)/.deps samtools  ## generate a synthetic
 	$(RUN_BAMSTATS) $(TEST_TMP_DIR)/report_html_ubam/reads.bam \
 		--output $(TEST_TMP_DIR)/report_html_ubam/bam_out \
 		--html-report \
-		--json-summary \
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
-	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/length_qscore_2d.tsv
-	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/speed_qscore_2d.tsv
-	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/time_bin_summary.tsv
-	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/channel_summary.tsv
-	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/summary.json
-	awk -F '\t' 'NR > 1 && $$2 == "unaligned bam" { found = 1 } END { exit !found }' \
-		$(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv || \
-		{ awk -F '\t' 'NR > 1 { print; exit }' $(TEST_TMP_DIR)/report_html_ubam/bam_out/run_summary.tsv; exit 1; }
+	$(REPORT_PY) -c 'import json; assert json.load(open("$(TEST_TMP_DIR)/report_html_ubam/bam_out/summary.json"))["run_summary"]["input_type"] == "unaligned bam"'
 	grep -q "Input type" $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
 	grep -q "unaligned bam" $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
 	grep -q 'id="fastcat-alignment-section".*style="display:none;"' $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
@@ -1091,8 +993,8 @@ test_fastcat_demux_single_equiv: $(FASTCAT_BIN) $(REPORT_VENV)/.deps
 	@$(call TEST_DESC,Fastcat demux vs non-demux (single barcode))
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/demux_single, \
 		$(call TEST_DEMUX_SINGLE_EQUIV,\
-			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output plain_out --per-read --json-summary > /dev/null && \
-			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output demux_out --per-read --demultiplex --json-summary > /dev/null,\
+			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output plain_out --per-read > /dev/null && \
+			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output demux_out --per-read --demultiplex > /dev/null,\
 			$(FASTCAT_EXPECTED_FILES),\
 			demux_single,\
 			COMPARE_TABLES_SKIP_FIRST))
@@ -1152,21 +1054,9 @@ test_fastcat_demultiplex_outputs: $(FASTCAT_BIN)
 		test -f out_demux/unclassified/histograms/length.hist && \
 		test -f out_demux/barcode0001/histograms/length.hist && \
 		test -f out_demux/barcode0001/histograms/quality.hist && \
-		test -f out_demux/unclassified/length_qscore_2d.tsv && \
-		test -f out_demux/unclassified/speed_qscore_2d.tsv && \
-		test -f out_demux/barcode0001/length_qscore_2d.tsv && \
-		test -f out_demux/barcode0001/speed_qscore_2d.tsv && \
-		test -f out_demux/barcode0002/length_qscore_2d.tsv && \
-		test -f out_demux/barcode0002/speed_qscore_2d.tsv && \
-		test -f out_demux/unclassified/time_bin_summary.tsv && \
-		test -f out_demux/barcode0001/time_bin_summary.tsv && \
-		test -f out_demux/barcode0002/time_bin_summary.tsv && \
-		test -f out_demux/unclassified/run_summary.tsv && \
-		test -f out_demux/barcode0001/run_summary.tsv && \
-		test -f out_demux/barcode0002/run_summary.tsv && \
-		test -f out_demux/unclassified/channel_summary.tsv && \
-		test -f out_demux/barcode0001/channel_summary.tsv && \
-		test -f out_demux/barcode0002/channel_summary.tsv)
+		test -f out_demux/unclassified/summary.json && \
+		test -f out_demux/barcode0001/summary.json && \
+		test -f out_demux/barcode0002/summary.json)
 test_fastcat_demux: test_fastcat_demultiplex_outputs
 
 
@@ -1174,138 +1064,13 @@ test_fastcat_demux: test_fastcat_demultiplex_outputs
 test_fastcat_demultiplex_split: $(FASTCAT_BIN)
 	@$(call TEST_DESC,Fastcat demultiplex split files)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/demultiplex/split, \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --demultiplex --output out_split --reads-per-file 4 --json-summary > /dev/null && \
+		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --demultiplex --output out_split --reads-per-file 4 > /dev/null && \
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0000.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0000.fastq.gz,demux_split_0000) && \
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0001.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0001.fastq.gz,demux_split_0001) && \
 		$(call COMPARE_FASTQ,out_split/barcode0001/barcode0001_0002.fastq.gz,$(TEST_EXPECTED_DEMULTIPLEX)/barcode0001_0002.fastq.gz,demux_split_0002) && \
 		test -f out_split/barcode0001/histograms/length.hist && \
-		test -f out_split/barcode0001/length_qscore_2d.tsv && \
-		test -f out_split/barcode0001/speed_qscore_2d.tsv && \
-		test -f out_split/barcode0001/time_bin_summary.tsv && \
-		test -f out_split/barcode0001/run_summary.tsv && \
-		test -f out_split/barcode0001/channel_summary.tsv && \
 		test -f out_split/barcode0001/summary.json)
 test_fastcat_demux: test_fastcat_demultiplex_split
-
-
-.PHONY: test_fastcat_length_qscore_2d
-test_fastcat_length_qscore_2d: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Fastcat length_qscore_2d output shape and totals)
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/length_qscore_2d, \
-		printf "@r1\nACGT\n+\n!!!!\n@r2\nTTTT\n+\nIIII\n@r3\nGGGG\n+\n5555\n" > tiny.fastq && \
-		$(RUN_FASTCAT) tiny.fastq --output out > /dev/null && \
-		test -f out/length_qscore_2d.tsv && \
-		test $$(wc -l < out/length_qscore_2d.tsv) -eq 120001 && \
-		awk 'BEGIN { eps = 1e-6; min_qs = 1e9; max_qe = -1e9; } \
-			NR == 1 { next; } \
-			{ \
-				key = $$3 FS $$4; bins[key] = 1; \
-				if ($$3 < min_qs) min_qs = $$3; \
-				if ($$4 > max_qe) max_qe = $$4; \
-				if (sqrt((($$4 - $$3) - 0.5) * (($$4 - $$3) - 0.5)) > eps) exit 1; \
-				if ($$5 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/) exit 1; \
-				v = $$5 + 0.0; \
-				if (v < -eps) exit 1; \
-			} \
-			END { \
-				if (length(bins) != 120) exit 1; \
-				if (sqrt(min_qs * min_qs) > eps) exit 1; \
-				if (sqrt((max_qe - 60.0) * (max_qe - 60.0)) > eps) exit 1; \
-			}' out/length_qscore_2d.tsv)
-test_fastcat_output: test_fastcat_length_qscore_2d
-
-
-.PHONY: test_fastcat_speed_qscore_2d
-test_fastcat_speed_qscore_2d: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Fastcat speed_qscore_2d output shape and totals)
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/speed_qscore_2d, \
-		printf "@r1 du=1.0\nACGT\n+\n!!!!\n@r2 du=2.0\nAAAAAA\n+\nIIIIII\n@r3 du=4.0\nGGGGGGGG\n+\n55555555\n@r4\nTTTT\n+\nIIII\n" > tiny.fastq && \
-		$(RUN_FASTCAT) tiny.fastq --output out > /dev/null && \
-		test -f out/speed_qscore_2d.tsv && \
-		test $$(wc -l < out/speed_qscore_2d.tsv) -eq 120001 && \
-		awk 'BEGIN { eps = 1e-6; min_qs = 1e9; max_qe = -1e9; } \
-			NR == 1 { next; } \
-			{ \
-				key = $$3 FS $$4; bins[key] = 1; \
-				if ($$3 < min_qs) min_qs = $$3; \
-				if ($$4 > max_qe) max_qe = $$4; \
-				if (sqrt((($$4 - $$3) - 0.5) * (($$4 - $$3) - 0.5)) > eps) exit 1; \
-				if ($$5 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/) exit 1; \
-				v = $$5 + 0.0; \
-				if (v < -eps) exit 1; \
-				sum += v; \
-			} \
-			END { \
-				if (length(bins) != 120) exit 1; \
-				if (sqrt(min_qs * min_qs) > eps) exit 1; \
-				if (sqrt((max_qe - 60.0) * (max_qe - 60.0)) > eps) exit 1; \
-				if (sqrt((sum - 3.0) * (sum - 3.0)) > 1e-3) exit 1; \
-			}' out/speed_qscore_2d.tsv)
-test_fastcat_output: test_fastcat_speed_qscore_2d
-
-
-.PHONY: test_fastcat_time_bin_summary
-test_fastcat_time_bin_summary: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Fastcat time_bin_summary output shape and totals)
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/time_bin_summary, \
-		printf "@r1 start_time=1970-01-01T00:00:00Z du=2.0\nACGT\n+\nIIII\n@r2 start_time=1970-01-01T00:00:05Z du=3.0\nAAAAAA\n+\nIIIIII\n@r3 start_time=1970-01-01T00:00:10Z du=4.0\nGGGGGGGG\n+\n55555555\n" > tiny.fastq && \
-		$(RUN_FASTCAT) tiny.fastq --output out --time-bin-size 10 --time-bin-k 64 > /dev/null && \
-		test -f out/time_bin_summary.tsv && \
-		test $$(wc -l < out/time_bin_summary.tsv) -eq 3 && \
-		awk 'BEGIN { FS = OFS = "\t"; prev_reads = -1; prev_bases = -1; } \
-			NR == 1 { if (NF != 39 || $$1 != "time_bin_start_s" || $$30 != "translocation_speed_q95" || $$31 != "accuracy_read_count" || $$39 != "accuracy_q95") exit 1; next; } \
-			{ \
-				if (NF != 39) exit 1; \
-				if ($$1 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$2 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/) exit 1; \
-				if ($$3 < 0 || $$4 < 0 || $$5 < 0 || $$6 < 0) exit 1; \
-				if ($$22 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$23 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$24 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$25 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$26 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$27 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$28 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$29 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/ || $$30 ~ /[Nn][Aa][Nn]|[Ii][Nn][Ff]/) exit 1; \
-				if ($$31 != 0 || $$32 !~ /[Nn][Aa][Nn]/ || $$33 !~ /[Nn][Aa][Nn]/ || $$34 !~ /[Nn][Aa][Nn]/ || $$35 !~ /[Nn][Aa][Nn]/ || $$36 !~ /[Nn][Aa][Nn]/ || $$37 !~ /[Nn][Aa][Nn]/ || $$38 !~ /[Nn][Aa][Nn]/ || $$39 !~ /[Nn][Aa][Nn]/) exit 1; \
-				if (prev_reads >= 0 && ($$5 < prev_reads || $$6 < prev_bases)) exit 1; \
-				prev_reads = $$5; prev_bases = $$6; \
-				reads += $$3; bases += $$4; rows++; \
-			} \
-			END { \
-				if (rows != 2) exit 1; \
-				if (reads != 3) exit 1; \
-				if (bases != 18) exit 1; \
-				if (prev_reads != 3) exit 1; \
-				if (prev_bases != 18) exit 1; \
-			}' out/time_bin_summary.tsv && \
-		printf "@u start_time=1970-01-01T00:00:00Z du=2.0\nACGT\n+\nIIII\n@b barcode=barcode0001 start_time=1970-01-01T00:00:05Z du=4.0\nAAAA\n+\nIIII\n" > demux.fastq && \
-		$(RUN_FASTCAT) demux.fastq --output demux_out --demultiplex --time-bin-size 10 --time-bin-k 64 > /dev/null && \
-		test -f demux_out/unclassified/time_bin_summary.tsv && \
-		test -f demux_out/barcode0001/time_bin_summary.tsv)
-test_fastcat_output: test_fastcat_time_bin_summary
-
-
-.PHONY: test_fastcat_channel_summary
-test_fastcat_channel_summary: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Fastcat channel_summary output shape and totals)
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/channel_summary, \
-		printf "@r1 ch=12 mux=1\nACGT\n+\nIIII\n@r2 ch=12 mux=1\nAAAAAA\n+\nIIIIII\n@r3 ch=12 mux=3\nGGG\n+\nIII\n@r4 ch=0 mux=2\nTT\n+\nII\n@r5 ch=7 mux=0\nCC\n+\nII\n" > tiny.fastq && \
-		$(RUN_FASTCAT) tiny.fastq --output out > /dev/null && \
-		test -f out/channel_summary.tsv && \
-		awk 'BEGIN { FS = OFS = "\t"; rows = 0; reads = 0; bases = 0; } \
-			NR == 1 { if (NF != 6 || $$1 != "channel" || $$4 != "base_count" || $$5 != "mean_quality" || $$6 != "mean_concordance_qscore") exit 1; next; } \
-			{ \
-				if (NF != 6) exit 1; \
-				if ($$1 < prev_channel || ($$1 == prev_channel && $$2 < prev_mux)) exit 1; \
-				prev_channel = $$1; prev_mux = $$2; \
-				rows++; reads += $$3; bases += $$4; \
-				if ($$1 == 7 && $$2 == 0 && $$3 != 1) exit 1; \
-				if ($$1 == 7 && $$2 == 0 && $$4 != 2) exit 1; \
-				if ($$1 == 12 && $$2 == 1 && $$3 != 2) exit 1; \
-				if ($$1 == 12 && $$2 == 1 && $$4 != 10) exit 1; \
-				if ($$1 == 12 && $$2 == 3 && $$3 != 1) exit 1; \
-				if ($$1 == 12 && $$2 == 3 && $$4 != 3) exit 1; \
-				if ($$5 != "40.000" || $$6 != "") exit 1; \
-			} \
-			END { if (rows != 3 || reads != 4 || bases != 15) exit 1; }' out/channel_summary.tsv && \
-		printf "@u ch=1 mux=1\nACGT\n+\nIIII\n@b barcode=barcode0001 ch=2 mux=4\nAAAA\n+\nIIII\n" > demux.fastq && \
-		$(RUN_FASTCAT) demux.fastq --output demux_out --demultiplex > /dev/null && \
-		test -f demux_out/unclassified/channel_summary.tsv && \
-		test -f demux_out/barcode0001/channel_summary.tsv)
-test_fastcat_output: test_fastcat_channel_summary
 
 
 .PHONY: test_fastcat_summary_json
@@ -1315,7 +1080,7 @@ test_fastcat_summary_json: $(FASTCAT_BIN) $(REPORT_VENV)/.deps test_summary_json
 	mkdir -p $(TEST_TMP_DIR)/summary_json_fixture; \
 	pushd $(TEST_TMP_DIR)/summary_json_fixture > /dev/null; \
 	printf "@r1 start_time=1970-01-01T00:00:00Z ch=12 mux=1 du=1.0\nACGT\n+\n!!!!\n@r2 barcode=barcode0001 start_time=1970-01-01T00:00:05Z ch=12 mux=3 du=2.0\nAAAAAA\n+\nIIIIII\n@r3 barcode=barcode0001 start_time=1970-01-01T00:00:15Z ch=9 mux=2 du=4.0\nGGGGGGGG\n+\n55555555\n" > tiny.fastq; \
-	$(RUN_FASTCAT) $(TEST_TMP_DIR)/summary_json_fixture/tiny.fastq --output $(TEST_TMP_DIR)/summary_json_fixture/out --demultiplex --time-bin-size 10 --time-bin-k 64 --json-summary > /dev/null; \
+	$(RUN_FASTCAT) $(TEST_TMP_DIR)/summary_json_fixture/tiny.fastq --output $(TEST_TMP_DIR)/summary_json_fixture/out --demultiplex --time-bin-size 10 --time-bin-k 64 > /dev/null; \
 	test -f $(TEST_TMP_DIR)/summary_json_fixture/out/unclassified/summary.json; \
 	test -f $(TEST_TMP_DIR)/summary_json_fixture/out/barcode0001/summary.json; \
 	$(call COMPARE_JSON,$(TEST_TMP_DIR)/summary_json_fixture/out/barcode0001/summary.json,$(TEST_EXPECTED_SUMMARY_JSON)/summary_json.barcode0001.json.gz) && \
@@ -1326,9 +1091,10 @@ test_fastcat_output: test_fastcat_summary_json
 
 
 .PHONY: test_summary_json_validator
-test_summary_json_validator: $(REPORT_VENV)/.deps tools/workflow_glue/validate_summary_json.py $(SUMMARY_JSON_SCHEMA)
+test_summary_json_validator: $(REPORT_VENV)/.deps tools/workflow_glue/summary_json.py tools/workflow_glue/validate_summary_json.py $(SUMMARY_JSON_SCHEMA)
 	@$(call TEST_DESC,Summary JSON fixtures validate)
 	$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) $(TEST_EXPECTED_SUMMARY_JSON)/summary_json.barcode0001.json.gz $(TEST_EXPECTED_SUMMARY_JSON)/summary_json.unclassified.json.gz
+	$(REPORT_PY) -c 'from tools.workflow_glue import summary_json; data = summary_json.load("$(TEST_EXPECTED_SUMMARY_JSON)/summary_json.barcode0001.json.gz"); channels = summary_json.decode_dataframe(data["channels"]["__data__"]); assert {"channel", "mean_quality", "mean_concordance_qscore"} <= set(channels); assert summary_json.decode_ndarray(data["heatmaps"]["read_length_quality"]["__data__"]).ndim == 2'
 
 
 .PHONY: test_fastcat_summary_json_counters
@@ -1336,10 +1102,38 @@ test_fastcat_summary_json_counters: $(FASTCAT_BIN) $(REPORT_VENV)/.deps tools/wo
 	@$(call TEST_DESC,Fastcat summary.json counter arrays)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/summary_json_counters, \
 		printf "@r1 runid=12345678-1234-1234-1234-123456789012 basecall_model_version_id=model-a ch=1 mux=1 start_time=1970-01-01T00:00:00Z du=1.0\\nACGT\\n+\\nIIII\\n" > reads.fastq && \
-		$(RUN_FASTCAT) reads.fastq --output out --json-summary > /dev/null && \
+		$(RUN_FASTCAT) reads.fastq --output out > /dev/null && \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) out/summary.json && \
-		$(REPORT_PY) -c 'import json; data = json.load(open("out/summary.json")); assert len(data["counts"]["run_ids"]) == 1; assert len(data["counts"]["basecallers"]) == 1')
+		$(REPORT_PY) -c 'import json; data = json.load(open("out/summary.json")); assert len(data["counts"]["run_ids"]) == 1; assert len(data["counts"]["basecallers"]) == 1' && \
+		printf "@r2\\nACGT\\n+\\nIIII\\n" > missing_metadata.fastq && \
+		$(RUN_FASTCAT) missing_metadata.fastq --output missing_metadata > /dev/null && \
+		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) missing_metadata/summary.json && \
+		$(REPORT_PY) -c 'import json; data = json.load(open("missing_metadata/summary.json")); file = data["files"][0]; assert data["run_summary"]["run_ids"] is None; assert data["run_summary"]["basecaller_models"] is None; assert file["run_id_counts"][0]["value"] == "" and file["run_id_counts"][0]["count"] == 1; assert file["basecaller_counts"][0]["value"] == "" and file["basecaller_counts"][0]["count"] == 1; assert open("missing_metadata/runids.tsv").read().splitlines()[1].split(chr(9))[1] == ""; assert open("missing_metadata/basecallers.tsv").read().splitlines()[1].split(chr(9))[1] == ""')
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/summary_json_filtered, \
+		printf "@short barcode=barcode0001\\nAAAA\\n+\\nIIII\\n@lowq barcode=barcode0001\\nAAAAAA\\n+\\n!!!!!!\\n@pass barcode=barcode0001\\nAAAAAA\\n+\\nIIIIII\\n" > filtered.fastq && \
+		$(RUN_FASTCAT) filtered.fastq --output filtered --demultiplex --min-length 5 --min-qscore 20 --html-report > /dev/null && \
+		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) filtered/barcode0001/summary.json && \
+		$(REPORT_PY) -c 'import json; row = json.load(open("filtered/barcode0001/summary.json"))["run_summary"]; assert (row["records_seen"], row["records_passed_filters"], row["records_too_long"], row["records_too_short"], row["records_low_quality"], row["records_dust_masked"]) == (3, 1, 0, 1, 1, 0)' && \
+		grep -A 1 'Records seen' filtered/barcode0001/fastcat_report.html | grep -q '>3<' && \
+		grep -A 1 'Too short' filtered/barcode0001/fastcat_report.html | grep -q '>1<')
 test_fastcat_output: test_fastcat_summary_json_counters
+
+
+.PHONY: test_fastcat_summary_output_layout
+test_fastcat_summary_output_layout: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Fastcat summary JSON output layout)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/summary_output_layout, \
+		printf "@r1 barcode=barcode0001\\nACGT\\n+\\nIIII\\n" > reads.fastq && \
+		$(RUN_FASTCAT) reads.fastq --output normal > /dev/null && \
+		$(RUN_FASTCAT) reads.fastq --output demux --demultiplex > /dev/null && \
+		$(RUN_FASTCAT) reads.fastq --output no_legacy --no-legacy-outputs > /dev/null && \
+		for directory in normal demux/barcode0001 no_legacy; do \
+			test -s $$directory/summary.json || exit 1; \
+			for removed in run_summary.tsv channel_summary.tsv length_qscore_2d.tsv speed_qscore_2d.tsv accuracy_qscore_2d.tsv time_bin_summary.tsv; do \
+				test ! -e $$directory/$$removed || exit 1; \
+			done; \
+		done)
+test_fastcat_output: test_fastcat_summary_output_layout
 
 
 .PHONY: test_fastcat_regression_results
@@ -1536,8 +1330,8 @@ test_bamstats_demux_single_equiv: $(FASTCAT_BIN) $(REPORT_VENV)/.deps
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/demux_single, \
 		$(call TEST_DEMUX_SINGLE_EQUIV,\
 			$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output tmp_fc --per-read -B > bc1.bam && \
-			$(RUN_BAMSTATS) bc1.bam --per-read --output plain_out --json-summary > /dev/null && \
-			$(RUN_BAMSTATS) bc1.bam --per-read --demultiplex --output demux_out --json-summary > /dev/null,\
+			$(RUN_BAMSTATS) bc1.bam --per-read --output plain_out > /dev/null && \
+			$(RUN_BAMSTATS) bc1.bam --per-read --demultiplex --output demux_out > /dev/null,\
 			$(BAMSTATS_EXPECTED_FILES),\
 			bs_demux_single,\
 			COMPARE_TABLES))
@@ -1571,7 +1365,7 @@ test_bamstats_summary_json_schema: $(FASTCAT_BIN) $(REPORT_VENV)/.deps tools/wor
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/bamstats/summary_json_schema, \
 		printf "@r1 runid=12345678-1234-1234-1234-123456789012 basecall_model_version_id=model-a ch=1 mux=1 start_time=1970-01-01T00:00:00Z du=1.0\\nACGT\\n+\\nIIII\\n" > reads.fastq && \
 		$(RUN_FASTCAT) reads.fastq --output fastcat_out -B > reads.bam && \
-		$(RUN_BAMSTATS) reads.bam --output out --json-summary > /dev/null && \
+		$(RUN_BAMSTATS) reads.bam --output out > /dev/null && \
 		test -s out/summary.json && \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) out/summary.json && \
 		$(REPORT_PY) -c 'import json; assert json.load(open("out/summary.json"))["alignment"]["per_reference_counts"]')
@@ -1602,7 +1396,7 @@ test_bamstats_coverage_summary_json: $(FASTCAT_BIN) samtools $(REPORT_VENV)/.dep
 		printf 'chr1\t0\t200\n' > regions.bed && \
 		$(REPO_ROOT)/samtools view -bS tagged.sam | $(REPO_ROOT)/samtools sort -o cov.bam && \
 		$(REPO_ROOT)/samtools index cov.bam && \
-		$(RUN_BAMSTATS) cov.bam --coverage --segments 100 --coverage-beds regions.bed --coverage-names regions --output out --json-summary > /dev/null && \
+		$(RUN_BAMSTATS) cov.bam --coverage --segments 100 --coverage-beds regions.bed --coverage-names regions --output out > /dev/null && \
 		test -s out/summary.json && \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) out/summary.json && \
 		grep -q '"name":"global"' out/summary.json && \
