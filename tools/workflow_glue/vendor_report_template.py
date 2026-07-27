@@ -401,13 +401,13 @@ def extract_bokeh_document(html):
     fig_time_qscore = figure_by_axis_labels(figures, "Elapsed time / hours", "Quality", renderer_count=8, source_count=2)
     fig_time_speed = figure_by_axis_labels(figures, "Elapsed time / hours", "Translocation speed / bp/s", renderer_count=8, source_count=2)
     fig_time_accuracy = figure_by_axis_labels(figures, "Elapsed time / hours", "Alignment Concordance / %", renderer_count=8, source_count=2)
-    fig_speed_qscore = figure_by_axis_labels(figures, "Translocation speed / bp/s", "Quality", renderer_count=2, source_count=2)
-    fig_length_qscore = figure_by_axis_labels(figures, "Read length / kb", "Quality", renderer_count=2, source_count=2)
+    fig_speed_qscore = figure_by_axis_labels(figures, "Translocation speed / bp/s", "Quality", renderer_count=1, source_count=1)
+    fig_length_qscore = figure_by_axis_labels(figures, "Read length / kb", "Quality", renderer_count=1, source_count=1)
     fig_accuracy_qscore = named_model(docs, "fastcat_accuracy_qscore")
     if (
             fig_accuracy_qscore is None
             or fig_accuracy_qscore.get("name") != "Figure"
-            or len(embedded_sources(fig_accuracy_qscore)) != 2):
+            or len(embedded_sources(fig_accuracy_qscore)) != 1):
         raise RuntimeError("could not identify alignment concordance heatmap")
     fig_channel_reads = None
     fig_channel_mean_length = None
@@ -419,13 +419,13 @@ def extract_bokeh_document(html):
         if len(embedded_sources(fig)) != 2:
             continue
         title = colorbar_title(fig)
-        if title == "read count":
+        if title == "Read count":
             fig_channel_reads = fig
-        elif title == "mean read length / kb":
+        elif title == "Mean read length / kb":
             fig_channel_mean_length = fig
-        elif title == "mean quality":
+        elif title == "Mean quality":
             fig_channel_mean_quality = fig
-        elif title == "mean alignment concordance / Q":
+        elif title == "Mean alignment concordance / Q":
             fig_channel_mean_concordance = fig
     if (
             fig_channel_reads is None
@@ -476,7 +476,6 @@ def extract_bokeh_document(html):
     add_binding(bindings, "coverage_depth.targets.data", coverage_targets, "data")
 
     add_source_binding(bindings, "length_qscore", fig_length_qscore)
-    add_embedded_source_binding(bindings, "length_qscore", fig_length_qscore, 1, "hover_source")
     add_subtitle_binding(bindings, "length_qscore", fig_length_qscore, required=False)
     add_heatmap_color_bindings(bindings, "length_qscore", fig_length_qscore)
     add_numeric_range_bindings(bindings, "length_qscore", fig_length_qscore, "x")
@@ -484,7 +483,6 @@ def extract_bokeh_document(html):
     add_null_state_bindings(bindings, "length_qscore", fig_length_qscore, colorbar=True)
 
     add_source_binding(bindings, "speed_qscore", fig_speed_qscore)
-    add_embedded_source_binding(bindings, "speed_qscore", fig_speed_qscore, 1, "hover_source")
     add_subtitle_binding(bindings, "speed_qscore", fig_speed_qscore, required=False)
     add_heatmap_color_bindings(bindings, "speed_qscore", fig_speed_qscore)
     add_numeric_range_bindings(bindings, "speed_qscore", fig_speed_qscore, "x")
@@ -492,7 +490,6 @@ def extract_bokeh_document(html):
     add_null_state_bindings(bindings, "speed_qscore", fig_speed_qscore, colorbar=True)
 
     add_source_binding(bindings, "accuracy_qscore", fig_accuracy_qscore)
-    add_embedded_source_binding(bindings, "accuracy_qscore", fig_accuracy_qscore, 1, "hover_source")
     add_heatmap_color_bindings(bindings, "accuracy_qscore", fig_accuracy_qscore)
     add_figure_attr_binding(bindings, "accuracy_qscore", fig_accuracy_qscore, "width")
     add_numeric_range_bindings(bindings, "accuracy_qscore", fig_accuracy_qscore, "x")

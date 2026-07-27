@@ -413,6 +413,40 @@ fc_json_value_t *fc_json_bokeh_ndarray_f64(const double *values, size_t rows, si
     return value;
 }
 
+/* Encode a two-dimensional float32 ndarray using Bokeh 3's JSON wire format. */
+fc_json_value_t *fc_json_bokeh_ndarray_f32(const double *values, size_t rows, size_t cols)
+{
+    size_t n = fc_json_ndarray_2d_count(rows, cols);
+    if (n > SIZE_MAX / sizeof(float)) {
+        FC_LOG_FATAL("Bokeh JSON ndarray is too large.");
+    }
+
+    float *packed = fc_alloc(n, sizeof(*packed), "Bokeh float32 ndarray");
+    for (size_t i = 0; i < n; ++i) {
+        packed[i] = (float)values[i];
+    }
+
+    char *b64 = fc_json_bytes_base64((const uint8_t *)packed, n * sizeof(*packed));
+    fc_json_value_t *value = fc_json_object_value();
+    fc_json_object_t *object = fc_json_get_object(value);
+    fc_json_object_set_string(object, "type", "ndarray");
+    fc_json_object_t *array = fc_json_object_set_object(object, "array");
+    fc_json_object_set_string(array, "type", "bytes");
+    fc_json_object_set_string(array, "data", b64);
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    fc_json_object_set_string(object, "order", "big");
+#else
+    fc_json_object_set_string(object, "order", "little");
+#endif
+    fc_json_object_set_string(object, "dtype", "float32");
+    fc_json_array_t *shape = fc_json_object_set_array(object, "shape");
+    fc_json_array_append_number(shape, (double)rows);
+    fc_json_array_append_number(shape, (double)cols);
+    free(b64);
+    free(packed);
+    return value;
+}
+
 /* Encode a named adaptive unsigned dataframe column. */
 fc_json_value_t *fc_json_column_uint_adaptive(const char *name, const size_t *values, size_t n)
 {

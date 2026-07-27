@@ -74,7 +74,7 @@ report_demo:
     script:
         - make
         - REPORT_DEMO_N=100000 REPORT_DEMO_DURATION_S=172800 make demo
-        - rm -f test/tmp/report_html/reads.*fastq*
+        - rm -f test/tmp/report_html/reads.*fastq* test/tmp/report_html/aligned_reads.sam
         - mv test/tmp/report_html/ demo
     artifacts:
       when: always

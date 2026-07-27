@@ -125,6 +125,24 @@ FC_TEST(json_suite, test_matrix_ndarrays_include_shape_dtype_and_correct_payload
 }
 
 
+FC_TEST(json_suite, test_bokeh_float32_ndarray_uses_compact_binary_payload)
+{
+    const double values[] = { 1.5, 2.5, 3.5, 4.5 };
+    JSON_Value *parsed = round_trip_json_value(fc_json_bokeh_ndarray_f32(values, 2, 2));
+    JSON_Object *object = json_value_get_object(parsed);
+    TEST_ASSERT_NOT_NULL(object);
+    TEST_ASSERT_EQUAL_STRING("ndarray", json_object_get_string(object, "type"));
+    TEST_ASSERT_EQUAL_STRING("float32", json_object_get_string(object, "dtype"));
+    assert_shape(object, 2, 2);
+
+    JSON_Object *array = json_object_get_object(object, "array");
+    TEST_ASSERT_NOT_NULL(array);
+    TEST_ASSERT_EQUAL_STRING("bytes", json_object_get_string(array, "type"));
+    TEST_ASSERT_EQUAL_size_t(24, strlen(json_object_get_string(array, "data")));
+    json_value_free(parsed);
+}
+
+
 FC_TEST(json_suite, test_empty_adaptive_column_has_uint8_empty_payload)
 {
     JSON_Value *parsed = round_trip_json_value(fc_json_column_uint_adaptive("count", NULL, 0));

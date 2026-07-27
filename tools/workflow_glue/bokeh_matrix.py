@@ -1,6 +1,6 @@
 """Bokeh-backed matrix plots for workflow reports."""
 
-from bokeh.models import BasicTicker, ColorBar, ColumnDataSource, HoverTool
+from bokeh.models import BasicTicker, ColorBar, ColumnDataSource, CustomJSHover, HoverTool
 from bokeh.models import LinearColorMapper, PrintfTickFormatter, Title
 from bokeh.palettes import Viridis256
 import numpy as np
@@ -28,6 +28,7 @@ def heatmap(
         hide_axes=False, match_aspect=False,
         hide_toolbar=False,
         hover_data=None, hover_items=None,
+        image_hover_items=None,
         title=None, subtitle=None, **kwargs):
     """Plot rectangular data as a Bokeh heatmap.
 
@@ -139,6 +140,27 @@ def heatmap(
     hover = plt._fig.select(dict(type=HoverTool))
     hover_renderer = image_renderer
     hover.tooltips = [(x_name, "$x{0.0}"), (y_name, "$y{0.000}")]
+
+    if image_hover_items is not None:
+        def image_axis_hover(axis, digits):
+            bin_index = "i" if axis == "x" else "j"
+            dimension = 1 if axis == "x" else 0
+            span = "dw" if axis == "x" else "dh"
+            return CustomJSHover(args={"source": image_source}, code=f"""
+                const cell = special_vars.image_index
+                if (cell == null) return ""
+                const image = source.data.image[cell.index]
+                const bins = image.shape[{dimension}]
+                const start = source.data.{axis}[cell.index]
+                const extent = source.data.{span}[cell.index]
+                return (start + (cell.{bin_index} + 0.5) * extent / bins).toFixed({digits})
+            """)
+
+        hover.tooltips = image_hover_items
+        hover.formatters = {
+            "@x": image_axis_hover("x", 3),
+            "@y": image_axis_hover("y", 1),
+        }
 
     if hover_data is not None:
         hover_frame = pd.DataFrame(hover_data).copy()
