@@ -27,6 +27,8 @@ void fc_json_object_set_number(fc_json_object_t *object, const char *key, double
 void fc_json_object_set_null(fc_json_object_t *object, const char *key);
 fc_json_object_t *fc_json_object_set_object(fc_json_object_t *object, const char *key);
 fc_json_array_t *fc_json_object_set_array(fc_json_object_t *object, const char *key);
+fc_json_array_t *fc_json_object_set_dataframe(
+    fc_json_object_t *object, size_t rows, size_t columns);
 
 void fc_json_array_append_value(fc_json_array_t *array, fc_json_value_t *value);
 void fc_json_array_append_string(fc_json_array_t *array, const char *value);

@@ -6,3 +6,4 @@ cd "$repo_root"
 
 make -s clang_format_staged
 make -s summary_json_schema_staged
+make -s summary_json_docs_staged

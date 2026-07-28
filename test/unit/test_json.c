@@ -30,17 +30,27 @@ static void assert_shape(const JSON_Object *object, size_t rows, size_t cols)
 }
 
 
+static void assert_vector_shape(const JSON_Object *object, size_t length)
+{
+    JSON_Array *shape = json_object_get_array(object, "shape");
+    TEST_ASSERT_NOT_NULL(shape);
+    TEST_ASSERT_EQUAL_size_t(1, json_array_get_count(shape));
+    TEST_ASSERT_EQUAL_UINT64(length, (uint64_t)json_array_get_number(shape, 0));
+}
+
+
 static void assert_adaptive_column_dtype(size_t max_value, const char *expected_dtype, size_t width)
 {
     JSON_Value *parsed = round_trip_json_value(fc_json_column_uint_adaptive("value", &max_value, 1));
     JSON_Object *object = json_value_get_object(parsed);
     TEST_ASSERT_NOT_NULL(object);
 
-    TEST_ASSERT_EQUAL_size_t(3, json_object_get_count(object));
+    TEST_ASSERT_EQUAL_size_t(5, json_object_get_count(object));
     TEST_ASSERT_EQUAL_STRING("value", json_object_get_string(object, "name"));
+    TEST_ASSERT_EQUAL_STRING("array", json_object_get_string(object, "kind"));
     TEST_ASSERT_EQUAL_STRING(expected_dtype, json_object_get_string(object, "dtype"));
-    TEST_ASSERT_FALSE(json_object_has_value(object, "shape"));
-    TEST_ASSERT_EQUAL_size_t(4 * ((width + 2) / 3), strlen(json_object_get_string(object, "__ndarray__")));
+    assert_vector_shape(object, 1);
+    TEST_ASSERT_EQUAL_size_t(4 * ((width + 2) / 3), strlen(json_object_get_string(object, "data")));
 
     json_value_free(parsed);
 }
@@ -48,38 +58,40 @@ static void assert_adaptive_column_dtype(size_t max_value, const char *expected_
 
 FC_TEST(json_suite, test_adaptive_uint_column_uses_smallest_dtype)
 {
-    assert_adaptive_column_dtype(UINT8_MAX, "uint8", sizeof(uint8_t));
-    assert_adaptive_column_dtype((size_t)UINT8_MAX + 1, "uint16", sizeof(uint16_t));
-    assert_adaptive_column_dtype((size_t)UINT16_MAX + 1, "uint32", sizeof(uint32_t));
+    assert_adaptive_column_dtype(UINT8_MAX, "<u1", sizeof(uint8_t));
+    assert_adaptive_column_dtype((size_t)UINT8_MAX + 1, "<u2", sizeof(uint16_t));
+    assert_adaptive_column_dtype((size_t)UINT16_MAX + 1, "<u4", sizeof(uint32_t));
     if (SIZE_MAX > UINT32_MAX) {
-        assert_adaptive_column_dtype((size_t)UINT32_MAX + 1, "uint64", sizeof(uint64_t));
+        assert_adaptive_column_dtype((size_t)UINT32_MAX + 1, "<u8", sizeof(uint64_t));
     }
 }
 
 
-FC_TEST(json_suite, test_dataframe_columns_omit_shape_and_preserve_name)
+FC_TEST(json_suite, test_dataframe_columns_are_self_describing_arrays)
 {
     const size_t counts[] = { 1, 255 };
     JSON_Value *parsed = round_trip_json_value(fc_json_column_uint_adaptive("read_count", counts, 2));
     JSON_Object *object = json_value_get_object(parsed);
     TEST_ASSERT_NOT_NULL(object);
 
-    TEST_ASSERT_EQUAL_size_t(3, json_object_get_count(object));
+    TEST_ASSERT_EQUAL_size_t(5, json_object_get_count(object));
     TEST_ASSERT_EQUAL_STRING("read_count", json_object_get_string(object, "name"));
-    TEST_ASSERT_EQUAL_STRING("uint8", json_object_get_string(object, "dtype"));
-    TEST_ASSERT_FALSE(json_object_has_value(object, "shape"));
-    TEST_ASSERT_EQUAL_STRING("Af8=", json_object_get_string(object, "__ndarray__"));
+    TEST_ASSERT_EQUAL_STRING("array", json_object_get_string(object, "kind"));
+    TEST_ASSERT_EQUAL_STRING("<u1", json_object_get_string(object, "dtype"));
+    assert_vector_shape(object, 2);
+    TEST_ASSERT_EQUAL_STRING("Af8=", json_object_get_string(object, "data"));
     json_value_free(parsed);
 
     const double means[] = { 1.5, 2.5 };
     parsed = round_trip_json_value(fc_json_column_f64("length_mean", means, 2));
     object = json_value_get_object(parsed);
     TEST_ASSERT_NOT_NULL(object);
-    TEST_ASSERT_EQUAL_size_t(3, json_object_get_count(object));
+    TEST_ASSERT_EQUAL_size_t(5, json_object_get_count(object));
     TEST_ASSERT_EQUAL_STRING("length_mean", json_object_get_string(object, "name"));
-    TEST_ASSERT_EQUAL_STRING("float64", json_object_get_string(object, "dtype"));
-    TEST_ASSERT_FALSE(json_object_has_value(object, "shape"));
-    TEST_ASSERT_EQUAL_size_t(24, strlen(json_object_get_string(object, "__ndarray__")));
+    TEST_ASSERT_EQUAL_STRING("array", json_object_get_string(object, "kind"));
+    TEST_ASSERT_EQUAL_STRING("<f8", json_object_get_string(object, "dtype"));
+    assert_vector_shape(object, 2);
+    TEST_ASSERT_EQUAL_size_t(24, strlen(json_object_get_string(object, "data")));
     json_value_free(parsed);
 }
 
@@ -90,10 +102,11 @@ FC_TEST(json_suite, test_matrix_ndarrays_include_shape_dtype_and_correct_payload
     JSON_Value *parsed = round_trip_json_value(fc_json_ndarray_f64(floats, 2, 2));
     JSON_Object *object = json_value_get_object(parsed);
     TEST_ASSERT_NOT_NULL(object);
-    TEST_ASSERT_EQUAL_size_t(3, json_object_get_count(object));
+    TEST_ASSERT_EQUAL_size_t(4, json_object_get_count(object));
     assert_shape(object, 2, 2);
-    TEST_ASSERT_EQUAL_STRING("float64", json_object_get_string(object, "dtype"));
-    TEST_ASSERT_EQUAL_size_t(44, strlen(json_object_get_string(object, "__ndarray__")));
+    TEST_ASSERT_EQUAL_STRING("array", json_object_get_string(object, "kind"));
+    TEST_ASSERT_EQUAL_STRING("<f8", json_object_get_string(object, "dtype"));
+    TEST_ASSERT_EQUAL_size_t(44, strlen(json_object_get_string(object, "data")));
     json_value_free(parsed);
 
     const size_t raw_counts[] = { 1, 2, 3, 4 };
@@ -101,26 +114,26 @@ FC_TEST(json_suite, test_matrix_ndarrays_include_shape_dtype_and_correct_payload
     object = json_value_get_object(parsed);
     TEST_ASSERT_NOT_NULL(object);
     assert_shape(object, 2, 2);
-    TEST_ASSERT_EQUAL_STRING("uint8", json_object_get_string(object, "dtype"));
-    TEST_ASSERT_EQUAL_size_t(8, strlen(json_object_get_string(object, "__ndarray__")));
+    TEST_ASSERT_EQUAL_STRING("<u1", json_object_get_string(object, "dtype"));
+    TEST_ASSERT_EQUAL_size_t(8, strlen(json_object_get_string(object, "data")));
     json_value_free(parsed);
 
     const double counts[] = { -1.0, NAN, 1.2, 300.0 };
     parsed = round_trip_json_value(fc_json_ndarray_f64_to_uint_adaptive(counts, 2, 2));
     object = json_value_get_object(parsed);
     TEST_ASSERT_NOT_NULL(object);
-    TEST_ASSERT_EQUAL_size_t(3, json_object_get_count(object));
+    TEST_ASSERT_EQUAL_size_t(4, json_object_get_count(object));
     assert_shape(object, 2, 2);
-    TEST_ASSERT_EQUAL_STRING("uint16", json_object_get_string(object, "dtype"));
-    TEST_ASSERT_EQUAL_size_t(12, strlen(json_object_get_string(object, "__ndarray__")));
+    TEST_ASSERT_EQUAL_STRING("<u2", json_object_get_string(object, "dtype"));
+    TEST_ASSERT_EQUAL_size_t(12, strlen(json_object_get_string(object, "data")));
     json_value_free(parsed);
 
     parsed = round_trip_json_value(fc_json_ndarray_f64_to_uint_adaptive(NULL, 0, 3));
     object = json_value_get_object(parsed);
     TEST_ASSERT_NOT_NULL(object);
     assert_shape(object, 0, 3);
-    TEST_ASSERT_EQUAL_STRING("uint8", json_object_get_string(object, "dtype"));
-    TEST_ASSERT_EQUAL_STRING("", json_object_get_string(object, "__ndarray__"));
+    TEST_ASSERT_EQUAL_STRING("<u1", json_object_get_string(object, "dtype"));
+    TEST_ASSERT_EQUAL_STRING("", json_object_get_string(object, "data"));
     json_value_free(parsed);
 }
 
@@ -148,11 +161,12 @@ FC_TEST(json_suite, test_empty_adaptive_column_has_uint8_empty_payload)
     JSON_Value *parsed = round_trip_json_value(fc_json_column_uint_adaptive("count", NULL, 0));
     JSON_Object *object = json_value_get_object(parsed);
     TEST_ASSERT_NOT_NULL(object);
-    TEST_ASSERT_EQUAL_size_t(3, json_object_get_count(object));
+    TEST_ASSERT_EQUAL_size_t(5, json_object_get_count(object));
     TEST_ASSERT_EQUAL_STRING("count", json_object_get_string(object, "name"));
-    TEST_ASSERT_EQUAL_STRING("uint8", json_object_get_string(object, "dtype"));
-    TEST_ASSERT_FALSE(json_object_has_value(object, "shape"));
-    TEST_ASSERT_EQUAL_STRING("", json_object_get_string(object, "__ndarray__"));
+    TEST_ASSERT_EQUAL_STRING("array", json_object_get_string(object, "kind"));
+    TEST_ASSERT_EQUAL_STRING("<u1", json_object_get_string(object, "dtype"));
+    assert_vector_shape(object, 0);
+    TEST_ASSERT_EQUAL_STRING("", json_object_get_string(object, "data"));
     json_value_free(parsed);
 }
 
@@ -162,14 +176,33 @@ FC_TEST(json_suite, test_dataframe_string_column_uses_direct_strings)
     JSON_Value *parsed = round_trip_json_value(fc_json_column_string("chrom", values, 2));
     JSON_Object *object = json_value_get_object(parsed);
     TEST_ASSERT_NOT_NULL(object);
-    TEST_ASSERT_EQUAL_size_t(3, json_object_get_count(object));
+    TEST_ASSERT_EQUAL_size_t(5, json_object_get_count(object));
     TEST_ASSERT_EQUAL_STRING("chrom", json_object_get_string(object, "name"));
+    TEST_ASSERT_EQUAL_STRING("array", json_object_get_string(object, "kind"));
     TEST_ASSERT_EQUAL_STRING("string", json_object_get_string(object, "dtype"));
+    assert_vector_shape(object, 2);
     JSON_Array *data = json_object_get_array(object, "data");
     TEST_ASSERT_NOT_NULL(data);
     TEST_ASSERT_EQUAL_size_t(2, json_array_get_count(data));
     TEST_ASSERT_EQUAL_STRING("chr1", json_array_get_string(data, 0));
     TEST_ASSERT_EQUAL_STRING("total", json_array_get_string(data, 1));
+    json_value_free(parsed);
+}
+
+FC_TEST(json_suite, test_dataframe_container_has_kind_and_two_dimensional_shape)
+{
+    fc_json_value_t *value = fc_json_object_value();
+    fc_json_object_t *object = fc_json_get_object(value);
+    fc_json_array_t *columns = fc_json_object_set_dataframe(object, 2, 1);
+    const size_t counts[] = { 3, 7 };
+    fc_json_array_append_value(columns, fc_json_column_uint_adaptive("count", counts, 2));
+
+    JSON_Value *parsed = round_trip_json_value(value);
+    object = json_value_get_object(parsed);
+    TEST_ASSERT_NOT_NULL(object);
+    TEST_ASSERT_EQUAL_STRING("dataframe", json_object_get_string(object, "kind"));
+    assert_shape(object, 2, 1);
+    TEST_ASSERT_EQUAL_size_t(1, json_array_get_count(json_object_get_array(object, "columns")));
     json_value_free(parsed);
 }
 

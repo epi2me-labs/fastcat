@@ -5,6 +5,7 @@ import base64
 import copy
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from jsonschema import Draft202012Validator
 
@@ -12,15 +13,15 @@ from . import summary_json
 
 
 DATAFRAME_PATHS = (
-    "$.channels.__data__",
-    "$.distributions.read_length.__data__",
-    "$.distributions.quality.__data__",
-    "$.alignment.distributions.accuracy.__data__",
-    "$.alignment.distributions.query_coverage.__data__",
-    "$.alignment.distributions.unmapped_read_length.__data__",
-    "$.alignment.distributions.unmapped_quality.__data__",
-    "$.alignment.distributions.poly_a_length.__data__",
-    "$.time.__data__",
+    "$.channels.data",
+    "$.distributions.read_length.data",
+    "$.distributions.quality.data",
+    "$.alignment.distributions.accuracy.data",
+    "$.alignment.distributions.query_coverage.data",
+    "$.alignment.distributions.unmapped_read_length.data",
+    "$.alignment.distributions.unmapped_quality.data",
+    "$.alignment.distributions.poly_a_length.data",
+    "$.time.data",
 )
 
 
@@ -57,13 +58,13 @@ def argparser():
 def decode_payload(data, path, element_count, dtype):
     """Decode an ndarray payload and verify its expected byte length."""
     try:
-        payload = base64.b64decode(data["__ndarray__"], validate=True)
+        payload = base64.b64decode(data["data"], validate=True)
     except (ValueError, TypeError) as error:
-        return None, f"{path}.__ndarray__: invalid base64 payload ({error})"
+        return None, f"{path}.data: invalid base64 payload ({error})"
 
     expected_bytes = element_count * summary_json.DTYPE_WIDTHS[dtype]
     if len(payload) != expected_bytes:
-        return None, (f"{path}.__ndarray__: expected {expected_bytes} bytes for "
+        return None, (f"{path}.data: expected {expected_bytes} bytes for "
                       f"{element_count} elements and {dtype}, got {len(payload)}")
     return payload, None
 
@@ -79,14 +80,17 @@ def validate_ndarray(data, path):
 
 def decode_dataframe(data, path):
     """Decode a dataframe block exactly as a pandas consumer would."""
-    row_count = data["shape"][0]
+    row_count, column_count = data["shape"]
     arrays = {}
     errors = []
     for index, column in enumerate(data["columns"]):
         column_path = f"{path}.columns[{index}]"
         try:
             arrays[column["name"]] = summary_json.decode_dataframe({
-                "shape": [row_count], "columns": [column]}).iloc[:, 0]
+                "kind": "dataframe",
+                "shape": [row_count, 1],
+                "columns": [column],
+            }).iloc[:, 0]
         except (KeyError, TypeError, ValueError) as error:
             errors.append(f"{column_path}: {error}")
 
@@ -95,13 +99,13 @@ def decode_dataframe(data, path):
 
     dataframe = pd.DataFrame(arrays)
     columns = data["columns"]
-    expected_shape = (row_count, len(columns))
+    expected_shape = (row_count, column_count)
     errors = []
     if dataframe.shape != expected_shape:
         errors.append(f"{path}: pandas dataframe has shape {dataframe.shape}, expected {expected_shape}")
     decoded_dtypes = tuple(str(dtype) for dtype in dataframe.dtypes)
     expected_dtypes = tuple(
-        "string" if column["dtype"] == "string" else column["dtype"]
+        "string" if column["dtype"] == "string" else str(np.dtype(column["dtype"]))
         for column in columns)
     if decoded_dtypes != expected_dtypes:
         errors.append(
@@ -136,13 +140,13 @@ def validate_document(document, schema):
 
     for index, target in enumerate(document.get("coverage", {}).get("targets", [])):
         prefix = f"$.coverage.targets[{index}]"
-        errors.extend(validate_dataframe(target["summary"]["__data__"], f"{prefix}.summary.__data__"))
+        errors.extend(validate_dataframe(target["summary"]["data"], f"{prefix}.summary.data"))
         errors.extend(validate_dataframe(
-            target["distribution"]["__data__"], f"{prefix}.distribution.__data__"))
+            target["distribution"]["data"], f"{prefix}.distribution.data"))
 
     for name, heatmap in document["heatmaps"].items():
         if heatmap is not None:
-            errors.extend(validate_ndarray(heatmap["__data__"], f"$.heatmaps.{name}.__data__"))
+            errors.extend(validate_ndarray(heatmap["data"], f"$.heatmaps.{name}.data"))
     return sorted(errors)
 
 

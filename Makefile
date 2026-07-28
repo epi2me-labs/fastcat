@@ -513,6 +513,29 @@ summary_json_schema_staged:  ## regenerate and stage the schema asset when relat
 		git add -- src/cli/summary_json_schema_data.h src/cli/summary_json_schema_data.c; \
 	fi
 
+.PHONY: summary_json_docs
+summary_json_docs:  ## regenerate the summary.json reference embedded in README.md
+	$(DEV_TOOLS) generate_summary_json_docs \
+		--schema test/fixtures/misc/summary_json.schema.json \
+		--readme README.md
+
+.PHONY: summary_json_docs_check
+summary_json_docs_check:  ## verify the README summary.json reference is current
+	$(DEV_TOOLS) generate_summary_json_docs \
+		--schema test/fixtures/misc/summary_json.schema.json \
+		--readme README.md \
+		--check
+
+.PHONY: summary_json_docs_staged
+summary_json_docs_staged:  ## regenerate and stage README documentation when its source is staged
+	@if ! git diff --cached --quiet -- \
+		README.md \
+		test/fixtures/misc/summary_json.schema.json \
+		tools/workflow_glue/generate_summary_json_docs.py; then \
+		$(MAKE) -s summary_json_docs; \
+		git add -- README.md; \
+	fi
+
 
 ###
 # Developer report scaffold
@@ -1094,8 +1117,7 @@ test_fastcat_output: test_fastcat_summary_json
 test_summary_json_validator: $(REPORT_VENV)/.deps tools/workflow_glue/summary_json.py tools/workflow_glue/validate_summary_json.py $(SUMMARY_JSON_SCHEMA)
 	@$(call TEST_DESC,Summary JSON fixtures validate)
 	$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) $(TEST_EXPECTED_SUMMARY_JSON)/summary_json.barcode0001.json.gz $(TEST_EXPECTED_SUMMARY_JSON)/summary_json.unclassified.json.gz
-	$(REPORT_PY) -c 'from tools.workflow_glue import summary_json; data = summary_json.load("$(TEST_EXPECTED_SUMMARY_JSON)/summary_json.barcode0001.json.gz"); channels = summary_json.decode_dataframe(data["channels"]["__data__"]); assert {"channel", "mean_quality", "mean_concordance_qscore"} <= set(channels); assert summary_json.decode_ndarray(data["heatmaps"]["read_length_quality"]["__data__"]).ndim == 2'
-
+	$(REPORT_PY) -c 'from tools.workflow_glue import summary_json; data = summary_json.load("$(TEST_EXPECTED_SUMMARY_JSON)/summary_json.barcode0001.json.gz"); channels = summary_json.decode_dataframe(data["channels"]["data"]); assert {"channel", "mean_quality", "mean_concordance_qscore"} <= set(channels); assert summary_json.decode_ndarray(data["heatmaps"]["read_length_quality"]["data"]).ndim == 2'
 
 .PHONY: test_fastcat_summary_json_counters
 test_fastcat_summary_json_counters: $(FASTCAT_BIN) $(REPORT_VENV)/.deps tools/workflow_glue/validate_summary_json.py $(SUMMARY_JSON_SCHEMA)
