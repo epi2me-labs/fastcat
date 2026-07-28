@@ -404,12 +404,9 @@ static fc_json_value_t *summary_json_length_distribution_value(
         }
     }
 
-    // Encode as columnar table (consistent with other data tables)
-    fc_json_object_t *data = fc_json_object_set_object(hist, "__data__");
-    fc_json_array_t *shape = fc_json_object_set_array(data, "shape");
-    fc_json_array_append_number(shape, (double)n_bins);
-
-    fc_json_array_t *columns = fc_json_object_set_array(data, "columns");
+    // Keep histogram statistics separate from the self-describing table payload.
+    fc_json_object_t *data = fc_json_object_set_object(hist, "data");
+    fc_json_array_t *columns = fc_json_object_set_dataframe(data, n_bins, include_yield ? 4 : 3);
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("start", starts_arr, n_bins));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("end", ends_arr, n_bins));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("count", counts_arr, n_bins));
@@ -472,12 +469,9 @@ static fc_json_value_t *summary_json_fixed_distribution_value(const read_stats *
     fc_json_object_set_number(hist, "mean", fc_stats_mean_midpoint(stats));
     fc_json_object_set_number(hist, "median", fc_stats_median_start(stats));
 
-    // Encode as columnar table (consistent with other data tables)
-    fc_json_object_t *data = fc_json_object_set_object(hist, "__data__");
-    fc_json_array_t *shape = fc_json_object_set_array(data, "shape");
-    fc_json_array_append_number(shape, (double)n_bins);
-
-    fc_json_array_t *columns = fc_json_object_set_array(data, "columns");
+    // Keep histogram statistics separate from the self-describing table payload.
+    fc_json_object_t *data = fc_json_object_set_object(hist, "data");
+    fc_json_array_t *columns = fc_json_object_set_dataframe(data, n_bins, 3);
     fc_json_array_append_value(columns, fc_json_column_f64("start", starts_arr, n_bins));
     fc_json_array_append_value(columns, fc_json_column_f64("end", ends_arr, n_bins));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("count", counts_arr, n_bins));
@@ -522,11 +516,9 @@ static void summary_json_length_heatmap(
     fc_json_array_t *y_range = fc_json_object_set_array(obj, "y_range");
     fc_json_array_append_number(y_range, 0.0);
     fc_json_array_append_number(y_range, matrix.qscore_bins * matrix.qscore_width);
-
     fc_json_object_set_value(
-        obj,
-        "__data__",
-        summary_json_heatmap_ndarray(matrix.counts, matrix.qscore_bins, matrix.x_bins));
+        obj, "data", summary_json_heatmap_ndarray(matrix.counts, matrix.qscore_bins, matrix.x_bins));
+
     fc_json_object_set_value(heatmaps, "read_length_quality", value);
     fc_length_qscore_2d_matrix_destroy(&matrix);
 }
@@ -559,11 +551,9 @@ static void summary_json_speed_heatmap(
     fc_json_array_t *y_range = fc_json_object_set_array(obj, "y_range");
     fc_json_array_append_number(y_range, 0.0);
     fc_json_array_append_number(y_range, matrix.qscore_bins * matrix.qscore_width);
-
     fc_json_object_set_value(
-        obj,
-        "__data__",
-        summary_json_heatmap_ndarray(matrix.counts, matrix.qscore_bins, matrix.x_bins));
+        obj, "data", summary_json_heatmap_ndarray(matrix.counts, matrix.qscore_bins, matrix.x_bins));
+
     fc_json_object_set_value(heatmaps, "translocation_speed_quality", value);
     fc_speed_qscore_2d_matrix_destroy(&matrix);
 }
@@ -597,9 +587,7 @@ static void summary_json_accuracy_heatmap(
     fc_json_array_append_number(y_range, 0.0);
     fc_json_array_append_number(y_range, matrix.qscore_bins * matrix.qscore_width);
     fc_json_object_set_value(
-        obj,
-        "__data__",
-        summary_json_heatmap_ndarray(matrix.counts, matrix.qscore_bins, matrix.x_bins));
+        obj, "data", summary_json_heatmap_ndarray(matrix.counts, matrix.qscore_bins, matrix.x_bins));
     fc_json_object_set_value(heatmaps, "alignment_accuracy_quality", value);
     fc_accuracy_qscore_2d_matrix_destroy(&matrix);
 }
@@ -719,12 +707,10 @@ static void summary_json_time(
         accuracy_q95[i] = row->accuracy_quantiles.q95;
     }
 
-    // Serialize as columnar table
-    fc_json_object_t *data = fc_json_object_set_object(time, "__data__");
-    fc_json_array_t *shape = fc_json_object_set_array(data, "shape");
-    fc_json_array_append_number(shape, (double)table.n);
-
-    fc_json_array_t *columns = fc_json_object_set_array(data, "columns");
+    // Keep timing skip counts separate from the self-describing table payload.
+    fc_json_object_t *data = fc_json_object_set_object(time, "data");
+    fc_json_array_t *columns = fc_json_object_set_dataframe(
+        data, table.n, include_accuracy ? 39 : 30);
     fc_json_array_append_value(columns, fc_json_column_f64("time_bin_start_s", time_start, table.n));
     fc_json_array_append_value(columns, fc_json_column_f64("time_bin_end_s", time_end, table.n));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("read_count", read_count, table.n));
@@ -838,11 +824,6 @@ static void summary_json_channels(fc_json_object_t *root, const fc_channel_summa
     fc_json_object_set_number(skip, "missing_mux", (double)skipped.missing_mux);
     fc_json_object_set_number(skip, "invalid_mux", (double)skipped.invalid_mux);
 
-    // Pack channel data as schema-style table (list of column objects)
-    fc_json_object_t *data = fc_json_object_set_object(channels, "__data__");
-    fc_json_array_t *shape = fc_json_object_set_array(data, "shape");
-    fc_json_array_append_number(shape, (double)table.n);
-
     size_t *channel_arr = fc_alloc(table.n, sizeof(size_t), "channel array");
     size_t *mux_arr = fc_alloc(table.n, sizeof(size_t), "mux array");
     size_t *read_count_arr = fc_alloc(table.n, sizeof(size_t), "read_count array");
@@ -866,7 +847,8 @@ static void summary_json_channels(fc_json_object_t *root, const fc_channel_summa
         mean_concordance_qscore_arr[i] = row->mean_concordance_qscore;
     }
 
-    fc_json_array_t *columns = fc_json_object_set_array(data, "columns");
+    fc_json_object_t *data = fc_json_object_set_object(channels, "data");
+    fc_json_array_t *columns = fc_json_object_set_dataframe(data, table.n, 8);
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("channel", channel_arr, table.n));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("mux", mux_arr, table.n));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("read_count", read_count_arr, table.n));
@@ -1064,10 +1046,9 @@ static void summary_json_coverage_table(
         max[row] = source->max;
     }
 
-    fc_json_object_t *data = fc_json_object_set_object(object, "__data__");
-    fc_json_array_t *shape = fc_json_object_set_array(data, "shape");
-    fc_json_array_append_number(shape, (double)n_rows);
-    fc_json_array_t *columns = fc_json_object_set_array(data, "columns");
+    fc_json_object_t *data = fc_json_object_set_object(object, "data");
+    fc_json_array_t *columns = fc_json_object_set_dataframe(
+        data, n_rows, 8 + target->n_thresholds);
     fc_json_array_append_value(columns, fc_json_column_string("chrom", chrom, n_rows));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("start", start, n_rows));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("end", end, n_rows));
@@ -1116,10 +1097,8 @@ static void summary_json_coverage_distribution(
         fraction[row] = target->distribution_rows[row].fraction;
     }
 
-    fc_json_object_t *data = fc_json_object_set_object(object, "__data__");
-    fc_json_array_t *shape = fc_json_object_set_array(data, "shape");
-    fc_json_array_append_number(shape, (double)n_rows);
-    fc_json_array_t *columns = fc_json_object_set_array(data, "columns");
+    fc_json_object_t *data = fc_json_object_set_object(object, "data");
+    fc_json_array_t *columns = fc_json_object_set_dataframe(data, n_rows, 3);
     fc_json_array_append_value(columns, fc_json_column_string("chrom", chrom, n_rows));
     fc_json_array_append_value(columns, fc_json_column_uint_adaptive("depth", depth, n_rows));
     fc_json_array_append_value(columns, fc_json_column_f64("fraction", fraction, n_rows));

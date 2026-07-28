@@ -198,9 +198,11 @@ In addition to the [common options](#fastcat-fastq--bam-options) above, `bam` ac
 
 Both `fastcat fastq` and `fastcat bam` write their outputs under `-o`/`--output DIRECTORY` (default `fastcat-qc`; must not already exist). If `--demultiplex` is given, the outputs described below are produced once per observed barcode under `<output>/{unclassified,barcodeXXXX/}` instead of directly under `<output>/`.
 
-Every output directory always contains a `summary.json` file (see below).
-Unless `--no-legacy-outputs` is passed, the additional legacy TSV/histogram outputs described in this section are also written; pass `--html-report` to additionally write a single-sample HTML QC report.
-Outputs are common to both subcommands except where marked **(bam only)**.
+Each output directory contains a `summary.json` file containing all information garnered for each barcode (or the entire set in the case of no demultiplexing).
+Unless `--no-legacy-outputs` is passed, the additional legacy TSV/histogram outputs described in this section are also written.
+When the `--html-report` is used, a rich QC report is generated for each barcode.
+Most outputs are common to both subcommands except those relating specifically to alignment of reads to a reference, these are marked as **(bam only)** below.
+The JSON summary and HTML reports also contain additional sections in the case of reads aligned to a reference.
 
 ### Read output (stdout) — fastq only
 
@@ -209,10 +211,339 @@ If `--demultiplex` is given, output to `stdout` is not produced; reads are inste
 
 ### summary.json
 
-Every output directory contains a `summary.json` structured summary file.
-This contains various statistics about the input data, including the number of reads, total bases, mean read length, mean quality score, and counts of reads filtered by length or quality thresholds.
+The JSON summary output contains various statistics about the input data, including the number of reads, total bases, mean read length, mean quality score, and counts of reads filtered by length or quality thresholds.
 It contains also all the data from the legacy TSV outputs described below.
-The JSON Schema for `summary.json` can be obtained at any time via `./fastcat json-schema`; which contains descriptions of all entries of the file.
+Much of the `summary.json` files comprise human readable summary statistics, while some larger datasets are stored as machine readable arrays in order to save space.
+
+> The following documentation is generated automatically from a JSON schema document describing the file contents.
+> The JSON Schema document can be obtained by running `fastcat json-schema` from the CLI.
+> Use this file if you need a machine readable specification of the `summary.json` files.
+
+#### Dataframe encoding
+
+For large array-like data the `summary.json` files use a self-describing base64-encoding.
+The descriptions contain the data type, the shape of the data and finally the encoded data.
+
+The table below enumerates various definitions seen in the JSON schema document describing `summary.json` files.
+Examples of these structures are given folowing the table.
+
+| Schema definition | Type | Description |
+| --- | --- | --- |
+| `array` | `object` | Self-describing array container. It has `kind: "array"`, `dtype`, `shape`, and `data`; `name` is optional. Numeric payloads are base64-encoded little-endian values, while string payloads are direct JSON arrays. |
+| `dataframe` | `object` | Column-oriented table with `kind: "dataframe"` and a two-dimensional `[rows, columns]` shape. Every column is an independently decodable one-dimensional `array`. |
+| `adaptiveColumn` | `object` | Named one-dimensional numeric array used for unsigned integer columns. Its dtype is selected per output as `<u1`, `<u2`, `<u4`, or `<u8`. |
+| `floatColumn` | `object` | Named one-dimensional numeric array with fixed little-endian float64 dtype, `<f8`. |
+| `stringColumn` | `object` | Named one-dimensional string array with `dtype: "string"` and direct JSON string values. |
+
+For example, 1D and 2D arrays are represented as `array` objects:
+```
+{
+  "one_dimensional": {
+    "name": "my_1d_array", (optional)
+    "kind": "array",
+    "dtype": "<u2",
+    "shape": [3],
+    "data": "AQACAAMA"
+  }
+  "two_dimensional": {
+    "kind": "array",
+    "dtype": "<f4",
+    "shape": [2, 2],
+    "data": "AACAPwAAAEAAAEBAAACAQA=="
+  }
+}
+```
+
+To optimize filesizes, the data type size, as represented by the `dtype` field in the above examples, may differ across files for the same attribute.
+Parsers should therefore not assume that a given array or data frame column is always encoded with the same data type, but rather inspect the `dtype` field.
+
+Tabular, `dataframe` objects, data are simply lists of named `array` objects:
+
+```
+{
+  table: {
+    "kind": "dataframe",
+    "shape": [2, 2],
+    "columns": [
+      {
+        "name": "chrom",
+        "kind": "array",
+        "dtype": "string",
+        "shape": [2]
+        "data": ["chr1", "chr2"]
+      },
+      {
+        "name": "mean_depth",
+        "kind": "array",
+        "dtype": "<u4",
+        "shape": [2]
+        "data": "ZAAAAMgAAAA="
+      }
+    ]
+  }
+}
+```
+
+<!-- BEGIN GENERATED SUMMARY.JSON REFERENCE -->
+
+#### `run_summary` — Run summary
+
+The principal human-readable overview for this output sample or barcode: accepted-read yield and count, filtering outcomes, sequencing-run metadata, and N/L read-length statistics.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `sample_id` | `string` or `null` | User-supplied sample identifier, or null when none was supplied. |
+| `input_type` | `string` or `null` | Detected input type, for example fastq, unaligned bam, or aligned bam. |
+| `barcode_id` | `string` or `null` | Barcode identifier for this output, or null when it is not applicable. |
+| `barcode_alias` | `string` or `null` | User-provided barcode alias, or null when no alias is available. |
+| `run_ids` | `array` or `null` | Distinct sequencing run identifiers observed in accepted reads, or null when unavailable. |
+| `basecaller_models` | `array` or `null` | Distinct basecaller model identifiers observed in accepted reads, or null when unavailable. |
+| `modbase_models` | `array` or `null` | Distinct modified-base model identifiers observed in accepted reads, or null when unavailable. |
+| `flow_cell_ids` | `array` or `null` | Distinct flow-cell identifiers observed in accepted reads, or null when unavailable. |
+| `run_date` | `string` or `null` | Earliest observed sequencing start date, or null when timestamps are unavailable. |
+| `run_duration_s` | `number` | Elapsed sequencing duration in seconds; -1 denotes multiple flow cells and 0 is used when no valid timing range is available. |
+| `read_count` | `nonNegativeInt` | Number of reads that passed fastcat filtering. |
+| `base_count` | `nonNegativeInt` | Total bases in reads that passed fastcat filtering. |
+| `records_seen` | `nonNegativeInt` | Number of input records considered before read-level filtering. |
+| `records_passed_filters` | `nonNegativeInt` | Number of records that passed all read-level filters. |
+| `records_too_long` | `nonNegativeInt` | Number of records rejected by the maximum read-length filter. |
+| `records_too_short` | `nonNegativeInt` | Number of records rejected by the minimum read-length filter. |
+| `records_low_quality` | `nonNegativeInt` | Number of records rejected by the mean-quality filter or missing usable quality. |
+| `records_dust_masked` | `nonNegativeInt` | Number of records rejected by low-complexity (DUST) filtering. |
+| `n5_bp` | `nonNegativeInt` | N5 read length in base pairs: 5% of total accepted bases are in reads of at least this length. |
+| `n10_bp` | `nonNegativeInt` | N10 read length in base pairs: 10% of total accepted bases are in reads of at least this length. |
+| `n25_bp` | `nonNegativeInt` | N25 read length in base pairs: 25% of total accepted bases are in reads of at least this length. |
+| `n50_bp` | `nonNegativeInt` | N50 read length in base pairs: 50% of total accepted bases are in reads of at least this length. |
+| `n75_bp` | `nonNegativeInt` | N75 read length in base pairs: 75% of total accepted bases are in reads of at least this length. |
+| `n90_bp` | `nonNegativeInt` | N90 read length in base pairs: 90% of total accepted bases are in reads of at least this length. |
+| `n95_bp` | `nonNegativeInt` | N95 read length in base pairs: 95% of total accepted bases are in reads of at least this length. |
+| `l5` | `nonNegativeInt` | Number of longest reads required to reach 5% of accepted bases. |
+| `l10` | `nonNegativeInt` | Number of longest reads required to reach 10% of accepted bases. |
+| `l25` | `nonNegativeInt` | Number of longest reads required to reach 25% of accepted bases. |
+| `l50` | `nonNegativeInt` | Number of longest reads required to reach 50% of accepted bases. |
+| `l75` | `nonNegativeInt` | Number of longest reads required to reach 75% of accepted bases. |
+| `l90` | `nonNegativeInt` | Number of longest reads required to reach 90% of accepted bases. |
+| `l95` | `nonNegativeInt` | Number of longest reads required to reach 95% of accepted bases. |
+
+#### `sample` — Sample metadata
+
+Sample and barcode identifiers for this output.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `sample_id` | `string` or `null` | User-supplied sample identifier, or null when none was supplied. |
+| `input_type` | `string` or `null` | Detected input type, or null when unavailable. |
+| `barcode_id` | `string` or `null` | Barcode identifier for this output, or null when it is not applicable. |
+| `barcode_alias` | `string` or `null` | User-provided barcode alias, or null when unavailable. |
+
+#### `files` — Input file summaries
+
+Per-input-file accepted-read summaries. In a demultiplexed run, each row is scoped to the barcode represented by this summary.json file.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `path` | `string` | Input-file path as supplied to fastcat. |
+| `accepted_read_count` | `nonNegativeInt` | Number of reads from this file that passed fastcat filtering. |
+| `accepted_base_count` | `nonNegativeInt` | Total bases in reads from this file that passed fastcat filtering. |
+| `min_length_bp` | `nonNegativeInt` | Shortest accepted read length in base pairs. |
+| `max_length_bp` | `nonNegativeInt` | Longest accepted read length in base pairs. |
+| `mean_quality` | `number` | Arithmetic mean of accepted reads' mean Phred qualities. |
+| `run_id_counts` | `counter` | Exact run-ID counts among accepted reads from this file. |
+| `basecaller_counts` | `counter` | Exact basecaller-model counts among accepted reads from this file. |
+
+#### `counts` — Aggregate count summaries
+
+Machine-readable aggregate accepted-read and base totals, with frequency counters that preserve the number of reads associated with each observed run ID and basecaller model.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `read_count` | `nonNegativeInt` | Number of reads that passed fastcat filtering. |
+| `base_count` | `nonNegativeInt` | Total bases in reads that passed fastcat filtering. |
+| `run_ids` | `counter` | Exact accepted-read counts by run identifier. |
+| `basecallers` | `counter` | Exact accepted-read counts by basecaller model identifier. |
+
+#### `channels` — Per-channel metrics
+
+Sparse channel-and-mux aggregates used for the channel-occupancy maps: accepted read and base totals, plus mean quality and, for aligned input, mean alignment concordance. This value is null when usable channel metadata is unavailable.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `device` | one of `minion`, `flongle`, `promethion`, `unknown` | Flow-cell device family inferred from observed channel numbers. |
+| `skipped` | `channelSkipped` | Counts of reads omitted from channel aggregation because channel or mux metadata was unusable. |
+| `data` | `dataframe` | Sparse channel dataframe, indexed by physical channel and mux. |
+
+The **`data`** dataframe columns are:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `channel` | `adaptiveColumn` | Physical sequencing channel number. |
+| `mux` | `adaptiveColumn` | Mux value associated with the channel observation. |
+| `read_count` | `adaptiveColumn` | Number of accepted reads assigned to this channel and mux. |
+| `base_count` | `adaptiveColumn` | Total accepted bases assigned to this channel and mux. |
+| `quality_read_count` | `adaptiveColumn` | Number of reads with a usable mean quality for this channel and mux. |
+| `mean_quality` | `floatColumn` | Arithmetic mean read quality for reads counted by quality_read_count. |
+| `concordance_read_count` | `adaptiveColumn` | Number of aligned reads with usable concordance for this channel and mux. |
+| `mean_concordance_qscore` | `floatColumn` | Arithmetic mean alignment concordance on the Phred scale for contributing reads. |
+
+
+#### `distributions` — Read statistic histograms
+
+Histogram data for read length and mean read quality. For BAM input these describe mapped, primary, QC-passing reads whenever any are available; otherwise they describe unmapped reads.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `read_length` | optional value (`null` when unavailable) | Read-length histogram with a reverse-cumulative yield trace, or null when no reads are available. |
+| `quality` | optional value (`null` when unavailable) | Mean-read-quality histogram, or null when no reads are available. |
+
+The **`read_length.data`** dataframe columns are:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `start` | `adaptiveColumn` | Inclusive lower edge of the read-length bin, in base pairs. |
+| `end` | `adaptiveColumn` | Exclusive upper edge of the read-length bin, in base pairs; zero denotes an unbounded final bin. |
+| `count` | `adaptiveColumn` | Number of reads in the bin. |
+| `yield_at_or_above_bp` | `adaptiveColumn` | Total bases in reads with length at or above this bin's lower edge. |
+
+
+The **`quality.data`** dataframe columns are:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `start` | `floatColumn` | Inclusive lower edge of the histogram bin. |
+| `end` | `floatColumn` | Exclusive upper edge of the histogram bin. |
+| `count` | `adaptiveColumn` | Number of observations in the bin. |
+
+
+#### `time` — Sequencing metrics over time
+
+Chronological per-bin read and base yield, cumulative totals, and read-statistic quantiles. These values underpin the sequencing-over-time plots. This value is null when usable timing metadata is unavailable.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `skipped` | `timeSkipped` | Counts of records excluded from time aggregation because timing metadata was missing or invalid. |
+| `data` | `dataframe` | Time dataframe with one row per elapsed-time bin. |
+
+The **`data`** dataframe columns are:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `time_bin_start_s` | `floatColumn` | Inclusive elapsed-time start of the bin, in seconds. |
+| `time_bin_end_s` | `floatColumn` | Exclusive elapsed-time end of the bin, in seconds. |
+| `read_count` | `adaptiveColumn` | Accepted reads whose sequencing start falls in this bin. |
+| `base_count` | `adaptiveColumn` | Bases in accepted reads whose sequencing start falls in this bin. |
+| `cumulative_read_count` | `adaptiveColumn` | Accepted reads observed from run start through this bin. |
+| `cumulative_base_count` | `adaptiveColumn` | Accepted bases observed from run start through this bin. |
+| `length_mean` | `floatColumn` | Arithmetic mean read length for reads in this bin, in base pairs. |
+| `length_q05` | `floatColumn` | Q05 read-length quantile for reads in this bin, in base pairs. |
+| `length_q10` | `floatColumn` | Q10 read-length quantile for reads in this bin, in base pairs. |
+| `length_q25` | `floatColumn` | Q25 read-length quantile for reads in this bin, in base pairs. |
+| `length_q50` | `floatColumn` | Q50 read-length quantile for reads in this bin, in base pairs. |
+| `length_q75` | `floatColumn` | Q75 read-length quantile for reads in this bin, in base pairs. |
+| `length_q90` | `floatColumn` | Q90 read-length quantile for reads in this bin, in base pairs. |
+| `length_q95` | `floatColumn` | Q95 read-length quantile for reads in this bin, in base pairs. |
+| `quality_mean` | `floatColumn` | Arithmetic mean read quality for reads in this bin, on the Phred scale. |
+| `quality_q05` | `floatColumn` | Q05 read-quality quantile for reads in this bin, on the Phred scale. |
+| `quality_q10` | `floatColumn` | Q10 read-quality quantile for reads in this bin, on the Phred scale. |
+| `quality_q25` | `floatColumn` | Q25 read-quality quantile for reads in this bin, on the Phred scale. |
+| `quality_q50` | `floatColumn` | Q50 read-quality quantile for reads in this bin, on the Phred scale. |
+| `quality_q75` | `floatColumn` | Q75 read-quality quantile for reads in this bin, on the Phred scale. |
+| `quality_q90` | `floatColumn` | Q90 read-quality quantile for reads in this bin, on the Phred scale. |
+| `quality_q95` | `floatColumn` | Q95 read-quality quantile for reads in this bin, on the Phred scale. |
+| `translocation_speed_mean` | `floatColumn` | Arithmetic mean translocation speed for reads in this bin, in bases per second. |
+| `translocation_speed_q05` | `floatColumn` | Q05 translocation-speed quantile for reads in this bin, in bases per second. |
+| `translocation_speed_q10` | `floatColumn` | Q10 translocation-speed quantile for reads in this bin, in bases per second. |
+| `translocation_speed_q25` | `floatColumn` | Q25 translocation-speed quantile for reads in this bin, in bases per second. |
+| `translocation_speed_q50` | `floatColumn` | Q50 translocation-speed quantile for reads in this bin, in bases per second. |
+| `translocation_speed_q75` | `floatColumn` | Q75 translocation-speed quantile for reads in this bin, in bases per second. |
+| `translocation_speed_q90` | `floatColumn` | Q90 translocation-speed quantile for reads in this bin, in bases per second. |
+| `translocation_speed_q95` | `floatColumn` | Q95 translocation-speed quantile for reads in this bin, in bases per second. |
+| `accuracy_read_count` | `adaptiveColumn` | Aligned reads with usable alignment concordance in this bin. |
+| `accuracy_mean` | `floatColumn` | Arithmetic mean alignment concordance for reads in this bin, on the Phred scale. |
+| `accuracy_q05` | `floatColumn` | Q05 alignment-concordance quantile for reads in this bin, on the Phred scale. |
+| `accuracy_q10` | `floatColumn` | Q10 alignment-concordance quantile for reads in this bin, on the Phred scale. |
+| `accuracy_q25` | `floatColumn` | Q25 alignment-concordance quantile for reads in this bin, on the Phred scale. |
+| `accuracy_q50` | `floatColumn` | Q50 alignment-concordance quantile for reads in this bin, on the Phred scale. |
+| `accuracy_q75` | `floatColumn` | Q75 alignment-concordance quantile for reads in this bin, on the Phred scale. |
+| `accuracy_q90` | `floatColumn` | Q90 alignment-concordance quantile for reads in this bin, on the Phred scale. |
+| `accuracy_q95` | `floatColumn` | Q95 alignment-concordance quantile for reads in this bin, on the Phred scale. |
+
+
+#### `heatmaps` — Quality diagnostic heatmaps
+
+Two-dimensional count matrices relating mean read quality to read length, translocation speed, or alignment concordance. Axis metadata identifies the metric and its numeric range.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `read_length_quality` | optional value (`null` when unavailable) | Read-length versus mean-quality count matrix. |
+| `translocation_speed_quality` | optional value (`null` when unavailable) | Translocation-speed versus mean-quality count matrix. |
+| `alignment_accuracy_quality` | optional value (`null` when unavailable) | Alignment-concordance versus mean-quality count matrix; available for aligned BAM data. |
+
+#### `alignment` — Alignment summary metrics
+
+BAM-only record-level mapping counts, per-reference flag counts, and distributions for alignment concordance, aligned query coverage, unmapped reads, and poly-A length. This section is omitted for FASTQ summaries.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `record_counts` | `alignmentCounts` | Aggregate BAM record counts by flag-derived category. |
+| `mapped_record_count` | `nonNegativeInt` | Number of mapped BAM records. |
+| `mapped_record_percent` | `percentage` | Percentage of all BAM records that are mapped. |
+| `primary_mapped_record_count` | `nonNegativeInt` | Number of records that are both primary and mapped. |
+| `primary_mapped_record_percent` | `percentage` | Percentage of all BAM records that are both primary and mapped. |
+| `per_reference_counts` | `array` | Flag-derived record counts for every reference sequence. |
+| `distributions` | `alignmentDistributions` | Alignment-specific read distributions. |
+
+The **`distributions.accuracy.data`, `distributions.query_coverage.data`, and `distributions.unmapped_quality.data`** dataframe columns are:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `start` | `floatColumn` | Inclusive lower edge of the histogram bin. |
+| `end` | `floatColumn` | Exclusive upper edge of the histogram bin. |
+| `count` | `adaptiveColumn` | Number of observations in the bin. |
+
+
+The **`distributions.unmapped_read_length.data` and `distributions.poly_a_length.data`** dataframe columns are:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `start` | `adaptiveColumn` | Inclusive lower edge of the read-length bin, in base pairs. |
+| `end` | `adaptiveColumn` | Exclusive upper edge of the read-length bin, in base pairs; zero denotes an unbounded final bin. |
+| `count` | `adaptiveColumn` | Number of reads in the bin. |
+
+
+#### `coverage` — Reference coverage
+
+Reference-depth tables for each requested global, fixed-segment, or BED target set. The summary and cumulative-distribution dataframes directly mirror fastcat's legacy coverage tables. This section is omitted unless coverage processing was requested.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `targets` | `array` | Coverage tables for all configured global, segment, and BED target sets. |
+
+The **`targets[].summary.data`** dataframe columns are:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `chrom` | `stringColumn` | Reference sequence or target-set label; the final aggregate row uses the target-set name. |
+| `start` | `adaptiveColumn` | Zero-based inclusive interval start. |
+| `end` | `adaptiveColumn` | Zero-based exclusive interval end. |
+| `length` | `adaptiveColumn` | Interval length in base pairs. |
+| `bases` | `adaptiveColumn` | Total aligned bases contributing depth within the interval. |
+| `mean` | `floatColumn` | Mean reference depth across interval positions. |
+| `min` | `adaptiveColumn` | Minimum reference depth across interval positions. |
+| `max` | `adaptiveColumn` | Maximum reference depth across interval positions. |
+| `^[0-9]+x$` | `floatColumn` | Fraction of interval positions covered at or above the named depth threshold. |
+
+
+The **`targets[].distribution.data`** dataframe columns are:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `chrom` | `stringColumn` | Target-set label; coverage distributions are aggregate-only. |
+| `depth` | `adaptiveColumn` | Minimum reference depth. |
+| `fraction` | `floatColumn` | Fraction of target positions covered at or above depth. |
+
+<!-- END GENERATED SUMMARY.JSON REFERENCE -->
+
+
 
 
 ### Histogram outputs

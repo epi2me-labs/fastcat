@@ -43,6 +43,7 @@ check-summary-json-schema:
         - *prep-image
     script:
         - make summary_json_schema_check
+        - make summary_json_docs_check
 
 check-report-template:
     stage: test

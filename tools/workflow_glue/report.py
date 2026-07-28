@@ -42,7 +42,7 @@ def summary_dataframe(summary, *path):
         value = value.get(key)
     if value is None:
         return None
-    return summary_json.decode_dataframe(value["__data__"])
+    return summary_json.decode_dataframe(value.get("data", value))
 
 
 def summary_distribution(summary, name):
@@ -57,7 +57,7 @@ def summary_heatmap(summary, name):
     heatmap = summary.get("heatmaps", {}).get(name)
     if heatmap is None:
         return None
-    return heatmap, summary_json.decode_ndarray(heatmap["__data__"])
+    return heatmap, summary_json.decode_ndarray(heatmap["data"])
 
 
 patch_bokeh_plot_class(ezc.plots.BokehPlot)
@@ -262,8 +262,8 @@ def load_coverage_targets(summary):
     """Load coverage CDF targets from summary.json."""
     targets = []
     for target in summary.get("coverage", {}).get("targets", []):
-        table = summary_json.decode_dataframe(target["summary"]["__data__"])
-        distribution = summary_json.decode_dataframe(target["distribution"]["__data__"])
+        table = summary_json.decode_dataframe(target["summary"]["data"])
+        distribution = summary_json.decode_dataframe(target["distribution"]["data"])
         name = target["name"]
         mean_depth = float(table.iloc[-1]["mean"]) if not table.empty else 0.0
         distribution = distribution[distribution["depth"] > 0]

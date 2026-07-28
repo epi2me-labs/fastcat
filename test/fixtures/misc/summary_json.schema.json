@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/epi2me-labs/fastcat/schema/summary_json.schema.json",
   "title": "fastcat summary.json v1",
-  "description": "Schema for the always-written summary.json aggregate summary. Dataframe and ndarray payloads are base64-encoded native little-endian values; count columns may use adaptive unsigned integer dtypes.",
+  "description": "Schema for the always-written summary.json aggregate summary. Self-describing dataframe and array containers use base64-encoded little-endian payloads; count columns may use adaptive unsigned integer dtypes.",
   "type": "object",
   "required": [
     "schema_version",
@@ -17,27 +17,39 @@
   ],
   "properties": {
     "schema_id": {
+      "description": "Identifier of the JSON Schema that defines this document.",
       "const": "https://github.com/epi2me-labs/fastcat/schema/summary_json.schema.json"
     },
     "schema_version": {
+      "description": "Version of the fastcat summary.json data contract.",
       "const": 1
     },
     "run_summary": {
+      "title": "Run summary",
+      "description": "The principal human-readable overview for this output sample or barcode: accepted-read yield and count, filtering outcomes, sequencing-run metadata, and N/L read-length statistics.",
       "$ref": "#/$defs/runSummary"
     },
     "sample": {
+      "title": "Sample metadata",
+      "description": "Sample and barcode identifiers for this output.",
       "$ref": "#/$defs/sample"
     },
     "files": {
+      "title": "Input file summaries",
+      "description": "Per-input-file accepted-read summaries. In a demultiplexed run, each row is scoped to the barcode represented by this summary.json file.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/file"
       }
     },
     "counts": {
+      "title": "Aggregate count summaries",
+      "description": "Machine-readable aggregate accepted-read and base totals, with frequency counters that preserve the number of reads associated with each observed run ID and basecaller model.",
       "$ref": "#/$defs/counts"
     },
     "channels": {
+      "title": "Per-channel metrics",
+      "description": "Sparse channel-and-mux aggregates used for the channel-occupancy maps: accepted read and base totals, plus mean quality and, for aligned input, mean alignment concordance. This value is null when usable channel metadata is unavailable.",
       "anyOf": [
         {
           "$ref": "#/$defs/channels"
@@ -48,9 +60,13 @@
       ]
     },
     "distributions": {
+      "title": "Read statistic histograms",
+      "description": "Histogram data for read length and mean read quality. For BAM input these describe mapped, primary, QC-passing reads whenever any are available; otherwise they describe unmapped reads.",
       "$ref": "#/$defs/distributions"
     },
     "time": {
+      "title": "Sequencing metrics over time",
+      "description": "Chronological per-bin read and base yield, cumulative totals, and read-statistic quantiles. These values underpin the sequencing-over-time plots. This value is null when usable timing metadata is unavailable.",
       "anyOf": [
         {
           "$ref": "#/$defs/time"
@@ -61,97 +77,180 @@
       ]
     },
     "heatmaps": {
+      "title": "Quality diagnostic heatmaps",
+      "description": "Two-dimensional count matrices relating mean read quality to read length, translocation speed, or alignment concordance. Axis metadata identifies the metric and its numeric range.",
       "$ref": "#/$defs/heatmaps"
     },
     "alignment": {
+      "title": "Alignment summary metrics",
+      "description": "BAM-only record-level mapping counts, per-reference flag counts, and distributions for alignment concordance, aligned query coverage, unmapped reads, and poly-A length. This section is omitted for FASTQ summaries.",
       "$ref": "#/$defs/alignment"
     },
     "coverage": {
+      "title": "Reference coverage",
+      "description": "Reference-depth tables for each requested global, fixed-segment, or BED target set. The summary and cumulative-distribution dataframes directly mirror fastcat's legacy coverage tables. This section is omitted unless coverage processing was requested.",
       "$ref": "#/$defs/coverage"
     }
   },
   "additionalProperties": false,
   "$defs": {
     "adaptiveDtype": {
+      "description": "Unsigned integer dtype selected to be wide enough for the encoded values.",
       "enum": [
-        "uint8",
-        "uint16",
-        "uint32",
-        "uint64"
+        "<u1",
+        "<u2",
+        "<u4",
+        "<u8"
       ]
     },
     "nonNegativeInt": {
+      "description": "A non-negative integer.",
       "type": "integer",
       "minimum": 0
     },
     "nonNegativeFloat": {
+      "description": "A non-negative finite numeric value.",
       "type": "number",
       "minimum": 0
     },
     "percentage": {
+      "description": "A percentage in the inclusive range 0 to 100.",
       "type": "number",
       "minimum": 0,
       "maximum": 100
     },
     "base64": {
+      "description": "Standard base64 text encoding of binary array data.",
       "type": "string",
       "pattern": "^[A-Za-z0-9+/]*={0,2}$"
     },
     "adaptiveColumn": {
+      "description": "A numeric dataframe column encoded as a base64 little-endian unsigned integer array.",
       "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/array"
+        }
+      ],
       "required": [
         "name",
+        "kind",
         "dtype",
-        "__ndarray__"
+        "shape",
+        "data"
       ],
       "properties": {
         "name": {
+          "description": "Column name.",
           "type": "string"
         },
+        "kind": {
+          "description": "Container tag identifying this value as a numeric array.",
+          "const": "array"
+        },
         "dtype": {
+          "description": "Unsigned integer dtype used to decode the payload.",
           "$ref": "#/$defs/adaptiveDtype"
         },
-        "__ndarray__": {
+        "shape": {
+          "description": "One-dimensional column length.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonNegativeInt"
+          }
+        },
+        "data": {
+          "description": "Base64-encoded little-endian numeric payload.",
           "$ref": "#/$defs/base64"
         }
       },
       "additionalProperties": false
     },
     "floatColumn": {
+      "description": "A numeric dataframe column encoded as a base64 little-endian float64 array.",
       "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/array"
+        }
+      ],
       "required": [
         "name",
+        "kind",
         "dtype",
-        "__ndarray__"
+        "shape",
+        "data"
       ],
       "properties": {
         "name": {
+          "description": "Column name.",
           "type": "string"
         },
-        "dtype": {
-          "const": "float64"
+        "kind": {
+          "description": "Container tag identifying this value as a numeric array.",
+          "const": "array"
         },
-        "__ndarray__": {
+        "dtype": {
+          "description": "Fixed float64 dtype used to decode the payload.",
+          "const": "<f8"
+        },
+        "shape": {
+          "description": "One-dimensional column length.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonNegativeInt"
+          }
+        },
+        "data": {
+          "description": "Base64-encoded little-endian float64 payload.",
           "$ref": "#/$defs/base64"
         }
       },
       "additionalProperties": false
     },
     "stringColumn": {
+      "description": "A dataframe column represented directly as an array of strings.",
       "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/array"
+        }
+      ],
       "required": [
         "name",
+        "kind",
         "dtype",
+        "shape",
         "data"
       ],
       "properties": {
         "name": {
+          "description": "Column name.",
           "type": "string"
         },
+        "kind": {
+          "description": "Container tag identifying this value as a string array.",
+          "const": "array"
+        },
         "dtype": {
+          "description": "Direct string-column dtype.",
           "const": "string"
         },
+        "shape": {
+          "description": "One-dimensional column length.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonNegativeInt"
+          }
+        },
         "data": {
+          "description": "One string value per dataframe row.",
           "type": "array",
           "items": {
             "type": "string"
@@ -161,35 +260,20 @@
       "additionalProperties": false
     },
     "dataframe": {
+      "description": "Self-describing column-oriented table. Numeric columns are base64-encoded little-endian arrays; string columns are direct JSON arrays.",
       "type": "object",
       "required": [
+        "kind",
         "shape",
         "columns"
       ],
       "properties": {
-        "shape": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 1,
-          "items": {
-            "$ref": "#/$defs/nonNegativeInt"
-          }
+        "kind": {
+          "description": "Container tag identifying this value as a dataframe.",
+          "const": "dataframe"
         },
-        "columns": {
-          "type": "array"
-        }
-      },
-      "additionalProperties": false
-    },
-    "ndarray": {
-      "type": "object",
-      "required": [
-        "shape",
-        "dtype",
-        "__ndarray__"
-      ],
-      "properties": {
         "shape": {
+          "description": "Two-element array containing dataframe row and column counts.",
           "type": "array",
           "minItems": 2,
           "maxItems": 2,
@@ -197,14 +281,109 @@
             "$ref": "#/$defs/nonNegativeInt"
           }
         },
-        "dtype": {
-          "$ref": "#/$defs/adaptiveDtype"
-        },
-        "__ndarray__": {
-          "$ref": "#/$defs/base64"
+        "columns": {
+          "description": "Ordered column payloads, each with one value per row.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/array"
+          }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
+    },
+    "array": {
+      "description": "Self-describing array. Numeric payloads are base64-encoded little-endian values; string payloads are direct JSON arrays. The shape lists one or more dimensions.",
+      "type": "object",
+      "required": [
+        "kind",
+        "shape",
+        "dtype",
+        "data"
+      ],
+      "properties": {
+        "name": {
+          "description": "Optional name when the array is used as a dataframe column.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Container tag identifying this value as a numeric array.",
+          "const": "array"
+        },
+        "shape": {
+          "description": "Array dimensions in row-major order.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonNegativeInt"
+          }
+        },
+        "dtype": {
+          "description": "NumPy-style little-endian numeric dtype used to decode the payload.",
+          "enum": [
+            "<u1",
+            "<u2",
+            "<u4",
+            "<u8",
+            "<f4",
+            "<f8",
+            "string"
+          ]
+        },
+        "data": {
+          "description": "Base64-encoded little-endian numeric payload, or direct strings when dtype is string.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/base64"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "dtype": {
+                "const": "string"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "dtype": {
+                "not": {
+                  "const": "string"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/base64"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": true
     },
     "channelColumns": {
       "type": "array",
@@ -216,6 +395,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Physical sequencing channel number.",
               "const": "channel"
             }
           }
@@ -224,6 +404,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Mux value associated with the channel observation.",
               "const": "mux"
             }
           }
@@ -232,6 +413,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Number of accepted reads assigned to this channel and mux.",
               "const": "read_count"
             }
           }
@@ -240,6 +422,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Total accepted bases assigned to this channel and mux.",
               "const": "base_count"
             }
           }
@@ -248,6 +431,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Number of reads with a usable mean quality for this channel and mux.",
               "const": "quality_read_count"
             }
           }
@@ -256,6 +440,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Arithmetic mean read quality for reads counted by quality_read_count.",
               "const": "mean_quality"
             }
           }
@@ -264,6 +449,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Number of aligned reads with usable concordance for this channel and mux.",
               "const": "concordance_read_count"
             }
           }
@@ -272,6 +458,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Arithmetic mean alignment concordance on the Phred scale for contributing reads.",
               "const": "mean_concordance_qscore"
             }
           }
@@ -288,6 +475,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Inclusive lower edge of the read-length bin, in base pairs.",
               "const": "start"
             }
           }
@@ -296,6 +484,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Exclusive upper edge of the read-length bin, in base pairs; zero denotes an unbounded final bin.",
               "const": "end"
             }
           }
@@ -304,6 +493,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Number of reads in the bin.",
               "const": "count"
             }
           }
@@ -312,6 +502,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Total bases in reads with length at or above this bin's lower edge.",
               "const": "yield_at_or_above_bp"
             }
           }
@@ -319,6 +510,7 @@
       ]
     },
     "lengthPlainColumns": {
+      "description": "Columns shared by read-length histograms without a reverse cumulative yield trace.",
       "type": "array",
       "minItems": 3,
       "maxItems": 3,
@@ -328,6 +520,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Inclusive lower edge of the read-length bin, in base pairs.",
               "const": "start"
             }
           }
@@ -336,6 +529,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Exclusive upper edge of the read-length bin, in base pairs; zero denotes an unbounded final bin.",
               "const": "end"
             }
           }
@@ -344,6 +538,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Number of reads in the bin.",
               "const": "count"
             }
           }
@@ -351,6 +546,7 @@
       ]
     },
     "qualityColumns": {
+      "description": "Columns shared by fixed-width quality-like histograms.",
       "type": "array",
       "minItems": 3,
       "maxItems": 3,
@@ -360,6 +556,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Inclusive lower edge of the histogram bin.",
               "const": "start"
             }
           }
@@ -368,6 +565,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Exclusive upper edge of the histogram bin.",
               "const": "end"
             }
           }
@@ -376,6 +574,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Number of observations in the bin.",
               "const": "count"
             }
           }
@@ -383,6 +582,7 @@
       ]
     },
     "timeColumns": {
+      "description": "One row per elapsed-time bin: start/end seconds, interval and cumulative read/base totals, followed by mean and Q05/Q10/Q25/Q50/Q75/Q90/Q95 summaries for read length, mean read quality, and translocation speed. BAM summaries append equivalent alignment-concordance fields when aligned timestamped reads are available.",
       "type": "array",
       "minItems": 30,
       "maxItems": 39,
@@ -392,6 +592,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Inclusive elapsed-time start of the bin, in seconds.",
               "const": "time_bin_start_s"
             }
           }
@@ -400,6 +601,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Exclusive elapsed-time end of the bin, in seconds.",
               "const": "time_bin_end_s"
             }
           }
@@ -408,6 +610,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Accepted reads whose sequencing start falls in this bin.",
               "const": "read_count"
             }
           }
@@ -416,6 +619,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Bases in accepted reads whose sequencing start falls in this bin.",
               "const": "base_count"
             }
           }
@@ -424,6 +628,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Accepted reads observed from run start through this bin.",
               "const": "cumulative_read_count"
             }
           }
@@ -432,6 +637,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Accepted bases observed from run start through this bin.",
               "const": "cumulative_base_count"
             }
           }
@@ -440,6 +646,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Arithmetic mean read length for reads in this bin, in base pairs.",
               "const": "length_mean"
             }
           }
@@ -448,6 +655,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q05 read-length quantile for reads in this bin, in base pairs.",
               "const": "length_q05"
             }
           }
@@ -456,6 +664,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q10 read-length quantile for reads in this bin, in base pairs.",
               "const": "length_q10"
             }
           }
@@ -464,6 +673,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q25 read-length quantile for reads in this bin, in base pairs.",
               "const": "length_q25"
             }
           }
@@ -472,6 +682,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q50 read-length quantile for reads in this bin, in base pairs.",
               "const": "length_q50"
             }
           }
@@ -480,6 +691,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q75 read-length quantile for reads in this bin, in base pairs.",
               "const": "length_q75"
             }
           }
@@ -488,6 +700,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q90 read-length quantile for reads in this bin, in base pairs.",
               "const": "length_q90"
             }
           }
@@ -496,6 +709,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q95 read-length quantile for reads in this bin, in base pairs.",
               "const": "length_q95"
             }
           }
@@ -504,6 +718,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Arithmetic mean read quality for reads in this bin, on the Phred scale.",
               "const": "quality_mean"
             }
           }
@@ -512,6 +727,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q05 read-quality quantile for reads in this bin, on the Phred scale.",
               "const": "quality_q05"
             }
           }
@@ -520,6 +736,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q10 read-quality quantile for reads in this bin, on the Phred scale.",
               "const": "quality_q10"
             }
           }
@@ -528,6 +745,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q25 read-quality quantile for reads in this bin, on the Phred scale.",
               "const": "quality_q25"
             }
           }
@@ -536,6 +754,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q50 read-quality quantile for reads in this bin, on the Phred scale.",
               "const": "quality_q50"
             }
           }
@@ -544,6 +763,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q75 read-quality quantile for reads in this bin, on the Phred scale.",
               "const": "quality_q75"
             }
           }
@@ -552,6 +772,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q90 read-quality quantile for reads in this bin, on the Phred scale.",
               "const": "quality_q90"
             }
           }
@@ -560,6 +781,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q95 read-quality quantile for reads in this bin, on the Phred scale.",
               "const": "quality_q95"
             }
           }
@@ -568,6 +790,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Arithmetic mean translocation speed for reads in this bin, in bases per second.",
               "const": "translocation_speed_mean"
             }
           }
@@ -576,6 +799,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q05 translocation-speed quantile for reads in this bin, in bases per second.",
               "const": "translocation_speed_q05"
             }
           }
@@ -584,6 +808,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q10 translocation-speed quantile for reads in this bin, in bases per second.",
               "const": "translocation_speed_q10"
             }
           }
@@ -592,6 +817,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q25 translocation-speed quantile for reads in this bin, in bases per second.",
               "const": "translocation_speed_q25"
             }
           }
@@ -600,6 +826,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q50 translocation-speed quantile for reads in this bin, in bases per second.",
               "const": "translocation_speed_q50"
             }
           }
@@ -608,6 +835,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q75 translocation-speed quantile for reads in this bin, in bases per second.",
               "const": "translocation_speed_q75"
             }
           }
@@ -616,6 +844,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q90 translocation-speed quantile for reads in this bin, in bases per second.",
               "const": "translocation_speed_q90"
             }
           }
@@ -624,6 +853,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q95 translocation-speed quantile for reads in this bin, in bases per second.",
               "const": "translocation_speed_q95"
             }
           }
@@ -632,6 +862,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Aligned reads with usable alignment concordance in this bin.",
               "const": "accuracy_read_count"
             }
           }
@@ -640,6 +871,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Arithmetic mean alignment concordance for reads in this bin, on the Phred scale.",
               "const": "accuracy_mean"
             }
           }
@@ -648,6 +880,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q05 alignment-concordance quantile for reads in this bin, on the Phred scale.",
               "const": "accuracy_q05"
             }
           }
@@ -656,6 +889,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q10 alignment-concordance quantile for reads in this bin, on the Phred scale.",
               "const": "accuracy_q10"
             }
           }
@@ -664,6 +898,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q25 alignment-concordance quantile for reads in this bin, on the Phred scale.",
               "const": "accuracy_q25"
             }
           }
@@ -672,6 +907,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q50 alignment-concordance quantile for reads in this bin, on the Phred scale.",
               "const": "accuracy_q50"
             }
           }
@@ -680,6 +916,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q75 alignment-concordance quantile for reads in this bin, on the Phred scale.",
               "const": "accuracy_q75"
             }
           }
@@ -688,6 +925,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q90 alignment-concordance quantile for reads in this bin, on the Phred scale.",
               "const": "accuracy_q90"
             }
           }
@@ -696,6 +934,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Q95 alignment-concordance quantile for reads in this bin, on the Phred scale.",
               "const": "accuracy_q95"
             }
           }
@@ -703,6 +942,7 @@
       ]
     },
     "counterRow": {
+      "description": "One exact value/count pair in a metadata counter.",
       "type": "object",
       "required": [
         "value",
@@ -711,14 +951,17 @@
       "additionalProperties": false,
       "properties": {
         "value": {
+          "description": "Observed metadata value; an empty string represents missing metadata.",
           "type": "string"
         },
         "count": {
+          "description": "Number of reads with this value.",
           "$ref": "#/$defs/nonNegativeInt"
         }
       }
     },
     "counter": {
+      "description": "Exact metadata value/count pairs, or null when no values are available.",
       "anyOf": [
         {
           "type": "null"
@@ -732,6 +975,7 @@
       ]
     },
     "file": {
+      "description": "Summary of accepted reads from one input file, scoped to this output barcode when demultiplexed.",
       "type": "object",
       "required": [
         "path",
@@ -746,32 +990,41 @@
       "additionalProperties": false,
       "properties": {
         "path": {
+          "description": "Input-file path as supplied to fastcat.",
           "type": "string"
         },
         "accepted_read_count": {
+          "description": "Number of reads from this file that passed fastcat filtering.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "accepted_base_count": {
+          "description": "Total bases in reads from this file that passed fastcat filtering.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "min_length_bp": {
+          "description": "Shortest accepted read length in base pairs.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "max_length_bp": {
+          "description": "Longest accepted read length in base pairs.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "mean_quality": {
+          "description": "Arithmetic mean of accepted reads' mean Phred qualities.",
           "type": "number"
         },
         "run_id_counts": {
+          "description": "Exact run-ID counts among accepted reads from this file.",
           "$ref": "#/$defs/counter"
         },
         "basecaller_counts": {
+          "description": "Exact basecaller-model counts among accepted reads from this file.",
           "$ref": "#/$defs/counter"
         }
       }
     },
     "runSummary": {
+      "description": "Aggregate sample metadata, filtering outcomes, yield, and N/L read-length statistics.",
       "type": "object",
       "required": [
         "sample_id",
@@ -810,30 +1063,35 @@
       "additionalProperties": false,
       "properties": {
         "sample_id": {
+          "description": "User-supplied sample identifier, or null when none was supplied.",
           "type": [
             "string",
             "null"
           ]
         },
         "input_type": {
+          "description": "Detected input type, for example fastq, unaligned bam, or aligned bam.",
           "type": [
             "string",
             "null"
           ]
         },
         "barcode_id": {
+          "description": "Barcode identifier for this output, or null when it is not applicable.",
           "type": [
             "string",
             "null"
           ]
         },
         "barcode_alias": {
+          "description": "User-provided barcode alias, or null when no alias is available.",
           "type": [
             "string",
             "null"
           ]
         },
         "run_ids": {
+          "description": "Distinct sequencing run identifiers observed in accepted reads, or null when unavailable.",
           "type": [
             "array",
             "null"
@@ -843,6 +1101,7 @@
           }
         },
         "basecaller_models": {
+          "description": "Distinct basecaller model identifiers observed in accepted reads, or null when unavailable.",
           "type": [
             "array",
             "null"
@@ -852,6 +1111,7 @@
           }
         },
         "modbase_models": {
+          "description": "Distinct modified-base model identifiers observed in accepted reads, or null when unavailable.",
           "type": [
             "array",
             "null"
@@ -861,6 +1121,7 @@
           }
         },
         "flow_cell_ids": {
+          "description": "Distinct flow-cell identifiers observed in accepted reads, or null when unavailable.",
           "type": [
             "array",
             "null"
@@ -870,83 +1131,108 @@
           }
         },
         "run_date": {
+          "description": "Earliest observed sequencing start date, or null when timestamps are unavailable.",
           "type": [
             "string",
             "null"
           ]
         },
         "run_duration_s": {
+          "description": "Elapsed sequencing duration in seconds; -1 denotes multiple flow cells and 0 is used when no valid timing range is available.",
           "type": "number"
         },
         "read_count": {
+          "description": "Number of reads that passed fastcat filtering.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "base_count": {
+          "description": "Total bases in reads that passed fastcat filtering.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "records_seen": {
+          "description": "Number of input records considered before read-level filtering.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "records_passed_filters": {
+          "description": "Number of records that passed all read-level filters.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "records_too_long": {
+          "description": "Number of records rejected by the maximum read-length filter.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "records_too_short": {
+          "description": "Number of records rejected by the minimum read-length filter.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "records_low_quality": {
+          "description": "Number of records rejected by the mean-quality filter or missing usable quality.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "records_dust_masked": {
+          "description": "Number of records rejected by low-complexity (DUST) filtering.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "n5_bp": {
+          "description": "N5 read length in base pairs: 5% of total accepted bases are in reads of at least this length.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "n10_bp": {
+          "description": "N10 read length in base pairs: 10% of total accepted bases are in reads of at least this length.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "n25_bp": {
+          "description": "N25 read length in base pairs: 25% of total accepted bases are in reads of at least this length.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "n50_bp": {
+          "description": "N50 read length in base pairs: 50% of total accepted bases are in reads of at least this length.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "n75_bp": {
+          "description": "N75 read length in base pairs: 75% of total accepted bases are in reads of at least this length.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "n90_bp": {
+          "description": "N90 read length in base pairs: 90% of total accepted bases are in reads of at least this length.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "n95_bp": {
+          "description": "N95 read length in base pairs: 95% of total accepted bases are in reads of at least this length.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "l5": {
+          "description": "Number of longest reads required to reach 5% of accepted bases.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "l10": {
+          "description": "Number of longest reads required to reach 10% of accepted bases.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "l25": {
+          "description": "Number of longest reads required to reach 25% of accepted bases.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "l50": {
+          "description": "Number of longest reads required to reach 50% of accepted bases.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "l75": {
+          "description": "Number of longest reads required to reach 75% of accepted bases.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "l90": {
+          "description": "Number of longest reads required to reach 90% of accepted bases.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "l95": {
+          "description": "Number of longest reads required to reach 95% of accepted bases.",
           "$ref": "#/$defs/nonNegativeInt"
         }
       }
     },
     "sample": {
+      "description": "Identifiers describing the output sample or barcode.",
       "type": "object",
       "required": [
         "sample_id",
@@ -957,24 +1243,28 @@
       "additionalProperties": false,
       "properties": {
         "sample_id": {
+          "description": "User-supplied sample identifier, or null when none was supplied.",
           "type": [
             "string",
             "null"
           ]
         },
         "input_type": {
+          "description": "Detected input type, or null when unavailable.",
           "type": [
             "string",
             "null"
           ]
         },
         "barcode_id": {
+          "description": "Barcode identifier for this output, or null when it is not applicable.",
           "type": [
             "string",
             "null"
           ]
         },
         "barcode_alias": {
+          "description": "User-provided barcode alias, or null when unavailable.",
           "type": [
             "string",
             "null"
@@ -983,6 +1273,7 @@
       }
     },
     "counts": {
+      "description": "Aggregate exact counts for accepted reads.",
       "type": "object",
       "required": [
         "read_count",
@@ -993,15 +1284,19 @@
       "additionalProperties": false,
       "properties": {
         "read_count": {
+          "description": "Number of reads that passed fastcat filtering.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "base_count": {
+          "description": "Total bases in reads that passed fastcat filtering.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "run_ids": {
+          "description": "Exact accepted-read counts by run identifier.",
           "$ref": "#/$defs/counter"
         },
         "basecallers": {
+          "description": "Exact accepted-read counts by basecaller model identifier.",
           "$ref": "#/$defs/counter"
         }
       }
@@ -1011,11 +1306,12 @@
       "required": [
         "device",
         "skipped",
-        "__data__"
+        "data"
       ],
       "additionalProperties": false,
       "properties": {
         "device": {
+          "description": "Flow-cell device family inferred from observed channel numbers.",
           "enum": [
             "minion",
             "flongle",
@@ -1024,9 +1320,11 @@
           ]
         },
         "skipped": {
+          "description": "Counts of reads omitted from channel aggregation because channel or mux metadata was unusable.",
           "$ref": "#/$defs/channelSkipped"
         },
-        "__data__": {
+        "data": {
+          "description": "Sparse channel dataframe, indexed by physical channel and mux.",
           "allOf": [
             {
               "$ref": "#/$defs/dataframe"
@@ -1043,6 +1341,7 @@
       }
     },
     "channelSkipped": {
+      "description": "Reasons reads could not contribute to the channel dataframe.",
       "type": "object",
       "required": [
         "missing_channel",
@@ -1053,40 +1352,50 @@
       "additionalProperties": false,
       "properties": {
         "missing_channel": {
+          "description": "Reads without a channel identifier.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "invalid_channel": {
+          "description": "Reads with a channel identifier outside the supported range.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "missing_mux": {
+          "description": "Reads without a mux identifier.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "invalid_mux": {
+          "description": "Reads with an invalid mux identifier.",
           "$ref": "#/$defs/nonNegativeInt"
         }
       }
     },
     "distribution": {
+      "description": "Histogram summary with a typed dataframe of bins.",
       "type": "object",
       "required": [
         "total_count",
-        "__data__"
+        "data"
       ],
       "additionalProperties": false,
       "properties": {
         "total_count": {
+          "description": "Number of observations represented by the histogram.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "mean": {
+          "description": "Histogram-derived arithmetic mean.",
           "$ref": "#/$defs/nonNegativeFloat"
         },
         "median": {
+          "description": "Histogram-derived median.",
           "$ref": "#/$defs/nonNegativeFloat"
         },
         "total_base_count": {
+          "description": "Total bases represented by a read-length distribution.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "overflow_start_bp": {
+          "description": "Lower edge of the terminal unbounded length bin, or null when there is no overflow bin.",
           "type": [
             "integer",
             "null"
@@ -1094,18 +1403,21 @@
           "minimum": 0
         },
         "overflow_count": {
+          "description": "Observations in the terminal unbounded length bin, or null when there is no overflow bin.",
           "type": [
             "integer",
             "null"
           ],
           "minimum": 0
         },
-        "__data__": {
+        "data": {
+          "description": "Typed dataframe containing the non-empty histogram bins.",
           "$ref": "#/$defs/dataframe"
         }
       }
     },
     "distributions": {
+      "description": "Primary read-level distributions, using mapped primary QC-passing BAM reads when available.",
       "type": "object",
       "required": [
         "read_length",
@@ -1114,6 +1426,7 @@
       "additionalProperties": false,
       "properties": {
         "read_length": {
+          "description": "Read-length histogram with a reverse-cumulative yield trace, or null when no reads are available.",
           "anyOf": [
             {
               "allOf": [
@@ -1127,12 +1440,19 @@
                     "median"
                   ],
                   "properties": {
-                    "__data__": {
-                      "properties": {
-                        "columns": {
-                          "$ref": "#/$defs/lengthColumns"
+                    "data": {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/dataframe"
+                        },
+                        {
+                          "properties": {
+                            "columns": {
+                              "$ref": "#/$defs/lengthColumns"
+                            }
+                          }
                         }
-                      }
+                      ]
                     }
                   }
                 }
@@ -1144,6 +1464,7 @@
           ]
         },
         "quality": {
+          "description": "Mean-read-quality histogram, or null when no reads are available.",
           "anyOf": [
             {
               "allOf": [
@@ -1156,12 +1477,19 @@
                     "median"
                   ],
                   "properties": {
-                    "__data__": {
-                      "properties": {
-                        "columns": {
-                          "$ref": "#/$defs/qualityColumns"
+                    "data": {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/dataframe"
+                        },
+                        {
+                          "properties": {
+                            "columns": {
+                              "$ref": "#/$defs/qualityColumns"
+                            }
+                          }
                         }
-                      }
+                      ]
                     }
                   }
                 }
@@ -1175,6 +1503,7 @@
       }
     },
     "alignmentCounts": {
+      "description": "Aggregate counts of BAM records by flag-derived category.",
       "type": "object",
       "required": [
         "total",
@@ -1190,30 +1519,39 @@
       "additionalProperties": false,
       "properties": {
         "total": {
+          "description": "All alignment records.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "primary": {
+          "description": "Primary alignment records.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "secondary": {
+          "description": "Secondary alignment records.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "supplementary": {
+          "description": "Supplementary alignment records.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "unmapped": {
+          "description": "Unmapped alignment records.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "qcfail": {
+          "description": "Records marked as failing vendor quality control.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "duplicate": {
+          "description": "Records marked as duplicates.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "duplex": {
+          "description": "Records identified as duplex reads.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "duplex_forming": {
+          "description": "Records identified as duplex-forming reads.",
           "$ref": "#/$defs/nonNegativeInt"
         }
       }
@@ -1229,12 +1567,19 @@
             "median"
           ],
           "properties": {
-            "__data__": {
-              "properties": {
-                "columns": {
-                  "$ref": "#/$defs/qualityColumns"
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/dataframe"
+                },
+                {
+                  "properties": {
+                    "columns": {
+                      "$ref": "#/$defs/qualityColumns"
+                    }
+                  }
                 }
-              }
+              ]
             }
           }
         }
@@ -1252,18 +1597,26 @@
             "overflow_count"
           ],
           "properties": {
-            "__data__": {
-              "properties": {
-                "columns": {
-                  "$ref": "#/$defs/lengthPlainColumns"
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/dataframe"
+                },
+                {
+                  "properties": {
+                    "columns": {
+                      "$ref": "#/$defs/lengthPlainColumns"
+                    }
+                  }
                 }
-              }
+              ]
             }
           }
         }
       ]
     },
     "alignmentDistributions": {
+      "description": "Alignment-specific distributions, each null when no qualifying records are available.",
       "type": "object",
       "required": [
         "accuracy",
@@ -1275,6 +1628,7 @@
       "additionalProperties": false,
       "properties": {
         "accuracy": {
+          "description": "Alignment concordance histogram for aligned primary QC-passing reads.",
           "anyOf": [
             {
               "$ref": "#/$defs/alignmentFixedDistribution"
@@ -1285,6 +1639,7 @@
           ]
         },
         "query_coverage": {
+          "description": "Histogram of the proportion of each read spanned by its alignment.",
           "anyOf": [
             {
               "$ref": "#/$defs/alignmentFixedDistribution"
@@ -1295,6 +1650,7 @@
           ]
         },
         "unmapped_read_length": {
+          "description": "Read-length histogram for unmapped reads.",
           "anyOf": [
             {
               "$ref": "#/$defs/alignmentLengthDistribution"
@@ -1305,6 +1661,7 @@
           ]
         },
         "unmapped_quality": {
+          "description": "Mean-read-quality histogram for unmapped reads.",
           "anyOf": [
             {
               "$ref": "#/$defs/alignmentFixedDistribution"
@@ -1315,6 +1672,7 @@
           ]
         },
         "poly_a_length": {
+          "description": "Poly-A tail-length histogram when poly-A processing was enabled.",
           "anyOf": [
             {
               "$ref": "#/$defs/alignmentLengthDistribution"
@@ -1327,6 +1685,7 @@
       }
     },
     "alignment": {
+      "description": "BAM-only record counts, per-reference counts, and alignment distributions.",
       "type": "object",
       "required": [
         "record_counts",
@@ -1340,43 +1699,53 @@
       "additionalProperties": false,
       "properties": {
         "record_counts": {
+          "description": "Aggregate BAM record counts by flag-derived category.",
           "$ref": "#/$defs/alignmentCounts"
         },
         "mapped_record_count": {
+          "description": "Number of mapped BAM records.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "mapped_record_percent": {
+          "description": "Percentage of all BAM records that are mapped.",
           "$ref": "#/$defs/percentage"
         },
         "primary_mapped_record_count": {
+          "description": "Number of records that are both primary and mapped.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "primary_mapped_record_percent": {
+          "description": "Percentage of all BAM records that are both primary and mapped.",
           "$ref": "#/$defs/percentage"
         },
         "per_reference_counts": {
+          "description": "Flag-derived record counts for every reference sequence.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/flagstat"
           }
         },
         "distributions": {
+          "description": "Alignment-specific read distributions.",
           "$ref": "#/$defs/alignmentDistributions"
         }
       }
     },
     "time": {
+      "description": "Time-binned sequencing yield and read-level summary statistics.",
       "type": "object",
       "required": [
         "skipped",
-        "__data__"
+        "data"
       ],
       "additionalProperties": false,
       "properties": {
         "skipped": {
+          "description": "Counts of records excluded from time aggregation because timing metadata was missing or invalid.",
           "$ref": "#/$defs/timeSkipped"
         },
-        "__data__": {
+        "data": {
+          "description": "Time dataframe with one row per elapsed-time bin.",
           "allOf": [
             {
               "$ref": "#/$defs/dataframe"
@@ -1393,6 +1762,7 @@
       }
     },
     "timeSkipped": {
+      "description": "Reasons records could not contribute to time-bin summaries.",
       "type": "object",
       "required": [
         "missing_start_time",
@@ -1403,34 +1773,41 @@
       "additionalProperties": false,
       "properties": {
         "missing_start_time": {
+          "description": "Records without a sequencing start timestamp.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "invalid_start_time": {
+          "description": "Records with an unparsable sequencing start timestamp.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "missing_duration": {
+          "description": "Records without a sequencing duration.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "invalid_duration": {
+          "description": "Records with an invalid sequencing duration.",
           "$ref": "#/$defs/nonNegativeInt"
         }
       }
     },
     "heatmap": {
+      "description": "Labelled numeric axes with a dense two-dimensional count-matrix payload.",
       "type": "object",
       "required": [
         "x_label",
         "x_range",
         "y_label",
         "y_range",
-        "__data__"
+        "data"
       ],
       "additionalProperties": false,
       "properties": {
         "x_label": {
+          "description": "Human-readable label for the horizontal axis.",
           "type": "string"
         },
         "x_range": {
+          "description": "Inclusive numeric range covered by the horizontal axis.",
           "type": "array",
           "minItems": 2,
           "maxItems": 2,
@@ -1439,9 +1816,11 @@
           }
         },
         "y_label": {
+          "description": "Human-readable label for the vertical axis.",
           "type": "string"
         },
         "y_range": {
+          "description": "Inclusive numeric range covered by the vertical axis.",
           "type": "array",
           "minItems": 2,
           "maxItems": 2,
@@ -1449,12 +1828,39 @@
             "type": "number"
           }
         },
-        "__data__": {
-          "$ref": "#/$defs/ndarray"
+        "data": {
+          "description": "Dense count matrix, indexed by y bin then x bin.",
+          "allOf": [
+            {
+              "$ref": "#/$defs/array"
+            },
+            {
+              "properties": {
+                "dtype": {
+                  "description": "Unsigned integer dtype used to decode the dense count matrix.",
+                  "$ref": "#/$defs/adaptiveDtype"
+                },
+                "shape": {
+                  "description": "Dense count-matrix row and column counts.",
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "$ref": "#/$defs/nonNegativeInt"
+                  }
+                },
+                "data": {
+                  "description": "Base64-encoded dense count matrix values.",
+                  "$ref": "#/$defs/base64"
+                }
+              }
+            }
+          ]
         }
       }
     },
     "heatmaps": {
+      "description": "Quality diagnostic heatmaps; each is null when its input metric is unavailable.",
       "type": "object",
       "required": [
         "read_length_quality",
@@ -1463,6 +1869,7 @@
       "additionalProperties": false,
       "properties": {
         "read_length_quality": {
+          "description": "Read-length versus mean-quality count matrix.",
           "anyOf": [
             {
               "$ref": "#/$defs/heatmap"
@@ -1473,6 +1880,7 @@
           ]
         },
         "translocation_speed_quality": {
+          "description": "Translocation-speed versus mean-quality count matrix.",
           "anyOf": [
             {
               "$ref": "#/$defs/heatmap"
@@ -1483,6 +1891,7 @@
           ]
         },
         "alignment_accuracy_quality": {
+          "description": "Alignment-concordance versus mean-quality count matrix; available for aligned BAM data.",
           "anyOf": [
             {
               "$ref": "#/$defs/heatmap"
@@ -1495,6 +1904,7 @@
       }
     },
     "flagstat": {
+      "description": "Flag-derived BAM record counts for one reference sequence.",
       "type": "object",
       "required": [
         "ref",
@@ -1511,42 +1921,54 @@
       "additionalProperties": false,
       "properties": {
         "ref": {
+          "description": "Reference sequence name.",
           "type": "string"
         },
         "total": {
+          "description": "All records for this reference.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "primary": {
+          "description": "Primary records for this reference.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "secondary": {
+          "description": "Secondary records for this reference.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "supplementary": {
+          "description": "Supplementary records for this reference.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "unmapped": {
+          "description": "Unmapped records associated with this reference.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "qcfail": {
+          "description": "Records marked as failing vendor quality control.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "duplicate": {
+          "description": "Records marked as duplicates.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "duplex": {
+          "description": "Records identified as duplex reads.",
           "$ref": "#/$defs/nonNegativeInt"
         },
         "duplex_forming": {
+          "description": "Records identified as duplex-forming reads.",
           "$ref": "#/$defs/nonNegativeInt"
         }
       }
     },
     "coverageSummaryColumns": {
+      "description": "One row per requested interval followed by a final aggregate row. Fixed columns are chromosome/target label, zero-based start, end, length, covered bases, mean depth, minimum depth, and maximum depth; one additional fraction column is present for each configured depth threshold, named `<threshold>x`.",
       "type": "array",
       "minItems": 9,
       "items": {
         "$ref": "#/$defs/floatColumn",
+        "description": "Fraction of interval positions covered at or above the named depth threshold.",
         "properties": {
           "name": {
             "pattern": "^[0-9]+x$"
@@ -1558,6 +1980,7 @@
           "$ref": "#/$defs/stringColumn",
           "properties": {
             "name": {
+              "description": "Reference sequence or target-set label; the final aggregate row uses the target-set name.",
               "const": "chrom"
             }
           }
@@ -1566,6 +1989,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Zero-based inclusive interval start.",
               "const": "start"
             }
           }
@@ -1574,6 +1998,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Zero-based exclusive interval end.",
               "const": "end"
             }
           }
@@ -1582,6 +2007,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Interval length in base pairs.",
               "const": "length"
             }
           }
@@ -1590,6 +2016,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Total aligned bases contributing depth within the interval.",
               "const": "bases"
             }
           }
@@ -1598,6 +2025,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Mean reference depth across interval positions.",
               "const": "mean"
             }
           }
@@ -1606,6 +2034,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Minimum reference depth across interval positions.",
               "const": "min"
             }
           }
@@ -1614,6 +2043,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Maximum reference depth across interval positions.",
               "const": "max"
             }
           }
@@ -1621,6 +2051,7 @@
       ]
     },
     "coverageDistributionColumns": {
+      "description": "Aggregate coverage cumulative-distribution rows: target label, minimum depth, and fraction of positions covered at or above that depth. Rows with fractions below 0.001 are omitted, matching the legacy table.",
       "type": "array",
       "minItems": 3,
       "maxItems": 3,
@@ -1630,6 +2061,7 @@
           "$ref": "#/$defs/stringColumn",
           "properties": {
             "name": {
+              "description": "Target-set label; coverage distributions are aggregate-only.",
               "const": "chrom"
             }
           }
@@ -1638,6 +2070,7 @@
           "$ref": "#/$defs/adaptiveColumn",
           "properties": {
             "name": {
+              "description": "Minimum reference depth.",
               "const": "depth"
             }
           }
@@ -1646,6 +2079,7 @@
           "$ref": "#/$defs/floatColumn",
           "properties": {
             "name": {
+              "description": "Fraction of target positions covered at or above depth.",
               "const": "fraction"
             }
           }
@@ -1653,6 +2087,7 @@
       ]
     },
     "coverageTarget": {
+      "description": "Coverage tables for one global, fixed-segment, or named-BED target set.",
       "type": "object",
       "required": [
         "name",
@@ -1663,9 +2098,11 @@
       "additionalProperties": false,
       "properties": {
         "name": {
+          "description": "Target-set name, for example global, a segment size, or a user-provided BED name.",
           "type": "string"
         },
         "thresholds": {
+          "description": "Configured depth thresholds represented by `<threshold>x` columns in summary.",
           "type": "array",
           "minItems": 1,
           "items": {
@@ -1673,13 +2110,15 @@
           }
         },
         "summary": {
+          "description": "Coverage summary metadata and dataframe matching the legacy `.summary.txt` layout.",
           "type": "object",
           "required": [
-            "__data__"
+            "data"
           ],
           "additionalProperties": false,
           "properties": {
-            "__data__": {
+            "data": {
+              "description": "Coverage summary dataframe.",
               "allOf": [
                 {
                   "$ref": "#/$defs/dataframe"
@@ -1696,13 +2135,15 @@
           }
         },
         "distribution": {
+          "description": "Aggregate coverage cumulative-distribution metadata and dataframe matching the legacy `.dist.txt` layout.",
           "type": "object",
           "required": [
-            "__data__"
+            "data"
           ],
           "additionalProperties": false,
           "properties": {
-            "__data__": {
+            "data": {
+              "description": "Aggregate coverage cumulative-distribution dataframe.",
               "allOf": [
                 {
                   "$ref": "#/$defs/dataframe"
@@ -1721,6 +2162,7 @@
       }
     },
     "coverage": {
+      "description": "Reference-depth output produced when coverage processing is enabled.",
       "type": "object",
       "required": [
         "targets"
@@ -1728,6 +2170,7 @@
       "additionalProperties": false,
       "properties": {
         "targets": {
+          "description": "Coverage tables for all configured global, segment, and BED target sets.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/coverageTarget"

@@ -275,18 +275,31 @@ fc_json_value_t *fc_json_number_array_value(const double *values, size_t n)
     return value;
 }
 
-/* Build the common ndarray object; columns omit shape because their table supplies row count. */
+/* Build a self-describing little-endian binary array. */
 static fc_json_value_t *fc_json_ndarray_value(
-    const char *name, const char *dtype, const uint8_t *bytes, size_t n_bytes, const size_t *shape,
-    size_t n_dims)
+    const char *name, const char *dtype, const uint8_t *bytes, size_t n_bytes, size_t element_size,
+    const size_t *shape, size_t n_dims)
 {
-    char *b64 = fc_json_bytes_base64(bytes, n_bytes);
+    const uint8_t *encoded_bytes = bytes;
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    uint8_t *little_endian_bytes = n_bytes ? fc_alloc(n_bytes, sizeof(*little_endian_bytes), "JSON little-endian array") : NULL;
+    for (size_t offset = 0; offset < n_bytes; offset += element_size) {
+        for (size_t byte = 0; byte < element_size; ++byte) {
+            little_endian_bytes[offset + byte] = bytes[offset + element_size - byte - 1];
+        }
+    }
+    encoded_bytes = little_endian_bytes;
+#else
+    (void)element_size;
+#endif
+    char *b64 = fc_json_bytes_base64(encoded_bytes, n_bytes);
     fc_json_value_t *value = fc_json_object_value();
     fc_json_object_t *object = fc_json_get_object(value);
 
     if (name) {
         fc_json_object_set_string(object, "name", name);
     }
+    fc_json_object_set_string(object, "kind", "array");
     if (n_dims > 0) {
         fc_json_array_t *json_shape = fc_json_object_set_array(object, "shape");
         for (size_t i = 0; i < n_dims; i++) {
@@ -294,10 +307,24 @@ static fc_json_value_t *fc_json_ndarray_value(
         }
     }
     fc_json_object_set_string(object, "dtype", dtype);
-    fc_json_object_set_string(object, "__ndarray__", b64);
+    fc_json_object_set_string(object, "data", b64);
 
     free(b64);
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    free(little_endian_bytes);
+#endif
     return value;
+}
+
+/* Mark an object as a column-oriented dataframe and return its columns array. */
+fc_json_array_t *fc_json_object_set_dataframe(
+    fc_json_object_t *object, size_t rows, size_t columns)
+{
+    fc_json_object_set_string(object, "kind", "dataframe");
+    fc_json_array_t *shape = fc_json_object_set_array(object, "shape");
+    fc_json_array_append_number(shape, (double)rows);
+    fc_json_array_append_number(shape, (double)columns);
+    return fc_json_object_set_array(object, "columns");
 }
 
 /* Return the element count for a two-dimensional ndarray, rejecting overflow. */
@@ -314,7 +341,7 @@ static fc_json_value_t *fc_json_adaptive_uint_value(
     const char *name, const size_t *values, size_t n, const size_t *shape, size_t n_dims)
 {
     if (n == 0) {
-        return fc_json_ndarray_value(name, "uint8", NULL, 0, shape, n_dims);
+        return fc_json_ndarray_value(name, "<u1", NULL, 0, sizeof(uint8_t), shape, n_dims);
     }
 
     size_t max_value = 0;
@@ -327,16 +354,16 @@ static fc_json_value_t *fc_json_adaptive_uint_value(
     const char *dtype;
     size_t element_size;
     if (max_value <= UINT8_MAX) {
-        dtype = "uint8";
+        dtype = "<u1";
         element_size = sizeof(uint8_t);
     } else if (max_value <= UINT16_MAX) {
-        dtype = "uint16";
+        dtype = "<u2";
         element_size = sizeof(uint16_t);
     } else if (max_value <= UINT32_MAX) {
-        dtype = "uint32";
+        dtype = "<u4";
         element_size = sizeof(uint32_t);
     } else {
-        dtype = "uint64";
+        dtype = "<u8";
         element_size = sizeof(uint64_t);
     }
 
@@ -360,7 +387,7 @@ static fc_json_value_t *fc_json_adaptive_uint_value(
     }
 
     fc_json_value_t *value = fc_json_ndarray_value(
-        name, dtype, (const uint8_t *)packed, n * element_size, shape, n_dims);
+        name, dtype, (const uint8_t *)packed, n * element_size, element_size, shape, n_dims);
     free(packed);
     return value;
 }
@@ -373,7 +400,7 @@ fc_json_value_t *fc_json_ndarray_uint_adaptive(const size_t *values, size_t rows
     return fc_json_adaptive_uint_value(NULL, values, n, shape, 2);
 }
 
-/* Encode a standalone two-dimensional float64 ndarray using native double representation. */
+/* Encode a standalone two-dimensional little-endian float64 ndarray. */
 fc_json_value_t *fc_json_ndarray_f64(const double *values, size_t rows, size_t cols)
 {
     size_t n = fc_json_ndarray_2d_count(rows, cols);
@@ -382,7 +409,8 @@ fc_json_value_t *fc_json_ndarray_f64(const double *values, size_t rows, size_t c
     }
 
     size_t shape[] = { rows, cols };
-    return fc_json_ndarray_value(NULL, "float64", (const uint8_t *)values, n * sizeof(*values), shape, 2);
+    return fc_json_ndarray_value(
+        NULL, "<f8", (const uint8_t *)values, n * sizeof(*values), sizeof(*values), shape, 2);
 }
 
 /* Encode a two-dimensional float64 ndarray using Bokeh 3's JSON wire format. */
@@ -450,13 +478,16 @@ fc_json_value_t *fc_json_bokeh_ndarray_f32(const double *values, size_t rows, si
 /* Encode a named adaptive unsigned dataframe column. */
 fc_json_value_t *fc_json_column_uint_adaptive(const char *name, const size_t *values, size_t n)
 {
-    return fc_json_adaptive_uint_value(name, values, n, NULL, 0);
+    size_t shape[] = { n };
+    return fc_json_adaptive_uint_value(name, values, n, shape, 1);
 }
 
 /* Encode a named float64 dataframe column. */
 fc_json_value_t *fc_json_column_f64(const char *name, const double *values, size_t n)
 {
-    return fc_json_ndarray_value(name, "float64", (const uint8_t *)values, n * sizeof(*values), NULL, 0);
+    size_t shape[] = { n };
+    return fc_json_ndarray_value(
+        name, "<f8", (const uint8_t *)values, n * sizeof(*values), sizeof(*values), shape, 1);
 }
 
 /* Encode a named dataframe string column directly, without binary ndarray packing. */
@@ -465,7 +496,10 @@ fc_json_value_t *fc_json_column_string(const char *name, const char *const *valu
     fc_json_value_t *value = fc_json_object_value();
     fc_json_object_t *object = fc_json_get_object(value);
     fc_json_object_set_string(object, "name", name);
+    fc_json_object_set_string(object, "kind", "array");
     fc_json_object_set_string(object, "dtype", "string");
+    fc_json_array_t *shape = fc_json_object_set_array(object, "shape");
+    fc_json_array_append_number(shape, (double)n);
     fc_json_array_t *data = fc_json_object_set_array(object, "data");
     for (size_t i = 0; i < n; ++i) {
         fc_json_array_append_string(data, values ? values[i] : "");
