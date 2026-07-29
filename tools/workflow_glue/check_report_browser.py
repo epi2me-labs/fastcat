@@ -31,6 +31,40 @@ window.addEventListener("load", () => {
             if (doc == null) {
                 throw new Error("Bokeh document is missing");
             }
+            const models = Array.from(doc._all_models.values());
+            const numericScales = models.filter(
+                (model) => model.type === "LinearAxis" || model.type === "ColorBar");
+            if (numericScales.length === 0
+                    || numericScales.some(
+                        (scale) => scale.formatter?.type !== "CustomJSTickFormatter")) {
+                throw new Error("one or more numeric report scales lack adaptive formatting");
+            }
+            const formatter = numericScales[0].formatter;
+            const expectLabels = (ticks, expected) => {
+                const actual = formatter.doFormat(ticks, {loc: 0});
+                if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+                    throw new Error(
+                        "adaptive tick formatting mismatch for "
+                        + JSON.stringify(ticks) + ": "
+                        + JSON.stringify(actual) + " != "
+                        + JSON.stringify(expected));
+                }
+            };
+            expectLabels(
+                [0, 500, 1000],
+                ["0", "500", "1000"]);
+            expectLabels(
+                [0, 0.5, 1, 1.5, 2],
+                ["0.0", "0.5", "1.0", "1.5", "2.0"]);
+            expectLabels(
+                [0, 0.05, 0.1, 0.15, 0.2],
+                ["0.00", "0.05", "0.10", "0.15", "0.20"]);
+            expectLabels(
+                [0, 10000, 15000, 20000],
+                ["0.0 × 10 ⁴", "1.0 × 10 ⁴", "1.5 × 10 ⁴", "2.0 × 10 ⁴"]);
+            expectLabels(
+                [0, NaN, 1],
+                ["0", "", "1"]);
 
             const heatmapDetails = [
                 ["fastcat_length_qscore", "Read length / kb"],
@@ -51,7 +85,7 @@ window.addEventListener("load", () => {
                 const expectedTooltips = [
                     [xLabel, "@x{custom}"],
                     ["Quality", "@y{custom}"],
-                    ["Count", "@image{0.0}"],
+                    ["Count", "@image{0}"],
                 ];
                 if (
                         figure == null || figure.renderers.length !== 1

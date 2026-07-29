@@ -4,7 +4,7 @@ from pathlib import Path
 
 from bokeh.models import (
     ColumnDataSource, CustomJS, HoverTool, LinearColorMapper, Range1d, Title)
-from dominate.tags import b, p, script, table, tbody, td, th, thead, tr
+from dominate.tags import a, b, p, script, table, tbody, td, th, thead, tr
 from dominate.util import raw
 import ezcharts as ezc
 from ezcharts.components.ezchart import EZChart
@@ -25,12 +25,33 @@ from .util import get_main_logger, get_named_logger, wf_parser  # noqa: ABS101
 
 
 CHANNEL_MAP_ROOT = Path(__file__).resolve().parent / "data"
+FASTCAT_DOCUMENTATION_URL = "https://epi2me.nanoporetech.com/epi2me-docs/tools/fastcat/"
 FASTCAT_BLUE = "#0173b2"
 CHANNEL_MAP_PATHS = {
     "flongle": CHANNEL_MAP_ROOT / "asicb512fx_flongle_channel_map.csv",
     "minion": CHANNEL_MAP_ROOT / "asicb512fx_channel_map.csv",
     "promethion": CHANNEL_MAP_ROOT / "3000_opx_channel_map.csv",
 }
+
+
+def documentation_link(label="summary.json metric definitions"):
+    """Return the single external link to the public metric reference."""
+    return a(
+        label, href=FASTCAT_DOCUMENTATION_URL,
+        target="_blank", rel="noopener",
+        title="Definitions for the fastcat metrics shown in this report.")
+
+
+def add_documentation_footer(report):
+    """Insert the metric-reference sentence before the standard disclaimer."""
+    container = report.addendum.children[0]
+    with container:
+        paragraph = p(
+            "For help interpreting the metrics in this report, please see the ",
+            documentation_link("Documentation"),
+            ".")
+    container.children.remove(paragraph)
+    container.children.insert(-1, paragraph)
 
 
 def summary_dataframe(summary, *path):
@@ -469,7 +490,7 @@ def load_summary_heatmap(summary, name, x_label, null_message, match_aspect=Fals
         image_hover_items=[
             (x_label, "@x{custom}"),
             ("Quality", "@y{custom}"),
-            ("Count", "@image{0.0}"),
+            ("Count", "@image{0}"),
         ])
     qscore_end = qscore_heatmap_upper(matrix, y_range)
     plot._fig.y_range.end = qscore_end
@@ -744,8 +765,6 @@ def time_lineplot(df, y, ylabel, color=FASTCAT_BLUE, x="time_mid_h", seed_origin
     hover_df["height"] = max(float(plot_df[y].max()), 1.0) * 2.0
     bokeh_relational.add_vertical_hover_bands(
         plot, hover_df, x="x", y="y", width="width", height="height")
-    if ylabel == "Cumulative read count":
-        bokeh_seqsummary.apply_scientific_count_formatter(plot._fig.yaxis[0])
     bokeh_null.attach_null_state(plot)
     return plot
 
@@ -795,10 +814,6 @@ def time_stepplot(df, y, ylabel, color=FASTCAT_BLUE):
     })
     bokeh_relational.add_vertical_hover_bands(
         plot, hover_df, x="x", y="y", width="width", height="height")
-    if ylabel == "Read count":
-        bokeh_seqsummary.apply_scientific_count_formatter(plot._fig.yaxis[0])
-    elif ylabel == "Base yield / Gbp":
-        bokeh_seqsummary.apply_fixed_precision_formatter(plot._fig.yaxis[0], "0,0.00")
     bokeh_null.attach_null_state(plot)
     return plot
 
@@ -1123,6 +1138,7 @@ def main(args):
                     with tabs.add_tab(sample):
                         add_channel_summary_plots(summary)
 
+    add_documentation_footer(report)
     report.write(args.report)
     logger.info(f"Report written to {args.report}.")
 
