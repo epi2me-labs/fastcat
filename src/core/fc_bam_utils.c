@@ -87,6 +87,15 @@ mplp_data *fc_bam_iter_data_create(
     return data;
 }
 
+bool fc_bam_qualities_missing(const bam1_t *b)
+{
+    if (NULL == b || b->core.l_qseq <= 0) {
+        return true;
+    }
+    const uint8_t *qual = bam_get_qual(b);
+    return NULL == qual || qual[0] == 0xff;
+}
+
 /** Clean up auxiliary bam reading data.
  *
  *  @param data auxiliary structure to clean.

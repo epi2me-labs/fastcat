@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTML report outputs in the style of EPI2ME workflows, enabled by setting `--html-report` on the command line.
 - JSON summary and metrics output containing all previous TSV outputs, as well as data corresponding to all plots within the new HTML report.
 - Legacy TSV outputs can be disabled with `--no-legacy-outputs`. These will be removed in a future release.
+### Fixed
+- Secondary alignment count missing from flagstat output when base qualities were missing.
 
 
 ## [v1.0.1]

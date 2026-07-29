@@ -154,6 +154,13 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
             read->meta->duplex_code);
     }
 
+    // Missing per-base qualities are a valid BAM representation, notably for
+    // secondary alignments. They contribute to record-level flag statistics,
+    // but are not eligible for read-level QC, output, or other sinks.
+    if (fc_bam_qualities_missing(read->bam)) {
+        return;
+    }
+
     if (writer->stats_engines) {
         size_t engine_idx = writer->stats_per_barcode ? ctx.barcode : 0;
         if (engine_idx < writer->stats_engine_count) {

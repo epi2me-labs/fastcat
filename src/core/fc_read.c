@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/fc_bam_utils.h"
 #include "core/fc_common.h"
 #include "core/fc_fastqcomments.h"
 #include "core/fc_filter.h"
@@ -359,7 +360,7 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
     }
 
     bool good_align = fc_is_primary_qc_pass(b);
-    if (good_align && (meta->edit_distance == -1)) {
+    if (good_align && !fc_bam_qualities_missing(b) && (meta->edit_distance == -1)) {
         FC_LOG_ERROR("Read '%s' does not contain an integer 'NM' tag.", bam_get_qname(b));
         FC_LOG_ERROR("The NM tag is required for all aligned reads (primary, non-supplementary, non-secondary, QC-pass).");
         FC_LOG_ERROR("To fix this:");
