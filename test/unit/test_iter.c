@@ -10,6 +10,7 @@
 
 #include "htslib/sam.h"
 
+#include "core/fc_alignment_summary.h"
 #include "core/fc_iter.h"
 #include "core/fc_read.h"
 #include "core/fc_failures.h"
@@ -65,7 +66,9 @@ static const char *SAM_LOWER_QS_FIXTURE =
 static const char *SAM_MISSING_QUAL_FIXTURE =
     "@HD\tVN:1.6\tSO:unknown\n"
     "@SQ\tSN:chr1\tLN:1000\n"
-    "r1\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\t*\n";
+    "primary\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII\tNM:i:0\n"
+    "no_qual_primary\t0\tchr1\t2\t60\t4M\t*\t0\t0\tACGT\t*\n"
+    "secondary\t256\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\t*\n";
 
 static void make_temp_gz_fastq(char *path, size_t path_len) {
     char tmpl[] = "/tmp/fastcat_iter_fastqXXXXXX";
@@ -251,11 +254,54 @@ FC_TEST(iter_suite, test_iter_bam_lowercase_qs_used_for_quality_filtering) {
     remove(sam_path);
 }
 
-FC_TEST(iter_suite, test_iter_bam_missing_quality_matches_fastq_style_drop) {
+FC_TEST(iter_suite, test_iter_bam_missing_quality_reaches_record_level_accounting_only) {
     char sam_path[64];
     make_temp_sam_contents(SAM_MISSING_QUAL_FIXTURE, sam_path, sizeof(sam_path));
     fc_iter_opts opts = fq_opts_defaults();
-    _run_iter_and_assert(sam_path, &opts, 0, 0, 0, 0, 0.0, 0, 0, 0, 0, 1);
+
+    fc_iter iter = { 0 };
+    char *paths[] = { sam_path };
+    fc_path_list input_paths = { .paths = paths, .n_paths = 1 };
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, &input_paths, 0, false, FC_FILE_BAM, false));
+    const char *fname = NULL;
+    TEST_ASSERT_TRUE(fc_iter_next_file(&iter, &fname));
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, &opts));
+
+    fc_alignment_summary *alignment = fc_alignment_summary_create(1, false, false, 1);
+    TEST_ASSERT_NOT_NULL(alignment);
+    fc_writer_config writer_cfg = { .alignment_summary = alignment };
+    fc_writer *writer = fc_writer_create(&writer_cfg);
+    TEST_ASSERT_NOT_NULL(writer);
+    read_count_sink_state count_state = { 0 };
+    fc_writer_add_sink(writer, (fc_sink) {
+        .ctx = &count_state,
+        .add_read = read_count_sink_add_read
+    });
+
+    fc_read *read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(read);
+    size_t records = 0;
+    while (fc_iter_next_record(&iter, read) == FC_ITER_RECORD) {
+        records++;
+        fc_writer_add_read(writer, read, fname, iter.bmi.hdr);
+    }
+
+    const fc_file_stats *stats = fc_iter_stats(&iter);
+    TEST_ASSERT_EQUAL_UINT64(3, records);
+    TEST_ASSERT_EQUAL_UINT64(1, stats->n_seqs);
+    TEST_ASSERT_EQUAL_UINT64(2, stats->failures[F_QUAL_MISSING]);
+    TEST_ASSERT_EQUAL_UINT64(1, count_state.passed_reads);
+
+    fc_alignment_totals totals = { 0 };
+    fc_alignment_counts_materialize(fc_alignment_summary_global(alignment), &totals);
+    TEST_ASSERT_EQUAL_UINT64(3, totals.record_counts[FC_FLAGSTAT_TOTAL]);
+    TEST_ASSERT_EQUAL_UINT64(2, totals.record_counts[FC_FLAGSTAT_PRIMARY]);
+    TEST_ASSERT_EQUAL_UINT64(1, totals.record_counts[FC_FLAGSTAT_SECONDARY]);
+
+    fc_read_destroy(read);
+    fc_writer_destroy(writer);
+    fc_alignment_summary_destroy(alignment);
+    fc_iter_close(&iter);
     remove(sam_path);
 }
 

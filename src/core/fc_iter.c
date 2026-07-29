@@ -87,15 +87,6 @@ static inline bool fc_iter_filter_quality(float mean_q, float min_qscore, fc_fil
     return true;
 }
 
-static inline bool fc_iter_bam_quality_missing(const bam1_t *b)
-{
-    if (!b || b->core.l_qseq <= 0) {
-        return true;
-    }
-    const uint8_t *qual = bam_get_qual(b);
-    return (qual == NULL) || (qual[0] == 0xff);
-}
-
 static void fc_iter_opts_init(fc_iter_opts *dst, const fc_iter_opts *src)
 {
     if (!dst) {
@@ -575,9 +566,13 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
             }
         }
 
-        if (fc_iter_bam_quality_missing(out->bam)) {
+        if (fc_bam_qualities_missing(out->bam)) {
             iter->stats.failures[F_QUAL_MISSING]++;
-            continue;
+            // QUAL=* is valid for records such as secondary alignments. Let
+            // the writer record its alignment flags, then reject it before
+            // ordinary read-level models and sinks.
+            fc_read_reset_from_bam(out, iter->hdr, iter->rg_cache, NULL);
+            return FC_ITER_RECORD;
         }
 
         iter->stats.failures[R_RECORD_SEEN]++;

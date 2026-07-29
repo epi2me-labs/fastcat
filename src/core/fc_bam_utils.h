@@ -39,6 +39,15 @@ mplp_data *fc_bam_iter_data_create(
  */
 void fc_bam_iter_data_destroy(mplp_data *data);
 
+/**
+ * Return true when a BAM record has no stored per-base qualities.
+ *
+ * In BAM, this is represented by a QUAL array filled with 0xff bytes. This is
+ * valid for records such as secondary alignments and is distinct from an
+ * unreadable record.
+ */
+bool fc_bam_qualities_missing(const bam1_t *b);
+
 /** Read a bam record (unfiltered).
  *
  *  @param data an mplp_data encoding the bam file to read with filter options.
