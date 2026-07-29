@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `fastcat bam` recorded records with missing quality as being low quality. The behaviour has been changed to be the same as `fastcat fastq`, where records with missing quality are dropped and the program will finish processing inputs but exit with a non-zero exit code.
 - Changed the default fallback for `sample_id` field in outputs to be `SAMPLE`, rather than empty text.
+- Improved BAM metadata recovery from read tags and `@RG` headers, affecting run ID, sample ID, flowcell IS, and basecaller model information.
 ### Added
-- HTML report outputs in the style of EPI2ME workflows, enabled by setting `--html-report` on the command line.
-- JSON summary and metrics output containing all previous TSV outputs, as well as data corresponding to all plots within the new HTML report.
+- JSON summary and metrics output containing data from previous TSV outputs, as well as data corresponding to all plots within the new HTML report. This includes read length and quality histograms and summaries, sequencing-over-time metrics, channel metrics and maps, and quality-diagnostics heat maps. BAM and alignment specific metrics are also included: mapping counts, alignment flag counts, reference concordance mettics, coverage and CDF tables. A JSON schema documenting the structure of the `summary.json` file is available by running `fastcat json-schema`.
+- HTML report outputs in the style of EPI2ME workflows, enabled by setting `--html-report` on the command line. The report includes run statistics, time plots, channel occupancy, diagnostics heatmaps, plus alignment and coverage sections where applicable.
 - Legacy TSV outputs can be disabled with `--no-legacy-outputs`. These will be removed in a future release.
 ### Fixed
 - Secondary alignment count missing from flagstat output when base qualities were missing.

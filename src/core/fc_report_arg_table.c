@@ -122,7 +122,7 @@ fc_report_arg_table fc_report_arg_table_from_catstats(
     size_t file_count)
 {
     report_config_builder builder = { 0 };
-    const char *program_name = (program == FC_PROGRAM_BAMSTATS) ? "bamstats" : "fastcat";
+    const char *program_name = (program == FC_PROGRAM_BAMSTATS) ? "fastcat bam" : "fastcat fastq";
 
     config_add_str(&builder, "subcommand", program_name);
     config_add_str(&builder, "sample", args->sample);
