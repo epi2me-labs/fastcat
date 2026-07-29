@@ -1,7 +1,7 @@
 """Bokeh-backed matrix plots for workflow reports."""
 
 from bokeh.models import BasicTicker, ColorBar, ColumnDataSource, CustomJSHover, HoverTool
-from bokeh.models import LinearColorMapper, PrintfTickFormatter, Title
+from bokeh.models import LinearColorMapper, Title
 from bokeh.palettes import Viridis256
 import numpy as np
 import pandas as pd
@@ -182,13 +182,11 @@ def heatmap(
         colorbar_title = colorbar_options.pop(
             "title", colorbar_options.pop("label", None))
         colorbar_ticker = colorbar_options.pop("ticker", BasicTicker())
-        colorbar_format = colorbar_options.pop("format", "%.2g")
-        colorbar_formatter = colorbar_options.pop(
-            "formatter", PrintfTickFormatter(format=colorbar_format))
+        colorbar_options.pop("format", None)
+        colorbar_options.pop("formatter", None)
         color_bar = ColorBar(
             color_mapper=mapper,
             ticker=colorbar_ticker,
-            formatter=colorbar_formatter,
             title=colorbar_title)
         apply_colorbar_fonts(color_bar)
         for attr, value in colorbar_options.items():

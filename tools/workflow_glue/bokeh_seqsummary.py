@@ -2,7 +2,7 @@
 
 import os
 
-from bokeh.models import CustomJSTickFormatter, HoverTool, NumeralTickFormatter, Title
+from bokeh.models import HoverTool, Title
 import ezcharts as ezc
 from ezcharts.components.ezchart import EZChart
 from ezcharts.layout.base import Snippet
@@ -23,57 +23,6 @@ READ_LENGTH_BINS = 100
 YIELD_THINNING = 100
 QUALITY_XROUND = 10.0
 LENGTH_XROUND_KB = 5.0
-
-
-SCIENTIFIC_SUPERSCRIPT_JS = """
-const superscripts = {
-  "-": "\u207b",
-  "0": "\u2070",
-  "1": "\u00b9",
-  "2": "\u00b2",
-  "3": "\u00b3",
-  "4": "\u2074",
-  "5": "\u2075",
-  "6": "\u2076",
-  "7": "\u2077",
-  "8": "\u2078",
-  "9": "\u2079",
-};
-
-if (!Number.isFinite(tick)) {
-  return "";
-}
-
-const value = Number(tick);
-const abs_value = Math.abs(value);
-if (abs_value === 0) {
-  return "0";
-}
-
-const max_abs_tick = ticks
-  .map((v) => Math.abs(Number(v)))
-  .filter((v) => Number.isFinite(v))
-  .reduce((acc, v) => Math.max(acc, v), 0);
-const use_scientific = max_abs_tick >= 1e4;
-
-if (!use_scientific) {
-  if (Math.abs(value - Math.round(value)) < 1e-9) {
-    return Math.round(value).toString();
-  }
-  return value.toFixed(2).replace(/\\.0+$/, "").replace(/(\\.\\d*[1-9])0+$/, "$1");
-}
-
-const exponent = Math.floor(Math.log10(max_abs_tick));
-const mantissa = value / Math.pow(10, exponent);
-let mantissa_text = mantissa
-  .toFixed(1);
-const exponent_text = exponent
-  .toString()
-  .split("")
-  .map((ch) => superscripts[ch] || ch)
-  .join("");
-return `${mantissa_text} \u00d7 10 ${exponent_text}`;
-"""
 
 
 def load_histogram(hist_dir, dtype):
@@ -182,16 +131,6 @@ def _format_length_stat(value):
     return f"{value / 1000.0:.3g} kb"
 
 
-def apply_scientific_count_formatter(axis):
-    """Format large count axes as mantissa x 10^n with unicode superscripts."""
-    axis.formatter = CustomJSTickFormatter(code=SCIENTIFIC_SUPERSCRIPT_JS)
-
-
-def apply_fixed_precision_formatter(axis, fmt):
-    """Apply a fixed numeral formatter."""
-    axis.formatter = NumeralTickFormatter(format=fmt)
-
-
 def add_histogram_hover(plot, bin_label):
     """Show each histogram bin's range as well as its count."""
     hover = plot._fig.select_one(HoverTool)
@@ -221,7 +160,6 @@ def read_quality_plot(hist, color=None):
     plot._fig.x_range.start = QUALITY_XMIN
     plot._fig.x_range.end = xmax
     add_histogram_hover(plot, "Quality")
-    apply_scientific_count_formatter(plot._fig.yaxis[0])
     plot._fig.add_layout(
         Title(text=f"Mean: {mean_val:.1f}. Median: {median_val:.1f}", text_font_size=ReportFontSizes.SUBTITLE, text_font=ReportFonts.PLOT),
         "above",
@@ -245,7 +183,6 @@ def alignment_histogram_plot(hist, x_min, x_max, x_label, color=None):
     plot._fig.x_range.start = x_min
     plot._fig.x_range.end = x_max
     add_histogram_hover(plot, x_label)
-    apply_scientific_count_formatter(plot._fig.yaxis[0])
     plot._fig.add_layout(
         Title(
             text=f"Mean: {mean_val:.1f}%. Median: {median_val:.1f}%",
@@ -277,7 +214,6 @@ def read_length_plot(hist, color=None):
     plot._fig.x_range.start = 0.0
     plot._fig.x_range.end = xmax_kb
     add_histogram_hover(plot, "Read length / kb")
-    apply_scientific_count_formatter(plot._fig.yaxis[0])
     plot._fig.add_layout(
         Title(
             text=(
