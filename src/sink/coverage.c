@@ -17,16 +17,20 @@ typedef struct {
 
 static cov_writer coverage_create_writer(coverage_sink *sink, size_t barcode)
 {
-    char *dir = fc_sink_ensure_barcode_dir(sink->output_root, barcode);
-    if (!dir) {
-        FC_LOG_FATAL("Failed to create barcode directory under '%s' (barcode %zu).",
-            sink->output_root, barcode);
+    char *out_dir = NULL;
+    if (sink->cfg.write_traces || sink->cfg.write_tables) {
+        char *dir = fc_sink_ensure_barcode_dir(sink->output_root, barcode);
+        if (!dir) {
+            FC_LOG_FATAL("Failed to create barcode directory under '%s' (barcode %zu).",
+                sink->output_root, barcode);
+        }
+        out_dir = fc_join_path(dir, "coverage");
+        free(dir);
     }
-    char *out_dir = fc_join_path(dir, "coverage");
-    free(dir);
     cov_writer w = init_coverage_writer(
         out_dir,
-        sink->cfg.per_base,
+        sink->cfg.write_traces,
+        sink->cfg.write_tables,
         sink->cfg.use_cigar,
         sink->cfg.exclude_flags,
         sink->cfg.include_flags,
@@ -103,23 +107,29 @@ static void coverage_sink_finish(void *ctx)
 fc_sink fc_coverage_sink_create(const fc_coverage_sink_opts *opts)
 {
     fc_sink sink = { 0 };
-    if (!opts || !opts->output_root) {
+    if (!opts || ((opts->write_traces || opts->write_tables) && !opts->output_root)) {
         return sink;
     }
 
     coverage_sink *state = fc_alloc(1, sizeof(*state), "coverage sink");
     state->cfg = *opts;
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
-    state->output_root = fc_strip_path(opts->output_root);
-    if (!state->output_root) {
+    if (state->cfg.write_traces || state->cfg.write_tables) {
+        state->output_root = fc_strip_path(opts->output_root);
+    }
+    if ((state->cfg.write_traces || state->cfg.write_tables) && !state->output_root) {
         free(state);
         return sink;
     }
     if (!state->cfg.use_barcodes) {
-        char *out_dir = fc_join_path(state->output_root, "coverage");
+        char *out_dir = NULL;
+        if (state->cfg.write_traces || state->cfg.write_tables) {
+            out_dir = fc_join_path(state->output_root, "coverage");
+        }
         cov_writer coverage = init_coverage_writer(
             out_dir,
-            state->cfg.per_base,
+            state->cfg.write_traces,
+            state->cfg.write_tables,
             state->cfg.use_cigar,
             state->cfg.exclude_flags,
             state->cfg.include_flags,

@@ -13,10 +13,11 @@ static void print_usage(const char *prog)
 {
     fprintf(stderr, "Usage: %s <subcommand> [options]\n", prog);
     fprintf(stderr, "Subcommands:\n");
-    fprintf(stderr, "  fastq   FASTQ concatenation/statistics/filtering mode (fastcat)\n");
-    fprintf(stderr, "  bam     BAM alignment statistics/filtering mode\n");
-    fprintf(stderr, "  lint    Standalone FASTQ low-complexity filter (fastlint)\n");
-    fprintf(stderr, "  index   BAM chunk index tools (bamindex)\n");
+    fprintf(stderr, "  qc      Unified FASTQ/BAM quality-control and reporting mode\n");
+    fprintf(stderr, "  fastq   (Deprecated) FASTQ concatenation/statistics/filtering mode\n");
+    fprintf(stderr, "  bam     (Deprecated) BAM alignment statistics mode\n");
+    fprintf(stderr, "  lint    Standalone FASTQ low-complexity filter\n");
+    fprintf(stderr, "  index   BAM chunk index tools\n");
     fprintf(stderr, "  json-schema  Write the summary.json JSON Schema to standard output\n");
     fprintf(stderr, "Try '%s <subcommand> --help' for subcommand options.\n", prog);
 }
@@ -33,6 +34,8 @@ int main(int argc, char **argv)
         program = FC_PROGRAM_FASTCAT;
     } else if (strcmp(argv[1], "bam") == 0) {
         program = FC_PROGRAM_BAMSTATS;
+    } else if (strcmp(argv[1], "qc") == 0) {
+        program = FC_PROGRAM_QC;
     } else if (strcmp(argv[1], "lint") == 0 || strcmp(argv[1], "fastlint") == 0) {
         return fastlint_main(argc - 1, argv + 1);
     } else if (strcmp(argv[1], "index") == 0 || strcmp(argv[1], "bamindex") == 0) {

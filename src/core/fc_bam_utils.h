@@ -2,6 +2,7 @@
 #define FASTCAT_FC_BAM_UTILS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "htslib/sam.h"
@@ -15,6 +16,56 @@ typedef struct {
     sam_hdr_t *hdr;
     hts_itr_t *iter;
 } mplp_data;
+
+typedef enum {
+    FC_BAM_INPUT_OK,
+    FC_BAM_INPUT_OPEN_FAILED,
+    FC_BAM_INPUT_HEADER_FAILED,
+    FC_BAM_INPUT_REFERENCE_MISMATCH,
+    FC_BAM_INPUT_HEADER_COPY_FAILED
+} fc_bam_input_status;
+
+typedef struct {
+    sam_hdr_t *reference_header;
+    bool has_references;
+    bool has_stdin;
+} fc_bam_input_info;
+
+typedef struct {
+    int last_mapped_tid;
+    hts_pos_t last_mapped_pos;
+    bool saw_mapped;
+    bool saw_unmapped;
+} fc_bam_coordinate_order;
+
+/** Add a BAM header to an input summary.
+ *
+ * Reference-bearing headers must have matching @SQ names, lengths, and order.
+ * The summary owns a copy of the first reference-bearing header.
+ */
+fc_bam_input_status fc_bam_input_info_add_header(
+    fc_bam_input_info *info, const sam_hdr_t *header);
+
+/** Inspect headers for file-backed BAM inputs.
+ *
+ * Standard input is recorded in info->has_stdin but cannot be opened during
+ * preflight. On error, failed_path identifies the file that could not be read
+ * or whose reference dictionary did not match.
+ */
+fc_bam_input_status fc_bam_input_preflight(
+    const char *const *paths, size_t n_paths, fc_bam_input_info *info,
+    const char **failed_path);
+
+void fc_bam_input_info_destroy(fc_bam_input_info *info);
+
+bool fc_bam_header_is_coordinate_sorted(const sam_hdr_t *header);
+
+/** Record a BAM record in a coordinate-order check.
+ *
+ * Returns false when mapped records move backwards, or when a mapped record
+ * follows an unmapped record.
+ */
+bool fc_bam_coordinate_order_check(fc_bam_coordinate_order *order, const bam1_t *record);
 
 /** Set up a bam file for reading records.
  *

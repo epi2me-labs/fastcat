@@ -2,6 +2,7 @@
 #include "core/fc_common.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <errno.h>
 #include <libgen.h>
 #include <limits.h>
@@ -175,6 +176,51 @@ int mkdir_hier(char *path, bool fail_on_exist)
 out:
     free(_path);
     return result;
+}
+
+int fc_remove_tree(const char *path)
+{
+    if (path == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    struct stat st;
+    if (lstat(path, &st) != 0) {
+        return errno == ENOENT ? 0 : -1;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        return unlink(path);
+    }
+
+    DIR *dir = opendir(path);
+    if (dir == NULL) {
+        return -1;
+    }
+
+    int status = 0;
+    int saved_errno = 0;
+    struct dirent *entry = NULL;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        char *child = fc_join_path(path, entry->d_name);
+        if (fc_remove_tree(child) != 0 && status == 0) {
+            status = -1;
+            saved_errno = errno;
+        }
+        free(child);
+    }
+    if (closedir(dir) != 0 && status == 0) {
+        status = -1;
+        saved_errno = errno;
+    }
+    if (status != 0) {
+        errno = saved_errno;
+        return -1;
+    }
+    return rmdir(path);
 }
 
 /** Ensure parent directory exists for a given path.

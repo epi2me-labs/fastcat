@@ -102,6 +102,21 @@ static void fc_iter_opts_init(fc_iter_opts *dst, const fc_iter_opts *src)
     }
 }
 
+void fc_iter_opts_disable_filters(fc_iter_opts *opts)
+{
+    if (opts == NULL) {
+        return;
+    }
+    opts->min_length = 0;
+    opts->max_length = (size_t)-1;
+    opts->min_qscore = 0.0f;
+    opts->dust = false;
+    opts->read_group = NULL;
+    opts->tag_name[0] = '\0';
+    opts->tag_name[1] = '\0';
+    opts->tag_value = -1;
+}
+
 static bool fc_iter_filter_dust_bam(
     bam1_t *b, const fc_iter_opts *opts, fc_file_stats *stats, dust_buffer *dust)
 {
@@ -546,17 +561,10 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
             int tid = out->bam->core.tid;
             hts_pos_t pos = out->bam->core.pos;
             hts_pos_t rend = bam_endpos(out->bam);
-            if (tid >= 0) {
-                if (iter->seen_mapped_coordinate
-                    && (tid < iter->last_mapped_tid
-                        || (tid == iter->last_mapped_tid && pos < iter->last_mapped_pos))) {
-                    FC_LOG_ERROR("Region selection from an unindexed BAM stream requires coordinate-sorted records.");
-                    iter->hard_error = true;
-                    return FC_ITER_ERROR;
-                }
-                iter->seen_mapped_coordinate = true;
-                iter->last_mapped_tid = tid;
-                iter->last_mapped_pos = pos;
+            if (!fc_bam_coordinate_order_check(&iter->coordinate_order, out->bam)) {
+                FC_LOG_ERROR("Region selection from an unindexed BAM stream requires coordinate-sorted records.");
+                iter->hard_error = true;
+                return FC_ITER_ERROR;
             }
             while (iter->reg_active && (tid > iter->reg.tid || (tid == iter->reg.tid && pos >= iter->reg.end))) {
                 regiter_status check = next_region(&iter->reg);

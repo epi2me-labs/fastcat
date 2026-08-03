@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "unity.h"
@@ -21,6 +22,26 @@ FC_TEST(common_suite, test_replace_char)
     int n = replace_char(buf, '-', '+');
     TEST_ASSERT_EQUAL_INT(3, n);
     TEST_ASSERT_EQUAL_STRING("A+C+G+T", buf);
+}
+
+FC_TEST(common_suite, test_remove_tree)
+{
+    char dir[] = "/tmp/fastcat-remove-tree-XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(dir));
+
+    char *nested = fc_join_path(dir, "nested");
+    TEST_ASSERT_EQUAL_INT(0, mkdir(nested, 0700));
+    char *file = fc_join_path(nested, "output.txt");
+    FILE *fp = fopen(file, "w");
+    TEST_ASSERT_NOT_NULL(fp);
+    fputs("partial output\n", fp);
+    fclose(fp);
+
+    TEST_ASSERT_EQUAL_INT(0, fc_remove_tree(dir));
+    TEST_ASSERT_FALSE(file_exists(dir));
+    TEST_ASSERT_EQUAL_INT(0, fc_remove_tree(dir));
+    free(file);
+    free(nested);
 }
 
 FC_TEST(common_suite, test_create_rg_info)

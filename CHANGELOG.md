@@ -12,7 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved BAM metadata recovery from read tags and `@RG` headers, affecting run ID, sample ID, flowcell IS, and basecaller model information.
 - BAM read-level metrics now combine canonical primary mapped and unmapped records, matching equivalent FASTQ and unaligned-BAM summaries. The separate `length.unmap.hist` and `quality.unmap.hist` outputs and unmapped-only JSON distributions have been removed; all-record flagstats remain unchanged.
 - Coverage and poly-A related modifiers now automatically enable their parent options.
+- Programs now write their outputs to a temporary directory, before moving on success (or deleting on failure).
 ### Added
+- `fastcat qc`, the opt-in unified quality-control command for FASTQ and BAM inputs. It writes
+  `summary.json` by default, supports optional HTML reports and legacy outputs, accepts multiple
+  compatible reference-bearing BAM files, and suppresses filtering/read-stream output for aligned
+  BAM input.
 - JSON summary and metrics output containing data from previous TSV outputs, as well as data corresponding to all plots within the new HTML report. This includes read length and quality histograms and summaries, sequencing-over-time metrics, channel metrics and maps, and quality-diagnostics heat maps. BAM and alignment specific metrics are also included: mapping counts, alignment flag counts, reference concordance mettics, coverage and CDF tables. A JSON schema documenting the structure of the `summary.json` file is available by running `fastcat json-schema`.
 - HTML report outputs in the style of EPI2ME workflows, enabled by setting `--html-report` on the command line. The report includes run statistics, time plots, channel occupancy, diagnostics heatmaps, plus alignment and coverage sections where applicable.
 - Legacy TSV outputs can be disabled with `--no-legacy-outputs`. These will be removed in a future release.

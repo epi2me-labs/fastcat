@@ -121,7 +121,7 @@ FC_TEST(bamcoverage_suite, test_coverage_process_exclude_flags)
     // setup writer with an explicit exclude flag
     bam_hdr_t *hdr = make_header(lengths, 1);
     cov_writer w = init_coverage_writer(
-        out_dir, false, false,
+        out_dir, false, true, false,
         BAM_FQCFAIL, 0, false,
         hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
@@ -161,7 +161,7 @@ FC_TEST(bamcoverage_suite, test_coverage_process_include_flags)
     // setup writer requiring reads to match include flag
     bam_hdr_t *hdr = make_header(lengths, 1);
     cov_writer w = init_coverage_writer(
-        out_dir, false, false,
+        out_dir, false, true, false,
         0, BAM_FREVERSE, false,
         hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
@@ -204,7 +204,7 @@ FC_TEST(bamcoverage_suite, test_coverage_process_use_cigar_mixed_ops)
     // setup writer in CIGAR-aware mode
     bam_hdr_t *hdr = make_header(lengths, 1);
     cov_writer w = init_coverage_writer(
-        out_dir, false, true,
+        out_dir, false, true, true,
         -1, -1, false,
         hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
@@ -254,7 +254,7 @@ FC_TEST(bamcoverage_suite, test_coverage_process_end_marker_at_contig_len)
     // setup a simple writer and process one boundary read
     bam_hdr_t *hdr = make_header(lengths, 1);
     cov_writer w = init_coverage_writer(
-        out_dir, false, false,
+        out_dir, false, true, false,
         -1, -1, false,
         hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
@@ -290,7 +290,7 @@ FC_TEST(bamcoverage_suite, test_coverage_writer_init_destroy_no_data)
     // init writer without processing any reads
     bam_hdr_t *hdr = make_header(lengths, 1);
     cov_writer w = init_coverage_writer(
-        out_dir, false, false,
+        out_dir, false, true, false,
         -1, -1, false,
         hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
@@ -327,7 +327,7 @@ FC_TEST(bamcoverage_suite, test_coverage_thresholds_deduplicated)
 
     bam_hdr_t *hdr = make_header(lengths, 1);
     cov_writer w = init_coverage_writer(
-        out_dir, false, false,
+        out_dir, false, true, false,
         -1, -1, false,
         hdr, NULL, NULL, NULL, 0,
         thresholds, sizeof(thresholds) / sizeof(thresholds[0]),
@@ -353,7 +353,7 @@ FC_TEST(bamcoverage_suite, test_coverage_summary_thresholds_handle_depth_above_i
     bam_hdr_t *hdr = make_header(lengths, 1);
     uint32_t thresholds[] = { 1, 5, 10, 20 };
     cov_writer w = init_coverage_writer(
-        out_dir, false, false,
+        out_dir, false, true, false,
         -1, -1, false,
         hdr, NULL, NULL, NULL, 0, thresholds, 4, NULL, 0, NULL);
     TEST_ASSERT_NOT_NULL(w);
@@ -404,7 +404,7 @@ FC_TEST(bamcoverage_suite, test_coverage_summary_snapshot_preserves_numeric_prec
     bam_hdr_t *hdr = make_header(lengths, 1);
     fc_coverage_summaries *summaries = fc_coverage_summaries_create(1);
     cov_writer writer = init_coverage_writer(
-        out_dir, false, false,
+        out_dir, false, true, false,
         -1, -1, false,
         hdr, NULL, NULL, NULL, 0, NULL, 0, NULL, 0,
         fc_coverage_summaries_prepare(summaries, 0));
@@ -450,6 +450,7 @@ FC_TEST(bamcoverage_suite, test_coverage_process)
     cov_writer w = init_coverage_writer(
         out_dir,
         false, // per-base output off for unit tests
+        true,  // write legacy coverage tables
         false, // don't inspect CIGAR op-by-op in unit tests
         -1, -1, false,
         hdr, NULL,

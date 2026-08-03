@@ -223,11 +223,11 @@ const fc_coverage_summary *fc_coverage_summaries_get(const fc_coverage_summaries
 }
 
 static inline void _write_summary(
-    FILE *fh_dist, FILE *fh_summary, fc_coverage_summary_target *snapshot,
+    FILE *fh_dist, FILE *fh_summary, fc_coverage_summary_target *snapshot, bool include_snapshot_distribution,
     const bed_region reg, const int64_t *stats, const int64_t *dist, size_t max_cover,
     uint32_t *thresholds, size_t n_thresholds)
 {
-    if (fh_dist == NULL && fh_summary == NULL) {
+    if (fh_dist == NULL && fh_summary == NULL && snapshot == NULL) {
         return; // nothing to write
     }
 
@@ -241,13 +241,17 @@ static inline void _write_summary(
         cum += (double)dist[cover];
 
         // dense CDF - mosdepth calls this "distribution"
-        if (fh_dist && positions > 0) {
+        if ((fh_dist != NULL || (snapshot != NULL && include_snapshot_distribution)) && positions > 0) {
             double frac = cum / positions;
             if (frac < 1e-3) {
                 continue; // mosdepth uses 8e-5 \:D/
             }
-            fprintf(fh_dist, "%s\t%zu\t%.3f\n", reg->chr, cover, frac); // fh_dist only written for totals
-            coverage_summary_add_distribution(snapshot, reg->chr, (size_t)cover, frac);
+            if (fh_dist != NULL) {
+                fprintf(fh_dist, "%s\t%zu\t%.3f\n", reg->chr, cover, frac);
+            }
+            if (snapshot != NULL && include_snapshot_distribution) {
+                coverage_summary_add_distribution(snapshot, reg->chr, (size_t)cover, frac);
+            }
         }
 
         // sparse CDF - mosdepth calls this "thresholds"
@@ -263,16 +267,20 @@ static inline void _write_summary(
     // write summary file
     double mean = stats[3] == 0 ? 0 : (double)stats[2] / stats[3];
     int64_t min = stats[0] == INT64_MAX ? 0 : stats[0];
-    fprintf(
-        fh_summary, "%s\t%" PRId64 "\t%" PRId64 "\t%" PRId64 "\t%" PRId64 "\t%.2f\t%" PRId64 "\t%" PRId64,
-        reg->chr, reg->start, reg->end, stats[3], stats[2], mean, min, stats[1]);
-    for (size_t i = 0; i < n_thresholds; ++i) {
-        double frac = stats[3] == 0 ? 0 : (double)thresh_counts[i] / stats[3];
-        fprintf(fh_summary, "\t%.3f", frac);
+    if (fh_summary != NULL) {
+        fprintf(
+            fh_summary, "%s\t%" PRId64 "\t%" PRId64 "\t%" PRId64 "\t%" PRId64 "\t%.2f\t%" PRId64 "\t%" PRId64,
+            reg->chr, reg->start, reg->end, stats[3], stats[2], mean, min, stats[1]);
+        for (size_t i = 0; i < n_thresholds; ++i) {
+            double frac = stats[3] == 0 ? 0 : (double)thresh_counts[i] / stats[3];
+            fprintf(fh_summary, "\t%.3f", frac);
+        }
+        fprintf(fh_summary, "\n");
     }
-    fprintf(fh_summary, "\n");
 
-    coverage_summary_add_row(snapshot, reg, stats, thresh_counts);
+    if (snapshot != NULL) {
+        coverage_summary_add_row(snapshot, reg, stats, thresh_counts);
+    }
 
     free(thresh_counts);
 }
@@ -295,7 +303,7 @@ static void _fill_skipped_regions(cov_writer w)
             }
             int64_t stats[4] = { 0, 0, 0, reg->end - reg->start };
             int64_t *dist = fc_alloc(wr->max_cover, sizeof(int64_t), "coverage region distribution");
-            _write_summary(wr->fh_dist, wr->fh_summary, wr->summary_target, reg, stats,
+            _write_summary(wr->fh_dist, wr->fh_summary, wr->summary_target, false, reg, stats,
                 dist, wr->max_cover, wr->thresholds, wr->n_thresholds);
             _write_bedgraph_line(wr->fh_fwd, reg->chr, reg->start, reg->end, 0);
             _write_bedgraph_line(wr->fh_rev, reg->chr, reg->start, reg->end, 0);
@@ -366,7 +374,7 @@ static void _flush_contig(cov_writer w)
             }
 
             // summary stats including sparse (user-defined) coverage distribution
-            _write_summary(NULL, wr->fh_summary, wr->summary_target, reg, stats,
+            _write_summary(NULL, wr->fh_summary, wr->summary_target, false, reg, stats,
                 dist, max_cover, wr->thresholds, wr->n_thresholds);
 
             // update total stats - these get written on close
@@ -480,18 +488,19 @@ static void _reset_contig(cov_writer w, const int32_t tid)
 }
 
 static cov_writer_region init_coverage_writer_region(
-    const char *out_dir, const char *name, bool per_base, bool by_strand, const char *bed_fname,
+    const char *out_dir, const char *name, bool write_traces, bool write_tables, bool by_strand,
+    const char *bed_fname,
     uint32_t *thresholds, size_t n_thresholds, uint32_t segment_length,
     const bam_hdr_t *hdr, const htsThreadPool *pool, fc_coverage_summary *summary)
 {
 
-    if (mkdir_hier((char *)out_dir, true) == -1) {
+    if (out_dir != NULL && mkdir_hier((char *)out_dir, true) == -1) {
         FC_LOG_FATAL("Failed to create coverage output directory '%s'.", out_dir);
     }
 
     _cov_writer_region *w = fc_alloc(1, sizeof(_cov_writer_region), "coverage writer region");
     w->name = fc_strdup(name, "coverage region name");
-    w->per_base = per_base;
+    w->per_base = write_traces;
     if (bed_fname != NULL) {
         w->whole_chrom = false;
         w->bed = init_bed(bed_fname, hdr);
@@ -532,7 +541,7 @@ static cov_writer_region init_coverage_writer_region(
     w->dist = fc_alloc(w->max_cover, sizeof(int64_t), "coverage distribution");
 
     // per_base outputs are the main event, the full coverage traces.
-    if (w->per_base) {
+    if (w->per_base && out_dir != NULL) {
         const char *suffixes[3] = { ".fwd.bed.gz", ".rev.bed.gz", ".bed.gz" };
         char **fn[3] = { &w->fn_fwd, &w->fn_rev, &w->fn_tot };
         BGZF **fh[3] = { &w->fh_fwd, &w->fh_rev, &w->fh_tot };
@@ -552,7 +561,7 @@ static cov_writer_region init_coverage_writer_region(
     }
 
     // summary file {name}.mosdepth.summary.txt
-    {
+    if (write_tables && out_dir != NULL) {
         char *suffix = ".summary.txt";
         char *fname = fc_asprintf("summary output path", "%s/%s%s", out_dir, name, suffix);
         w->fh_summary = fopen(fname, "w");
@@ -569,7 +578,7 @@ static cov_writer_region init_coverage_writer_region(
     }
 
     // distribution of coverage {name}.mosdepth.dist.txt
-    {
+    if (write_tables && out_dir != NULL) {
         char *suffix = ".dist.txt";
         char *fname = fc_asprintf("distribution output path", "%s/%s%s", out_dir, name, suffix);
         w->fh_dist = fopen(fname, "w");
@@ -600,11 +609,15 @@ void destroy_coverage_writer_region(cov_writer_region w)
     // distribution and thresholds files
     // make a region corresponding to the whole BED for writing distribution
     _bed_region reg = { w->name, 0, 0, w->stats[3] };
-    _write_summary(w->fh_dist, w->fh_summary, w->summary_target, &reg, w->stats,
+    _write_summary(w->fh_dist, w->fh_summary, w->summary_target, true, &reg, w->stats,
         w->dist, w->max_cover, w->thresholds, w->n_thresholds);
-    fclose(w->fh_dist);
+    if (w->fh_dist != NULL) {
+        fclose(w->fh_dist);
+    }
     // fclose(w->fh_thresh);
-    fclose(w->fh_summary);
+    if (w->fh_summary != NULL) {
+        fclose(w->fh_summary);
+    }
 
     // create BED index files if we wrote per-base coverage
     if (w->per_base) {
@@ -632,7 +645,7 @@ void destroy_coverage_writer_region(cov_writer_region w)
 }
 
 cov_writer init_coverage_writer(
-    const char *out_dir, bool per_base, bool use_cigar,
+    const char *out_dir, bool write_traces, bool write_tables, bool use_cigar,
     int exclude_flags, int include_flags, bool by_strand,
     const bam_hdr_t *hdr, const htsThreadPool *pool,
     const char **bed_files, const char **bed_names, size_t n_beds,
@@ -685,16 +698,20 @@ cov_writer init_coverage_writer(
     w->writers = fc_alloc(w->n_beds, sizeof(cov_writer_region), "coverage writers");
     // first entry is complete genome
     w->writers[0] = init_coverage_writer_region(
-        out_dir, "global", per_base, by_strand, NULL,
+        out_dir, "global", write_traces, write_tables, by_strand, NULL,
         thresholds, n_thresholds, 0,
         hdr, pool, summary);
     // fixed length segments
     for (size_t i = 0; i < n_segments; ++i) {
         char seg_name[32]; // largest uint32 is 10 digits
         FC_SNPRINTF_CHECK(seg_name, sizeof(seg_name), "segments_%u", segments[i]);
-        char *seg_out_dir = fc_asprintf("segment output directory path", "%s/segments_%u", out_dir, segments[i]);
+        char *seg_out_dir = NULL;
+        if (out_dir != NULL) {
+            seg_out_dir = fc_asprintf(
+                "segment output directory path", "%s/segments_%u", out_dir, segments[i]);
+        }
         w->writers[1 + i] = init_coverage_writer_region(
-            seg_out_dir, seg_name, per_base, by_strand, NULL,
+            seg_out_dir, seg_name, write_traces, write_tables, by_strand, NULL,
             thresholds, n_thresholds, segments[i],
             hdr, pool, summary);
         free(seg_out_dir);
@@ -703,9 +720,12 @@ cov_writer init_coverage_writer(
     for (size_t i = 0; i < n_beds; ++i) {
         if (NULL != bed_files[i]) {
             const char *bed_name = bed_names[i];
-            char *bed_out_dir = fc_asprintf("bed output directory path", "%s/%s", out_dir, bed_name);
+            char *bed_out_dir = NULL;
+            if (out_dir != NULL) {
+                bed_out_dir = fc_asprintf("bed output directory path", "%s/%s", out_dir, bed_name);
+            }
             w->writers[1 + n_segments + i] = init_coverage_writer_region(
-                bed_out_dir, bed_name, per_base, by_strand, bed_files[i],
+                bed_out_dir, bed_name, write_traces, write_tables, by_strand, bed_files[i],
                 thresholds, n_thresholds, 0,
                 hdr, pool, summary);
             free(bed_out_dir);

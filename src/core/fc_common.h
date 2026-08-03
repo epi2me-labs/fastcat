@@ -82,6 +82,13 @@ int mkdir_p(const char *path);
  */
 int mkdir_hier(char *path, bool fail_on_exist);
 
+/** Remove a file or directory tree without following symbolic links.
+ *
+ * @param path path to remove; a missing path is treated as success.
+ * @returns 0 on success, -1 on failure.
+ */
+int fc_remove_tree(const char *path);
+
 /** Ensure parent directory exists for a given path.
  *
  *  @param path path to ensure parent directory exists.

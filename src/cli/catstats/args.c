@@ -44,7 +44,9 @@ enum {
     KEY_TIME_BIN_SIZE,
     KEY_TIME_BIN_K,
     KEY_HTML_REPORT,
-    KEY_NO_LEGACY_OUTPUTS
+    KEY_NO_LEGACY_OUTPUTS,
+    KEY_LEGACY_OUTPUTS,
+    KEY_KEEP_FAILED_OUTPUT
 };
 
 typedef struct {
@@ -72,7 +74,24 @@ typedef struct {
         { "html-report", KEY_HTML_REPORT, 0, 0, \
             "Write a single-sample HTML report using aggregate fastcat histograms.", 13 }, \
         { "no-legacy-outputs", KEY_NO_LEGACY_OUTPUTS, 0, 0, \
-            "Disable legacy counter and histogram summary outputs; summary.json is still written.", 13 }
+            "Disable legacy aggregate text and histogram outputs; summary.json is still written.", 13 }, \
+        { "keep-failed-output", KEY_KEEP_FAILED_OUTPUT, 0, 0, \
+            "Keep partial <output>.tmp output if processing fails (debugging).", 13 }
+
+#define QC_OUTPUT_OPTIONS \
+    { "output", 'o', "DIRECTORY", 0, \
+        "Output root directory (default: fastcat-qc). Must not already exist.", 10 }, \
+        { "demultiplex", 'd', 0, 0, \
+            "Separate barcoded samples using read metadata; outputs go under <output>/barcodeXXXX/.", 10 }, \
+        { "sample", 's', "SAMPLE NAME", 0, \
+            "Sample identifier (defaults to 'SAMPLE' if files don't provide sample_id metadata).", 10 }, \
+        { "per-read", 'p', 0, 0, "Write per-read TSV (large). Disabled by default.", 12 }, \
+        { "html-report", KEY_HTML_REPORT, 0, 0, \
+            "Write a single-sample HTML report using aggregate fastcat histograms.", 13 }, \
+        { "legacy-outputs", KEY_LEGACY_OUTPUTS, 0, 0, \
+            "Write legacy aggregate text and histogram outputs in addition to summary.json.", 13 }, \
+        { "keep-failed-output", KEY_KEEP_FAILED_OUTPUT, 0, 0, \
+            "Keep partial <output>.tmp output if processing fails (debugging).", 13 }
 
 #define SHARED_FILTER_OPTIONS \
     { "min-length", 'a', "MIN READ LENGTH", 0, \
@@ -111,6 +130,33 @@ typedef struct {
         "Log level: error, warn, info, debug (default: info).", 40 }, \
         { "log-file", KEY_LOG_FILE, "PATH", 0, "Write logs to PATH instead of stderr.", 40 }, \
         { "log-mono", KEY_LOG_MONO, 0, 0, "Force monochrome logging output (disable ANSI colors).", 40 }
+
+#define BAM_INPUT_OPTIONS \
+    { "region", 'r', "chr:start-end", 0, "Genomic region to process (BAM input).", 0 }, \
+        { "bed", 'b', "BEDFILE", 0, "BED file for regions to process (BAM input).", 0 }, \
+        { "threads", 't', "THREADS", 0, \
+            "Number of threads for BAM decompression and output compression.", 0 }
+
+#define BAM_COVERAGE_OPTIONS \
+    { "coverage", KEY_COVERAGE, 0, 0, \
+        "Write position-level coverage BED.gz files (aggregate coverage is included in summary.json).", 40 }, \
+        { "coverage-beds", KEY_COVERAGE_BEDS, "BEDFILE ...", 0, \
+            "BED file(s) for calculating coverage (space-separated list).", 40 }, \
+        { "coverage-names", KEY_COVERAGE_NAMES, "NAME ...", 0, \
+            "Name(s) for coverage BED file(s) (space-separated list).", 40 }, \
+        { "thresholds", KEY_THRESHOLDS, "VALUES ...", 0, \
+            "Coverage thresholds to produce sparse cumulative distribution (space-separated integers).", 40 }, \
+        { "segments", KEY_SEGMENTS, "LENGTH ...", 0, \
+            "Segment length(s) for which to produce outputs (space-separated integers).", 40 }
+
+#define BAM_POLYA_OPTIONS \
+    { "poly-a", KEY_POLYA, 0, 0, "Enable poly-A tail length histogram.", 50 }, \
+        { "poly-a-cover", KEY_POLYA_COVER, "PCT_COVERAGE", 0, \
+            "Reference alignment coverage for acceptance of read (default: 95).", 50 }, \
+        { "poly-a-qual", KEY_POLYA_QUAL, "QUAL", 0, \
+            "Read mean Q score for acceptance of read (default: 10).", 50 }, \
+        { "poly-a-rev", KEY_POLYA_REV, 0, 0, \
+            "Allow reverse alignments (useful for cDNA; default is direct RNA).", 50 }
 
 static char fastcat_doc[] = "fastcat -- concatenate and summarise FASTQ or unaligned BAM reads.\
 \vReads input data from stdin when '-' is provided as an input path. \
@@ -165,10 +211,7 @@ static char bam_args_doc[] = "<reads.bam>";
 
 static struct argp_option bam_options[] = {
     { 0, 0, 0, 0, "General options:", 0 },
-    { "region", 'r', "chr:start-end", 0, "Genomic region to process.", 0 },
-    { "bed", 'b', "BEDFILE", 0, "BED file for regions to process.", 0 },
-    { "threads", 't', "THREADS", 0,
-        "Number of threads (for BAM decompression and BED output compression).", 0 },
+    BAM_INPUT_OPTIONS,
     SHARED_GENERAL_OPTIONS,
 
     { 0, 0, 0, 0, "Output options:", 10 },
@@ -186,24 +229,57 @@ static struct argp_option bam_options[] = {
     SHARED_TIME_OPTIONS,
 
     { 0, 0, 0, 0, "Coverage calculation options:", 40 },
-    { "coverage", KEY_COVERAGE, 0, 0, "Enable coverage calculations.", 40 },
-    { "coverage-beds", KEY_COVERAGE_BEDS, "BEDFILE ...", 0,
-        "BED file(s) for calculating coverage (space-separated list; enables --coverage).", 40 },
-    { "coverage-names", KEY_COVERAGE_NAMES, "NAME ...", 0,
-        "Name(s) for coverage BED file(s) (space-separated list; enables --coverage).", 40 },
-    { "thresholds", KEY_THRESHOLDS, "VALUES ...", 0,
-        "Coverage thresholds to produce sparse cumulative distribution (space-separated integers; enables --coverage).", 40 },
-    { "segments", KEY_SEGMENTS, "LENGTH ...", 0,
-        "Segment length(s) for which to produce outputs (space-separated integers; enables --coverage).", 40 },
+    BAM_COVERAGE_OPTIONS,
 
     { 0, 0, 0, 0, "Poly-A options:", 50 },
-    { "poly-a", KEY_POLYA, 0, 0, "Enable poly-A tail length histogram.", 50 },
-    { "poly-a-cover", KEY_POLYA_COVER, "PCT_COVERAGE", 0,
-        "Reference alignment coverage for acceptance of read (default: 95; enables --poly-a).", 50 },
-    { "poly-a-qual", KEY_POLYA_QUAL, "QUAL", 0,
-        "Read mean Q score for acceptance of read (default: 10; enables --poly-a).", 50 },
-    { "poly-a-rev", KEY_POLYA_REV, 0, 0,
-        "Allow reverse alignments (useful for cDNA; default is direct RNA; enables --poly-a).", 50 },
+    BAM_POLYA_OPTIONS,
+
+    { 0, 0, 0, 0, "Logging options:", 60 },
+    SHARED_LOGGING_OPTIONS,
+    { 0 }
+};
+
+static char qc_doc[] = "fastcat qc -- quality-control FASTQ or BAM input.\
+\vUse --input-fmt to choose FASTQ (default) or BAM input. FASTQ and headerless BAM\
+support read filtering and write retained reads to stdout. Reference-bearing BAM is analysed\
+without read filtering or read output. Use --region or --bed to select coordinates from a\
+reference-bearing BAM.";
+
+static char qc_args_doc[] = "reads1 reads2 dir-with-reads ...";
+
+static struct argp_option qc_options[] = {
+    { 0, 0, 0, 0, "General options:", 0 },
+    { "recurse", 'x', 0, 0,
+        "Search directories recursively for files matching the selected input format.", 0 },
+    { "fofn", KEY_FOFN, 0, 0,
+        "Treat each input as a file-of-filenames source (use '-' to read that list from stdin).", 0 },
+    { "input-fmt", KEY_INPUT_FORMAT, "fastq|bam", 0,
+        "Input format (default: fastq).", 0 },
+    BAM_INPUT_OPTIONS,
+    SHARED_GENERAL_OPTIONS,
+
+    { 0, 0, 0, 0, "Output options:", 10 },
+    QC_OUTPUT_OPTIONS,
+    { "bam-out", 'B', 0, 0, "Output reads as unaligned BAM when read output is enabled.", 11 },
+    { "reads-per-file", 'c', "NUM", 0,
+        "Split read output into files with a set number of reads (default: single file).", 11 },
+
+    { 0, 0, 0, 0, "Read filtering options:", 20 },
+    SHARED_FILTER_OPTIONS,
+    { "max-length", KEY_MAX_LENGTH_LONG, "MAX READ LENGTH", 0,
+        "Maximum read length to output (excluded reads remain listed in summaries).", 20 },
+
+    { 0, 0, 0, 0, "Histogram Sketch Options: controls summary.json heatmap detail vs smoothness.", 30 },
+    SHARED_HISTOGRAM_OPTIONS,
+
+    { 0, 0, 0, 0, "Time Summary Options: controls summary.json time-series resolution and quantile accuracy.", 35 },
+    SHARED_TIME_OPTIONS,
+
+    { 0, 0, 0, 0, "Coverage calculation options (single BAM input only):", 40 },
+    BAM_COVERAGE_OPTIONS,
+
+    { 0, 0, 0, 0, "Poly-A options (BAM input):", 50 },
+    BAM_POLYA_OPTIONS,
 
     { 0, 0, 0, 0, "Logging options:", 60 },
     SHARED_LOGGING_OPTIONS,
@@ -218,10 +294,11 @@ static fc_catstats_args default_args(void)
     args.demultiplex = false;
     args.per_read = false;
     args.html_report = false;
-    args.no_legacy_outputs = false;
+    args.legacy_outputs = false;
     args.threads = 1;
     args.verbose = false;
     args.force_error = false;
+    args.keep_failed_output = false;
     args.log_level = FC_LOG_INFO;
     args.log_file = NULL;
     args.log_mono = false;
@@ -257,6 +334,7 @@ static fc_catstats_args default_args(void)
     args.bed = NULL;
 
     args.coverage = false;
+    args.coverage_configured = false;
     args.coverage_beds = NULL;
     args.n_coverage_beds = 0;
     args.coverage_names = NULL;
@@ -296,7 +374,13 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         arguments->html_report = true;
         break;
     case KEY_NO_LEGACY_OUTPUTS:
-        arguments->no_legacy_outputs = true;
+        arguments->legacy_outputs = false;
+        break;
+    case KEY_LEGACY_OUTPUTS:
+        arguments->legacy_outputs = true;
+        break;
+    case KEY_KEEP_FAILED_OUTPUT:
+        arguments->keep_failed_output = true;
         break;
     case 'a':
         if (!fc_parse_size_strict(arg, &size_value)) {
@@ -490,20 +574,20 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         arguments->region = arg;
         break;
     case KEY_COVERAGE_BEDS:
-        arguments->coverage = true;
         slurp_args((const char ***)&arguments->coverage_beds, &arguments->n_coverage_beds, arg, state);
+        arguments->coverage_configured = true;
         break;
     case KEY_COVERAGE_NAMES:
-        arguments->coverage = true;
         slurp_args((const char ***)&arguments->coverage_names, &arguments->n_coverage_names, arg, state);
+        arguments->coverage_configured = true;
         break;
     case KEY_THRESHOLDS:
-        arguments->coverage = true;
         slurp_ints(&arguments->coverage_thresholds, &arguments->n_coverage_thresholds, arg, state);
+        arguments->coverage_configured = true;
         break;
     case KEY_SEGMENTS:
-        arguments->coverage = true;
         slurp_ints(&arguments->segments, &arguments->n_segments, arg, state);
+        arguments->coverage_configured = true;
         break;
     case KEY_COVERAGE:
         arguments->coverage = true;
@@ -536,7 +620,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         arguments->poly_a_rev = true;
         break;
     case ARGP_KEY_ARG:
-        if (ctx->program == FC_PROGRAM_FASTCAT) {
+        if (ctx->program == FC_PROGRAM_FASTCAT || ctx->program == FC_PROGRAM_QC) {
             arguments->input_paths.paths = &state->argv[state->next - 1];
             state->next = state->argc;
         } else {
@@ -548,7 +632,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         }
         break;
     case ARGP_KEY_NO_ARGS:
-        if (ctx->program == FC_PROGRAM_BAMSTATS || ctx->program == FC_PROGRAM_FASTCAT) {
+        if (ctx->program == FC_PROGRAM_BAMSTATS || ctx->program == FC_PROGRAM_FASTCAT || ctx->program == FC_PROGRAM_QC) {
             argp_usage(state);
         }
         break;
@@ -560,7 +644,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             argp_error(
                 state, "If --haplotype is given neither --tag-name nor --tag-value should be provided.");
         }
-        if (ctx->program == FC_PROGRAM_FASTCAT) {
+        if (ctx->program == FC_PROGRAM_FASTCAT || ctx->program == FC_PROGRAM_QC) {
             if (!arguments->input_paths.paths) {
                 argp_error(state, "Missing input path(s). Use '-' to read data from stdin.");
                 return 0; // argp_error doesn't return, but helps static analyzer
@@ -568,10 +652,20 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             while (arguments->input_paths.paths[arguments->input_paths.n_paths]) {
                 arguments->input_paths.n_paths++;
             }
+            if (ctx->program == FC_PROGRAM_QC) {
+                if (arguments->input_kind != FC_FILE_BAM
+                    && (arguments->region || arguments->bed || arguments->coverage
+                        || arguments->coverage_configured || arguments->poly_a)) {
+                    argp_error(state,
+                        "--region, --bed, coverage, and poly-A options require --input-fmt bam.");
+                }
+            }
         } else {
             if (!arguments->bam) {
                 argp_error(state, "Missing <reads.bam>");
             }
+        }
+        if (ctx->program == FC_PROGRAM_BAMSTATS || ctx->program == FC_PROGRAM_QC) {
             if (arguments->region && arguments->bed) {
                 argp_error(state, "--region and --bed are mutually exclusive.");
             }
@@ -592,10 +686,12 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 
 static struct argp fastcat_argp = { fastcat_options, parse_opt, fastcat_args_doc, fastcat_doc, 0, 0, 0 };
 static struct argp bam_argp = { bam_options, parse_opt, bam_args_doc, bam_doc, 0, 0, 0 };
+static struct argp qc_argp = { qc_options, parse_opt, qc_args_doc, qc_doc, 0, 0, 0 };
 
 fc_catstats_args fc_parse_catstats_args(fc_program_kind program, int argc, char **argv)
 {
     fc_catstats_args args = default_args();
+    args.legacy_outputs = program != FC_PROGRAM_QC;
     parse_context ctx = {
         .program = program,
         .args = &args,
@@ -603,7 +699,12 @@ fc_catstats_args fc_parse_catstats_args(fc_program_kind program, int argc, char 
         .tag_given = false,
         .hp_given = false
     };
-    struct argp *tool_argp = (program == FC_PROGRAM_FASTCAT) ? &fastcat_argp : &bam_argp;
+    struct argp *tool_argp = &bam_argp;
+    if (program == FC_PROGRAM_FASTCAT) {
+        tool_argp = &fastcat_argp;
+    } else if (program == FC_PROGRAM_QC) {
+        tool_argp = &qc_argp;
+    }
     argp_parse(tool_argp, argc, argv, 0, 0, &ctx);
     return args;
 }
