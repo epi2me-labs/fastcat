@@ -10,6 +10,11 @@
 #define FC_NOTPRIMARY (BAM_FSUPPLEMENTARY | BAM_FSECONDARY | BAM_FUNMAP)
 #define FC_PRIMARY_QC_EXCLUDE (FC_NOTPRIMARY | BAM_FQCFAIL | BAM_FDUP)
 
+static inline bool fc_is_canonical_read_record(const bam1_t *b)
+{
+    return (b->core.flag & (BAM_FSUPPLEMENTARY | BAM_FSECONDARY)) == 0;
+}
+
 static inline bool fc_is_unmapped(const bam1_t *b)
 {
     return (b->core.flag & BAM_FUNMAP) != 0;

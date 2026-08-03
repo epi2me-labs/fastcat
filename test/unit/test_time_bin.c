@@ -147,6 +147,44 @@ FC_TEST(time_bin_suite, test_time_bin_counts_means_quantiles_and_cumulative_tota
     fc_time_bin_destroy(model);
 }
 
+FC_TEST(time_bin_suite, test_time_bin_ignores_additional_alignments)
+{
+    fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
+    TEST_ASSERT_NOT_NULL(model);
+
+    bam1_t bam = { 0 };
+    read_meta meta = {
+        .start_time = "100",
+        .mean_q = 20.0,
+        .duration_s = 2.0
+    };
+    fc_read read = {
+        .bam = &bam,
+        .meta = &meta
+    };
+    bam.core.l_qseq = 100;
+
+    bam.core.flag = BAM_FSECONDARY;
+    fc_time_bin_add_read(model, 0, &read);
+    fc_time_bin_add_accuracy(model, 0, &read, 0.99f);
+    bam.core.flag = BAM_FSUPPLEMENTARY;
+    fc_time_bin_add_read(model, 0, &read);
+    fc_time_bin_add_accuracy(model, 0, &read, 0.99f);
+    TEST_ASSERT_FALSE(fc_time_bin_seen(model, 0));
+    TEST_ASSERT_FALSE(fc_time_bin_accuracy_seen(model, 0));
+
+    bam.core.flag = BAM_FUNMAP;
+    fc_time_bin_add_read(model, 0, &read);
+    TEST_ASSERT_TRUE(fc_time_bin_seen(model, 0));
+
+    fc_time_bin_table table = { 0 };
+    TEST_ASSERT_EQUAL_INT(0, fc_time_bin_materialize(model, 0, &table));
+    TEST_ASSERT_EQUAL_size_t(1, table.n);
+    TEST_ASSERT_EQUAL_size_t(1, table.rows[0].read_count);
+    fc_time_bin_table_destroy(&table);
+    fc_time_bin_destroy(model);
+}
+
 FC_TEST(time_bin_suite, test_time_bin_dynamic_backward_growth_preserves_empty_bins)
 {
     fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);

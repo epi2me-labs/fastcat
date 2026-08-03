@@ -84,6 +84,41 @@ FC_TEST(channel_summary_suite, test_channel_summary_accumulates_counts)
     fc_channel_summary_destroy(model);
 }
 
+FC_TEST(channel_summary_suite, test_channel_summary_ignores_additional_alignments)
+{
+    fc_channel_summary *model = fc_channel_summary_create(1);
+    TEST_ASSERT_NOT_NULL(model);
+
+    bam1_t bam = { 0 };
+    read_meta meta = {
+        .channel = 10,
+        .mux = 2,
+        .mean_q = 20.0f
+    };
+    fc_read read = {
+        .bam = &bam,
+        .meta = &meta
+    };
+    bam.core.l_qseq = 100;
+
+    bam.core.flag = BAM_FSECONDARY;
+    fc_channel_summary_add_read(model, 0, &read);
+    bam.core.flag = BAM_FSUPPLEMENTARY;
+    fc_channel_summary_add_read(model, 0, &read);
+    TEST_ASSERT_FALSE(fc_channel_summary_seen(model, 0));
+
+    bam.core.flag = BAM_FUNMAP;
+    fc_channel_summary_add_read(model, 0, &read);
+    fc_channel_summary_table table = { 0 };
+    TEST_ASSERT_EQUAL_INT(0, fc_channel_summary_materialize_sparse(model, 0, &table));
+    TEST_ASSERT_EQUAL_size_t(1, table.n);
+    TEST_ASSERT_EQUAL_size_t(1, table.rows[0].read_count);
+    TEST_ASSERT_EQUAL_size_t(100, table.rows[0].base_count);
+
+    fc_channel_summary_table_destroy(&table);
+    fc_channel_summary_destroy(model);
+}
+
 FC_TEST(channel_summary_suite, test_channel_summary_accumulates_alignment_concordance)
 {
     fc_channel_summary *model = fc_channel_summary_create(1);

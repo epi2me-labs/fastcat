@@ -52,7 +52,7 @@ FC_TEST(speed_qscore_2d_suite, test_speed_qscore_single_read_lands_in_expected_q
     fc_speed_qscore_2d *model = create_model(1, 1);
     TEST_ASSERT_NOT_NULL(model);
 
-    fc_speed_qscore_2d_add_read(model, 0, 100.0, 1.0, 10.25f);
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(100.0, 1.0, 10.25f));
 
     fc_speed_qscore_2d_matrix matrix = { 0 };
     TEST_ASSERT_EQUAL_INT(0, fc_speed_qscore_2d_materialize(model, 0, &matrix));
@@ -86,10 +86,10 @@ FC_TEST(speed_qscore_2d_suite, test_speed_qscore_qscore_bins_clamp_to_range)
     fc_speed_qscore_2d *model = create_model(1, 1);
     TEST_ASSERT_NOT_NULL(model);
 
-    fc_speed_qscore_2d_add_read(model, 0, 100.0, 1.0, -2.0f);
-    fc_speed_qscore_2d_add_read(model, 0, 120.0, 1.0, NAN);
-    fc_speed_qscore_2d_add_read(model, 0, 140.0, 1.0, 60.0f);
-    fc_speed_qscore_2d_add_read(model, 0, 160.0, 1.0, 999.0f);
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(100.0, 1.0, -2.0f));
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(120.0, 1.0, NAN));
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(140.0, 1.0, 60.0f));
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(160.0, 1.0, 999.0f));
 
     fc_speed_qscore_2d_matrix matrix = { 0 };
     TEST_ASSERT_EQUAL_INT(0, fc_speed_qscore_2d_materialize(model, 0, &matrix));
@@ -136,7 +136,7 @@ FC_TEST(speed_qscore_2d_suite, test_speed_qscore_barcode_state_is_isolated)
     TEST_ASSERT_FALSE(fc_speed_qscore_2d_seen(model, 1));
     TEST_ASSERT_FALSE(fc_speed_qscore_2d_seen(model, 3));
 
-    fc_speed_qscore_2d_add_read(model, 1, 100.0, 1.0, 12.0f);
+    fc_speed_qscore_2d_add_read(model, 1, TEST_SPEED_QSCORE_READ(100.0, 1.0, 12.0f));
 
     TEST_ASSERT_FALSE(fc_speed_qscore_2d_seen(model, 0));
     TEST_ASSERT_TRUE(fc_speed_qscore_2d_seen(model, 1));
@@ -187,10 +187,10 @@ FC_TEST(speed_qscore_2d_suite, test_speed_qscore_smoothing_preserves_observed_co
     TEST_ASSERT_NOT_NULL(model);
 
     for (size_t i = 0; i < 25; i++) {
-        fc_speed_qscore_2d_add_read(model, 0, 400.0 + (double)i, 1.0, 10.1f);
+        fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(400.0 + (double)i, 1.0, 10.1f));
     }
     for (size_t i = 0; i < 15; i++) {
-        fc_speed_qscore_2d_add_read(model, 0, 900.0 + (double)i, 2.0, 11.1f);
+        fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(900.0 + (double)i, 2.0, 11.1f));
     }
 
     fc_speed_qscore_2d_matrix matrix = { 0 };
@@ -233,10 +233,10 @@ FC_TEST(speed_qscore_2d_suite, test_speed_qscore_skips_invalid_durations_only)
     fc_speed_qscore_2d *model = create_model(1, 1);
     TEST_ASSERT_NOT_NULL(model);
 
-    fc_speed_qscore_2d_add_read(model, 0, 100.0, NAN, 10.0f);
-    fc_speed_qscore_2d_add_read(model, 0, 100.0, 0.0, 10.0f);
-    fc_speed_qscore_2d_add_read(model, 0, 100.0, -1.0, 10.0f);
-    fc_speed_qscore_2d_add_read(model, 0, 100.0, 2.0, 10.0f);
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(100.0, NAN, 10.0f));
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(100.0, 0.0, 10.0f));
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(100.0, -1.0, 10.0f));
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(100.0, 2.0, 10.0f));
 
     fc_speed_qscore_2d_skip_counts skipped =
         fc_speed_qscore_2d_skipped_counts(model);
@@ -268,10 +268,10 @@ FC_TEST(speed_qscore_2d_suite, test_speed_qscore_uses_padded_middle_quantile_ran
     TEST_ASSERT_NOT_NULL(model);
 
     for (size_t i = 0; i < 100; i++) {
-        fc_speed_qscore_2d_add_read(model, 0, 390.0 + (double)(i % 21), 1.0, 10.0f);
+        fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(390.0 + (double)(i % 21), 1.0, 10.0f));
     }
-    fc_speed_qscore_2d_add_read(model, 0, 10.0, 1.0, 10.0f);
-    fc_speed_qscore_2d_add_read(model, 0, 1000.0, 1.0, 10.0f);
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(10.0, 1.0, 10.0f));
+    fc_speed_qscore_2d_add_read(model, 0, TEST_SPEED_QSCORE_READ(1000.0, 1.0, 10.0f));
 
     fc_speed_qscore_2d_matrix matrix = { 0 };
     TEST_ASSERT_EQUAL_INT(0, fc_speed_qscore_2d_materialize(model, 0, &matrix));

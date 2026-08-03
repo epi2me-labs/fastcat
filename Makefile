@@ -866,7 +866,7 @@ define TEST_METADATA
 endef
 # Expected files to compare (excluding per_file.tsv which only exists at top level)
 FASTCAT_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv summary.json histograms/length.hist histograms/quality.hist
-BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv summary.json histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist histograms/length.unmap.hist histograms/quality.unmap.hist flagstats.tsv
+BAMSTATS_EXPECTED_FILES = runids.tsv basecallers.tsv per_read.tsv summary.json histograms/length.hist histograms/quality.hist histograms/accuracy.hist histograms/coverage.hist flagstats.tsv
 
 
 ###
@@ -1525,8 +1525,8 @@ test_bamstats_vs_fastcat_unaligned: $(FASTCAT_BIN)
 		cut -f1$(comma)3-8 fc_out/per_read.tsv > pr.fc && \
 		cut -f1$(comma)3-8 bs_out/per_read.tsv > pr.bs && \
 		$(call COMPARE_TABLES,pr.fc,pr.bs,per_read_non_demux) && \
-		diff fc_out/histograms/length.hist bs_out/histograms/length.unmap.hist && \
-		diff fc_out/histograms/quality.hist bs_out/histograms/quality.unmap.hist)
+		diff fc_out/histograms/length.hist bs_out/histograms/length.hist && \
+		diff fc_out/histograms/quality.hist bs_out/histograms/quality.hist)
 test_bamstats_equivalence: test_bamstats_vs_fastcat_unaligned
 
 
@@ -1556,8 +1556,7 @@ test_bamstats_vs_fastcat_unaligned_demux: $(FASTCAT_BIN)
 		done && \
 		for h in $$(find fc_out -name "*length.hist" -o -name "*quality.hist"); do \
 			rel=$${h#fc_out/}; \
-			base=$${rel%.hist}; \
-			g=bs_out/$$base.unmap.hist; \
+			g=bs_out/$$rel; \
 			if [ ! -f "$$g" ]; then echo "Missing $$g"; exit 1; fi; \
 			diff "$$h" "$$g"; \
 		done)

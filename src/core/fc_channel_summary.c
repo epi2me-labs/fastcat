@@ -128,6 +128,9 @@ void fc_channel_summary_add_read(fc_channel_summary *model, size_t barcode, cons
         || barcode >= model->barcode_count) {
         return;
     }
+    if (!fc_is_canonical_read_record(read->bam)) {
+        return;
+    }
 
     fc_channel_summary_barcode_state *state = channel_summary_ensure_barcode_state(model, barcode);
     if (NULL == state) {

@@ -5,6 +5,7 @@
 #include "htslib/sam.h"
 
 #include "core/fc_common.h"
+#include "core/fc_filter.h"
 #include "core/fc_log.h"
 #include "core/fc_sinks.h"
 #include "sink/common.h"
@@ -71,6 +72,9 @@ static void perread_sink_add_read(void *ctx, const fc_read *read, const fc_read_
     const char *fname, const sam_hdr_t *hdr)
 {
     perread_sink *sink = (perread_sink *)ctx;
+    if (!fc_is_canonical_read_record(read->bam)) {
+        return;
+    }
     size_t barcode = sink->cfg.use_barcodes && read_ctx ? read_ctx->barcode : 0;
     FILE *out = perread_sink_ensure_fp(sink, barcode);
     if (!out) {

@@ -211,32 +211,13 @@ static double read_stats_total_count(const read_stats *stats)
     return total;
 }
 
-static void select_report_stats(const fc_stats_engine *engine, bool bam_input,
-    bool unmapped_override,
+static void select_report_stats(const fc_stats_engine *engine,
     const read_stats **length,
     const read_stats **quality)
 {
     *length = NULL;
     *quality = NULL;
     if (!engine) {
-        return;
-    }
-
-    if (unmapped_override) {
-        *length = engine->length_stats_unmapped;
-        *quality = engine->qual_stats_unmapped;
-        return;
-    }
-
-    if (read_stats_total_count(engine->length_stats) > 0.0 && read_stats_total_count(engine->qual_stats) > 0.0) {
-        *length = engine->length_stats;
-        *quality = engine->qual_stats;
-        return;
-    }
-
-    if (bam_input && read_stats_total_count(engine->length_stats_unmapped) > 0.0 && read_stats_total_count(engine->qual_stats_unmapped) > 0.0) {
-        *length = engine->length_stats_unmapped;
-        *quality = engine->qual_stats_unmapped;
         return;
     }
 
@@ -3355,8 +3336,7 @@ int fc_write_html_reports(const fc_report_opts *opts)
         }
         const read_stats *length = NULL;
         const read_stats *quality = NULL;
-        select_report_stats(opts->engines[0], opts->bam_input,
-            opts->unmapped_override, &length, &quality);
+        select_report_stats(opts->engines[0], &length, &quality);
         return write_report_for_output_dir(
             opts->output_root, opts->sample, "unclassified", opts->engines[0],
             opts->bam_input, length, quality, opts->run_config,
@@ -3385,8 +3365,7 @@ int fc_write_html_reports(const fc_report_opts *opts)
         }
         const read_stats *length = NULL;
         const read_stats *quality = NULL;
-        select_report_stats(opts->engines[barcode], opts->bam_input,
-            opts->unmapped_override, &length, &quality);
+        select_report_stats(opts->engines[barcode], &length, &quality);
         bool active = read_stats_total_count(length) > 0.0 && read_stats_total_count(quality) > 0.0;
         if (!active) {
             continue;

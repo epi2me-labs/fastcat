@@ -52,21 +52,11 @@ static void hist_write_stats(const char *hist_dir, const char *plex_dir, size_t 
 
 static void hist_write_engine(hist_sink *sink, size_t barcode, fc_stats_engine *engine)
 {
-
-    if (sink->cfg.unmapped_override) {
-        if (engine->length_stats_unmapped) {
-            hist_write_stats(sink->hist_dir, sink->output_dir, barcode, engine->length_stats_unmapped, "length");
-        }
-        if (engine->qual_stats_unmapped) {
-            hist_write_stats(sink->hist_dir, sink->output_dir, barcode, engine->qual_stats_unmapped, "quality");
-        }
-    } else {
-        if (engine->length_stats) {
-            hist_write_stats(sink->hist_dir, sink->output_dir, barcode, engine->length_stats, "length");
-        }
-        if (engine->qual_stats) {
-            hist_write_stats(sink->hist_dir, sink->output_dir, barcode, engine->qual_stats, "quality");
-        }
+    if (engine->length_stats) {
+        hist_write_stats(sink->hist_dir, sink->output_dir, barcode, engine->length_stats, "length");
+    }
+    if (engine->qual_stats) {
+        hist_write_stats(sink->hist_dir, sink->output_dir, barcode, engine->qual_stats, "quality");
     }
 
     if (sink->cfg.write_alignment_metrics) {
@@ -80,17 +70,6 @@ static void hist_write_engine(hist_sink *sink, size_t barcode, fc_stats_engine *
 
     if (sink->cfg.write_polya && engine->polya_stats) {
         hist_write_stats(sink->hist_dir, sink->output_dir, barcode, engine->polya_stats, "polya");
-    }
-
-    if (!sink->cfg.unmapped_override) {
-        const char *len_name = "length.unmap";
-        const char *qual_name = "quality.unmap";
-        if (engine->length_stats_unmapped) {
-            hist_write_stats(sink->hist_dir, sink->output_dir, barcode, engine->length_stats_unmapped, len_name);
-        }
-        if (engine->qual_stats_unmapped) {
-            hist_write_stats(sink->hist_dir, sink->output_dir, barcode, engine->qual_stats_unmapped, qual_name);
-        }
     }
 }
 

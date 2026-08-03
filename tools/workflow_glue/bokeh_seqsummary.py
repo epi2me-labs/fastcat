@@ -39,34 +39,13 @@ def load_histogram(hist_dir, dtype):
     )
 
 
-def sum_hists(hists):
-    """Sum histogram dataframes based on their intervals."""
-    return (
-        pd.concat(hists)
-        .reset_index(drop=True)
-        .sort_values(by="start")
-        .groupby(["start", "end"], as_index=False)
-        .sum()
-    )
-
-
 def load_summary_histograms(path):
-    """Load quality and length histograms, including unmapped if available."""
+    """Load quality and length histograms."""
     if isinstance(path, dict):
         return path["read_length"], path["quality"]
 
     quality = load_histogram(path, "quality")
     length = load_histogram(path, "length")
-
-    try:
-        quality = sum_hists((quality, load_histogram(path, "quality.unmap")))
-    except Exception:
-        pass
-
-    try:
-        length = sum_hists((length, load_histogram(path, "length.unmap")))
-    except Exception:
-        pass
 
     return length, quality
 

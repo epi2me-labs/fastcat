@@ -255,7 +255,6 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         fc_hist_sink_opts hist_opts = {
             .output_root = args->output_dir,
             .use_barcodes = args->demultiplex,
-            .unmapped_override = (program == FC_PROGRAM_FASTCAT),
             .write_alignment_metrics = (program == FC_PROGRAM_BAMSTATS),
             .write_polya = (program == FC_PROGRAM_BAMSTATS) ? args->poly_a : false,
             .engines = writer->stats_engines,
@@ -305,7 +304,6 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .use_barcodes = args->demultiplex,
         .barcode_count = writer->barcode_count,
         .bam_input = bam_input,
-        .unmapped_override = (program == FC_PROGRAM_FASTCAT),
         .region_mode = region_mode,
         .region_label = region_mode ? (args->region ? args->region : "bed_regions") : NULL,
         .hdr = (program == FC_PROGRAM_BAMSTATS) ? file_iter.bmi.hdr : NULL,
@@ -409,7 +407,6 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             .bam_input = (program == FC_PROGRAM_BAMSTATS) || (args->input_kind == FC_FILE_BAM),
             .use_barcodes = args->demultiplex,
             .barcode_count = writer->barcode_count,
-            .unmapped_override = (program == FC_PROGRAM_FASTCAT),
             .engines = writer->stats_engines,
             .engine_count = writer->stats_engine_count,
             .run_summary = writer->run_summary,

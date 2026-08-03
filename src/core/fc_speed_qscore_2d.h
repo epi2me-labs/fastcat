@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "core/fc_metric_qscore_2d.h"
+#include "core/fc_read.h"
 
 #define FC_QTS2D_QSCORE_BINS 120
 #define FC_QTS2D_SPEED_BINS 1000
@@ -33,9 +34,7 @@ fc_speed_qscore_2d *fc_speed_qscore_2d_create(
 void fc_speed_qscore_2d_add_read(
     fc_speed_qscore_2d *model,
     size_t barcode,
-    double length,
-    double duration_s,
-    float mean_q);
+    const fc_read *read);
 
 fc_speed_qscore_2d_skip_counts fc_speed_qscore_2d_skipped_counts(
     const fc_speed_qscore_2d *model);

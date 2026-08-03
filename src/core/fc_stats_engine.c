@@ -83,9 +83,6 @@ fc_stats_engine *fc_stats_engine_create(
         engine->cov_stats = create_qual_stats(COV_HIST_WIDTH);
     }
 
-    engine->length_stats_unmapped = create_length_stats();
-    engine->qual_stats_unmapped = create_qual_stats(QUAL_HIST_WIDTH);
-
     if (track_polya) {
         engine->polya_stats = create_length_stats();
     }
@@ -106,8 +103,6 @@ void fc_stats_engine_destroy(fc_stats_engine *engine)
     destroy_qual_stats(engine->qual_stats);
     destroy_qual_stats(engine->acc_stats);
     destroy_qual_stats(engine->cov_stats);
-    destroy_length_stats(engine->length_stats_unmapped);
-    destroy_qual_stats(engine->qual_stats_unmapped);
     destroy_length_stats(engine->polya_stats);
     free(engine);
 }
@@ -224,9 +219,16 @@ fc_stats_read_kind fc_stats_engine_add_read(
         return FC_STATS_SKIP;
     }
 
+    if (!fc_is_canonical_read_record(fr->bam)) {
+        return FC_STATS_SKIP;
+    }
+
+    // Generic read metrics are canonical-read metrics: primary mapped and
+    // primary unmapped records share one length/quality population.
+    add_length_count(engine->length_stats, fr->bam->core.l_qseq);
+    add_qual_count(engine->qual_stats, fr->meta->mean_q);
+
     if (fc_is_unmapped(fr->bam)) {
-        add_length_count(engine->length_stats_unmapped, fr->bam->core.l_qseq);
-        add_qual_count(engine->qual_stats_unmapped, fr->meta->mean_q);
         return FC_STATS_UNMAPPED;
     }
 
@@ -241,8 +243,6 @@ fc_stats_read_kind fc_stats_engine_add_read(
         FC_LOG_FATAL("Stats engine requires a BAM header for aligned reads.");
     }
 
-    add_length_count(engine->length_stats, fr->bam->core.l_qseq);
-    add_qual_count(engine->qual_stats, fr->meta->mean_q);
     fc_stats_engine_add_aligned(engine, fr, hdr, out);
     return FC_STATS_ALIGNED;
 }

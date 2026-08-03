@@ -388,7 +388,7 @@ The **`data`** dataframe columns are:
 
 #### `distributions` — Read statistic histograms
 
-Histogram data for read length and mean read quality. For BAM input these describe mapped, primary, QC-passing reads whenever any are available; otherwise they describe unmapped reads.
+Histogram data for canonical reads: primary mapped and primary unmapped BAM records share the same read-length and mean-quality distributions.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -480,7 +480,7 @@ Two-dimensional count matrices relating mean read quality to read length, transl
 
 #### `alignment` — Alignment summary metrics
 
-BAM-only record-level mapping counts, per-reference flag counts, and distributions for alignment concordance, aligned query coverage, unmapped reads, and poly-A length. This section is omitted for FASTQ summaries.
+BAM-only record-level mapping counts, canonical-read mapping totals, per-reference flag counts, and distributions for alignment concordance, aligned query coverage, and poly-A length. This section is omitted for FASTQ summaries.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -489,10 +489,13 @@ BAM-only record-level mapping counts, per-reference flag counts, and distributio
 | `mapped_record_percent` | `percentage` | Percentage of all BAM records that are mapped. |
 | `primary_mapped_record_count` | `nonNegativeInt` | Number of records that are both primary and mapped. |
 | `primary_mapped_record_percent` | `percentage` | Percentage of all BAM records that are both primary and mapped. |
+| `read_count` | `nonNegativeInt` | Number of canonical reads represented by the alignment records. |
+| `mapped_read_count` | `nonNegativeInt` | Number of canonical reads with a primary mapped record. |
+| `mapped_read_percent` | `percentage` | Percentage of canonical reads with a primary mapped record. |
 | `per_reference_counts` | `array` | Flag-derived record counts for every reference sequence. |
 | `distributions` | `alignmentDistributions` | Alignment-specific read distributions. |
 
-The **`distributions.accuracy.data`, `distributions.query_coverage.data`, and `distributions.unmapped_quality.data`** dataframe columns are:
+The **`distributions.accuracy.data` and `distributions.query_coverage.data`** dataframe columns are:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -501,7 +504,7 @@ The **`distributions.accuracy.data`, `distributions.query_coverage.data`, and `d
 | `count` | `adaptiveColumn` | Number of observations in the bin. |
 
 
-The **`distributions.unmapped_read_length.data` and `distributions.poly_a_length.data`** dataframe columns are:
+The **`distributions.poly_a_length.data`** dataframe columns are:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -556,7 +559,6 @@ The program creates a `histograms/` directory (per barcode, when demultiplexed) 
 * `quality.hist` - read mean base-quality score histogram.
 * `accuracy.hist` **(bam only)** - read alignment accuracy histogram.
 * `coverage.hist` **(bam only)** - read alignment coverage histogram (the proportion of each read spanned by the alignment and not clipped).
-* `length.unmap.hist` / `quality.unmap.hist` **(bam only)** - as `length.hist`/`quality.hist` but for the subset of reads that are unmapped; written alongside the mapped-read histograms whenever the input BAM contains unmapped reads.
 * `polya.hist` **(bam only, with `--poly-a`)** - poly-A tail length histogram.
 
 The format of the histogram files is a tab-separated file of sparse, ordered intervals `[lower, upper)`:

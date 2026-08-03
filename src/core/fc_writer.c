@@ -182,29 +182,16 @@ void fc_writer_add_read(fc_writer *writer, fc_read *read, const char *fname, con
 
     if (writer->length_qscore != NULL) {
         size_t barcode = writer->use_barcodes ? ctx.barcode : 0;
-        fc_length_qscore_2d_add_read(
-            writer->length_qscore,
-            barcode,
-            (double)read->bam->core.l_qseq,
-            read->meta->mean_q);
+        fc_length_qscore_2d_add_read(writer->length_qscore, barcode, read);
     }
 
     if (writer->speed_qscore != NULL) {
         size_t barcode = writer->use_barcodes ? ctx.barcode : 0;
-        fc_speed_qscore_2d_add_read(
-            writer->speed_qscore,
-            barcode,
-            (double)read->bam->core.l_qseq,
-            read->meta->duration_s,
-            read->meta->mean_q);
+        fc_speed_qscore_2d_add_read(writer->speed_qscore, barcode, read);
     }
 
     if (writer->accuracy_qscore != NULL && ctx.stats_kind == FC_STATS_ALIGNED) {
-        fc_accuracy_qscore_2d_add_read(
-            writer->accuracy_qscore,
-            ctx.barcode,
-            ctx.aligned.acc,
-            read->meta->mean_q);
+        fc_accuracy_qscore_2d_add_read(writer->accuracy_qscore, ctx.barcode, read, ctx.aligned.acc);
     }
 
     if (writer->run_summary != NULL) {

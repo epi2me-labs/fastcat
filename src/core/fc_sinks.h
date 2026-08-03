@@ -46,7 +46,6 @@ fc_sink fc_counter_sink_create(const fc_counter_sink_opts *opts);
 typedef struct {
     const char *output_root; // top-level output directory
     bool use_barcodes;
-    bool unmapped_override;
     bool write_alignment_metrics;
     bool write_polya;
     fc_stats_engine **engines; // array sized by writer->stats_engine_count
@@ -98,7 +97,6 @@ typedef struct {
     bool use_barcodes;
     size_t barcode_count;
     bool bam_input;
-    bool unmapped_override;
     bool region_mode;
     const char *region_label;
     const bam_hdr_t *hdr;

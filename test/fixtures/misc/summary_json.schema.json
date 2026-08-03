@@ -61,7 +61,7 @@
     },
     "distributions": {
       "title": "Read statistic histograms",
-      "description": "Histogram data for read length and mean read quality. For BAM input these describe mapped, primary, QC-passing reads whenever any are available; otherwise they describe unmapped reads.",
+      "description": "Histogram data for canonical reads: primary mapped and primary unmapped BAM records share the same read-length and mean-quality distributions.",
       "$ref": "#/$defs/distributions"
     },
     "time": {
@@ -83,7 +83,7 @@
     },
     "alignment": {
       "title": "Alignment summary metrics",
-      "description": "BAM-only record-level mapping counts, per-reference flag counts, and distributions for alignment concordance, aligned query coverage, unmapped reads, and poly-A length. This section is omitted for FASTQ summaries.",
+      "description": "BAM-only record-level mapping counts, canonical-read mapping totals, per-reference flag counts, and distributions for alignment concordance, aligned query coverage, and poly-A length. This section is omitted for FASTQ summaries.",
       "$ref": "#/$defs/alignment"
     },
     "coverage": {
@@ -1621,8 +1621,6 @@
       "required": [
         "accuracy",
         "query_coverage",
-        "unmapped_read_length",
-        "unmapped_quality",
         "poly_a_length"
       ],
       "additionalProperties": false,
@@ -1649,28 +1647,6 @@
             }
           ]
         },
-        "unmapped_read_length": {
-          "description": "Read-length histogram for unmapped reads.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/alignmentLengthDistribution"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "unmapped_quality": {
-          "description": "Mean-read-quality histogram for unmapped reads.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/alignmentFixedDistribution"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "poly_a_length": {
           "description": "Poly-A tail-length histogram when poly-A processing was enabled.",
           "anyOf": [
@@ -1685,7 +1661,7 @@
       }
     },
     "alignment": {
-      "description": "BAM-only record counts, per-reference counts, and alignment distributions.",
+      "description": "BAM-only record counts, canonical-read mapping totals, per-reference counts, and alignment distributions.",
       "type": "object",
       "required": [
         "record_counts",
@@ -1693,6 +1669,9 @@
         "mapped_record_percent",
         "primary_mapped_record_count",
         "primary_mapped_record_percent",
+        "read_count",
+        "mapped_read_count",
+        "mapped_read_percent",
         "per_reference_counts",
         "distributions"
       ],
@@ -1716,6 +1695,18 @@
         },
         "primary_mapped_record_percent": {
           "description": "Percentage of all BAM records that are both primary and mapped.",
+          "$ref": "#/$defs/percentage"
+        },
+        "read_count": {
+          "description": "Number of canonical reads represented by the alignment records.",
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "mapped_read_count": {
+          "description": "Number of canonical reads with a primary mapped record.",
+          "$ref": "#/$defs/nonNegativeInt"
+        },
+        "mapped_read_percent": {
+          "description": "Percentage of canonical reads with a primary mapped record.",
           "$ref": "#/$defs/percentage"
         },
         "per_reference_counts": {

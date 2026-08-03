@@ -29,13 +29,15 @@ typedef struct {
     // Per-reference mapped-record counts followed by a separate unmapped row.
     size_t **reference_counts;
     size_t *unmapped_counts;
+    size_t canonical_unmapped_read_count;
 } fc_alignment_counts;
 
 typedef struct {
     size_t record_counts[FC_FLAGSTAT_COUNT];
     size_t mapped_record_count;
     size_t primary_mapped_record_count;
-    // Read-level totals use mapped primary records plus all unmapped records.
+    // Read-level totals use canonical mapped and unmapped records only.
+    size_t mapped_read_count;
     size_t read_count;
     double mapping_rate;
 } fc_alignment_totals;

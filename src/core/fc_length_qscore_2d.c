@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 
+#include "core/fc_filter.h"
 #include "core/fc_metric_qscore_2d.h"
 
 static void lq2d_compute_range(
@@ -45,11 +46,11 @@ fc_length_qscore_2d *fc_length_qscore_2d_create(
 void fc_length_qscore_2d_add_read(
     fc_length_qscore_2d *model,
     size_t barcode,
-    double length,
-    float mean_q)
+    const fc_read *read)
 {
-    if (!isfinite(length)) {
+    if (!model || !read || !read->bam || !read->meta || !fc_is_canonical_read_record(read->bam)) {
         return;
     }
-    fc_metric_qscore_2d_add_value(model, barcode, length, mean_q);
+    fc_metric_qscore_2d_add_value(
+        model, barcode, (double)read->bam->core.l_qseq, read->meta->mean_q);
 }

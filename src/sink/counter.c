@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "core/fc_common.h"
+#include "core/fc_filter.h"
 #include "core/fc_log.h"
 #include "core/fc_sinks.h"
 #include "core/kh_counter.h"
@@ -104,6 +105,9 @@ static void counter_sink_add_read(void *ctx, const fc_read *read, const fc_read_
     counter_sink *sink = (counter_sink *)ctx;
     (void)fname;
     (void)hdr;
+    if (!fc_is_canonical_read_record(read->bam)) {
+        return;
+    }
     size_t barcode = (sink->cfg.use_barcodes && read_ctx) ? read_ctx->barcode : 0;
 
     const char *runid = read->meta->runid ? read->meta->runid : "";

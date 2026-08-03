@@ -10,10 +10,10 @@ FC_TEST(accuracy_qscore_2d_suite, test_accuracy_qscore_bounds_qscore_bins_and_ba
     fc_accuracy_qscore_2d *model = fc_accuracy_qscore_2d_create(2, 64, 33, 3);
     TEST_ASSERT_NOT_NULL(model);
 
-    fc_accuracy_qscore_2d_add_read(model, 0, -1.0f, -1.0f);
-    fc_accuracy_qscore_2d_add_read(model, 0, 101.0f, 60.0f);
-    fc_accuracy_qscore_2d_add_read(model, 0, NAN, 20.0f);
-    fc_accuracy_qscore_2d_add_read(model, 1, 90.0f, 10.25f);
+    fc_accuracy_qscore_2d_add_read(model, 0, TEST_ACCURACY_QSCORE_READ(-1.0f), -1.0f);
+    fc_accuracy_qscore_2d_add_read(model, 0, TEST_ACCURACY_QSCORE_READ(60.0f), 101.0f);
+    fc_accuracy_qscore_2d_add_read(model, 0, TEST_ACCURACY_QSCORE_READ(20.0f), NAN);
+    fc_accuracy_qscore_2d_add_read(model, 1, TEST_ACCURACY_QSCORE_READ(10.25f), 90.0f);
 
     TEST_ASSERT_TRUE(fc_accuracy_qscore_2d_seen(model, 0));
     TEST_ASSERT_TRUE(fc_accuracy_qscore_2d_seen(model, 1));
