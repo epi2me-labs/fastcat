@@ -115,6 +115,8 @@ FC_TEST(regiter_suite, test_region_from_bed_valid) {
 FC_TEST(regiter_suite, test_next_region_and_truncation) {
     sam_hdr_t* hdr = make_header();
     regiter it = init_region_iterator(NULL, "chr1:90-200", hdr);
+    TEST_ASSERT_NOT_NULL(it.regions);
+    TEST_ASSERT_EQUAL_size_t(1, it.regions->n_regions);
     TEST_ASSERT_EQUAL_INT(REGITER_OK, next_region(&it));
     TEST_ASSERT_EQUAL_STRING("chr1", it.chr);
     TEST_ASSERT_EQUAL_INT(89, it.start); // truncated to ref length 100
@@ -127,8 +129,7 @@ FC_TEST(regiter_suite, test_next_region_and_truncation) {
 FC_TEST(regiter_suite, test_next_region_unknown_reference) {
     sam_hdr_t *hdr = make_header();
     regiter it = init_region_iterator(NULL, "chrX:1-10", hdr);
-    TEST_ASSERT_EQUAL_INT(REGITER_REF_MISSING, next_region(&it));
-    TEST_ASSERT_EQUAL_INT(0, it.n_regions);
+    TEST_ASSERT_EQUAL_INT(REGITER_EOF, next_region(&it));
     destroy_region_iterator(&it);
     sam_hdr_destroy(hdr);
 }
@@ -166,6 +167,34 @@ FC_TEST(regiter_suite, test_init_bed_sorts_unordered_input) {
     TEST_ASSERT_EQUAL_INT(1, br->regions[3].tid);
     TEST_ASSERT_EQUAL_INT(10, br->regions[3].start);
     TEST_ASSERT_EQUAL_INT(20, br->regions[3].end);
+
+    destroy_bed(br);
+    sam_hdr_destroy(hdr);
+    TEST_ASSERT_EQUAL_INT(0, unlink(bed_path));
+    free(bed_path);
+}
+
+FC_TEST(regiter_suite, test_init_bed_merges_overlapping_intervals) {
+    sam_hdr_t *hdr = make_header();
+    const char *bed_text =
+        "chr1\t20\t40\n"
+        "chr1\t5\t25\n"
+        "chr1\t40\t45\n"
+        "chr2\t10\t20\n"
+        "chr2\t15\t30\n";
+    char *bed_path = write_temp_bed(bed_text);
+    TEST_ASSERT_NOT_NULL(bed_path);
+
+    bed_regions br = init_bed(bed_path, hdr);
+    TEST_ASSERT_NOT_NULL(br);
+    TEST_ASSERT_EQUAL_size_t(2, br->n_regions);
+
+    TEST_ASSERT_EQUAL_STRING("chr1", br->regions[0].chr);
+    TEST_ASSERT_EQUAL_INT(5, br->regions[0].start);
+    TEST_ASSERT_EQUAL_INT(45, br->regions[0].end);
+    TEST_ASSERT_EQUAL_STRING("chr2", br->regions[1].chr);
+    TEST_ASSERT_EQUAL_INT(10, br->regions[1].start);
+    TEST_ASSERT_EQUAL_INT(30, br->regions[1].end);
 
     destroy_bed(br);
     sam_hdr_destroy(hdr);

@@ -101,6 +101,10 @@ typedef struct {
     regiter reg;
     bool reg_active;
     bool own_idx;
+    bool hard_error;
+    int last_mapped_tid;
+    hts_pos_t last_mapped_pos;
+    bool seen_mapped_coordinate;
     int status;
     dust_buffer dust;
 } fc_bam_iter;
@@ -142,6 +146,7 @@ void fc_iter_close(fc_iter *it);
 
 void fc_iter_merge_file_stats(const fc_iter *it, fc_file_stats *dst);
 const fc_file_stats *fc_iter_stats(const fc_iter *it);
+bool fc_iter_has_hard_error(const fc_iter *it);
 void fc_path_list_free(fc_path_list *paths);
 
 #endif
