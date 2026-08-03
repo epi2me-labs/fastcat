@@ -111,6 +111,7 @@ FC_TEST(run_summary_suite, test_run_summary_collapses_multiple_values)
         "2026-01-01T01:00:00Z");
 
     TEST_ASSERT_TRUE(fc_run_summary_seen(model, 0));
+    TEST_ASSERT_TRUE(fc_run_summary_has_multiple_flow_cells(model, 0));
 
     fc_run_summary_row row = { 0 };
     TEST_ASSERT_EQUAL_INT(
@@ -131,6 +132,26 @@ FC_TEST(run_summary_suite, test_run_summary_collapses_multiple_values)
     TEST_ASSERT_EQUAL_UINT64(300, row.base_count);
 
     fc_run_summary_row_destroy(&row);
+    fc_run_summary_destroy(model);
+}
+
+FC_TEST(run_summary_suite, test_run_summary_flow_cell_multiplicity_is_per_barcode)
+{
+    fc_run_summary *model = fc_run_summary_create(2);
+    TEST_ASSERT_NOT_NULL(model);
+
+    add_run_summary_read(
+        model, 0, 100, "", "", "", "", "flow-a", "", "");
+    add_run_summary_read(
+        model, 0, 100, "", "", "", "", "flow-b", "", "");
+    add_run_summary_read(
+        model, 1, 100, "", "", "", "", "flow-a", "", "");
+    add_run_summary_read(
+        model, 1, 100, "", "", "", "", "", "", "");
+
+    TEST_ASSERT_TRUE(fc_run_summary_has_multiple_flow_cells(model, 0));
+    TEST_ASSERT_FALSE(fc_run_summary_has_multiple_flow_cells(model, 1));
+
     fc_run_summary_destroy(model);
 }
 

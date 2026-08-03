@@ -54,6 +54,9 @@ void fc_run_summary_add_filter_event(fc_run_summary *model, size_t barcode, fail
 
 bool fc_run_summary_seen(const fc_run_summary *model, size_t barcode);
 
+/* True when canonical reads for this barcode report more than one flowcell. */
+bool fc_run_summary_has_multiple_flow_cells(const fc_run_summary *model, size_t barcode);
+
 int fc_run_summary_materialize(
     const fc_run_summary *model,
     size_t barcode,

@@ -296,6 +296,13 @@ bool fc_run_summary_seen(const fc_run_summary *model, size_t barcode)
     return NULL != model && barcode < model->barcode_count && model->states[barcode].seen;
 }
 
+bool fc_run_summary_has_multiple_flow_cells(const fc_run_summary *model, size_t barcode)
+{
+    return NULL != model && barcode < model->barcode_count
+        && NULL != model->states[barcode].flow_cell_id
+        && kh_size(model->states[barcode].flow_cell_id) > 1;
+}
+
 int fc_run_summary_materialize(
     const fc_run_summary *model,
     size_t barcode,

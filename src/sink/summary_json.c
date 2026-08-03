@@ -745,9 +745,14 @@ static void summary_json_time(
     fc_time_bin_table_destroy(&table);
 }
 
-static void summary_json_channels(fc_json_object_t *root, const fc_channel_summary *model, size_t barcode)
+static void summary_json_channels(
+    fc_json_object_t *root,
+    const fc_channel_summary *model,
+    const fc_run_summary *run_summary,
+    size_t barcode)
 {
-    if (NULL == model || !fc_channel_summary_seen(model, barcode)) {
+    if (fc_run_summary_has_multiple_flow_cells(run_summary, barcode)
+        || NULL == model || !fc_channel_summary_seen(model, barcode)) {
         fc_json_object_set_null(root, "channels");
         return;
     }
@@ -1176,7 +1181,7 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
 
     summary_json_files(root, state);
     summary_json_counts(root, &row, state);
-    summary_json_channels(root, sink->cfg.channel_summary, barcode);
+    summary_json_channels(root, sink->cfg.channel_summary, sink->cfg.run_summary, barcode);
 
     fc_json_object_t *distributions = fc_json_object_set_object(root, "distributions");
     fc_json_value_t *length_distribution = summary_json_length_distribution_value(

@@ -921,7 +921,16 @@ def add_channel_summary_plots(summary):
     """Add channel occupancy plots for one sample."""
     channel_summary = summary_dataframe(summary, "channels")
     if channel_summary is None:
-        EZChart(bokeh_null.null_plot("No channel occupancy data available"))
+        flow_cell_ids = summary.get("run_summary", {}).get("flow_cell_ids")
+        if isinstance(flow_cell_ids, str):
+            flow_cell_ids = [value for value in flow_cell_ids.split(";") if value]
+        if isinstance(flow_cell_ids, list) and len(flow_cell_ids) > 1:
+            message = (
+                "Channel occupancy is unavailable because this output contains multiple "
+                "flowcells.")
+        else:
+            message = "No channel occupancy data available"
+        EZChart(bokeh_null.null_plot(message))
         return
     reads_plot = load_channel_summary_heatmap(channel_summary, "read_count")
     mean_length_plot = load_channel_summary_heatmap(channel_summary, "mean_read_length")

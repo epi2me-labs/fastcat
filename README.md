@@ -364,7 +364,7 @@ Machine-readable aggregate accepted-read and base totals, with frequency counter
 
 #### `channels` — Per-channel metrics
 
-Sparse channel-and-mux aggregates used for the channel-occupancy maps: accepted read and base totals, plus mean quality and, for aligned input, mean alignment concordance. This value is null when usable channel metadata is unavailable.
+Sparse channel-and-mux aggregates used for the channel-occupancy maps: accepted read and base totals, plus mean quality and, for aligned input, mean alignment concordance. This value is null when usable channel metadata is unavailable or when an output contains multiple flowcells.
 
 | Field | Type | Description |
 | --- | --- | --- |
