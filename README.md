@@ -1,8 +1,8 @@
 # fastcat
 
-`fastcat` is a single executable with subcommands for FASTQ and BAM summary/statistics workflows.
-It was originally written to santize and concatenate .fastq(.gz) files, hence the name.
-Contemporary usage is to provide a single tool for summarising and filtering FASTQ and BAM files, with optional demultiplexing by barcode, and production of QC reports.
+`fastcat` summarises FASTQ and BAM data and can create offline quality-control reports.
+Use `fastcat qc` for new analyses; it supports read filtering, optional barcode demultiplexing,
+alignment metrics, and coverage summaries where applicable.
 
 ## Installation
 
@@ -56,164 +56,84 @@ The command-line interface is split into multiple sub-commands with distinct tas
 $ ./fastcat --help
 Usage: ./fastcat <subcommand> [options]
 Subcommands:
-  fastq        FASTQ concatenation/statistics/filtering mode (fastcat)
-  bam          BAM alignment statistics/filtering mode
-  lint         Standalone FASTQ low-complexity filter (fastlint)
+  qc           Unified FASTQ/BAM quality-control and reporting mode
+  fastq        (Deprecated) FASTQ concatenation/statistics/filtering mode
+  bam          (Deprecated) BAM alignment statistics mode
+  lint         Standalone FASTQ low-complexity filter
   index        BAM chunk index tools (bamindex)
   json-schema  Write the summary.json JSON Schema to standard output
 Try './fastcat <subcommand> --help' for subcommand options.
 ```
 
-## `fastcat fastq / bam` options
+### `fastcat qc`
 
-`fastcat fastq` and `fastcat bam` are both built on the same statistics engine and therefore share the majority of
-their options (output, read filtering, histogram sketch, time-summary and logging options). These common options
-are documented once below; each subcommand's own section then covers only the options unique to it. See the
-[outputs section](#fastcat-fastq--bam-outputs) for the files they produce.
+Use `fastcat qc` to summarise FASTQ or BAM data and, optionally, create an offline HTML report.
+FASTQ is the default input format; add `--input-fmt bam` for BAM input.
 
+```bash
+# FASTQ quality-control report
+fastcat qc reads.fastq.gz --html-report --output fastcat-qc
 
-```text
- General options:
-  -e, --force-error          Exit with non-zero status if any files, or records, contained errors.
-  -v, --verbose              Verbose output.
-
- Output options:
-  -o, --output=DIRECTORY     Output root directory (default: fastcat-qc). Must not already exist.
-  -d, --demultiplex          Separate barcoded samples using fastq header information; outputs go
-                             under `<output>/barcodeXXXX/`.
-  -s, --sample=SAMPLE NAME   Sample identifier (defaults to `SAMPLE` if files don't provide
-                             sample_id metadata).
-  -p, --per-read             Write per-read TSV (large). Disabled by default.
-      --html-report          Write a single-sample HTML report using aggregate fastcat histograms.
-      --no-legacy-outputs    Disable legacy counter and histogram summary outputs; `summary.json`
-                             is still written.
-
- Read filtering options:
-  -a, --min-length=MIN READ LENGTH
-                             Minimum read length to output (excluded reads remain listed in
-                             summaries).
-      --max-length=MAX READ LENGTH
-                             Maximum read length to output (excluded reads remain listed in
-                             summaries). Available as `-b` on `fastq`; `bam` only accepts the long
-                             form since `-b` there is `--bed`.
-  -q, --min-qscore=MIN READ QSCORE
-                             Minimum read Qscore to output (excluded reads remain listed in
-                             summaries).
-      --dust                 Enable DUST filtering of reads (default: disabled).
-      --max-dust=MAX DUST    Maximum proportion of low-complexity regions to allow in reads
-                             (default: 0.95).
-      --dust-w=DUST W        Window size for DUST filtering (default: 64).
-      --dust-t=DUST T        Threshold for DUST filtering (default: 20).
-  -g, --read-group=RG        Only process reads from given read group.
-      --tag-name=TN          Only process reads with a given tag (see --tag-value).
-      --tag-value=VAL        Only process reads with a given tag value.
-      --haplotype=VAL        Only process reads from a given haplotype. Equivalent to
-                             --tag-name HP --tag-value VAL.
-      --recalc-qual          Force recomputing mean quality, else use the 'qs' tag if present.
-
- Histogram sketch options (control `summary.json` heatmap detail vs smoothness):
-      --length-qscore-k=K    Sketch size for length modeling per qscore bin (higher => more
-                             memory, less sketch noise; default: 400).
-      --length-qscore-qgrid=N
-                             Quantile samples converted into each density curve (higher => finer
-                             detail, more CPU; default: 257).
-      --length-qscore-qsmooth=W
-                             Odd moving-average window over quantile slopes (higher =>
-                             smoother/less spiky, but flatter peaks; default: 5).
-
- Time summary options (control `summary.json` time-series resolution and quantile accuracy):
-      --time-bin-size=SECONDS
-                             Width of each time bin in seconds (higher => coarser time plots,
-                             lower => more rows; default: 3600).
-      --time-bin-k=K         Sketch size for per-bin length/qscore quantiles (higher => more
-                             memory, less sketch noise; default: 200).
-
- Logging options:
-      --log-file=PATH        Write logs to PATH instead of stderr.
-      --log-level=LEVEL      Log level: error, warn, info, debug (default: info).
-      --log-mono             Force monochrome logging output (disable ANSI colors).
-
-  -?, --help                 Give this help list
-      --usage                Give a short usage message
-  -V, --version              Print program version
+# BAM quality-control report
+fastcat qc --input-fmt bam alignments.bam --html-report --output fastcat-qc
 ```
 
-### Additional fastcat fastq options
+The primary QC output of `fastcat qc` is a summary.json file which includes all information
+garnered from the input files.
 
-In addition to the [common options](#fastcat-fastq--bam-options) above, `fastq` accepts:
+FASTQ and unaligned BAM inputs can be filtered with the read-filtering options and are written to
+standard output.
+When read filtering is enabled, read-level QC metrics describe reads that pass the filters; the summary also reports counts of records rejected by each filter.
+For a BAM with reference sequences, fastcat collects alignment statistics only; it does not filter or write reads.
+The `--region` and `--bed` options can be used to select genomic regions from indexed BAMs.
+With one coordinate-sorted reference BAM, fastcat includes reference coverage summaries.
+Use `--coverage` to additionally write position-level coverage BED.gz files.
+For BAM input, `--poly-a` enables poly-A metrics for alignments with suitable data.
 
-```text
- General options:
-      --fofn                 Treat each input as a file-of-filenames source (use '-' to read that
-                             list from stdin).
-      --input-fmt=fastq|bam  Input format for fastq mode (default: fastq). Use 'bam' for unaligned
-                             BAM input.
-  -t, --threads=THREADS      Number of threads for output compression (only with --bam-out).
-  -x, --recurse              Search directories recursively for files matching the selected input
-                             format.
+Useful options include `--html-report`, `--output DIRECTORY`, `--threads THREADS`, `--sample NAME`,
+`--demultiplex`, and `--legacy-outputs`. Run `fastcat qc --help` for the complete option reference.
 
- Output options:
-  -B, --bam-out              Output data as unaligned BAM.
-  -c, --reads-per-file=NUM   Split reads into files with a set number of reads (default: single
-                             file).
-```
+### Legacy commands
 
-Reads input data from stdin when `-` is provided as an input path. Also accepts directories as
-input and looks for files matching the selected input format in the top-level directory, recursing
-into sub-directories when `-x` is given. The command exits non-zero if any file encountered cannot
-be read.
-
-### Additional fastcat bam options
-
-In addition to the [common options](#fastcat-fastq--bam-options) above, `bam` accepts:
-
-```text
- General options:
-  -r, --region=chr:start-end Genomic region to process.
-  -b, --bed=BEDFILE          BED file for regions to process (mutually exclusive with --region).
-  -t, --threads=THREADS      Number of threads (for BAM decompression and BED output compression).
-
- Coverage calculation options:
-      --coverage             Enable coverage calculations.
-      --coverage-beds=BEDFILE ...
-                             BED file(s) for calculating coverage (space-separated list).
-      --coverage-names=NAME ...
-                             Name(s) for coverage BED file(s) (space-separated list).
-      --thresholds=VALUES ...
-                             Coverage thresholds to produce sparse cumulative distribution
-                             (space-separated integers).
-      --segments=LENGTH ...  Segment length(s) for which to produce outputs (space-separated
-                             integers).
-
- Poly-A options:
-      --poly-a               Enable poly-A tail length histogram.
-      --poly-a-cover=PCT_COVERAGE
-                             Reference alignment coverage for acceptance of read (default: 95).
-      --poly-a-qual=QUAL     Read mean Q score for acceptance of read (default: 10).
-      --poly-a-rev           Allow reverse alignments (useful for cDNA; default is direct RNA).
-```
+`fastcat fastq` and `fastcat bam` are deprecated compatibility commands.
+New QC analyses should use `fastcat qc`; the older commands remain available for read concatenation, filtering, and existing
+automation.
+They retain their historical text-output default, which can be disabled with `--no-legacy-outputs`.
+Use `fastcat fastq --help` or `fastcat bam --help` for their option reference.
 
 
-### `fastcat fastq / bam` outputs
+## Outputs
 
-Both `fastcat fastq` and `fastcat bam` write their outputs under `-o`/`--output DIRECTORY` (default `fastcat-qc`; must not already exist). If `--demultiplex` is given, the outputs described below are produced once per observed barcode under `<output>/{unclassified,barcodeXXXX/}` instead of directly under `<output>/`.
+`fastcat qc` writes its results under `-o`/`--output DIRECTORY` (default `fastcat-qc`; the directory
+must not already exist).
+Results are first written to `DIRECTORY.tmp` and published as `DIRECTORY` only after a successful run.
+Use `--keep-failed-output` to retain that temporary directory for debugging after a failure.
+With `--demultiplex`, it writes one output directory for each observed
+barcode under `<output>/{unclassified,barcodeXXXX/}`.
 
-Each output directory contains a `summary.json` file containing all information garnered for each barcode (or the entire set in the case of no demultiplexing).
-Unless `--no-legacy-outputs` is passed, the additional legacy TSV/histogram outputs described in this section are also written.
-When the `--html-report` is used, a rich QC report is generated for each barcode.
-Most outputs are common to both subcommands except those relating specifically to alignment of reads to a reference, these are marked as **(bam only)** below.
-The JSON summary and HTML reports also contain additional sections in the case of reads aligned to a reference.
+Each output directory contains a `summary.json` file, a machine-readable summary of the analysis.
+The `--html-report` option adds an offline interactive report.
+With `--legacy-outputs` enabled, fastcat also writes legacy aggregate text outputs: `per_file.tsv`,
+`runids.tsv`, `basecallers.tsv`, histogram files, BAM `flagstats.tsv`, and coverage summary and
+distribution tables where applicable. Their aggregate information is included in `summary.json`.
+`per_read.tsv`, requested separately with `--per-read`, is a detailed export and is not controlled
+by `--legacy-outputs`.
+Enabling the `--coverage` option results in detailed coverage BED.gz traces being written, in the case of a single coordinate-sorted reference BAM.
 
-### Read output (stdout) — fastq only
+### Read output
 
-By default `fastcat fastq` writes the (filtered) input sequences to `stdout` in FASTQ format (or as unaligned BAM via `-B`/`--bam-out`), which can be recompressed with `gzip` (or more usefully `bgzip`).
-If `--demultiplex` is given, output to `stdout` is not produced; reads are instead written under the per-barcode directories.
+For FASTQ and unaligned BAM input, `fastcat qc` writes filtered reads to standard output in FASTQ
+format, or unaligned BAM with `--bam-out`.
+It does not write a read stream for reference-bearing BAM input.
+With `--demultiplex`, reads are written to barcode-specific output directories instead.
 
 ### summary.json
 
-The JSON summary output contains various statistics about the input data, including the number of reads, total bases, mean read length, mean quality score, and counts of reads filtered by length or quality thresholds.
-It contains also all the data from the legacy TSV outputs described below.
-Much of the `summary.json` files comprise human readable summary statistics, while some larger datasets are stored as machine readable arrays in order to save space.
+The JSON summary contains statistics about the input data, including read and base yield, read length,
+mean quality, filtering outcomes, sequencing-over-time metrics, channel metrics, and quality
+diagnostics.
+Reference-bearing BAM input also adds alignment and coverage summaries.
+Most values are directly readable JSON; larger arrays are encoded compactly for efficient storage.
 
 > The following documentation is generated automatically from a JSON schema document describing the file contents.
 > The JSON Schema document can be obtained by running `fastcat json-schema` from the CLI.
@@ -515,7 +435,7 @@ The **`distributions.poly_a_length.data`** dataframe columns are:
 
 #### `coverage` — Reference coverage
 
-Reference-depth tables for each requested global, fixed-segment, or BED target set. The summary and cumulative-distribution dataframes directly mirror fastcat's legacy coverage tables. This section is omitted unless coverage processing was requested.
+Reference-depth tables for a single coordinate-sorted BAM with reference sequences. Target sets may cover the whole reference, fixed-length segments, or named BED intervals; the summary and cumulative-distribution dataframes directly mirror fastcat's legacy coverage tables. This section is omitted for FASTQ, unaligned BAM, multiple BAM inputs, and unsorted aligned BAM.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -569,9 +489,10 @@ lower    upper    count
 
 The final bin may be unbounded, which is signified by a `0` entry for the upper bin edge.
 
-### Per-file outputs
+### Legacy per-file outputs
 
-The `per_file.tsv` is a tab-separated file with columns:
+`per_file.tsv` is a legacy per-input processing diagnostic, rather than part of the supported
+aggregate JSON interface. It is a tab-separated file with columns:
 
 ```text
 filename        n_seqs  n_bases min_length      max_length      mean_quality    f_file_ok       f_stream_error  f_qual_missing  f_qual_truncated        f_unknown_error r_record_seen   r_record_ok     r_too_long r_too_short     r_low_quality   r_dust_masked

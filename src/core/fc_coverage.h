@@ -110,7 +110,7 @@ typedef _cov_writer *cov_writer;
 void destroy_coverage_writer_region(cov_writer_region writer);
 
 cov_writer init_coverage_writer(
-    const char *out_dir, bool per_base, bool use_cigar,
+    const char *out_dir, bool write_traces, bool write_tables, bool use_cigar,
     int exclude_flags, int include_flags, bool by_strand,
     const bam_hdr_t *hdr, const htsThreadPool *pool,
     const char **bed_files, const char **bed_names, size_t n_beds,

@@ -88,7 +88,7 @@
     },
     "coverage": {
       "title": "Reference coverage",
-      "description": "Reference-depth tables for each requested global, fixed-segment, or BED target set. The summary and cumulative-distribution dataframes directly mirror fastcat's legacy coverage tables. This section is omitted unless coverage processing was requested.",
+      "description": "Reference-depth tables for a single coordinate-sorted BAM with reference sequences. Target sets may cover the whole reference, fixed-length segments, or named BED intervals; the summary and cumulative-distribution dataframes directly mirror fastcat's legacy coverage tables. This section is omitted for FASTQ, unaligned BAM, multiple BAM inputs, and unsorted aligned BAM.",
       "$ref": "#/$defs/coverage"
     }
   },
@@ -2153,7 +2153,7 @@
       }
     },
     "coverage": {
-      "description": "Reference-depth output produced when coverage processing is enabled.",
+      "description": "Reference-depth output for a single coordinate-sorted BAM with reference sequences.",
       "type": "object",
       "required": [
         "targets"

@@ -62,6 +62,13 @@ static void destroy_read(fc_read *fr)
     fc_read_destroy(fr);
 }
 
+static sam_hdr_t *header_from_text(const char *text)
+{
+    sam_hdr_t *header = sam_hdr_parse((int)strlen(text), text);
+    TEST_ASSERT_NOT_NULL(header);
+    return header;
+}
+
 static const char *get_tags(fc_read *read)
 {
     const kstring_t *tags = fc_read_get_tags_str(read);
@@ -138,6 +145,80 @@ FC_TEST(bam_utils_suite, test_kseq_to_bam_unmapped_aux)
     TEST_ASSERT_EQUAL_STRING("foo", aux_str);
 
     destroy_read(fr);
+}
+
+FC_TEST(bam_utils_suite, test_bam_input_info_retains_matching_reference_header)
+{
+    sam_hdr_t *first = header_from_text(
+        "@HD\tVN:1.6\tSO:coordinate\n"
+        "@SQ\tSN:chr1\tLN:100\n"
+        "@SQ\tSN:chr2\tLN:200\n");
+    sam_hdr_t *second = header_from_text(
+        "@HD\tVN:1.6\n"
+        "@SQ\tSN:chr1\tLN:100\n"
+        "@SQ\tSN:chr2\tLN:200\n");
+    fc_bam_input_info info = { 0 };
+
+    TEST_ASSERT_EQUAL_INT(FC_BAM_INPUT_OK, fc_bam_input_info_add_header(&info, first));
+    TEST_ASSERT_TRUE(info.has_references);
+    TEST_ASSERT_NOT_NULL(info.reference_header);
+    TEST_ASSERT_TRUE(fc_bam_header_is_coordinate_sorted(info.reference_header));
+    TEST_ASSERT_EQUAL_INT(FC_BAM_INPUT_OK, fc_bam_input_info_add_header(&info, second));
+
+    sam_hdr_destroy(first);
+    sam_hdr_destroy(second);
+    fc_bam_input_info_destroy(&info);
+}
+
+FC_TEST(bam_utils_suite, test_bam_input_info_rejects_different_reference_dictionary)
+{
+    sam_hdr_t *first = header_from_text("@SQ\tSN:chr1\tLN:100\n");
+    sam_hdr_t *different_length = header_from_text("@SQ\tSN:chr1\tLN:101\n");
+    sam_hdr_t *different_order = header_from_text(
+        "@SQ\tSN:chr2\tLN:200\n"
+        "@SQ\tSN:chr1\tLN:100\n");
+    fc_bam_input_info info = { 0 };
+
+    TEST_ASSERT_EQUAL_INT(FC_BAM_INPUT_OK, fc_bam_input_info_add_header(&info, first));
+    TEST_ASSERT_EQUAL_INT(
+        FC_BAM_INPUT_REFERENCE_MISMATCH,
+        fc_bam_input_info_add_header(&info, different_length));
+    TEST_ASSERT_EQUAL_INT(
+        FC_BAM_INPUT_REFERENCE_MISMATCH,
+        fc_bam_input_info_add_header(&info, different_order));
+    TEST_ASSERT_FALSE(fc_bam_header_is_coordinate_sorted(info.reference_header));
+
+    sam_hdr_destroy(first);
+    sam_hdr_destroy(different_length);
+    sam_hdr_destroy(different_order);
+    fc_bam_input_info_destroy(&info);
+}
+
+FC_TEST(bam_utils_suite, test_bam_coordinate_order_rejects_backtracking_and_mapped_after_unmapped)
+{
+    bam1_t record = { 0 };
+    fc_bam_coordinate_order order = { 0 };
+
+    record.core.tid = 0;
+    record.core.pos = 100;
+    TEST_ASSERT_TRUE(fc_bam_coordinate_order_check(&order, &record));
+    record.core.pos = 101;
+    TEST_ASSERT_TRUE(fc_bam_coordinate_order_check(&order, &record));
+    record.core.tid = 1;
+    record.core.pos = 0;
+    TEST_ASSERT_TRUE(fc_bam_coordinate_order_check(&order, &record));
+
+    record.core.flag = BAM_FUNMAP;
+    TEST_ASSERT_TRUE(fc_bam_coordinate_order_check(&order, &record));
+    record.core.flag = 0;
+    TEST_ASSERT_FALSE(fc_bam_coordinate_order_check(&order, &record));
+
+    order = (fc_bam_coordinate_order){ 0 };
+    record.core.tid = 1;
+    record.core.pos = 100;
+    TEST_ASSERT_TRUE(fc_bam_coordinate_order_check(&order, &record));
+    record.core.tid = 0;
+    TEST_ASSERT_FALSE(fc_bam_coordinate_order_check(&order, &record));
 }
 
 FC_TEST(bam_utils_suite, test_fc_read_reset_from_kseq_sam_comment_consistency)

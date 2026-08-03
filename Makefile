@@ -731,14 +731,14 @@ test_unit: | $(HTSLIB_PATCH_STAMP)
 
 # Declare all test group targets as PHONY
 .PHONY: test test_functional test_memory test_unit demo demo_ubam test_report_missing_metadata
-.PHONY: test_fastcat test_fastcat_memory test_fastcat_equivalence test_fastcat_demux test_fastcat_inputs test_fastcat_filters test_fastcat_output
+.PHONY: test_fastcat test_fastcat_memory test_fastcat_equivalence test_fastcat_demux test_fastcat_inputs test_fastcat_filters test_fastcat_output test_qc
 .PHONY: test_bamstats test_bamstats_memory test_bamstats_core test_bamstats_equivalence test_bamstats_coverage test_bamstats_inputs
 .PHONY: test_bamindex test_bamindex_memory
 .PHONY: test_fastlint test_fastlint_memory
 .PHONY: test_meta
 
 .PHONY: test_functional
-test_functional: test_fastcat test_bamstats test_bamindex test_fastlint test_meta demo demo_ubam  ## run integration tests
+test_functional: test_fastcat test_bamstats test_bamindex test_fastlint test_meta test_qc demo demo_ubam  ## run integration tests
 
 .PHONY: test_memory
 test_memory: test_fastcat_memory test_bamstats_memory test_bamindex_memory test_fastlint_memory
@@ -797,6 +797,7 @@ COMPARE_JSON = $(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $
 TEST_DESC = printf '\n%s\n' "$(1)"
 RUN_FASTCAT = $(PEPPER) $(FASTCAT_BIN) fastq
 RUN_BAMSTATS = $(PEPPER) $(FASTCAT_BIN) bam
+RUN_QC = $(PEPPER) $(FASTCAT_BIN) qc
 
 TEST_FIXTURES := $(TEST_ROOT)/fixtures
 TEST_FIXTURES_FASTQ := $(TEST_FIXTURES)/fastq
@@ -1346,6 +1347,64 @@ test_fastcat_memory: mem_check_fastcat_demultiplex_bam
 
 
 ###
+# fastcat qc tests
+
+.PHONY: test_qc_fastq_default_output
+test_qc_fastq_default_output: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Fastcat qc FASTQ defaults to summary JSON)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/qc/fastq_default, \
+		$(RUN_QC) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output out > reads.fastq && \
+		test -s reads.fastq && \
+		test -s out/summary.json && \
+		test ! -e out/per_file.tsv && \
+		test ! -d out/histograms)
+test_qc: test_qc_fastq_default_output
+
+
+.PHONY: test_qc_reference_bam_policy
+test_qc_reference_bam_policy: $(FASTCAT_BIN) $(REPORT_VENV)/.deps
+	@$(call TEST_DESC,Fastcat qc reference BAM is analysis-only)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/qc/reference_bam, \
+		$(RUN_QC) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --min-length 999999 --output out > reads.fastq 2> log && \
+		test ! -s reads.fastq && \
+		test -s out/summary.json && \
+		$(REPORT_PY) -c 'import json; assert json.load(open("out/summary.json"))["coverage"]["targets"]' && \
+		test ! -d out/coverage && \
+		test ! -e out/flagstats.tsv && \
+		grep -q "filtering is disabled" log && \
+		$(RUN_QC) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --legacy-outputs --output legacy > /dev/null && \
+		test -f legacy/flagstats.tsv && \
+		test -f legacy/coverage/global.summary.txt && \
+		test -f legacy/coverage/global.dist.txt && \
+		test ! -e legacy/coverage/global.bed.gz && \
+		$(RUN_QC) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --coverage --output traces > /dev/null && \
+		test -f traces/coverage/global.bed.gz && \
+		test ! -e traces/coverage/global.summary.txt)
+test_qc: test_qc_reference_bam_policy
+
+
+.PHONY: test_qc_multi_bam_restrictions
+test_qc_multi_bam_restrictions: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Fastcat qc validates multi-BAM restrictions)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/qc/multi_bam, \
+		set +e; \
+		$(RUN_QC) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam $(TEST_FIXTURES_BAM)/special/310dx.bam --output mismatched > /dev/null 2> mismatch.log; \
+		mismatch_rc=$$?; \
+		$(RUN_QC) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --coverage --output coverage > /dev/null 2> coverage.log; \
+		coverage_rc=$$?; \
+		$(RUN_QC) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam $(TEST_FIXTURES_BAM)/special/310dx.bam --output retained --keep-failed-output > /dev/null 2> retained.log; \
+		retained_rc=$$?; \
+		set -e; \
+		test $$mismatch_rc -ne 0 && grep -q "Reference dictionary" mismatch.log && \
+		test $$coverage_rc -ne 0 && grep -q "Coverage is supported only with one BAM input" coverage.log && \
+		test $$retained_rc -ne 0 && grep -q "Keeping partial output" retained.log && \
+		test ! -e mismatched && test ! -e mismatched.tmp && \
+		test ! -e coverage && test ! -e coverage.tmp && \
+		test ! -e retained && test -d retained.tmp)
+test_qc: test_qc_multi_bam_restrictions
+
+
+###
 # bamstats tests
 
 .PHONY: test_bamstats_demux_single_equiv
@@ -1406,6 +1465,7 @@ test_bamstats_coverage_demux_layout: $(FASTCAT_BIN) samtools
 		$(RUN_BAMSTATS) cov.bam --coverage --demultiplex --output out > /dev/null && \
 		if [ -d out/coverage ]; then echo "Unexpected top-level coverage directory"; exit 1; fi && \
 		test -f out/barcode0001/coverage/global.bed.gz && \
+		test -f out/barcode0001/coverage/global.summary.txt && \
 		test -f out/barcode0002/coverage/global.bed.gz && \
 		test ! -d out/unclassified/coverage)
 test_bamstats_coverage: test_bamstats_coverage_demux_layout
@@ -1420,8 +1480,10 @@ test_bamstats_coverage_summary_json: $(FASTCAT_BIN) samtools $(REPORT_VENV)/.dep
 		printf 'chr1\t0\t200\n' > regions.bed && \
 		$(REPO_ROOT)/samtools view -bS tagged.sam | $(REPO_ROOT)/samtools sort -o cov.bam && \
 		$(REPO_ROOT)/samtools index cov.bam && \
-		$(RUN_BAMSTATS) cov.bam --coverage --segments 100 --coverage-beds regions.bed --coverage-names regions --output out > /dev/null && \
+		$(RUN_BAMSTATS) cov.bam --segments 100 --coverage-beds regions.bed --coverage-names regions --output out > /dev/null && \
 		test -s out/summary.json && \
+		test ! -e out/coverage/global.summary.txt && \
+		test ! -e out/coverage/global.bed.gz && \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) validate_summary_json --schema $(SUMMARY_JSON_SCHEMA) out/summary.json && \
 		grep -q '"name":"global"' out/summary.json && \
 		grep -q '"name":"segments_100"' out/summary.json && \

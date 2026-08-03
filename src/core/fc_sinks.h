@@ -70,7 +70,8 @@ fc_sink fc_flagstats_sink_create(const fc_flagstats_sink_opts *opts);
 
 typedef struct {
     const char *output_root;
-    bool per_base;
+    bool write_traces;
+    bool write_tables;
     bool use_cigar;
     int exclude_flags;
     int include_flags;

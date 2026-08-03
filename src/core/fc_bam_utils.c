@@ -22,6 +22,127 @@ static const char *format_name(enum htsExactFormat fmt)
     }
 }
 
+static bool bam_headers_match(const sam_hdr_t *left, const sam_hdr_t *right)
+{
+    if (left->n_targets != right->n_targets) {
+        return false;
+    }
+    for (int tid = 0; tid < left->n_targets; ++tid) {
+        const char *left_name = sam_hdr_tid2name(left, tid);
+        const char *right_name = sam_hdr_tid2name(right, tid);
+        if (strcmp(left_name, right_name) != 0
+            || sam_hdr_tid2len(left, tid) != sam_hdr_tid2len(right, tid)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fc_bam_input_status fc_bam_input_info_add_header(
+    fc_bam_input_info *info, const sam_hdr_t *header)
+{
+    if (info == NULL || header == NULL || header->n_targets == 0) {
+        return FC_BAM_INPUT_OK;
+    }
+    if (info->reference_header != NULL && !bam_headers_match(info->reference_header, header)) {
+        return FC_BAM_INPUT_REFERENCE_MISMATCH;
+    }
+    if (info->reference_header == NULL) {
+        info->reference_header = sam_hdr_dup((sam_hdr_t *)header);
+        if (info->reference_header == NULL) {
+            return FC_BAM_INPUT_HEADER_COPY_FAILED;
+        }
+    }
+    info->has_references = true;
+    return FC_BAM_INPUT_OK;
+}
+
+fc_bam_input_status fc_bam_input_preflight(
+    const char *const *paths, size_t n_paths, fc_bam_input_info *info,
+    const char **failed_path)
+{
+    if (failed_path != NULL) {
+        *failed_path = NULL;
+    }
+    for (size_t i = 0; i < n_paths; ++i) {
+        const char *path = paths[i];
+        if (strcmp(path, "-") == 0) {
+            info->has_stdin = true;
+            continue;
+        }
+        htsFile *fp = hts_open(path, "rb");
+        if (fp == NULL) {
+            if (failed_path != NULL) {
+                *failed_path = path;
+            }
+            return FC_BAM_INPUT_OPEN_FAILED;
+        }
+        sam_hdr_t *header = sam_hdr_read(fp);
+        hts_close(fp);
+        if (header == NULL) {
+            if (failed_path != NULL) {
+                *failed_path = path;
+            }
+            return FC_BAM_INPUT_HEADER_FAILED;
+        }
+        fc_bam_input_status status = fc_bam_input_info_add_header(info, header);
+        sam_hdr_destroy(header);
+        if (status != FC_BAM_INPUT_OK) {
+            if (failed_path != NULL) {
+                *failed_path = path;
+            }
+            return status;
+        }
+    }
+    return FC_BAM_INPUT_OK;
+}
+
+void fc_bam_input_info_destroy(fc_bam_input_info *info)
+{
+    if (info == NULL) {
+        return;
+    }
+    sam_hdr_destroy(info->reference_header);
+    info->reference_header = NULL;
+    info->has_references = false;
+    info->has_stdin = false;
+}
+
+bool fc_bam_header_is_coordinate_sorted(const sam_hdr_t *header)
+{
+    if (header == NULL) {
+        return false;
+    }
+    kstring_t value = KS_INITIALIZE;
+    bool coordinate_sorted = sam_hdr_find_tag_hd((sam_hdr_t *)header, "SO", &value) >= 0
+        && strcmp(value.s, "coordinate") == 0;
+    free(value.s);
+    return coordinate_sorted;
+}
+
+bool fc_bam_coordinate_order_check(fc_bam_coordinate_order *order, const bam1_t *record)
+{
+    if (order == NULL || record == NULL) {
+        return false;
+    }
+    if ((record->core.flag & BAM_FUNMAP) != 0) {
+        order->saw_unmapped = true;
+        return true;
+    }
+    int tid = record->core.tid;
+    hts_pos_t pos = record->core.pos;
+    if (order->saw_unmapped
+        || (order->saw_mapped
+            && (tid < order->last_mapped_tid
+                || (tid == order->last_mapped_tid && pos < order->last_mapped_pos)))) {
+        return false;
+    }
+    order->saw_mapped = true;
+    order->last_mapped_tid = tid;
+    order->last_mapped_pos = pos;
+    return true;
+}
+
 void fc_require_bam_input(htsFile *fp, const char *path, const char *operation)
 {
     const htsFormat *fmt = hts_get_format(fp);

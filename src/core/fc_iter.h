@@ -72,6 +72,9 @@ typedef struct {
     fc_run_summary *run_summary; /* per-barcode filtering counters */
 } fc_iter_opts;
 
+/** Disable all read-selection filters while retaining non-filter iterator settings. */
+void fc_iter_opts_disable_filters(fc_iter_opts *opts);
+
 typedef struct {
     const char *fname;
     gzFile fp;
@@ -102,9 +105,7 @@ typedef struct {
     bool reg_active;
     bool own_idx;
     bool hard_error;
-    int last_mapped_tid;
-    hts_pos_t last_mapped_pos;
-    bool seen_mapped_coordinate;
+    fc_bam_coordinate_order coordinate_order;
     int status;
     dust_buffer dust;
 } fc_bam_iter;

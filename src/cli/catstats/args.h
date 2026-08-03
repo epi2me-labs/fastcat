@@ -16,10 +16,11 @@ typedef struct {
     bool demultiplex;
     bool per_read;
     bool html_report;
-    bool no_legacy_outputs;
+    bool legacy_outputs;
     int threads;
     bool verbose;
     bool force_error;
+    bool keep_failed_output;
     fc_log_level log_level;
     char *log_file;
     bool log_mono;
@@ -50,13 +51,14 @@ typedef struct {
     size_t reads_per_file;
     fc_path_list input_paths;
 
-    // bamstats-specific
+    // BAM input options
     const char *bam;
     char *region;
     char *bed;
 
-    // coverage options (bamstats)
+    // coverage options
     bool coverage;
+    bool coverage_configured;
     const char **coverage_beds;
     size_t n_coverage_beds;
     const char **coverage_names;
