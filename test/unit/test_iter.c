@@ -289,7 +289,7 @@ FC_TEST(iter_suite, test_iter_bam_missing_quality_reaches_record_level_accountin
     const fc_file_stats *stats = fc_iter_stats(&iter);
     TEST_ASSERT_EQUAL_UINT64(3, records);
     TEST_ASSERT_EQUAL_UINT64(1, stats->n_seqs);
-    TEST_ASSERT_EQUAL_UINT64(2, stats->failures[F_QUAL_MISSING]);
+    TEST_ASSERT_EQUAL_UINT64(1, stats->failures[F_QUAL_MISSING]);
     TEST_ASSERT_EQUAL_UINT64(1, count_state.passed_reads);
 
     fc_alignment_totals totals = { 0 };

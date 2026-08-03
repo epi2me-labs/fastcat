@@ -1,21 +1,9 @@
 #ifndef _FASTCAT_REGITER_H
 #define _FASTCAT_REGITER_H
 
-#include "htslib/sam.h"
+#include <stddef.h>
 
-typedef struct {
-    char *chr;
-    int start;
-    int end;
-    int tid;
-    FILE *bed_fp;
-    char *single_region;
-    int n_regions;
-    const sam_hdr_t *hdr;
-    int mode; // 0: BED file, 1: single region, 2: exhausted
-    int error; // &1: couldn't open BED,
-               // &2: couldn't parse single_region
-} regiter;
+#include "htslib/sam.h"
 
 typedef struct {
     char *chr;
@@ -34,6 +22,18 @@ typedef struct {
 
 typedef _bed_regions *bed_regions;
 
+typedef struct {
+    char *chr;
+    int start;
+    int end;
+    int tid;
+    bed_regions regions;
+    size_t region_index;
+    const sam_hdr_t *hdr;
+    int error; // &1: couldn't open BED,
+               // &2: couldn't parse single_region
+} regiter;
+
 typedef enum {
     REGITER_OK = 0,
     REGITER_EOF = -1,
@@ -50,6 +50,7 @@ regiter_status next_region(regiter *it);
 
 bed_regions init_bed(const char *bed_path, const sam_hdr_t *hdr);
 bed_regions init_bed_from_sam(const sam_hdr_t *hdr, uint32_t segment_length);
+void bed_regions_merge_overlaps(bed_regions regions);
 void destroy_bed(bed_regions regions);
 
 #endif

@@ -188,22 +188,22 @@ static struct argp_option bam_options[] = {
     { 0, 0, 0, 0, "Coverage calculation options:", 40 },
     { "coverage", KEY_COVERAGE, 0, 0, "Enable coverage calculations.", 40 },
     { "coverage-beds", KEY_COVERAGE_BEDS, "BEDFILE ...", 0,
-        "BED file(s) for calculating coverage (space-separated list).", 40 },
+        "BED file(s) for calculating coverage (space-separated list; enables --coverage).", 40 },
     { "coverage-names", KEY_COVERAGE_NAMES, "NAME ...", 0,
-        "Name(s) for coverage BED file(s) (space-separated list).", 40 },
+        "Name(s) for coverage BED file(s) (space-separated list; enables --coverage).", 40 },
     { "thresholds", KEY_THRESHOLDS, "VALUES ...", 0,
-        "Coverage thresholds to produce sparse cumulative distribution (space-separated integers).", 40 },
+        "Coverage thresholds to produce sparse cumulative distribution (space-separated integers; enables --coverage).", 40 },
     { "segments", KEY_SEGMENTS, "LENGTH ...", 0,
-        "Segment length(s) for which to produce outputs (space-separated integers).", 40 },
+        "Segment length(s) for which to produce outputs (space-separated integers; enables --coverage).", 40 },
 
     { 0, 0, 0, 0, "Poly-A options:", 50 },
     { "poly-a", KEY_POLYA, 0, 0, "Enable poly-A tail length histogram.", 50 },
     { "poly-a-cover", KEY_POLYA_COVER, "PCT_COVERAGE", 0,
-        "Reference alignment coverage for acceptance of read (default: 95).", 50 },
+        "Reference alignment coverage for acceptance of read (default: 95; enables --poly-a).", 50 },
     { "poly-a-qual", KEY_POLYA_QUAL, "QUAL", 0,
-        "Read mean Q score for acceptance of read (default: 10).", 50 },
+        "Read mean Q score for acceptance of read (default: 10; enables --poly-a).", 50 },
     { "poly-a-rev", KEY_POLYA_REV, 0, 0,
-        "Allow reverse alignments (useful for cDNA; default is direct RNA).", 50 },
+        "Allow reverse alignments (useful for cDNA; default is direct RNA; enables --poly-a).", 50 },
 
     { 0, 0, 0, 0, "Logging options:", 60 },
     SHARED_LOGGING_OPTIONS,
@@ -490,15 +490,19 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         arguments->region = arg;
         break;
     case KEY_COVERAGE_BEDS:
+        arguments->coverage = true;
         slurp_args((const char ***)&arguments->coverage_beds, &arguments->n_coverage_beds, arg, state);
         break;
     case KEY_COVERAGE_NAMES:
+        arguments->coverage = true;
         slurp_args((const char ***)&arguments->coverage_names, &arguments->n_coverage_names, arg, state);
         break;
     case KEY_THRESHOLDS:
+        arguments->coverage = true;
         slurp_ints(&arguments->coverage_thresholds, &arguments->n_coverage_thresholds, arg, state);
         break;
     case KEY_SEGMENTS:
+        arguments->coverage = true;
         slurp_ints(&arguments->segments, &arguments->n_segments, arg, state);
         break;
     case KEY_COVERAGE:
@@ -508,6 +512,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         arguments->poly_a = true;
         break;
     case KEY_POLYA_COVER:
+        arguments->poly_a = true;
         if (!fc_parse_float_strict(arg, &float_value)) {
             argp_error(state, "Invalid --poly-a-cover value: '%s'.", arg);
         }
@@ -517,6 +522,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         arguments->poly_a_cover = float_value;
         break;
     case KEY_POLYA_QUAL:
+        arguments->poly_a = true;
         if (!fc_parse_float_strict(arg, &float_value)) {
             argp_error(state, "Invalid --poly-a-qual value: '%s'.", arg);
         }
@@ -526,6 +532,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         arguments->poly_a_qual = float_value;
         break;
     case KEY_POLYA_REV:
+        arguments->poly_a = true;
         arguments->poly_a_rev = true;
         break;
     case ARGP_KEY_ARG:
@@ -568,7 +575,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             if (arguments->region && arguments->bed) {
                 argp_error(state, "--region and --bed are mutually exclusive.");
             }
-            if (arguments->n_coverage_beds && arguments->n_coverage_beds != arguments->n_coverage_names) {
+            if (arguments->n_coverage_beds != arguments->n_coverage_names) {
                 argp_error(
                     state,
                     "Mismatched counts: --coverage-beds (%zu) vs --coverage-names (%zu).",

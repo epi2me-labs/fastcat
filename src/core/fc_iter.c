@@ -432,7 +432,7 @@ static int fc_bam_iter_open(
         }
 
         iter->reg = init_region_iterator(bed_path, region_string, hdr);
-        if (bed_path != NULL && (iter->reg.error & 1) != 0) {
+        if (iter->reg.error != 0) {
             return -1;
         }
 
@@ -441,11 +441,7 @@ static int fc_bam_iter_open(
             iter->reg_active = false;
             return 0;
         }
-        if (check == REGITER_PARSE_ERROR && bed_path == NULL && region_string != NULL) {
-            FC_LOG_ERROR("Failed to parse region string: %s", region_string);
-            return -1;
-        }
-        // tolerate malformed region entries, and continue with next
+        // Tolerate malformed BED entries and continue with subsequent lines.
         while (check != REGITER_OK) {
             check = next_region(&iter->reg);
             if (check == REGITER_EOF) {
@@ -504,10 +500,15 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
 
         if (iter->status < 0) {
             if (iter->use_regions) {
+                // A stream is scanned once and filtered against the complete
+                // normalised region set below; it cannot seek to another region.
+                if (iter->idx == NULL) {
+                    return (iter->status < -1) ? FC_ITER_ERROR : FC_ITER_EOF;
+                }
                 // advance to next region
                 regiter_status check = next_region(&iter->reg);
-                // tolerate malformed region entries, and continue with next
-                // lines or unknown references instead of aborting the run.
+                // Tolerate malformed entries and unknown references instead
+                // of aborting the run.
                 while (check == REGITER_PARSE_ERROR || check == REGITER_REF_MISSING) {
                     check = next_region(&iter->reg);
                 }
@@ -545,9 +546,21 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
             int tid = out->bam->core.tid;
             hts_pos_t pos = out->bam->core.pos;
             hts_pos_t rend = bam_endpos(out->bam);
+            if (tid >= 0) {
+                if (iter->seen_mapped_coordinate
+                    && (tid < iter->last_mapped_tid
+                        || (tid == iter->last_mapped_tid && pos < iter->last_mapped_pos))) {
+                    FC_LOG_ERROR("Region selection from an unindexed BAM stream requires coordinate-sorted records.");
+                    iter->hard_error = true;
+                    return FC_ITER_ERROR;
+                }
+                iter->seen_mapped_coordinate = true;
+                iter->last_mapped_tid = tid;
+                iter->last_mapped_pos = pos;
+            }
             while (iter->reg_active && (tid > iter->reg.tid || (tid == iter->reg.tid && pos >= iter->reg.end))) {
                 regiter_status check = next_region(&iter->reg);
-                // Skip malformed entries like indexed mode does
+                // Skip malformed entries like indexed mode does.
                 while (check == REGITER_PARSE_ERROR || check == REGITER_REF_MISSING) {
                     check = next_region(&iter->reg);
                 }
@@ -567,10 +580,13 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
         }
 
         if (fc_bam_qualities_missing(out->bam)) {
-            iter->stats.failures[F_QUAL_MISSING]++;
+            if (fc_is_canonical_read_record(out->bam)) {
+                iter->stats.failures[F_QUAL_MISSING]++;
+            }
             // QUAL=* is valid for records such as secondary alignments. Let
-            // the writer record its alignment flags, then reject it before
-            // ordinary read-level models and sinks.
+            // the writer record its alignment flags. Missing quality on a
+            // canonical read is tracked as a failure; additional alignments
+            // are valid records but never enter read-level models or sinks.
             fc_read_reset_from_bam(out, iter->hdr, iter->rg_cache, NULL);
             return FC_ITER_RECORD;
         }
@@ -1010,6 +1026,11 @@ const fc_file_stats *fc_iter_stats(const fc_iter *it)
     }
 
     return it->expected_kind == FC_FILE_FASTQ ? &it->fqi.stats : &it->bmi.stats;
+}
+
+bool fc_iter_has_hard_error(const fc_iter *it)
+{
+    return it != NULL && it->expected_kind == FC_FILE_BAM && it->bmi.hard_error;
 }
 
 void fc_path_list_free(fc_path_list *paths)

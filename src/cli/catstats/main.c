@@ -65,6 +65,9 @@ static int process_current_file(
     }
     if (next_rc == FC_ITER_ERROR) {
         status = EXIT_FAILURE;
+        if (fc_iter_has_hard_error(file_iter) && hard_error != NULL) {
+            *hard_error = true;
+        }
     }
 
     fc_read_destroy(fr);
