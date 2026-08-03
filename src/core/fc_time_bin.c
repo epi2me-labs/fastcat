@@ -14,6 +14,7 @@
 #include "core/fc_common.h"
 #include "core/fc_filter.h"
 #include "core/fc_kll.h"
+#include "core/kh_int64_map.h"
 
 typedef struct {
     size_t read_count;
@@ -33,10 +34,7 @@ typedef struct {
 typedef struct {
     bool seen;
     bool has_data;
-    int64_t first_bin;
-    int64_t last_bin;
-    fc_time_bin_accum *bins;
-    size_t n_bins;
+    kh_int64_map *bins;
     size_t skipped_missing;
     size_t skipped_invalid;
     size_t skipped_duration_missing;
@@ -47,14 +45,28 @@ struct fc_time_bin {
     size_t barcode_count;
     double bin_size_s;
     size_t kll_k;
-    bool origin_set;
-    double origin_s;
     size_t skipped_missing;
     size_t skipped_invalid;
     size_t skipped_duration_missing;
     size_t skipped_duration_invalid;
     fc_time_bin_barcode_state **barcode_states;
 };
+
+typedef struct {
+    int64_t index;
+    const fc_time_bin_accum *accum;
+} fc_time_bin_entry;
+
+static bool time_bin_index(double timestamp_s, double bin_size_s, int64_t *out)
+{
+    // Absolute keys make arbitrary arrival order and wide timestamp gaps cheap.
+    double index = floor(timestamp_s / bin_size_s);
+    if (!isfinite(index) || index < (double)INT64_MIN || index >= -(double)INT64_MIN) {
+        return false;
+    }
+    *out = (int64_t)index;
+    return true;
+}
 
 bool fc_time_bin_parse_timestamp(const char *text, double *out)
 {
@@ -114,15 +126,21 @@ static void time_bin_destroy_accum(fc_time_bin_accum *bin)
     fc_kll_destroy(bin->accuracy);
 }
 
+static void time_bin_destroy_accum_value(int64_t index, void *value, void *context)
+{
+    (void)index;
+    (void)context;
+    fc_time_bin_accum *bin = value;
+    time_bin_destroy_accum(bin);
+    free(bin);
+}
+
 static void time_bin_destroy_barcode_state(fc_time_bin_barcode_state *state)
 {
     if (NULL == state) {
         return;
     }
-    for (size_t i = 0; i < state->n_bins; i++) {
-        time_bin_destroy_accum(&state->bins[i]);
-    }
-    free(state->bins);
+    kh_int64_map_destroy(state->bins, time_bin_destroy_accum_value, NULL);
     free(state);
 }
 
@@ -131,44 +149,26 @@ static fc_time_bin_accum *time_bin_ensure_accum(
     fc_time_bin_barcode_state *state,
     int64_t bin_idx)
 {
-    if (state->n_bins == 0) {
-        state->bins = fc_alloc(1, sizeof(fc_time_bin_accum), "time_bin bins");
-        state->n_bins = 1;
-        state->first_bin = bin_idx;
-        state->last_bin = bin_idx;
-    } else if (bin_idx < state->first_bin) {
-        size_t add = (size_t)(state->first_bin - bin_idx);
-        size_t new_n = state->n_bins + add;
-        fc_time_bin_accum *bins = fc_alloc(new_n, sizeof(*bins), "time_bin bins prepend");
-        memcpy(bins + add, state->bins, state->n_bins * sizeof(*bins));
-        free(state->bins);
-        state->bins = bins;
-        state->n_bins = new_n;
-        state->first_bin = bin_idx;
-    } else if (bin_idx > state->last_bin) {
-        size_t old_n = state->n_bins;
-        size_t add = (size_t)(bin_idx - state->last_bin);
-        size_t new_n = old_n + add;
-        state->bins = fc_recalloc(
-            state->bins,
-            old_n,
-            new_n,
-            sizeof(*state->bins),
-            "time_bin bins append");
-        state->n_bins = new_n;
-        state->last_bin = bin_idx;
+    if (!state->bins) {
+        state->bins = kh_int64_map_create();
+        if (!state->bins) {
+            return NULL;
+        }
     }
 
-    size_t offset = (size_t)(bin_idx - state->first_bin);
-    fc_time_bin_accum *bin = &state->bins[offset];
-    if (NULL == bin->length) {
-        bin->length = fc_kll_create(model->kll_k);
+    fc_time_bin_accum *existing = kh_int64_map_get(state->bins, bin_idx);
+    if (existing) {
+        return existing;
     }
-    if (NULL == bin->qscore) {
-        bin->qscore = fc_kll_create(model->kll_k);
-    }
-    if (NULL == bin->speed) {
-        bin->speed = fc_kll_create(model->kll_k);
+
+    fc_time_bin_accum *bin = fc_alloc(1, sizeof(*bin), "time_bin accumulator");
+    bin->length = fc_kll_create(model->kll_k);
+    bin->qscore = fc_kll_create(model->kll_k);
+    bin->speed = fc_kll_create(model->kll_k);
+    if (!kh_int64_map_insert(state->bins, bin_idx, bin)) {
+        time_bin_destroy_accum(bin);
+        free(bin);
+        return NULL;
     }
     return bin;
 }
@@ -178,15 +178,65 @@ static fc_time_bin_accum *time_bin_find_accum(
     fc_time_bin_barcode_state *state,
     double timestamp_s)
 {
-    if (!model || !state || !model->origin_set || !isfinite(timestamp_s)) {
+    if (!model || !state || !state->bins || !isfinite(timestamp_s)) {
         return NULL;
     }
-    double rel = (timestamp_s - model->origin_s) / model->bin_size_s;
-    int64_t bin_idx = (int64_t)floor(rel);
-    if (bin_idx < state->first_bin || bin_idx > state->last_bin) {
+    int64_t bin_idx = 0;
+    if (!time_bin_index(timestamp_s, model->bin_size_s, &bin_idx)) {
         return NULL;
     }
-    return &state->bins[(size_t)(bin_idx - state->first_bin)];
+    return kh_int64_map_get(state->bins, bin_idx);
+}
+
+static int time_bin_entry_compare(const void *left, const void *right)
+{
+    const fc_time_bin_entry *a = left;
+    const fc_time_bin_entry *b = right;
+    return (a->index > b->index) - (a->index < b->index);
+}
+
+typedef struct {
+    fc_time_bin_entry *entries;
+    size_t out;
+} fc_time_bin_entry_collector;
+
+static void time_bin_collect_entry(int64_t index, void *value, void *context)
+{
+    fc_time_bin_entry_collector *collector = context;
+    collector->entries[collector->out++] = (fc_time_bin_entry) {
+        .index = index,
+        .accum = value
+    };
+}
+
+static void time_bin_note_accuracy(int64_t index, void *value, void *context)
+{
+    (void)index;
+    const fc_time_bin_accum *bin = value;
+    bool *seen = context;
+    *seen = *seen || bin->accuracy_read_count > 0;
+}
+
+static fc_time_bin_entry *time_bin_sorted_entries(
+    const fc_time_bin_barcode_state *state, size_t *n_entries)
+{
+    *n_entries = 0;
+    if (!state || !state->bins || kh_int64_map_size(state->bins) == 0) {
+        return NULL;
+    }
+
+    size_t n = kh_int64_map_size(state->bins);
+    fc_time_bin_entry *entries = fc_alloc(n, sizeof(*entries), "time_bin entries");
+    fc_time_bin_entry_collector collector = { .entries = entries };
+    kh_int64_map_foreach(state->bins, time_bin_collect_entry, &collector);
+    qsort(entries, collector.out, sizeof(*entries), time_bin_entry_compare);
+    *n_entries = collector.out;
+    return entries;
+}
+
+static double time_bin_elapsed_s(int64_t index, int64_t origin, double bin_size_s)
+{
+    return ((double)index - (double)origin) * bin_size_s;
 }
 
 fc_time_bin *fc_time_bin_create(size_t barcode_count, double bin_size_s, size_t kll_k)
@@ -251,13 +301,12 @@ void fc_time_bin_add_read(fc_time_bin *model, size_t barcode, const fc_read *rea
         return;
     }
 
-    if (!model->origin_set) {
-        model->origin_s = timestamp_s;
-        model->origin_set = true;
+    int64_t bin_idx = 0;
+    if (!time_bin_index(timestamp_s, model->bin_size_s, &bin_idx)) {
+        state->skipped_invalid++;
+        model->skipped_invalid++;
+        return;
     }
-
-    double rel = (timestamp_s - model->origin_s) / model->bin_size_s;
-    int64_t bin_idx = (int64_t)floor(rel);
     fc_time_bin_accum *bin = time_bin_ensure_accum(model, state, bin_idx);
     if (NULL == bin) {
         return;
@@ -310,6 +359,10 @@ void fc_time_bin_add_accuracy(fc_time_bin *model, size_t barcode, const fc_read 
     if (!timestamp || timestamp[0] == '\0' || !fc_time_bin_parse_timestamp(timestamp, &timestamp_s)) {
         return;
     }
+    int64_t bin_idx = 0;
+    if (!time_bin_index(timestamp_s, model->bin_size_s, &bin_idx)) {
+        return;
+    }
     fc_time_bin_barcode_state *state = model->barcode_states[barcode];
     fc_time_bin_accum *bin = time_bin_find_accum(model, state, timestamp_s);
     if (!bin) {
@@ -342,12 +395,12 @@ bool fc_time_bin_accuracy_seen(const fc_time_bin *model, size_t barcode)
     if (NULL == state) {
         return false;
     }
-    for (size_t i = 0; i < state->n_bins; ++i) {
-        if (state->bins[i].accuracy_read_count > 0) {
-            return true;
-        }
+    if (!state->bins) {
+        return false;
     }
-    return false;
+    bool seen = false;
+    kh_int64_map_foreach(state->bins, time_bin_note_accuracy, &seen);
+    return seen;
 }
 
 fc_time_bin_skip_counts fc_time_bin_skipped_counts(const fc_time_bin *model)
@@ -376,18 +429,6 @@ static fc_time_bin_quantiles time_bin_nan_quantiles(void)
     };
 }
 
-static void time_bin_set_empty_distribution(fc_time_bin_row *row)
-{
-    row->length_mean = NAN;
-    row->length_quantiles = time_bin_nan_quantiles();
-    row->qscore_mean = NAN;
-    row->qscore_quantiles = time_bin_nan_quantiles();
-    row->speed_mean = NAN;
-    row->speed_quantiles = time_bin_nan_quantiles();
-    row->accuracy_mean = NAN;
-    row->accuracy_quantiles = time_bin_nan_quantiles();
-}
-
 int fc_time_bin_materialize(const fc_time_bin *model, size_t barcode, fc_time_bin_table *out)
 {
     if (NULL == model || NULL == out || barcode >= model->barcode_count) {
@@ -396,20 +437,27 @@ int fc_time_bin_materialize(const fc_time_bin *model, size_t barcode, fc_time_bi
 
     memset(out, 0, sizeof(*out));
     const fc_time_bin_barcode_state *state = model->barcode_states[barcode];
-    if (NULL == state || !state->has_data || state->n_bins == 0) {
+    if (NULL == state || !state->has_data) {
         return 0;
     }
 
-    out->n = state->n_bins;
+    size_t n_entries = 0;
+    fc_time_bin_entry *entries = time_bin_sorted_entries(state, &n_entries);
+    if (!entries) {
+        return 0;
+    }
+
+    out->n = n_entries;
     out->rows = fc_alloc(out->n, sizeof(*out->rows), "time_bin rows");
 
     size_t cumulative_reads = 0;
     size_t cumulative_bases = 0;
     for (size_t i = 0; i < out->n; i++) {
-        const fc_time_bin_accum *bin = &state->bins[i];
+        const fc_time_bin_accum *bin = entries[i].accum;
         fc_time_bin_row *row = &out->rows[i];
 
-        row->time_bin_start_s = (double)i * model->bin_size_s;
+        row->time_bin_start_s = time_bin_elapsed_s(
+            entries[i].index, entries[0].index, model->bin_size_s);
         row->time_bin_end_s = row->time_bin_start_s + model->bin_size_s;
         row->read_count = bin->read_count;
         row->base_count = bin->base_count;
@@ -417,11 +465,6 @@ int fc_time_bin_materialize(const fc_time_bin *model, size_t barcode, fc_time_bi
         cumulative_bases += bin->base_count;
         row->cumulative_read_count = cumulative_reads;
         row->cumulative_base_count = cumulative_bases;
-
-        if (bin->read_count == 0) {
-            time_bin_set_empty_distribution(row);
-            continue;
-        }
 
         row->length_mean = bin->sum_length / (double)bin->read_count;
         row->qscore_mean = bin->sum_qscore / (double)bin->read_count;
@@ -444,6 +487,8 @@ int fc_time_bin_materialize(const fc_time_bin *model, size_t barcode, fc_time_bi
         }
     }
 
+    free(entries);
+
     return 0;
 }
 
@@ -459,10 +504,16 @@ int fc_time_bin_materialize_merged(
 
     memset(out, 0, sizeof(*out));
     const fc_time_bin_barcode_state *state = model->barcode_states[barcode];
-    if (NULL == state || !state->has_data || state->n_bins == 0) {
+    if (NULL == state || !state->has_data) {
         return 0;
     }
-    if (max_rows == 0 || state->n_bins <= max_rows) {
+    size_t n_entries = 0;
+    fc_time_bin_entry *entries = time_bin_sorted_entries(state, &n_entries);
+    if (!entries) {
+        return 0;
+    }
+    if (max_rows == 0 || n_entries <= max_rows) {
+        free(entries);
         return fc_time_bin_materialize(model, barcode, out);
     }
 
@@ -472,12 +523,14 @@ int fc_time_bin_materialize_merged(
     size_t cumulative_reads = 0;
     size_t cumulative_bases = 0;
     for (size_t i = 0; i < out->n; i++) {
-        size_t start = i * state->n_bins / out->n;
-        size_t end = (i + 1) * state->n_bins / out->n;
+        size_t start = i * n_entries / out->n;
+        size_t end = (i + 1) * n_entries / out->n;
         fc_time_bin_row *row = &out->rows[i];
 
-        row->time_bin_start_s = (double)start * model->bin_size_s;
-        row->time_bin_end_s = (double)end * model->bin_size_s;
+        row->time_bin_start_s = time_bin_elapsed_s(
+            entries[start].index, entries[0].index, model->bin_size_s);
+        row->time_bin_end_s = time_bin_elapsed_s(
+            entries[end - 1].index + 1, entries[0].index, model->bin_size_s);
 
         double sum_length = 0.0;
         double sum_qscore = 0.0;
@@ -491,7 +544,7 @@ int fc_time_bin_materialize_merged(
         fc_kll_sketch *accuracy = fc_kll_create(model->kll_k);
 
         for (size_t j = start; j < end; j++) {
-            const fc_time_bin_accum *bin = &state->bins[j];
+            const fc_time_bin_accum *bin = entries[j].accum;
             row->read_count += bin->read_count;
             row->base_count += bin->base_count;
             sum_length += bin->sum_length;
@@ -511,28 +564,24 @@ int fc_time_bin_materialize_merged(
         row->cumulative_read_count = cumulative_reads;
         row->cumulative_base_count = cumulative_bases;
 
-        if (row->read_count == 0) {
-            time_bin_set_empty_distribution(row);
+        row->length_mean = sum_length / (double)row->read_count;
+        row->qscore_mean = sum_qscore / (double)row->read_count;
+        row->length_quantiles = fc_kll_compute_quantile_septuple(length);
+        row->qscore_quantiles = fc_kll_compute_quantile_septuple(qscore);
+        if (speed_count == 0) {
+            row->speed_mean = NAN;
+            row->speed_quantiles = time_bin_nan_quantiles();
         } else {
-            row->length_mean = sum_length / (double)row->read_count;
-            row->qscore_mean = sum_qscore / (double)row->read_count;
-            row->length_quantiles = fc_kll_compute_quantile_septuple(length);
-            row->qscore_quantiles = fc_kll_compute_quantile_septuple(qscore);
-            if (speed_count == 0) {
-                row->speed_mean = NAN;
-                row->speed_quantiles = time_bin_nan_quantiles();
-            } else {
-                row->speed_mean = sum_speed / (double)speed_count;
-                row->speed_quantiles = fc_kll_compute_quantile_septuple(speed);
-            }
-            row->accuracy_read_count = accuracy_read_count;
-            if (accuracy_read_count == 0) {
-                row->accuracy_mean = NAN;
-                row->accuracy_quantiles = time_bin_nan_quantiles();
-            } else {
-                row->accuracy_mean = sum_accuracy / (double)accuracy_read_count;
-                row->accuracy_quantiles = fc_kll_compute_quantile_septuple(accuracy);
-            }
+            row->speed_mean = sum_speed / (double)speed_count;
+            row->speed_quantiles = fc_kll_compute_quantile_septuple(speed);
+        }
+        row->accuracy_read_count = accuracy_read_count;
+        if (accuracy_read_count == 0) {
+            row->accuracy_mean = NAN;
+            row->accuracy_quantiles = time_bin_nan_quantiles();
+        } else {
+            row->accuracy_mean = sum_accuracy / (double)accuracy_read_count;
+            row->accuracy_quantiles = fc_kll_compute_quantile_septuple(accuracy);
         }
 
         fc_kll_destroy(length);
@@ -540,6 +589,8 @@ int fc_time_bin_materialize_merged(
         fc_kll_destroy(speed);
         fc_kll_destroy(accuracy);
     }
+
+    free(entries);
 
     return 0;
 }
