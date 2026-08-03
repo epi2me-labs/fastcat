@@ -9,6 +9,7 @@
 #include "core/fc_common.h"
 #include "core/fc_read.h"
 #include "core/fc_sinks.h"
+#include "vendor/parson/parson.h"
 
 static fc_read *read_sink_test_read(uint16_t flag)
 {
@@ -185,6 +186,96 @@ FC_TEST(read_sinks_suite, test_summary_json_sink_ignores_additional_alignments)
     fc_run_summary_destroy(run_summary);
     fc_stats_engine_destroy(engine);
     fc_read_destroy(read);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(output_dir));
+}
+
+FC_TEST(read_sinks_suite, test_summary_json_omits_channels_for_multiple_flowcells)
+{
+    char output_dir[64];
+    make_temp_dir(output_dir, sizeof(output_dir));
+    fc_read *read_a = read_sink_test_read(BAM_FUNMAP);
+    fc_read *read_b = read_sink_test_read(BAM_FUNMAP);
+    fc_read *read_c = read_sink_test_read(BAM_FUNMAP);
+    read_a->meta->flow_cell_id = "flow-a";
+    read_b->meta->flow_cell_id = "flow-b";
+    read_c->meta->flow_cell_id = "flow-a";
+    read_a->meta->channel = 1;
+    read_b->meta->channel = 1;
+    read_c->meta->channel = 1;
+    read_a->meta->mux = 1;
+    read_b->meta->mux = 1;
+    read_c->meta->mux = 1;
+
+    fc_stats_engine *engine_a = fc_stats_engine_create(false, false, 0.0f, 0.0f, false);
+    fc_stats_engine *engine_b = fc_stats_engine_create(false, false, 0.0f, 0.0f, false);
+    fc_stats_engine *engines[] = { engine_a, engine_b };
+    fc_run_summary *run_summary = fc_run_summary_create(2);
+    fc_channel_summary *channel_summary = fc_channel_summary_create(2);
+    fc_length_qscore_2d *length_qscore = fc_length_qscore_2d_create(2, 64, 33, 1);
+    fc_speed_qscore_2d *speed_qscore = fc_speed_qscore_2d_create(2, 64, 33, 1);
+    fc_time_bin *time_bin = fc_time_bin_create(2, 10.0, 64);
+    TEST_ASSERT_NOT_NULL(engine_a);
+    TEST_ASSERT_NOT_NULL(engine_b);
+    TEST_ASSERT_NOT_NULL(run_summary);
+    TEST_ASSERT_NOT_NULL(channel_summary);
+    TEST_ASSERT_NOT_NULL(length_qscore);
+    TEST_ASSERT_NOT_NULL(speed_qscore);
+    TEST_ASSERT_NOT_NULL(time_bin);
+    fc_run_summary_add_read(run_summary, 0, read_a);
+    fc_run_summary_add_read(run_summary, 0, read_b);
+    fc_run_summary_add_read(run_summary, 1, read_c);
+    fc_channel_summary_add_read(channel_summary, 0, read_a);
+    fc_channel_summary_add_read(channel_summary, 0, read_b);
+    fc_channel_summary_add_read(channel_summary, 1, read_c);
+
+    fc_sink summary_json = fc_summary_json_sink_create(&(fc_summary_json_sink_opts) {
+        .output_root = output_dir,
+        .engines = engines,
+        .engine_count = 2,
+        .use_barcodes = true,
+        .barcode_count = 2,
+        .run_summary = run_summary,
+        .channel_summary = channel_summary,
+        .length_qscore = length_qscore,
+        .speed_qscore = speed_qscore,
+        .time_bin = time_bin
+    });
+    TEST_ASSERT_NOT_NULL(summary_json.ctx);
+    summary_json.finish(summary_json.ctx);
+    summary_json.destroy(summary_json.ctx);
+
+    char path[128];
+    FC_SNPRINTF_CHECK(path, sizeof(path), "%s/unclassified/summary.json", output_dir);
+    JSON_Value *document = json_parse_file(path);
+    TEST_ASSERT_NOT_NULL(document);
+    JSON_Object *root = json_value_get_object(document);
+    TEST_ASSERT_EQUAL_INT(JSONNull, json_value_get_type(json_object_get_value(root, "channels")));
+    json_value_free(document);
+    TEST_ASSERT_EQUAL_INT(0, remove(path));
+
+    FC_SNPRINTF_CHECK(path, sizeof(path), "%s/barcode0001/summary.json", output_dir);
+    document = json_parse_file(path);
+    TEST_ASSERT_NOT_NULL(document);
+    root = json_value_get_object(document);
+    TEST_ASSERT_EQUAL_INT(JSONObject, json_value_get_type(json_object_get_value(root, "channels")));
+    json_value_free(document);
+    TEST_ASSERT_EQUAL_INT(0, remove(path));
+
+    FC_SNPRINTF_CHECK(path, sizeof(path), "%s/unclassified", output_dir);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(path));
+    FC_SNPRINTF_CHECK(path, sizeof(path), "%s/barcode0001", output_dir);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(path));
+
+    fc_time_bin_destroy(time_bin);
+    fc_speed_qscore_2d_destroy(speed_qscore);
+    fc_length_qscore_2d_destroy(length_qscore);
+    fc_channel_summary_destroy(channel_summary);
+    fc_run_summary_destroy(run_summary);
+    fc_stats_engine_destroy(engine_b);
+    fc_stats_engine_destroy(engine_a);
+    fc_read_destroy(read_c);
+    fc_read_destroy(read_b);
+    fc_read_destroy(read_a);
     TEST_ASSERT_EQUAL_INT(0, rmdir(output_dir));
 }
 

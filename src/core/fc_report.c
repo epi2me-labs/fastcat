@@ -2488,11 +2488,12 @@ static void channel_plot_set_range(JSON_Value *docs, const char *plot,
 
 static void update_channel_reads_plot(JSON_Value *docs,
     const fc_channel_summary *model,
-    size_t barcode)
+    size_t barcode,
+    const char *unavailable_reason)
 {
     if (!model || !fc_channel_summary_seen(model, barcode)) {
         bokeh_set_plot_null_state(docs, "channel_reads",
-            "No channel occupancy data available", true);
+            unavailable_reason ? unavailable_reason : "No channel occupancy data available", true);
         bokeh_set_value(docs, "channel_reads.source.data",
             build_channel_empty_source_data_value());
         bokeh_set_value(docs, "channel_reads.hover_source.data",
@@ -2508,7 +2509,7 @@ static void update_channel_reads_plot(JSON_Value *docs,
     fc_channel_summary_table table = { 0 };
     if (fc_channel_summary_materialize_sparse(model, barcode, &table) != 0 || table.n == 0) {
         fc_channel_summary_table_destroy(&table);
-        update_channel_reads_plot(docs, NULL, barcode);
+        update_channel_reads_plot(docs, NULL, barcode, unavailable_reason);
         return;
     }
 
@@ -2516,7 +2517,7 @@ static void update_channel_reads_plot(JSON_Value *docs,
         fc_channel_map_device_for_channel(table.highest_channel));
     if (!map || !map->rows || map->row_count == 0) {
         fc_channel_summary_table_destroy(&table);
-        update_channel_reads_plot(docs, NULL, barcode);
+        update_channel_reads_plot(docs, NULL, barcode, unavailable_reason);
         return;
     }
 
@@ -2640,11 +2641,12 @@ static void update_channel_reads_plot(JSON_Value *docs,
 static double update_channel_mean_plot(JSON_Value *docs,
     const fc_channel_summary *model,
     size_t barcode, const char *plot,
-    fc_channel_map_metric metric)
+    fc_channel_map_metric metric,
+    const char *unavailable_reason)
 {
     if (!model || !fc_channel_summary_seen(model, barcode)) {
-        bokeh_set_plot_null_state(docs, plot, "No channel occupancy data available",
-            true);
+        bokeh_set_plot_null_state(docs, plot,
+            unavailable_reason ? unavailable_reason : "No channel occupancy data available", true);
         channel_plot_set_value(docs, plot, "source.data",
             build_channel_empty_source_data_value());
         channel_plot_set_value(docs, plot, "hover_source.data",
@@ -2660,14 +2662,14 @@ static double update_channel_mean_plot(JSON_Value *docs,
     fc_channel_summary_table table = { 0 };
     if (fc_channel_summary_materialize_sparse(model, barcode, &table) != 0 || table.n == 0) {
         fc_channel_summary_table_destroy(&table);
-        return update_channel_mean_plot(docs, NULL, barcode, plot, metric);
+        return update_channel_mean_plot(docs, NULL, barcode, plot, metric, unavailable_reason);
     }
 
     const fc_channel_map *map = fc_channel_map_get(
         fc_channel_map_device_for_channel(table.highest_channel));
     if (!map || !map->rows || map->row_count == 0) {
         fc_channel_summary_table_destroy(&table);
-        return update_channel_mean_plot(docs, NULL, barcode, plot, metric);
+        return update_channel_mean_plot(docs, NULL, barcode, plot, metric, unavailable_reason);
     }
 
     size_t lookup_n = FC_CHANNEL_SUMMARY_MAX_CHANNEL * FC_CHANNEL_SUMMARY_MUX_SLOTS;
@@ -2932,6 +2934,7 @@ static void update_coverage_plot(JSON_Value *docs,
 static JSON_Value *build_report_bokeh_docs(
     const report_hist *length, const report_hist *quality,
     const report_hist *accuracy, const report_hist *query_coverage,
+    const fc_run_summary *run_summary,
     const fc_channel_summary *channel_summary,
     const fc_length_qscore_2d *length_qscore,
     const fc_speed_qscore_2d *speed_qscore,
@@ -2980,14 +2983,18 @@ static JSON_Value *build_report_bokeh_docs(
     update_time_qscore_ribbon_plot(docs, &time_boxes);
     update_time_accuracy_ribbon_plot(docs, &time_boxes);
     update_time_speed_ribbon_plot(docs, &time_boxes);
-    update_channel_reads_plot(docs, channel_summary, barcode);
-    update_channel_mean_plot(docs, channel_summary, barcode,
-        "channel_mean_length", FC_CHANNEL_MAP_MEAN_LENGTH);
-    double quality_color_high = update_channel_mean_plot(docs, channel_summary, barcode,
-        "channel_mean_quality", FC_CHANNEL_MAP_MEAN_QUALITY);
-    double concordance_color_high = update_channel_mean_plot(docs, channel_summary, barcode,
+    const char *channel_unavailable_reason = fc_run_summary_has_multiple_flow_cells(run_summary, barcode)
+        ? "Channel occupancy is unavailable because this output contains multiple flowcells."
+        : NULL;
+    const fc_channel_summary *channel_model = channel_unavailable_reason ? NULL : channel_summary;
+    update_channel_reads_plot(docs, channel_model, barcode, channel_unavailable_reason);
+    update_channel_mean_plot(docs, channel_model, barcode,
+        "channel_mean_length", FC_CHANNEL_MAP_MEAN_LENGTH, channel_unavailable_reason);
+    double quality_color_high = update_channel_mean_plot(docs, channel_model, barcode,
+        "channel_mean_quality", FC_CHANNEL_MAP_MEAN_QUALITY, channel_unavailable_reason);
+    double concordance_color_high = update_channel_mean_plot(docs, channel_model, barcode,
         "channel_mean_concordance",
-        FC_CHANNEL_MAP_MEAN_CONCORDANCE);
+        FC_CHANNEL_MAP_MEAN_CONCORDANCE, channel_unavailable_reason);
     double shared_color_high = channel_color_high_round_up(
         fmax(quality_color_high, concordance_color_high));
     channel_plot_set_number(docs, "channel_mean_quality", "color_mapper.high",
@@ -3294,7 +3301,7 @@ static int write_report_for_output_dir(
     fc_alignment_counts_materialize(alignment_counts, &alignment);
 
     JSON_Value *docs = build_report_bokeh_docs(
-        &length, &quality, &accuracy, &query_coverage, channel_summary,
+        &length, &quality, &accuracy, &query_coverage, run_summary, channel_summary,
         length_qscore, speed_qscore, accuracy_qscore, time_bin, coverage,
         barcode_index);
     char *docs_json = docs ? fc_json_serialize_to_string(docs) : NULL;
