@@ -244,6 +244,7 @@ CORE_SRCS := \
 	src/core/fc_run_summary.c \
 	src/core/fc_speed_qscore_2d.c \
 	src/core/fc_time_bin.c \
+	src/core/kh_int64_map.c \
 	src/core/fc_stats_engine.c \
 	src/core/fc_fastqcomments.c \
 	src/core/fc_json.c \

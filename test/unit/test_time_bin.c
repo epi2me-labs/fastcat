@@ -185,7 +185,7 @@ FC_TEST(time_bin_suite, test_time_bin_ignores_additional_alignments)
     fc_time_bin_destroy(model);
 }
 
-FC_TEST(time_bin_suite, test_time_bin_dynamic_backward_growth_preserves_empty_bins)
+FC_TEST(time_bin_suite, test_time_bin_out_of_order_timestamps_are_sorted_without_empty_bins)
 {
     fc_time_bin *model = fc_time_bin_create(1, 10.0, 64);
     TEST_ASSERT_NOT_NULL(model);
@@ -195,36 +195,45 @@ FC_TEST(time_bin_suite, test_time_bin_dynamic_backward_growth_preserves_empty_bi
 
     fc_time_bin_table table = { 0 };
     TEST_ASSERT_EQUAL_INT(0, fc_time_bin_materialize(model, 0, &table));
-    TEST_ASSERT_EQUAL_size_t(3, table.n);
+    TEST_ASSERT_EQUAL_size_t(2, table.n);
 
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, table.rows[0].time_bin_start_s);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 10.0, table.rows[0].time_bin_end_s);
     TEST_ASSERT_EQUAL_size_t(1, table.rows[0].read_count);
     TEST_ASSERT_EQUAL_size_t(80, table.rows[0].base_count);
     TEST_ASSERT_EQUAL_size_t(1, table.rows[0].cumulative_read_count);
     TEST_ASSERT_EQUAL_size_t(80, table.rows[0].cumulative_base_count);
 
-    TEST_ASSERT_EQUAL_size_t(0, table.rows[1].read_count);
-    TEST_ASSERT_TRUE(isnan(table.rows[1].length_mean));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].length_quantiles.q05));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].length_quantiles.q10));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].length_quantiles.q95));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].length_quantiles.q90));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_mean));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_quantiles.q05));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_quantiles.q10));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_quantiles.q95));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].qscore_quantiles.q90));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].speed_mean));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].speed_quantiles.q05));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].speed_quantiles.q10));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].speed_quantiles.q95));
-    TEST_ASSERT_TRUE(isnan(table.rows[1].speed_quantiles.q90));
-    TEST_ASSERT_EQUAL_size_t(1, table.rows[1].cumulative_read_count);
-    TEST_ASSERT_EQUAL_size_t(80, table.rows[1].cumulative_base_count);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 20.0, table.rows[1].time_bin_start_s);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 30.0, table.rows[1].time_bin_end_s);
+    TEST_ASSERT_EQUAL_size_t(1, table.rows[1].read_count);
+    TEST_ASSERT_EQUAL_size_t(100, table.rows[1].base_count);
+    TEST_ASSERT_EQUAL_size_t(2, table.rows[1].cumulative_read_count);
+    TEST_ASSERT_EQUAL_size_t(180, table.rows[1].cumulative_base_count);
 
-    TEST_ASSERT_EQUAL_size_t(1, table.rows[2].read_count);
-    TEST_ASSERT_EQUAL_size_t(100, table.rows[2].base_count);
-    TEST_ASSERT_EQUAL_size_t(2, table.rows[2].cumulative_read_count);
-    TEST_ASSERT_EQUAL_size_t(180, table.rows[2].cumulative_base_count);
+    fc_time_bin_table_destroy(&table);
+    fc_time_bin_destroy(model);
+}
+
+FC_TEST(time_bin_suite, test_time_bin_large_timestamp_gaps_emit_only_populated_bins)
+{
+    fc_time_bin *model = fc_time_bin_create(1, 3600.0, 64);
+    TEST_ASSERT_NOT_NULL(model);
+
+    add_time_bin_test_read(model, 0, "1704067200", 100, 10.0, 2.0);
+    add_time_bin_test_read(model, 0, "1735689600", 200, 20.0, 4.0);
+
+    fc_time_bin_table table = { 0 };
+    TEST_ASSERT_EQUAL_INT(0, fc_time_bin_materialize(model, 0, &table));
+    TEST_ASSERT_EQUAL_size_t(2, table.n);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, table.rows[0].time_bin_start_s);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 3600.0, table.rows[0].time_bin_end_s);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 8784.0 * 3600.0, table.rows[1].time_bin_start_s);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 8785.0 * 3600.0, table.rows[1].time_bin_end_s);
+    TEST_ASSERT_EQUAL_size_t(1, table.rows[0].read_count);
+    TEST_ASSERT_EQUAL_size_t(1, table.rows[1].read_count);
+    TEST_ASSERT_EQUAL_size_t(2, table.rows[1].cumulative_read_count);
+    TEST_ASSERT_EQUAL_size_t(300, table.rows[1].cumulative_base_count);
 
     fc_time_bin_table_destroy(&table);
     fc_time_bin_destroy(model);
