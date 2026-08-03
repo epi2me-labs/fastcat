@@ -12,6 +12,7 @@
 #include <time.h>
 
 #include "core/fc_common.h"
+#include "core/fc_filter.h"
 #include "core/fc_kll.h"
 
 typedef struct {
@@ -223,6 +224,9 @@ void fc_time_bin_add_read(fc_time_bin *model, size_t barcode, const fc_read *rea
         || barcode >= model->barcode_count) {
         return;
     }
+    if (!fc_is_canonical_read_record(read->bam)) {
+        return;
+    }
 
     fc_time_bin_barcode_state *state = time_bin_ensure_barcode_state(model, barcode);
     if (NULL == state) {
@@ -296,6 +300,9 @@ void fc_time_bin_add_read(fc_time_bin *model, size_t barcode, const fc_read *rea
 void fc_time_bin_add_accuracy(fc_time_bin *model, size_t barcode, const fc_read *read, float accuracy)
 {
     if (!model || !read || !read->meta || !isfinite(accuracy) || barcode >= model->barcode_count) {
+        return;
+    }
+    if (!read->bam || !fc_is_canonical_read_record(read->bam)) {
         return;
     }
     const char *timestamp = read->meta->start_time;

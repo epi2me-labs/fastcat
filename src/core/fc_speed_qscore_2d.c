@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 
+#include "core/fc_filter.h"
 #include "core/fc_metric_qscore_2d.h"
 
 typedef struct {
@@ -52,29 +53,30 @@ fc_speed_qscore_2d *fc_speed_qscore_2d_create(
 void fc_speed_qscore_2d_add_read(
     fc_speed_qscore_2d *model,
     size_t barcode,
-    double length,
-    double duration_s,
-    float mean_q)
+    const fc_read *read)
 {
+    if (!model || !read || !read->bam || !read->meta || !fc_is_canonical_read_record(read->bam)) {
+        return;
+    }
     fc_metric_qscore_2d_mark_seen(model, barcode);
 
     qts2d_client_state *state = model->client_state;
-    if (!isfinite(duration_s)) {
+    if (!isfinite(read->meta->duration_s)) {
         state->skipped_duration_missing++;
         return;
     }
-    if (duration_s <= 0.0 || !isfinite(length)) {
+    if (read->meta->duration_s <= 0.0) {
         state->skipped_duration_invalid++;
         return;
     }
 
-    double speed = length / duration_s;
+    double speed = (double)read->bam->core.l_qseq / read->meta->duration_s;
     if (!isfinite(speed) || speed <= 0.0) {
         state->skipped_duration_invalid++;
         return;
     }
 
-    fc_metric_qscore_2d_add_value(model, barcode, speed, mean_q);
+    fc_metric_qscore_2d_add_value(model, barcode, speed, read->meta->mean_q);
 }
 
 fc_speed_qscore_2d_skip_counts fc_speed_qscore_2d_skipped_counts(

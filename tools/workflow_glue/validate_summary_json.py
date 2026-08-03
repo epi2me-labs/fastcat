@@ -18,8 +18,6 @@ DATAFRAME_PATHS = (
     "$.distributions.quality.data",
     "$.alignment.distributions.accuracy.data",
     "$.alignment.distributions.query_coverage.data",
-    "$.alignment.distributions.unmapped_read_length.data",
-    "$.alignment.distributions.unmapped_quality.data",
     "$.alignment.distributions.poly_a_length.data",
     "$.time.data",
 )

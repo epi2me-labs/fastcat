@@ -135,6 +135,9 @@ static bool alignment_counts_add_read(
         return false;
     }
     alignment_counts_add(row, bam, duplex_code);
+    if (fc_is_unmapped(bam) && fc_is_canonical_read_record(bam)) {
+        counts->canonical_unmapped_read_count++;
+    }
     counts->seen = true;
     return true;
 }
@@ -212,9 +215,9 @@ void fc_alignment_counts_materialize(
     for (size_t col = 0; col < FC_FLAGSTAT_COUNT; ++col) {
         totals->record_counts[col] += counts->unmapped_counts[col];
     }
-    totals->read_count = totals->primary_mapped_record_count
-        + totals->record_counts[FC_FLAGSTAT_UNMAPPED];
+    totals->mapped_read_count = totals->primary_mapped_record_count;
+    totals->read_count = totals->mapped_read_count + counts->canonical_unmapped_read_count;
     totals->mapping_rate = totals->read_count > 0
-        ? (double)totals->primary_mapped_record_count / (double)totals->read_count
+        ? (double)totals->mapped_read_count / (double)totals->read_count
         : 0.0;
 }

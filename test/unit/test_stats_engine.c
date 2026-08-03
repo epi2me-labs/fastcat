@@ -61,7 +61,7 @@ static bam1_t* build_mapped_read(const char* qname, const char* seq, const char*
     return b;
 }
 
-FC_TEST(stats_engine_suite, test_stats_engine_unmapped_tracked_in_unmapped_stats)
+FC_TEST(stats_engine_suite, test_stats_engine_unmapped_tracked_in_canonical_stats)
 {
     bam1_t* b = build_unmapped_read("r1", "ACGT", "!!!!");
     fc_read *fr = fc_read_init();
@@ -74,8 +74,8 @@ FC_TEST(stats_engine_suite, test_stats_engine_unmapped_tracked_in_unmapped_stats
 
     fc_stats_engine* engine = fc_stats_engine_create(false, false, 0.0f, 0.0f, false);
     TEST_ASSERT_EQUAL_INT(FC_STATS_UNMAPPED, fc_stats_engine_add_read(engine, fr, NULL, NULL));
-    TEST_ASSERT_EQUAL_UINT64(0, sum_counts(engine->length_stats));
-    TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->length_stats_unmapped));
+    TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->length_stats));
+    TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->qual_stats));
 
     fc_stats_engine_destroy(engine);
     fc_read_destroy(fr);
@@ -156,17 +156,53 @@ FC_TEST(stats_engine_suite, test_stats_engine_alignment_histogram_populations)
     TEST_ASSERT_EQUAL_INT(FC_STATS_ALIGNED, fc_stats_engine_add_read(engine, mapped_read, hdr, NULL));
     TEST_ASSERT_EQUAL_INT(FC_STATS_UNMAPPED, fc_stats_engine_add_read(engine, unmapped_read, NULL, NULL));
 
-    TEST_ASSERT_EQUAL_UINT64(1, engine->length_stats_unmapped->counts[4]);
-    TEST_ASSERT_EQUAL_UINT64(1, engine->qual_stats_unmapped->counts[0]);
+    TEST_ASSERT_EQUAL_UINT64(1, engine->length_stats->counts[4]);
+    TEST_ASSERT_EQUAL_UINT64(2, engine->qual_stats->counts[0]);
     TEST_ASSERT_EQUAL_UINT64(1, engine->polya_stats->counts[7]);
     TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->acc_stats));
     TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->cov_stats));
-    TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->length_stats_unmapped));
-    TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->qual_stats_unmapped));
+    TEST_ASSERT_EQUAL_UINT64(2, sum_counts(engine->length_stats));
+    TEST_ASSERT_EQUAL_UINT64(2, sum_counts(engine->qual_stats));
     TEST_ASSERT_EQUAL_UINT64(1, sum_counts(engine->polya_stats));
 
     fc_stats_engine_destroy(engine);
     fc_read_destroy(mapped_read);
     fc_read_destroy(unmapped_read);
+    sam_hdr_destroy(hdr);
+}
+
+FC_TEST(stats_engine_suite, test_stats_engine_skips_additional_alignments)
+{
+    sam_hdr_t* hdr = sam_hdr_init();
+    sam_hdr_add_line(hdr, "HD", "VN", "1.6", NULL);
+    sam_hdr_add_line(hdr, "SQ", "SN", "chr1", "LN", "100", NULL);
+
+    bam1_t* secondary = build_mapped_read("secondary", "ACGT", "IIII", 0, 5);
+    bam1_t* supplementary = build_mapped_read("supplementary", "ACGT", "IIII", 0, 10);
+    secondary->core.flag |= BAM_FSECONDARY;
+    supplementary->core.flag |= BAM_FSUPPLEMENTARY;
+
+    fc_read* secondary_read = fc_read_init();
+    fc_read* supplementary_read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(secondary_read);
+    TEST_ASSERT_NOT_NULL(supplementary_read);
+    bam_destroy1(secondary_read->bam);
+    bam_destroy1(supplementary_read->bam);
+    secondary_read->bam = secondary;
+    supplementary_read->bam = supplementary;
+    fc_bam_ensure_mean_quality(secondary, false);
+    fc_bam_ensure_mean_quality(supplementary, false);
+    fc_read_reset_from_bam(secondary_read, hdr, NULL, NULL);
+    fc_read_reset_from_bam(supplementary_read, hdr, NULL, NULL);
+
+    fc_stats_engine* engine = fc_stats_engine_create(true, false, 0.0f, 0.0f, false);
+    TEST_ASSERT_EQUAL_INT(FC_STATS_SKIP, fc_stats_engine_add_read(engine, secondary_read, hdr, NULL));
+    TEST_ASSERT_EQUAL_INT(FC_STATS_SKIP, fc_stats_engine_add_read(engine, supplementary_read, hdr, NULL));
+    TEST_ASSERT_EQUAL_UINT64(0, sum_counts(engine->length_stats));
+    TEST_ASSERT_EQUAL_UINT64(0, sum_counts(engine->acc_stats));
+
+    fc_stats_engine_destroy(engine);
+    fc_read_destroy(secondary_read);
+    fc_read_destroy(supplementary_read);
     sam_hdr_destroy(hdr);
 }

@@ -27,7 +27,6 @@ typedef struct {
     bool bam_input;
     bool use_barcodes;
     size_t barcode_count;
-    bool unmapped_override;
     fc_stats_engine **engines;
     size_t engine_count;
     const fc_run_summary *run_summary;

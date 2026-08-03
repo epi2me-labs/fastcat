@@ -22,10 +22,12 @@ FC_TEST(alignment_summary_suite, test_alignment_summary_counts_all_flag_categori
     bam1_t secondary = alignment_test_bam(0, BAM_FSECONDARY | BAM_FDUP);
     bam1_t supplementary = alignment_test_bam(1, BAM_FSUPPLEMENTARY | BAM_FQCFAIL);
     bam1_t unmapped = alignment_test_bam(-1, BAM_FUNMAP | BAM_FQCFAIL | BAM_FDUP);
+    bam1_t secondary_unmapped = alignment_test_bam(-1, BAM_FUNMAP | BAM_FSECONDARY);
     fc_alignment_summary_add_read(summary, 0, &primary, 1);
     fc_alignment_summary_add_read(summary, 0, &secondary, 0);
     fc_alignment_summary_add_read(summary, 0, &supplementary, -1);
     fc_alignment_summary_add_read(summary, 0, &unmapped, 0);
+    fc_alignment_summary_add_read(summary, 0, &secondary_unmapped, 0);
 
     const fc_alignment_counts *counts = fc_alignment_summary_global(summary);
     TEST_ASSERT_NOT_NULL(counts);
@@ -34,21 +36,22 @@ FC_TEST(alignment_summary_suite, test_alignment_summary_counts_all_flag_categori
     TEST_ASSERT_EQUAL_UINT64(1, counts->reference_counts[0][FC_FLAGSTAT_PRIMARY]);
     TEST_ASSERT_EQUAL_UINT64(1, counts->reference_counts[0][FC_FLAGSTAT_SECONDARY]);
     TEST_ASSERT_EQUAL_UINT64(1, counts->reference_counts[1][FC_FLAGSTAT_SUPPLEMENTARY]);
-    TEST_ASSERT_EQUAL_UINT64(1, counts->unmapped_counts[FC_FLAGSTAT_UNMAPPED]);
+    TEST_ASSERT_EQUAL_UINT64(2, counts->unmapped_counts[FC_FLAGSTAT_UNMAPPED]);
 
     fc_alignment_totals totals = { 0 };
     fc_alignment_counts_materialize(counts, &totals);
-    TEST_ASSERT_EQUAL_UINT64(4, totals.record_counts[FC_FLAGSTAT_TOTAL]);
+    TEST_ASSERT_EQUAL_UINT64(5, totals.record_counts[FC_FLAGSTAT_TOTAL]);
     TEST_ASSERT_EQUAL_UINT64(1, totals.record_counts[FC_FLAGSTAT_PRIMARY]);
-    TEST_ASSERT_EQUAL_UINT64(1, totals.record_counts[FC_FLAGSTAT_SECONDARY]);
+    TEST_ASSERT_EQUAL_UINT64(2, totals.record_counts[FC_FLAGSTAT_SECONDARY]);
     TEST_ASSERT_EQUAL_UINT64(1, totals.record_counts[FC_FLAGSTAT_SUPPLEMENTARY]);
-    TEST_ASSERT_EQUAL_UINT64(1, totals.record_counts[FC_FLAGSTAT_UNMAPPED]);
+    TEST_ASSERT_EQUAL_UINT64(2, totals.record_counts[FC_FLAGSTAT_UNMAPPED]);
     TEST_ASSERT_EQUAL_UINT64(2, totals.record_counts[FC_FLAGSTAT_QCFAIL]);
     TEST_ASSERT_EQUAL_UINT64(2, totals.record_counts[FC_FLAGSTAT_DUPLICATE]);
     TEST_ASSERT_EQUAL_UINT64(1, totals.record_counts[FC_FLAGSTAT_DUPLEX]);
     TEST_ASSERT_EQUAL_UINT64(1, totals.record_counts[FC_FLAGSTAT_DUPLEX_FORMING]);
     TEST_ASSERT_EQUAL_UINT64(3, totals.mapped_record_count);
     TEST_ASSERT_EQUAL_UINT64(1, totals.primary_mapped_record_count);
+    TEST_ASSERT_EQUAL_UINT64(1, totals.mapped_read_count);
     TEST_ASSERT_EQUAL_UINT64(2, totals.read_count);
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.5, totals.mapping_rate);
 

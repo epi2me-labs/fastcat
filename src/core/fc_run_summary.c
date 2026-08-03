@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "core/fc_common.h"
+#include "core/fc_filter.h"
 #include "core/fc_stats_engine.h"
 #include "core/fc_time_bin.h"
 #include "core/kh_counter.h"
@@ -163,7 +164,8 @@ static const char *summary_input_type(const fc_stats_engine *engine, bool bam_in
     if (!bam_input) {
         return "fastq";
     }
-    if (NULL != engine && summary_stats_total_count(engine->length_stats) > 0.0) {
+    // if acc_stats is present and has data, we saw at least one aligned read
+    if (NULL != engine && summary_stats_total_count(engine->acc_stats) > 0.0) {
         return "aligned bam";
     }
     return "unaligned bam";
@@ -215,6 +217,9 @@ void fc_run_summary_row_destroy(fc_run_summary_row *row)
 void fc_run_summary_add_read(fc_run_summary *model, size_t barcode, const fc_read *read)
 {
     if (!model || !read || !read->bam || barcode >= model->barcode_count) {
+        return;
+    }
+    if (!fc_is_canonical_read_record(read->bam)) {
         return;
     }
 

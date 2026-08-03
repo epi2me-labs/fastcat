@@ -58,6 +58,26 @@ FC_TEST(filter_suite, test_bam_primary_flags)
     bam_destroy1(b);
 }
 
+FC_TEST(filter_suite, test_bam_canonical_read_record_flags)
+{
+    bam1_t* b = bam_init1();
+    TEST_ASSERT_NOT_NULL(b);
+
+    b->core.flag = 0;
+    TEST_ASSERT_TRUE(fc_is_canonical_read_record(b));
+
+    b->core.flag = BAM_FUNMAP;
+    TEST_ASSERT_TRUE(fc_is_canonical_read_record(b));
+
+    b->core.flag = BAM_FSECONDARY;
+    TEST_ASSERT_FALSE(fc_is_canonical_read_record(b));
+
+    b->core.flag = BAM_FSUPPLEMENTARY;
+    TEST_ASSERT_FALSE(fc_is_canonical_read_record(b));
+
+    bam_destroy1(b);
+}
+
 FC_TEST(filter_suite, test_bam_tag_int_filter)
 {
     bam1_t* b = bam_init1();

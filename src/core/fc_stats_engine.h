@@ -13,8 +13,6 @@ typedef struct {
     read_stats *qual_stats;
     read_stats *acc_stats;
     read_stats *cov_stats;
-    read_stats *length_stats_unmapped;
-    read_stats *qual_stats_unmapped;
     read_stats *polya_stats;
     float polya_cover;
     float polya_qual;

@@ -51,7 +51,7 @@ FC_TEST(length_qscore_2d_suite, test_length_qscore_single_read_lands_in_expected
     fc_length_qscore_2d *model = create_model(1, 1);
     TEST_ASSERT_NOT_NULL(model);
 
-    fc_length_qscore_2d_add_read(model, 0, 100.0, 10.25f);
+    fc_length_qscore_2d_add_read(model, 0, TEST_LENGTH_QSCORE_READ(100.0, 10.25f));
 
     fc_length_qscore_2d_matrix matrix = { 0 };
     TEST_ASSERT_EQUAL_INT(0, fc_length_qscore_2d_materialize(model, 0, &matrix));
@@ -85,10 +85,10 @@ FC_TEST(length_qscore_2d_suite, test_length_qscore_qscore_bins_clamp_to_range)
     fc_length_qscore_2d *model = create_model(1, 1);
     TEST_ASSERT_NOT_NULL(model);
 
-    fc_length_qscore_2d_add_read(model, 0, 100.0, -2.0f);
-    fc_length_qscore_2d_add_read(model, 0, 100.0, NAN);
-    fc_length_qscore_2d_add_read(model, 0, 100.0, 60.0f);
-    fc_length_qscore_2d_add_read(model, 0, 100.0, 999.0f);
+    fc_length_qscore_2d_add_read(model, 0, TEST_LENGTH_QSCORE_READ(100.0, -2.0f));
+    fc_length_qscore_2d_add_read(model, 0, TEST_LENGTH_QSCORE_READ(100.0, NAN));
+    fc_length_qscore_2d_add_read(model, 0, TEST_LENGTH_QSCORE_READ(100.0, 60.0f));
+    fc_length_qscore_2d_add_read(model, 0, TEST_LENGTH_QSCORE_READ(100.0, 999.0f));
 
     fc_length_qscore_2d_matrix matrix = { 0 };
     TEST_ASSERT_EQUAL_INT(0, fc_length_qscore_2d_materialize(model, 0, &matrix));
@@ -135,7 +135,7 @@ FC_TEST(length_qscore_2d_suite, test_length_qscore_barcode_state_is_isolated)
     TEST_ASSERT_FALSE(fc_length_qscore_2d_seen(model, 1));
     TEST_ASSERT_FALSE(fc_length_qscore_2d_seen(model, 3));
 
-    fc_length_qscore_2d_add_read(model, 1, 100.0, 12.0f);
+    fc_length_qscore_2d_add_read(model, 1, TEST_LENGTH_QSCORE_READ(100.0, 12.0f));
 
     TEST_ASSERT_FALSE(fc_length_qscore_2d_seen(model, 0));
     TEST_ASSERT_TRUE(fc_length_qscore_2d_seen(model, 1));
@@ -186,10 +186,10 @@ FC_TEST(length_qscore_2d_suite, test_length_qscore_smoothing_preserves_observed_
     TEST_ASSERT_NOT_NULL(model);
 
     for (size_t i = 0; i < 25; i++) {
-        fc_length_qscore_2d_add_read(model, 0, 100.0, 10.1f);
+        fc_length_qscore_2d_add_read(model, 0, TEST_LENGTH_QSCORE_READ(100.0, 10.1f));
     }
     for (size_t i = 0; i < 15; i++) {
-        fc_length_qscore_2d_add_read(model, 0, 300.0, 11.1f);
+        fc_length_qscore_2d_add_read(model, 0, TEST_LENGTH_QSCORE_READ(300.0, 11.1f));
     }
 
     fc_length_qscore_2d_matrix matrix = { 0 };
@@ -233,9 +233,9 @@ FC_TEST(length_qscore_2d_suite, test_length_qscore_extreme_tail_does_not_force_t
     TEST_ASSERT_NOT_NULL(model);
 
     for (size_t i = 0; i < 100; i++) {
-        fc_length_qscore_2d_add_read(model, 0, 1000.0 + (double)i, 20.0f);
+        fc_length_qscore_2d_add_read(model, 0, TEST_LENGTH_QSCORE_READ(1000.0 + (double)i, 20.0f));
     }
-    fc_length_qscore_2d_add_read(model, 0, 1000000.0, 20.0f);
+    fc_length_qscore_2d_add_read(model, 0, TEST_LENGTH_QSCORE_READ(1000000.0, 20.0f));
 
     fc_length_qscore_2d_matrix matrix = { 0 };
     TEST_ASSERT_EQUAL_INT(0, fc_length_qscore_2d_materialize(model, 0, &matrix));

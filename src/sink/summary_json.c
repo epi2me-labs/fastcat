@@ -7,6 +7,7 @@
 
 #include "core/fc_channel_map.h"
 #include "core/fc_common.h"
+#include "core/fc_filter.h"
 #include "core/fc_iter.h"
 #include "core/fc_json.h"
 #include "core/fc_kll.h"
@@ -183,66 +184,14 @@ static void summary_barcode_destroy(summary_json_barcode *state)
     memset(state, 0, sizeof(*state));
 }
 
-static const read_stats *summary_read_length_stats(const fc_stats_engine *engine, bool unmapped_override)
+static const read_stats *summary_read_length_stats(const fc_stats_engine *engine)
 {
-    if (NULL == engine) {
-        return NULL;
-    }
-    if (unmapped_override) {
-        return engine->length_stats_unmapped;
-    }
-    double aligned = 0.0;
-    double unmapped = 0.0;
-    if (NULL != engine->length_stats) {
-        for (size_t i = 0; i < engine->length_stats->n; i++) {
-            aligned += (double)engine->length_stats->counts[i];
-        }
-    }
-    if (NULL != engine->length_stats_unmapped) {
-        for (size_t i = 0; i < engine->length_stats_unmapped->n; i++) {
-            unmapped += (double)engine->length_stats_unmapped->counts[i];
-        }
-    }
-    if (aligned > 0.0) {
-        return engine->length_stats;
-    }
-    if (unmapped > 0.0) {
-        return engine->length_stats_unmapped;
-    }
-    return engine->length_stats;
+    return engine ? engine->length_stats : NULL;
 }
 
-static const read_stats *summary_quality_stats(
-    const fc_stats_engine *engine,
-    bool bam_input,
-    bool unmapped_override)
+static const read_stats *summary_quality_stats(const fc_stats_engine *engine)
 {
-    if (NULL == engine) {
-        return NULL;
-    }
-    if (unmapped_override) {
-        return engine->qual_stats_unmapped;
-    }
-
-    double aligned = 0.0;
-    double unmapped = 0.0;
-    if (NULL != engine->qual_stats) {
-        for (size_t i = 0; i < engine->qual_stats->n; i++) {
-            aligned += (double)engine->qual_stats->counts[i];
-        }
-    }
-    if (NULL != engine->qual_stats_unmapped) {
-        for (size_t i = 0; i < engine->qual_stats_unmapped->n; i++) {
-            unmapped += (double)engine->qual_stats_unmapped->counts[i];
-        }
-    }
-    if (aligned > 0.0) {
-        return engine->qual_stats;
-    }
-    if (bam_input && unmapped > 0.0) {
-        return engine->qual_stats_unmapped;
-    }
-    return engine->qual_stats;
+    return engine ? engine->qual_stats : NULL;
 }
 
 static const char *summary_channel_device_name(size_t highest_channel)
@@ -896,6 +845,9 @@ static void summary_json_flagstats(
         fc_json_object_set_number(alignment, "mapped_record_percent", 0.0);
         fc_json_object_set_number(alignment, "primary_mapped_record_count", 0.0);
         fc_json_object_set_number(alignment, "primary_mapped_record_percent", 0.0);
+        fc_json_object_set_number(alignment, "read_count", 0.0);
+        fc_json_object_set_number(alignment, "mapped_read_count", 0.0);
+        fc_json_object_set_number(alignment, "mapped_read_percent", 0.0);
         fc_json_object_set_array(alignment, "per_reference_counts");
         return;
     }
@@ -931,6 +883,9 @@ static void summary_json_flagstats(
         totals.record_counts[FC_FLAGSTAT_TOTAL] > 0
             ? 100.0 * totals.primary_mapped_record_count / totals.record_counts[FC_FLAGSTAT_TOTAL]
             : 0.0);
+    fc_json_object_set_number(alignment, "read_count", (double)totals.read_count);
+    fc_json_object_set_number(alignment, "mapped_read_count", (double)totals.mapped_read_count);
+    fc_json_object_set_number(alignment, "mapped_read_percent", 100.0 * totals.mapping_rate);
 
     fc_json_array_t *rows = fc_json_object_set_array(alignment, "per_reference_counts");
     if (sink->cfg.region_mode) {
@@ -993,13 +948,6 @@ static void summary_json_alignment_distributions(
 
     value = summary_json_fixed_distribution_value(engine ? engine->cov_stats : NULL);
     fc_json_object_set_value(distributions, "query_coverage", value);
-
-    value = summary_json_length_distribution_value(
-        engine ? engine->length_stats_unmapped : NULL, 0, 0, false, false);
-    fc_json_object_set_value(distributions, "unmapped_read_length", value);
-
-    value = summary_json_fixed_distribution_value(engine ? engine->qual_stats_unmapped : NULL);
-    fc_json_object_set_value(distributions, "unmapped_quality", value);
 
     value = summary_json_length_distribution_value(
         engine ? engine->polya_stats : NULL, 0, 0, false, false);
@@ -1159,8 +1107,8 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
     summary_json_barcode *state = &sink->barcodes[barcode];
     size_t engine_idx = sink->cfg.use_barcodes ? barcode : 0;
     const fc_stats_engine *engine = engine_idx < sink->cfg.engine_count ? sink->cfg.engines[engine_idx] : NULL;
-    const read_stats *length_stats = summary_read_length_stats(engine, sink->cfg.unmapped_override);
-    const read_stats *quality_stats = summary_quality_stats(engine, sink->cfg.bam_input, sink->cfg.unmapped_override);
+    const read_stats *length_stats = summary_read_length_stats(engine);
+    const read_stats *quality_stats = summary_quality_stats(engine);
 
     char barcode_buf[32] = { 0 };
     const char *barcode_id = sink->cfg.use_barcodes
@@ -1276,6 +1224,9 @@ static void summary_json_sink_add_read(
     summary_json_sink *sink = (summary_json_sink *)ctx;
     (void)fname;
     (void)hdr;
+    if (!fc_is_canonical_read_record(read->bam)) {
+        return;
+    }
 
     size_t barcode = (sink->cfg.use_barcodes && read_ctx) ? read_ctx->barcode : 0;
     if (barcode >= sink->cfg.barcode_count) {

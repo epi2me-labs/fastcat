@@ -9,6 +9,7 @@
 #include "htslib/thread_pool.h"
 
 #include "core/fc_common.h"
+#include "core/fc_filter.h"
 #include "core/fc_log.h"
 #include "core/fc_sinks.h"
 #include "sink/common.h"
@@ -155,6 +156,9 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
     output_sink *sink = (output_sink *)ctx;
     (void)fname;
     (void)hdr;
+    if (!fc_is_canonical_read_record(read->bam)) {
+        return;
+    }
 
     size_t barcode = read_ctx->barcode;
     if (barcode >= sink->cfg.barcode_count) {

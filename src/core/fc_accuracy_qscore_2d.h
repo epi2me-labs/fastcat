@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "core/fc_metric_qscore_2d.h"
+#include "core/fc_read.h"
 
 #define FC_AQ2D_QSCORE_BINS 120
 #define FC_AQ2D_CONCORDANCE_Q_BINS 120
@@ -28,8 +29,8 @@ fc_accuracy_qscore_2d *fc_accuracy_qscore_2d_create(
 void fc_accuracy_qscore_2d_add_read(
     fc_accuracy_qscore_2d *model,
     size_t barcode,
-    float accuracy,
-    float mean_q);
+    const fc_read *read,
+    float accuracy);
 
 #define fc_accuracy_qscore_2d_destroy fc_metric_qscore_2d_destroy
 #define fc_accuracy_qscore_2d_seen fc_metric_qscore_2d_seen

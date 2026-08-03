@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 
+#include "core/fc_filter.h"
 #include "core/fc_metric_qscore_2d.h"
 
 static void aq2d_compute_range(
@@ -42,9 +43,12 @@ fc_accuracy_qscore_2d *fc_accuracy_qscore_2d_create(
 void fc_accuracy_qscore_2d_add_read(
     fc_accuracy_qscore_2d *model,
     size_t barcode,
-    float accuracy,
-    float mean_q)
+    const fc_read *read,
+    float accuracy)
 {
+    if (!model || !read || !read->bam || !read->meta || !fc_is_canonical_read_record(read->bam)) {
+        return;
+    }
     if (!isfinite(accuracy)) {
         return;
     }
@@ -52,5 +56,6 @@ void fc_accuracy_qscore_2d_add_read(
     float concordance_qscore = error_rate > 0.0f
         ? -10.0f * log10f(error_rate)
         : 60.0f;
-    fc_metric_qscore_2d_add_value(model, barcode, fminf(60.0f, concordance_qscore), mean_q);
+    fc_metric_qscore_2d_add_value(
+        model, barcode, fminf(60.0f, concordance_qscore), read->meta->mean_q);
 }

@@ -183,7 +183,7 @@ FC_TEST(run_summary_suite, test_run_summary_uses_fallback_sample_and_earliest_ti
 FC_TEST(run_summary_suite, test_run_summary_classifies_bam_input_type)
 {
     fc_run_summary *model = fc_run_summary_create(1);
-    fc_stats_engine *engine = fc_stats_engine_create(false, false, 0.0f, 0.0f, false);
+    fc_stats_engine *engine = fc_stats_engine_create(true, false, 0.0f, 0.0f, false);
     TEST_ASSERT_NOT_NULL(model);
     TEST_ASSERT_NOT_NULL(engine);
 
@@ -204,7 +204,7 @@ FC_TEST(run_summary_suite, test_run_summary_classifies_bam_input_type)
     TEST_ASSERT_EQUAL_STRING("unaligned bam", row.input_type);
     fc_run_summary_row_destroy(&row);
 
-    add_length_count(engine->length_stats, 100);
+    add_qual_count(engine->acc_stats, 99.0);
     TEST_ASSERT_EQUAL_INT(
         0,
         fc_run_summary_materialize(model, 0, engine, true, NULL, "fallback-sample", "unclassified", &row));
@@ -212,6 +212,38 @@ FC_TEST(run_summary_suite, test_run_summary_classifies_bam_input_type)
 
     fc_run_summary_row_destroy(&row);
     fc_stats_engine_destroy(engine);
+    fc_run_summary_destroy(model);
+}
+
+FC_TEST(run_summary_suite, test_run_summary_ignores_additional_alignments)
+{
+    fc_run_summary *model = fc_run_summary_create(1);
+    TEST_ASSERT_NOT_NULL(model);
+
+    bam1_t bam = { 0 };
+    read_meta meta = { 0 };
+    fc_read read = {
+        .bam = &bam,
+        .meta = &meta
+    };
+    bam.core.l_qseq = 100;
+
+    bam.core.flag = BAM_FSECONDARY;
+    fc_run_summary_add_read(model, 0, &read);
+    bam.core.flag = BAM_FSUPPLEMENTARY;
+    fc_run_summary_add_read(model, 0, &read);
+    TEST_ASSERT_FALSE(fc_run_summary_seen(model, 0));
+
+    bam.core.flag = BAM_FUNMAP;
+    fc_run_summary_add_read(model, 0, &read);
+    TEST_ASSERT_TRUE(fc_run_summary_seen(model, 0));
+
+    fc_run_summary_row row = { 0 };
+    TEST_ASSERT_EQUAL_INT(0,
+        fc_run_summary_materialize(model, 0, NULL, false, NULL, "sample", "all", &row));
+    TEST_ASSERT_EQUAL_UINT64(1, row.read_count);
+    TEST_ASSERT_EQUAL_UINT64(100, row.base_count);
+    fc_run_summary_row_destroy(&row);
     fc_run_summary_destroy(model);
 }
 
