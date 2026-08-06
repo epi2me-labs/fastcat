@@ -1,12 +1,11 @@
 // bamindex dump program
 
-#include <argp.h>
-#include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <time.h>
 
+#include "core/fc_argp.h"
 #include "core/fc_log.h"
 #include "index.h"
 
@@ -60,7 +59,7 @@ void index_dump(const char *filename)
 {
     struct stat st;
     if (stat(filename, &st) != 0) {
-        errx(1, "Cannot open index file %s\n", filename);
+        fprintf(stderr, "Cannot open index file %s\n", filename);
         exit(EXIT_FAILURE);
     }
 

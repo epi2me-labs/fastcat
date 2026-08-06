@@ -259,9 +259,9 @@ static fc_input_resolve_status read_paths_from_stream(
     fc_input_resolve_status status = FC_INPUT_RESOLVE_OK;
     char *line = NULL;
     size_t cap = 0;
-    ssize_t nchr = 0;
+    ptrdiff_t nchr = 0;
 
-    while ((nchr = getline(&line, &cap, fp)) != -1) {
+    while ((nchr = fc_getline(&line, &cap, fp)) != -1) {
         struct stat st = { 0 };
         // Remove trailing newline
         if (nchr > 0 && (line[nchr - 1] == '\n' || line[nchr - 1] == '\r')) {

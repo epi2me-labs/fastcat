@@ -1,12 +1,9 @@
 // bamindex build program
 
-#include <argp.h>
-#include <err.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/resource.h>
 #include <time.h>
 
 #include "htslib/bgzf.h"
@@ -14,6 +11,7 @@
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
 
+#include "core/fc_argp.h"
 #include "core/fc_bam_utils.h"
 #include "core/fc_common.h"
 #include "core/fc_log.h"

@@ -2,12 +2,10 @@
 
 #include "cli/bamindex/main.h"
 
-#include <err.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/resource.h>
 
 enum command_mode {
     MODE_HELP = 0,
@@ -56,9 +54,11 @@ const char *mode_string(const enum command_mode mode)
         return "dump";
     case MODE_INVALID:
         fprint_commands();
-        errx(EXIT_FAILURE, "Invalid subcommand\n");
+        fprintf(stderr, "Invalid subcommand\n");
+        exit(EXIT_FAILURE);
     default:
-        errx(EXIT_FAILURE, "bamindex failure -- report bug\n");
+        fprintf(stderr, "bamindex failure -- report bug\n");
+        exit(EXIT_FAILURE);
     }
 
     return NULL;
@@ -77,9 +77,11 @@ const char *mode_description(const enum command_mode mode)
         return "Dump an index fetch to text.";
     case MODE_INVALID:
         fprint_commands();
-        errx(EXIT_FAILURE, "Invalid subcommand\n");
+        fprintf(stderr, "Invalid subcommand\n");
+        exit(EXIT_FAILURE);
     default:
-        errx(EXIT_FAILURE, "bamindex failure -- report bug\n");
+        fprintf(stderr, "bamindex failure -- report bug\n");
+        exit(EXIT_FAILURE);
     }
 
     return NULL;
@@ -122,7 +124,7 @@ int bamindex_main(int argc, char *argv[])
         break;
     default:
         ret = EXIT_FAILURE;
-        warnx("Unrecognised subcommand %s\n", argv[1]);
+        fprintf(stderr, "Unrecognised subcommand %s\n", argv[1]);
     }
 
     return ret;

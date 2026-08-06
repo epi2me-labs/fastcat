@@ -1,7 +1,5 @@
 // bamindex fetch program
 
-#include <argp.h>
-#include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -12,6 +10,7 @@
 #include "htslib/sam.h"
 #include "htslib/thread_pool.h"
 
+#include "core/fc_argp.h"
 #include "core/fc_bam_utils.h"
 #include "core/fc_common.h"
 #include "core/fc_log.h"
@@ -115,7 +114,7 @@ void index_fetch(const char *bam_fname, const char *index_fname, int chunk, int 
 
     struct stat st;
     if (stat(index_fname, &st) != 0) {
-        errx(1, "Cannot open index file %s\n", index_fname);
+        fprintf(stderr, "Cannot open index file %s\n", index_fname);
         exit(EXIT_FAILURE);
     }
     FILE *idx_fp = fopen(index_fname, "rb");

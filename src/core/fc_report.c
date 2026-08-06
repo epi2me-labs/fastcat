@@ -330,7 +330,7 @@ static char *format_report_date(void)
     time_t now = time(NULL);
     struct tm local = { 0 };
     char text[11] = { 0 };
-    if (now == (time_t)-1 || localtime_r(&now, &local) == NULL || strftime(text, sizeof(text), "%Y-%m-%d", &local) == 0) {
+    if (now == (time_t)-1 || !fc_localtime(&now, &local) || strftime(text, sizeof(text), "%Y-%m-%d", &local) == 0) {
         return fc_strdup("(unknown)", "report date");
     }
     return fc_strdup(text, "report date");

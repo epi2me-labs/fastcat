@@ -1,0 +1,14 @@
+diff --git a/argp-parse.c b/argp-parse.c
+index 4a32c13..b8e5a32 100644
+--- a/argp-parse.c
++++ b/argp-parse.c
+@@ -46,6 +46,9 @@
+ #endif
+ #include <limits.h>
+ #include <assert.h>
++#ifdef _WIN32
++#include <windows.h>
++#endif
+ 
+ #ifndef _
+ /* This is for other GNU distributions with internationalized messages.

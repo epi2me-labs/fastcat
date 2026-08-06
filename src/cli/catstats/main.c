@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
 
 #include "htslib/thread_pool.h"
@@ -24,12 +23,6 @@ static bool filters_requested(const fc_catstats_args *args)
 {
     return args->min_length != 0 || args->max_length != (size_t)-1 || args->min_qscore != 0.0f
         || args->dust || args->read_group != NULL || args->tag_name[0] != '\0';
-}
-
-static bool output_path_exists(const char *path)
-{
-    struct stat st;
-    return lstat(path, &st) == 0;
 }
 
 static void log_bam_input_error(fc_bam_input_status status, const char *path)
@@ -196,10 +189,13 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     bool bam_mode = false;
     bool has_reference_bam = false;
     bool calculate_coverage = false;
+    bool direct_reads_output = program == FC_PROGRAM_QC && args->reads_output != NULL
+        && !args->demultiplex;
     bool output_created = false;
     bool output_published = false;
     char *final_output_dir = NULL;
     char *temporary_output_dir = NULL;
+    char *temporary_reads_output = NULL;
     const char *output_dir = NULL;
     fc_input_resolve_status resolve_status = resolve_program_inputs(
         program, args, &resolved_inputs);
@@ -247,12 +243,12 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     temporary_output_dir = fc_asprintf(
         "temporary output directory", "%s.tmp", final_output_dir);
     output_dir = temporary_output_dir;
-    if (output_path_exists(final_output_dir)) {
+    if (file_exists(final_output_dir)) {
         FC_LOG_ERROR("Output directory '%s' already exists.", final_output_dir);
         status = EXIT_FAILURE;
         goto cleanup;
     }
-    if (output_path_exists(temporary_output_dir)) {
+    if (file_exists(temporary_output_dir)) {
         FC_LOG_ERROR("Temporary output directory '%s' already exists.", temporary_output_dir);
         status = EXIT_FAILURE;
         goto cleanup;
@@ -263,6 +259,19 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         goto cleanup;
     }
     output_created = true;
+    if (direct_reads_output) {
+        const char *reads_extension = args->write_bam ? ".bam" : ".fastq.gz";
+        char *reads_filename = fc_asprintf(
+            "read output filename", "%s%s", args->reads_output, reads_extension);
+        temporary_reads_output = fc_join_path(output_dir, reads_filename);
+        free(reads_filename);
+        if (ensure_parent_dir_exists(temporary_reads_output) != 0) {
+            FC_LOG_ERROR("Unable to create parent directory for read output prefix '%s'.",
+                args->reads_output);
+            status = EXIT_FAILURE;
+            goto cleanup;
+        }
+    }
 
     if (bam_mode && args->threads > 1) {
         pool.pool = hts_tpool_init(args->threads);
@@ -334,6 +343,11 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         }
         reference_header = bam_input_info.reference_header;
         has_reference_bam = bam_input_info.has_references;
+        if (program == FC_PROGRAM_QC && has_reference_bam && direct_reads_output) {
+            FC_LOG_ERROR("--reads-output is not supported for reference-bearing BAM QC input.");
+            status = EXIT_FAILURE;
+            goto cleanup;
+        }
         if (program == FC_PROGRAM_QC && has_reference_bam && filters_requested(args)) {
             FC_LOG_WARN("Read filtering is disabled for reference-bearing BAM QC input.");
             fc_iter_opts_disable_filters(&iter_opts);
@@ -530,6 +544,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     if (emit_reads) {
         fc_output_sink_opts output_opts = {
             .output_root = args->demultiplex ? output_dir : NULL,
+            .stream_path = direct_reads_output ? temporary_reads_output : NULL,
             .reads_per_file = args->reads_per_file,
             .write_bam = args->write_bam,
             .threads = args->threads,
@@ -656,6 +671,7 @@ cleanup:
         }
     }
     free(temporary_output_dir);
+    free(temporary_reads_output);
     free(final_output_dir);
     fc_log_destroy();
     return status;

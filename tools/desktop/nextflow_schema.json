@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://epi2me.nanoporetech.com/epi2me-docs/tools/fastcat/nextflow_schema.json",
+  "title": "epi2me-labs/fastcat",
+  "description": "Generate an offline fastcat HTML quality-control report from local FASTQ or BAM input.",
+  "workflow_title": "fastcat report",
+  "workflow_description": "Quality-control summary and HTML report for local FASTQ or BAM data.",
+  "url": "https://epi2me.nanoporetech.com/epi2me-docs/tools/fastcat/",
+  "type": "object",
+  "definitions": {
+    "input": {
+      "title": "Input Options",
+      "type": "object",
+      "fa_icon": "fas fa-file-import",
+      "description": "Select one local FASTQ or BAM file, or a directory containing input files of one format.",
+      "properties": {
+        "input": {
+          "title": "Input reads",
+          "description": "Local FASTQ or BAM file, or a directory containing local input files. The format of one file is detected automatically.",
+          "help_text": "fastcat writes the report to the Desktop-managed results directory.",
+          "type": "string",
+          "format": "path"
+        },
+        "input-fmt": {
+          "title": "Input format for folders",
+          "description": "Required for a directory input. For one FASTQ or BAM file, fastcat detects the format automatically.",
+          "type": "string",
+          "enum": ["fastq", "bam"]
+        },
+        "output": {
+          "title": "Report folder",
+          "description": "Directory in which fastcat writes the report and summary files.",
+          "type": "string",
+          "format": "directory-path",
+          "hidden": true
+        }
+      },
+      "required": ["input"]
+    },
+    "barcodes": {
+      "title": "Barcode Options",
+      "type": "object",
+      "fa_icon": "fas fa-vials",
+      "description": "Optional processing for barcode-labelled reads.",
+      "properties": {
+        "demultiplex": {
+          "title": "Demultiplex barcodes",
+          "description": "Create separate summaries and reports for barcoded samples.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "integrity": {
+      "title": "Input Integrity",
+      "type": "object",
+      "fa_icon": "fas fa-shield-alt",
+      "description": "Stop if fastcat encounters unreadable input or invalid read records.",
+      "properties": {
+        "force-error": {
+          "title": "Check input integrity",
+          "description": "Fail the analysis if any input file or read record has an error.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "read_output": {
+      "title": "Saved reads",
+      "type": "object",
+      "fa_icon": "fas fa-save",
+      "description": "Optionally save reads that pass FASTQ or unaligned-BAM filtering.",
+      "properties": {
+        "reads-output": {
+          "title": "Save reads",
+          "description": "Filename prefix for one saved-read file beneath the report folder, for example saved_reads. Fastcat adds .fastq.gz, or .bam when BAM output is selected. Do not enter a directory. This is unavailable for aligned BAM input and ignored when barcode demultiplexing is enabled.",
+          "type": "string"
+        },
+        "bam-out": {
+          "title": "Save as BAM",
+          "description": "Save the reads as BAM rather than gzip-compressed FASTQ. This applies only when saving reads is enabled.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "advanced_options": {
+      "title": "Advanced Options",
+      "type": "object",
+      "fa_icon": "far fa-question-circle",
+      "description": "Desktop-managed execution settings.",
+      "properties": {
+        "html-report": {
+          "title": "HTML report",
+          "description": "Write the offline interactive HTML report.",
+          "type": "boolean",
+          "default": true,
+          "hidden": true
+        },
+        "threads": {
+          "title": "Threads",
+          "description": "Number of threads used for BAM decompression and report processing.",
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "hidden": true
+        }
+      }
+    }
+  },
+  "allOf": [
+    { "$ref": "#/definitions/input" },
+    { "$ref": "#/definitions/barcodes" },
+    { "$ref": "#/definitions/integrity" },
+    { "$ref": "#/definitions/read_output" },
+    { "$ref": "#/definitions/advanced_options" }
+  ],
+  "resources": {
+    "recommended": { "cpus": 4, "memory": "4GB" },
+    "minimum": { "cpus": 1, "memory": "2GB" },
+    "run_time": "Varies with input size",
+    "arm_support": true
+  }
+}

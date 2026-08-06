@@ -16,7 +16,8 @@
 #include "core/fc_writer.h"
 
 typedef struct {
-    const char *output_root; // NULL => stream to stdout; non-NULL => write files under <output_root>/{unclassified,barcodeXXXX}
+    const char *output_root; // non-NULL => write files under <output_root>/{unclassified,barcodeXXXX}
+    const char *stream_path; // optional single output file; NULL with no output_root => stdout
     size_t reads_per_file;
     bool write_bam;
     int threads;

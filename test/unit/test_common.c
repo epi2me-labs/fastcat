@@ -7,6 +7,7 @@
 #include "unity.h"
 #include "main.h"
 #include "core/fc_common.h"
+#include "test_fs_utils.h"
 
 FC_TEST(common_suite, test_min_max)
 {
@@ -24,13 +25,37 @@ FC_TEST(common_suite, test_replace_char)
     TEST_ASSERT_EQUAL_STRING("A+C+G+T", buf);
 }
 
+FC_TEST(common_suite, test_fc_getline)
+{
+    FILE *stream = tmpfile();
+    TEST_ASSERT_NOT_NULL(stream);
+    fputs("first line\nsecond line", stream);
+    rewind(stream);
+
+    char *line = malloc(2);
+    size_t capacity = 2;
+    TEST_ASSERT_EQUAL_INT(11, fc_getline(&line, &capacity, stream));
+    TEST_ASSERT_EQUAL_STRING("first line\n", line);
+    TEST_ASSERT_GREATER_THAN(2, capacity);
+    TEST_ASSERT_EQUAL_INT(11, fc_getline(&line, &capacity, stream));
+    TEST_ASSERT_EQUAL_STRING("second line", line);
+    TEST_ASSERT_EQUAL_INT(-1, fc_getline(&line, &capacity, stream));
+
+    free(line);
+    fclose(stream);
+}
+
 FC_TEST(common_suite, test_remove_tree)
 {
-    char dir[] = "/tmp/fastcat-remove-tree-XXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(dir));
+    char dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat-remove-tree-XXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(dir, sizeof(dir)));
 
     char *nested = fc_join_path(dir, "nested");
+#ifdef _WIN32
+    TEST_ASSERT_EQUAL_INT(0, mkdir(nested));
+#else
     TEST_ASSERT_EQUAL_INT(0, mkdir(nested, 0700));
+#endif
     char *file = fc_join_path(nested, "output.txt");
     FILE *fp = fopen(file, "w");
     TEST_ASSERT_NOT_NULL(fp);

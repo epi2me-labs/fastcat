@@ -18,7 +18,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
+#ifndef _WIN32
 #include <sys/resource.h>
+#endif
 
 #include "unity.h"
 #include "main.h"
@@ -34,6 +37,10 @@ static size_t total_quantiles_computed = 0;
 
 static size_t get_current_rss_bytes(void)
 {
+#ifdef _WIN32
+    /* The stress test's assertions do not depend on process RSS. */
+    return 0;
+#else
     struct rusage usage;
     getrusage(RUSAGE_SELF, &usage);
     // ru_maxrss is in bytes on macOS, kilobytes on Linux
@@ -41,6 +48,7 @@ static size_t get_current_rss_bytes(void)
     return (size_t)usage.ru_maxrss;
 #else
     return (size_t)usage.ru_maxrss * 1024;
+#endif
 #endif
 }
 

@@ -1,9 +1,9 @@
 #include "args.h"
 
-#include <argp.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/fc_argp.h"
 #include "core/fc_common.h"
 #include "version.h"
 

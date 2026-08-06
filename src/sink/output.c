@@ -170,7 +170,8 @@ static void output_sink_add_read(void *ctx, const fc_read *read, const fc_read_c
         if (sink->cfg.write_bam) {
             output_write_bam(sink, read->bam, sink->bam_files[0]);
         } else {
-            output_write_fastq(sink, read, stdout);
+            void *handle = sink->cfg.stream_path ? (void *)sink->handles[0] : (void *)stdout;
+            output_write_fastq(sink, read, handle);
         }
         return;
     }
@@ -259,7 +260,7 @@ static void output_sink_destroy(void *ctx)
         free(sink->bam_files);
         bam_hdr_destroy(sink->bam_hdr);
     } else {
-        if (sink->output == NULL && fflush(stdout) == EOF) {
+        if (sink->output == NULL && sink->cfg.stream_path == NULL && fflush(stdout) == EOF) {
             FC_LOG_FATAL("Error flushing FASTQ stdout output.");
         }
         free(sink->handles);
@@ -277,11 +278,15 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts)
         return sink;
     }
 
-    // Convention: non-NULL output_root means per-barcode output under <output_root>/{unclassified,barcodeXXXX}; NULL streams to stdout.
+    // Convention: output_root creates per-barcode files; otherwise stream_path
+    // writes one file and the absence of both streams to stdout.
     output_sink *state = fc_alloc(1, sizeof(*state), "output sink");
     state->cfg = *opts;
     state->cfg.barcode_count = state->cfg.barcode_count ? state->cfg.barcode_count : 1;
     state->output = NULL;
+    if (opts->output_root && opts->stream_path) {
+        FC_LOG_FATAL("Output root and direct read-output path cannot both be set.");
+    }
     if (opts->output_root) {
         state->output = fc_strip_path(opts->output_root);
         if (!state->output) {
@@ -314,19 +319,29 @@ fc_sink fc_output_sink_create(const fc_output_sink_opts *opts)
         sam_hdr_add_line(state->bam_hdr, "PG", "ID", "fastcat", "PN", "fastcat", "VN", argp_program_version, NULL);
         state->bam_files = fc_alloc(state->cfg.barcode_count, sizeof(htsFile *), "BAM output handles");
         if (state->output == NULL) {
-            state->bam_files[0] = hts_open("-", "wb");
+            const char *path = state->cfg.stream_path ? state->cfg.stream_path : "-";
+            state->bam_files[0] = hts_open(path, "wb");
             if (state->bam_files[0] == NULL) {
-                FC_LOG_FATAL("Error opening BAM stdout output.");
+                FC_LOG_FATAL("Error opening BAM output '%s'.", path);
             }
             if (hts_set_opt(state->bam_files[0], HTS_OPT_THREAD_POOL, &state->hts_pool) < 0) {
-                FC_LOG_FATAL("Error configuring BAM stdout output.");
+                FC_LOG_FATAL("Error configuring BAM output '%s'.", path);
             }
             if (sam_hdr_write(state->bam_files[0], state->bam_hdr)) {
-                FC_LOG_FATAL("Error writing header to BAM on stdout");
+                FC_LOG_FATAL("Error writing header to BAM output '%s'.", path);
             }
         }
     } else {
         state->handles = fc_alloc(state->cfg.barcode_count, sizeof(gzFile), "FASTQ output handles");
+        if (state->output == NULL && state->cfg.stream_path) {
+            state->handles[0] = gzopen(state->cfg.stream_path, "wb");
+            if (state->handles[0] == NULL) {
+                FC_LOG_FATAL("Error opening FASTQ output '%s'.", state->cfg.stream_path);
+            }
+            if (gzbuffer(state->handles[0], GZBUFSIZE) != 0) {
+                FC_LOG_FATAL("Error configuring FASTQ output '%s'.", state->cfg.stream_path);
+            }
+        }
     }
 
     sink.ctx = state;

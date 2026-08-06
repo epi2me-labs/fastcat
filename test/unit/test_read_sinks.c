@@ -10,6 +10,7 @@
 #include "core/fc_read.h"
 #include "core/fc_sinks.h"
 #include "vendor/parson/parson.h"
+#include "test_fs_utils.h"
 
 static fc_read *read_sink_test_read(uint16_t flag)
 {
@@ -41,13 +42,6 @@ static fc_read *read_sink_test_read(uint16_t flag)
     return read;
 }
 
-static void make_temp_dir(char *path, size_t path_size)
-{
-    TEST_ASSERT_TRUE(path_size >= sizeof("/tmp/fastcat_read_sinks_XXXXXX"));
-    FC_SNPRINTF_CHECK(path, path_size, "/tmp/fastcat_read_sinks_XXXXXX");
-    TEST_ASSERT_NOT_NULL(mkdtemp(path));
-}
-
 static size_t file_line_count(const char *path)
 {
     FILE *fp = fopen(path, "r");
@@ -74,8 +68,8 @@ static bool file_contains(const char *path, const char *needle)
 
 FC_TEST(read_sinks_suite, test_output_and_perread_sinks_ignore_additional_alignments)
 {
-    char output_dir[64];
-    make_temp_dir(output_dir, sizeof(output_dir));
+    char output_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_read_sinks_XXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(output_dir, sizeof(output_dir)));
     fc_read *read = read_sink_test_read(BAM_FSECONDARY | BAM_FUNMAP);
     fc_read_ctx ctx = { 0 };
 
@@ -108,8 +102,8 @@ FC_TEST(read_sinks_suite, test_output_and_perread_sinks_ignore_additional_alignm
 
 FC_TEST(read_sinks_suite, test_metadata_counters_ignore_additional_alignments)
 {
-    char output_dir[64];
-    make_temp_dir(output_dir, sizeof(output_dir));
+    char output_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_read_sinks_XXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(output_dir, sizeof(output_dir)));
     fc_read *read = read_sink_test_read(BAM_FSUPPLEMENTARY | BAM_FUNMAP);
     fc_read_ctx ctx = { 0 };
 
@@ -139,8 +133,8 @@ FC_TEST(read_sinks_suite, test_metadata_counters_ignore_additional_alignments)
 
 FC_TEST(read_sinks_suite, test_summary_json_sink_ignores_additional_alignments)
 {
-    char output_dir[64];
-    make_temp_dir(output_dir, sizeof(output_dir));
+    char output_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_read_sinks_XXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(output_dir, sizeof(output_dir)));
     fc_read *read = read_sink_test_read(BAM_FSECONDARY | BAM_FUNMAP);
     fc_read_ctx ctx = { 0 };
     fc_stats_engine *engine = fc_stats_engine_create(false, false, 0.0f, 0.0f, false);
@@ -191,8 +185,8 @@ FC_TEST(read_sinks_suite, test_summary_json_sink_ignores_additional_alignments)
 
 FC_TEST(read_sinks_suite, test_summary_json_omits_channels_for_multiple_flowcells)
 {
-    char output_dir[64];
-    make_temp_dir(output_dir, sizeof(output_dir));
+    char output_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_read_sinks_XXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(output_dir, sizeof(output_dir)));
     fc_read *read_a = read_sink_test_read(BAM_FUNMAP);
     fc_read *read_b = read_sink_test_read(BAM_FUNMAP);
     fc_read *read_c = read_sink_test_read(BAM_FUNMAP);

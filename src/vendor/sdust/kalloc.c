@@ -291,6 +291,6 @@ void km_stat_print(const void *km)
 {
     km_stat_t st;
     km_stat(km, &st);
-    fprintf(stderr, "[km_stat] cap=%ld, avail=%ld, largest=%ld, n_core=%ld, n_block=%ld\n",
-        st.capacity, st.available, st.largest, st.n_blocks, st.n_cores);
+    fprintf(stderr, "[km_stat] cap=%zu, avail=%zu, largest=%zu, n_core=%zu, n_block=%zu\n",
+        st.capacity, st.available, st.largest, st.n_cores, st.n_blocks);
 }
