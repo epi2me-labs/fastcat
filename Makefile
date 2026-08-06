@@ -33,8 +33,12 @@ REPORT_PY := $(REPORT_VENV)/bin/python
 REPORT_PIP := $(REPORT_VENV)/bin/pip
 REPORT_REQS := tools/requirements.txt
 REPORT_MPLCONFIGDIR := $(REPORT_DIR)/mpl-cache
+REPORT_TEMPLATE_VENDOR_STAMP := $(REPORT_DIR)/.template-vendor.stamp
+REPORT_TEMPLATE_HEADER := src/core/fc_report_template_data.h
+REPORT_TEMPLATE_SOURCE := src/core/fc_report_template_data.c
 REPORT_EXAMPLE_N ?= 2000
 REPORT_DEMO_N ?= 100000
+REPORT_DEMO_UBAM_N ?= $(REPORT_DEMO_N)
 REPORT_DEMO_DURATION_S ?= 172800
 REPORT_DEMO_DIR = $(TEST_TMP_DIR)/report_html
 REPORT_DEMO_FASTQ = $(REPORT_DEMO_DIR)/reads.fastq.gz
@@ -716,13 +720,16 @@ report_time_plots_preview: $(REPORT_DIR)/time_plots_report.html  ## build Python
 report_template: report_vendor_template  ## build the wf-template-derived HTML report template
 
 .PHONY: report_vendor_template
-report_vendor_template: $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py  ## vendor report template into C assets
+report_vendor_template: $(REPORT_TEMPLATE_VENDOR_STAMP)  ## vendor report template into C assets
+
+$(REPORT_TEMPLATE_VENDOR_STAMP): $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py $(REPORT_TEMPLATE_HEADER) $(REPORT_TEMPLATE_SOURCE) | $(REPORT_DIR)
 	$(DEV_TOOLS) vendor_report_template \
 		--input $(REPORT_DIR)/template_wf_report.html \
 		--template-output $(REPORT_DIR)/fastcat_report_template.html \
-		--header src/core/fc_report_template_data.h \
-		--source src/core/fc_report_template_data.c \
+		--header $(REPORT_TEMPLATE_HEADER) \
+		--source $(REPORT_TEMPLATE_SOURCE) \
 		--symbol fc_report_template_html
+	@touch $@
 
 .PHONY: report_template_check
 report_template_check: $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py  ## verify the vendored report template assets are current
@@ -733,9 +740,9 @@ report_template_check: $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT)
 		--input $(REPORT_DIR)/template_wf_report.html \
 		--header "$$tmp/fc_report_template_data.h" \
 		--source "$$tmp/fc_report_template_data.c" \
-		--verify-source src/core/fc_report_template_data.c \
+		--verify-source $(REPORT_TEMPLATE_SOURCE) \
 		--symbol fc_report_template_html; \
-	diff -u src/core/fc_report_template_data.h "$$tmp/fc_report_template_data.h"
+	diff -u $(REPORT_TEMPLATE_HEADER) "$$tmp/fc_report_template_data.h"
 
 .PHONY: report_template_staged
 report_template_staged:  ## refresh staged report-template C assets when their inputs change
@@ -811,7 +818,7 @@ test_unit: | $(HTSLIB_PATCH_STAMP)
 # - Individual test-to-leaf-group registrations are inline next to each test implementation
 
 # Declare all test group targets as PHONY
-.PHONY: test test_functional test_memory test_unit demo demo_ubam test_report_missing_metadata
+.PHONY: test test_functional test_memory test_unit demo demo_prebuilt demo_ubam test_report test_report_missing_metadata
 .PHONY: test_fastcat test_fastcat_memory test_fastcat_equivalence test_fastcat_demux test_fastcat_inputs test_fastcat_filters test_fastcat_output test_qc
 .PHONY: test_bamstats test_bamstats_memory test_bamstats_core test_bamstats_equivalence test_bamstats_coverage test_bamstats_inputs
 .PHONY: test_bamindex test_bamindex_memory
@@ -819,7 +826,7 @@ test_unit: | $(HTSLIB_PATCH_STAMP)
 .PHONY: test_meta
 
 .PHONY: test_functional
-test_functional: test_fastcat test_bamstats test_bamindex test_fastlint test_meta test_qc demo demo_ubam  ## run integration tests
+test_functional: test_fastcat test_bamstats test_bamindex test_fastlint test_meta test_qc  ## run integration tests
 
 .PHONY: test_memory
 test_memory: test_fastcat_memory test_bamstats_memory test_bamindex_memory test_fastlint_memory
@@ -979,7 +986,11 @@ $(REPORT_DEMO_BAM): $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py $(
 		> $@
 
 .PHONY: demo
-demo: report_vendor_template $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_BAM) test/fixtures/bam/coverage/report_simulated_regions.bed  ## generate FASTQ and aligned-BAM HTML report demos
+demo: report_vendor_template  ## rebuild the current report template and generate HTML report demos
+	$(MAKE) demo_prebuilt
+
+.PHONY: demo_prebuilt
+demo_prebuilt: $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_BAM) test/fixtures/bam/coverage/report_simulated_regions.bed  ## generate HTML report demos using the embedded template
 	@$(call TEST_DESC,HTML report demo)
 	rm -rf $(REPORT_DEMO_DIR)/fastcat_out $(REPORT_DEMO_DIR)/demux_out $(REPORT_DEMO_DIR)/aligned_out
 	$(RUN_FASTCAT) $(REPORT_DEMO_FASTQ) \
@@ -1041,7 +1052,7 @@ demo_ubam: $(FASTCAT_BIN) $(REPORT_VENV)/.deps samtools  ## generate a synthetic
 	rm -rf $(TEST_TMP_DIR)/report_html_ubam
 	mkdir -p $(TEST_TMP_DIR)/report_html_ubam
 	set -o pipefail; $(SIMULATE_READS) \
-		--n $(REPORT_DEMO_N) \
+		--n $(REPORT_DEMO_UBAM_N) \
 		--run-duration-s $(REPORT_DEMO_DURATION_S) \
 		--sample-id simulated-data \
 		--max-len 1000000 \
@@ -1063,6 +1074,9 @@ demo_ubam: $(FASTCAT_BIN) $(REPORT_VENV)/.deps samtools  ## generate a synthetic
 	grep -q 'id="fastcat-coverage-section".*style="display:none;"' $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
 	! grep -q "__FASTCAT_" $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html
 	rm -f $(TEST_TMP_DIR)/report_html_ubam/reads.fastq.gz
+
+.PHONY: test_report
+test_report: demo_prebuilt demo_ubam test_report_missing_metadata  ## run HTML report integration tests using the embedded template
 
 .PHONY: test_report_missing_metadata
 test_report_missing_metadata: $(FASTCAT_BIN) $(REPORT_VENV)/.deps
