@@ -14,28 +14,17 @@
 #include "core/fc_common.h"
 #include "core/fc_failures.h"
 #include "core/fc_filter.h"
+#include "core/fc_input_list.h"
 #include "core/fc_read.h"
 #include "core/fc_regiter.h"
 
 typedef struct fc_run_summary fc_run_summary;
 
 typedef enum {
-    FC_FILE_FASTQ = 0,
-    FC_FILE_BAM
-} fc_file_kind;
-
-typedef enum {
     FC_ITER_RECORD = 0,
     FC_ITER_EOF = -1,
     FC_ITER_ERROR = -2
 } fc_iter_next_status;
-
-bool fc_path_matches_kind(const char *path, fc_file_kind expected_kind);
-
-typedef struct {
-    char **paths;
-    size_t n_paths;
-} fc_path_list;
 
 typedef struct {
     size_t n_seqs;
@@ -114,7 +103,6 @@ typedef struct {
     char **files;
     size_t n_files;
     size_t idx;
-    int recurse;
     fc_file_kind expected_kind;
     fc_fastq_iter fqi;
     fc_bam_iter bmi;
@@ -124,19 +112,10 @@ typedef struct {
 } fc_iter;
 
 void fc_file_stats_init(fc_file_stats *stats);
-int fc_iter_collect_paths(
-    const fc_path_list *input_paths,
-    int recurse,
-    fc_file_kind expected_kind,
-    bool stdin_is_path_list,
-    fc_path_list *out_paths);
 int fc_iter_init(
     fc_iter *it,
-    const fc_path_list *input_paths,
-    int recurse,
-    bool verbose,
-    fc_file_kind expected_kind,
-    bool stdin_is_path_list);
+    fc_resolved_inputs *inputs,
+    bool verbose);
 bool fc_iter_next_file(fc_iter *it, const char **out_file);
 int fc_iter_open_record_cursor(
     fc_iter *it,
@@ -148,6 +127,4 @@ void fc_iter_close(fc_iter *it);
 void fc_iter_merge_file_stats(const fc_iter *it, fc_file_stats *dst);
 const fc_file_stats *fc_iter_stats(const fc_iter *it);
 bool fc_iter_has_hard_error(const fc_iter *it);
-void fc_path_list_free(fc_path_list *paths);
-
 #endif

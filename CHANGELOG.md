@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BAM read-level metrics now combine canonical primary mapped and unmapped records, matching equivalent FASTQ and unaligned-BAM summaries. The separate `length.unmap.hist` and `quality.unmap.hist` outputs and unmapped-only JSON distributions have been removed; all-record flagstats remain unchanged.
 - Coverage and poly-A related modifiers now automatically enable their parent options.
 - Programs now write their outputs to a temporary directory, before moving on success (or deleting on failure).
+- `fastcat fastq` now accepts FASTQ input only. Use `fastcat qc` for BAM quality control.
 ### Added
 - `fastcat qc`, the opt-in unified quality-control command for FASTQ and BAM inputs. It writes
   `summary.json` by default, supports optional HTML reports and legacy outputs, accepts multiple

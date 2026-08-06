@@ -123,7 +123,10 @@ static void _run_iter_and_assert(
     fc_file_kind expected_kind = strstr(path, ".sam") || strstr(path, ".bam")
         ? FC_FILE_BAM
         : FC_FILE_FASTQ;
-    TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, &input_paths, 0, false, expected_kind, false));
+    fc_resolved_inputs inputs = { 0 };
+    TEST_ASSERT_EQUAL_INT(0, fc_resolve_input_paths(
+        &input_paths, 0, false, true, expected_kind, &inputs));
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, &inputs, false));
 
     const char *f = NULL;
     TEST_ASSERT_TRUE(fc_iter_next_file(&iter, &f));
@@ -262,7 +265,10 @@ FC_TEST(iter_suite, test_iter_bam_missing_quality_reaches_record_level_accountin
     fc_iter iter = { 0 };
     char *paths[] = { sam_path };
     fc_path_list input_paths = { .paths = paths, .n_paths = 1 };
-    TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, &input_paths, 0, false, FC_FILE_BAM, false));
+    fc_resolved_inputs inputs = { 0 };
+    TEST_ASSERT_EQUAL_INT(0, fc_resolve_input_paths(
+        &input_paths, 0, false, true, FC_FILE_BAM, &inputs));
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, &inputs, false));
     const char *fname = NULL;
     TEST_ASSERT_TRUE(fc_iter_next_file(&iter, &fname));
     TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, &opts));

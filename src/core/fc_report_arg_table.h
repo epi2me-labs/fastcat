@@ -15,6 +15,7 @@ typedef struct {
 fc_report_arg_table fc_report_arg_table_from_catstats(
     fc_program_kind program,
     const fc_catstats_args *args,
+    fc_file_kind input_kind,
     size_t file_count);
 void fc_report_arg_table_destroy(fc_report_arg_table *table);
 

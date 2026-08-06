@@ -1,189 +1,242 @@
 #include "unity.h"
 #include "main.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/stat.h>
-#include <errno.h>
+#include <unistd.h>
 
-#include "core/fc_iter.h"
-#include "core/fc_common.h"  // fc_join_path
+#include "core/fc_common.h"
+#include "core/fc_input_list.h"
 #include "test_fs_utils.h"
 
-static void make_file(const char *path, const char *content) {
+static void make_file(const char *path, const char *content)
+{
     FILE *fp = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(fp);
-    if (content) fputs(content, fp);
+    if (content) {
+        fputs(content, fp);
+    }
     TEST_ASSERT_EQUAL_INT(0, fclose(fp));
 }
 
-FC_TEST(iter_collect_suite, test_collect_paths_filters_and_recurses_bfs)
+static fc_input_resolve_status resolve(
+    char **paths, size_t n_paths, int recurse, bool fofn, bool filter_kind,
+    fc_file_kind kind, fc_resolved_inputs *inputs)
 {
-    char tmpdir[] = "/tmp/fc_iter_collectXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
-
-    char *sub1 = fc_join_path(tmpdir, "sub1");
-    TEST_ASSERT_NOT_NULL(sub1);
-    char *sub2 = fc_join_path(tmpdir, "sub2");
-    TEST_ASSERT_NOT_NULL(sub2);
-    char *junkdir = fc_join_path(tmpdir, "junk");
-    TEST_ASSERT_NOT_NULL(junkdir);
-    TEST_ASSERT_EQUAL_INT(0, mkdir(sub1, 0700));
-    TEST_ASSERT_EQUAL_INT(0, mkdir(sub2, 0700));
-    TEST_ASSERT_EQUAL_INT(0, mkdir(junkdir, 0700));
-
-    // valid FASTQ files (multiple per level)
-    char *f1 = fc_join_path(tmpdir, "a.fastq");
-    char *f1b = fc_join_path(tmpdir, "a2.fq");
-    char *f2 = fc_join_path(sub1, "b.fastq");
-    char *f2b = fc_join_path(sub1, "b2.fq.gz");
-    char *f3 = fc_join_path(sub2, "c.fastq.gz");
-    make_file(f1, "x");
-    make_file(f1b, "x");
-    make_file(f2, "x");
-    make_file(f2b, "x");
-    make_file(f3, "x");
-
-    // junk files and nested junk dir
-    char *junkfile = fc_join_path(tmpdir, "ignore.txt");
-    make_file(junkfile, "x");
-    char *junkfile_sub = fc_join_path(sub1, "skip.me");
-    make_file(junkfile_sub, "x"); // should be ignored due to extension
-    char *nestedjunkdir = fc_join_path(junkdir, "nest");
-    TEST_ASSERT_EQUAL_INT(0, mkdir(nestedjunkdir, 0700));
-    char *nestedjunk = fc_join_path(nestedjunkdir, "skip.fq.bak");
-    make_file(nestedjunk, "x");
-
-    char *roots[2] = { tmpdir, NULL };
-    fc_path_list input_paths = {.paths = roots, .n_paths = 1};
-    fc_path_list files = {0};
-    TEST_ASSERT_EQUAL_INT(0, fc_iter_collect_paths(&input_paths, 2, FC_FILE_FASTQ, false, &files));
-
-    TEST_ASSERT_EQUAL_UINT(5, files.n_paths);
-    // order should be BFS by depth
-    // collect the basenames to assert membership
-    int seen_fastq = 0, seen_fastq2 = 0, seen_sub_fastq = 0, seen_sub_fq_gz = 0, seen_fastq_gz = 0;
-    for (size_t i = 0; i < files.n_paths; ++i) {
-        if (strstr(files.paths[i], "a.fastq")) seen_fastq++;
-        if (strstr(files.paths[i], "a2.fq")) seen_fastq2++;
-        if (strstr(files.paths[i], "b.fastq")) seen_sub_fastq++;
-        if (strstr(files.paths[i], "b2.fq.gz")) seen_sub_fq_gz++;
-        if (strstr(files.paths[i], "c.fastq.gz")) seen_fastq_gz++;
-    }
-    TEST_ASSERT_EQUAL_INT(1, seen_fastq);
-    TEST_ASSERT_EQUAL_INT(1, seen_fastq2);
-    TEST_ASSERT_EQUAL_INT(1, seen_sub_fastq);
-    TEST_ASSERT_EQUAL_INT(1, seen_sub_fq_gz);
-    TEST_ASSERT_EQUAL_INT(1, seen_fastq_gz);
-
-    fc_path_list_free(&files);
-
-    TEST_ASSERT_EQUAL_INT(0, fc_test_remove_tree(tmpdir));
-    free(f1); free(f1b); free(f2); free(f2b); free(f3);
-    free(junkfile); free(junkfile_sub); free(nestedjunk); free(nestedjunkdir);
-    free(sub1); free(sub2); free(junkdir);
+    fc_path_list sources = { .paths = paths, .n_paths = n_paths };
+    return fc_resolve_input_paths(&sources, recurse, fofn, filter_kind, kind, inputs);
 }
 
-FC_TEST(iter_collect_suite, test_collect_paths_rejects_mixed_file_types)
+FC_TEST(iter_collect_suite, test_resolve_named_fastq_and_bam_inputs)
 {
-    char tmpdir[] = "/tmp/fc_iter_collect_mixedXXXXXX";
+    char tmpdir[] = "/tmp/fc_input_list_namedXXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
+    char *fastq = fc_join_path(tmpdir, "reads.fastq");
+    char *bam = fc_join_path(tmpdir, "reads.bam");
+    make_file(fastq, "x");
+    make_file(bam, "x");
 
-    char *f1 = fc_join_path(tmpdir, "a.fastq");
-    char *f2 = fc_join_path(tmpdir, "b.sam");
-    make_file(f1, "x");
-    make_file(f2, "x");
+    char *fastq_paths[] = { fastq, fastq };
+    fc_resolved_inputs inputs = { 0 };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(fastq_paths, 2, 0, false, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_FASTQ, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(2, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
 
-    char *roots[2] = { tmpdir, NULL };
-    fc_path_list input_paths = {.paths = roots, .n_paths = 1};
-    fc_path_list files = {0};
-    int rc = fc_iter_collect_paths(&input_paths, 1, FC_FILE_FASTQ, false, &files);
-    TEST_ASSERT_EQUAL_INT(EINVAL, rc);
-    TEST_ASSERT_NULL(files.paths);
-    TEST_ASSERT_EQUAL_UINT(0, files.n_paths);
+    char *bam_paths[] = { bam, bam };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(bam_paths, 2, 0, false, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_BAM, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(2, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
+
+    char *mixed_paths[] = { fastq, bam };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(mixed_paths, 2, 0, false, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_FASTQ | FC_FILE_KINDS_BAM, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(2, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
 
     TEST_ASSERT_EQUAL_INT(0, fc_test_remove_tree(tmpdir));
-    free(f1);
-    free(f2);
+    free(fastq);
+    free(bam);
 }
 
-FC_TEST(iter_collect_suite, test_collect_paths_default_nonrecursive_depth)
+FC_TEST(iter_collect_suite, test_resolve_directories_collects_recognised_types)
 {
-    char tmpdir[] = "/tmp/fc_iter_collect_depth1XXXXXX";
+    char tmpdir[] = "/tmp/fc_input_list_directoryXXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
-
-    char *sub1 = fc_join_path(tmpdir, "sub1");
-    char *sub2 = fc_join_path(sub1, "sub2");
-    TEST_ASSERT_NOT_NULL(sub1);
-    TEST_ASSERT_NOT_NULL(sub2);
-    TEST_ASSERT_EQUAL_INT(0, mkdir(sub1, 0700));
-    TEST_ASSERT_EQUAL_INT(0, mkdir(sub2, 0700));
-
+    char *nested = fc_join_path(tmpdir, "nested");
+    TEST_ASSERT_EQUAL_INT(0, mkdir(nested, 0700));
     char *top = fc_join_path(tmpdir, "top.fastq");
-    char *inner = fc_join_path(sub1, "inner.fastq");
-    char *deep = fc_join_path(sub2, "deep.fastq");
+    char *deep = fc_join_path(nested, "deep.fq");
+    char *junk = fc_join_path(tmpdir, "ignore.txt");
     make_file(top, "x");
-    make_file(inner, "x");
     make_file(deep, "x");
+    make_file(junk, "x");
 
-    char *roots[2] = { tmpdir, NULL };
-    fc_path_list input_paths = {.paths = roots, .n_paths = 1};
-    fc_path_list files = {0};
-    TEST_ASSERT_EQUAL_INT(0, fc_iter_collect_paths(&input_paths, 1, FC_FILE_FASTQ, false, &files));
+    char *roots[] = { tmpdir };
+    fc_resolved_inputs inputs = { 0 };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(roots, 1, 1, false, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_FASTQ, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(1, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(roots, 1, -1, false, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(2, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
 
-    TEST_ASSERT_EQUAL_UINT(1, files.n_paths);
-    TEST_ASSERT_NOT_NULL(strstr(files.paths[0], "top.fastq"));
-    fc_path_list_free(&files);
+    char *bam = fc_join_path(tmpdir, "mixed.bam");
+    make_file(bam, "x");
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(roots, 1, -1, false, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_FASTQ | FC_FILE_KINDS_BAM, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(3, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
+
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(roots, 1, -1, false, true, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_FASTQ | FC_FILE_KINDS_BAM, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(2, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
 
     TEST_ASSERT_EQUAL_INT(0, fc_test_remove_tree(tmpdir));
     free(top);
-    free(inner);
     free(deep);
-    free(sub2);
-    free(sub1);
+    free(junk);
+    free(bam);
+    free(nested);
 }
 
-FC_TEST(iter_collect_suite, test_collect_paths_recurse_unbounded_with_negative_depth)
+FC_TEST(iter_collect_suite, test_resolve_bam_directory_with_and_without_recursion)
 {
-    char tmpdir[] = "/tmp/fc_iter_collect_recurseXXXXXX";
+    char tmpdir[] = "/tmp/fc_input_list_bam_directoryXXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
-
-    char *sub1 = fc_join_path(tmpdir, "sub1");
-    char *sub2 = fc_join_path(sub1, "sub2");
-    TEST_ASSERT_NOT_NULL(sub1);
-    TEST_ASSERT_NOT_NULL(sub2);
-    TEST_ASSERT_EQUAL_INT(0, mkdir(sub1, 0700));
-    TEST_ASSERT_EQUAL_INT(0, mkdir(sub2, 0700));
-
-    char *top = fc_join_path(tmpdir, "top.fastq");
-    char *inner = fc_join_path(sub1, "inner.fastq");
-    char *deep = fc_join_path(sub2, "deep.fastq");
+    char *nested = fc_join_path(tmpdir, "nested");
+    TEST_ASSERT_EQUAL_INT(0, mkdir(nested, 0700));
+    char *top = fc_join_path(tmpdir, "top.bam");
+    char *deep = fc_join_path(nested, "deep.sam");
     make_file(top, "x");
-    make_file(inner, "x");
     make_file(deep, "x");
 
-    char *roots[2] = { tmpdir, NULL };
-    fc_path_list input_paths = {.paths = roots, .n_paths = 1};
-    fc_path_list files = {0};
-    TEST_ASSERT_EQUAL_INT(0, fc_iter_collect_paths(&input_paths, -1, FC_FILE_FASTQ, false, &files));
+    char *roots[] = { tmpdir };
+    fc_resolved_inputs inputs = { 0 };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(roots, 1, 1, false, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_BAM, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(1, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
 
-    TEST_ASSERT_EQUAL_UINT(3, files.n_paths);
-    int seen_top = 0, seen_inner = 0, seen_deep = 0;
-    for (size_t i = 0; i < files.n_paths; ++i) {
-        if (strstr(files.paths[i], "top.fastq")) seen_top++;
-        if (strstr(files.paths[i], "inner.fastq")) seen_inner++;
-        if (strstr(files.paths[i], "deep.fastq")) seen_deep++;
-    }
-    TEST_ASSERT_EQUAL_INT(1, seen_top);
-    TEST_ASSERT_EQUAL_INT(1, seen_inner);
-    TEST_ASSERT_EQUAL_INT(1, seen_deep);
-    fc_path_list_free(&files);
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(roots, 1, -1, false, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_BAM, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(2, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
 
     TEST_ASSERT_EQUAL_INT(0, fc_test_remove_tree(tmpdir));
     free(top);
-    free(inner);
     free(deep);
-    free(sub2);
-    free(sub1);
+    free(nested);
+}
+
+FC_TEST(iter_collect_suite, test_resolve_fofn_infers_homogeneous_paths)
+{
+    char tmpdir[] = "/tmp/fc_input_list_fofnXXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
+    char *first = fc_join_path(tmpdir, "first.fastq");
+    char *second = fc_join_path(tmpdir, "second.fq.gz");
+    char *fofn = fc_join_path(tmpdir, "inputs.fofn");
+    make_file(first, "x");
+    make_file(second, "x");
+    FILE *fp = fopen(fofn, "w");
+    TEST_ASSERT_NOT_NULL(fp);
+    fprintf(fp, "%s\n%s\n", first, second);
+    fclose(fp);
+
+    char *sources[] = { fofn };
+    fc_resolved_inputs inputs = { 0 };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(sources, 1, 0, true, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_FASTQ, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(2, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
+
+    char *bam = fc_join_path(tmpdir, "mixed.bam");
+    make_file(bam, "x");
+    fp = fopen(fofn, "w");
+    TEST_ASSERT_NOT_NULL(fp);
+    fprintf(fp, "%s\n%s\n", first, bam);
+    fclose(fp);
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(sources, 1, 0, true, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_FASTQ | FC_FILE_KINDS_BAM, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(2, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
+
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(sources, 1, 0, true, true, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_FASTQ | FC_FILE_KINDS_BAM, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(1, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
+
+    TEST_ASSERT_EQUAL_INT(0, fc_test_remove_tree(tmpdir));
+    free(first);
+    free(second);
+    free(bam);
+    free(fofn);
+}
+
+FC_TEST(iter_collect_suite, test_resolve_stdin_requires_explicit_format)
+{
+    char *stdin_path[] = { "-" };
+    fc_resolved_inputs inputs = { 0 };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_FORMAT_REQUIRED,
+        resolve(stdin_path, 1, 0, false, false, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_OK,
+        resolve(stdin_path, 1, 0, false, true, FC_FILE_BAM, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_BAM, inputs.found_kinds);
+    TEST_ASSERT_EQUAL_UINT(1, inputs.paths.n_paths);
+    fc_resolved_inputs_free(&inputs);
+}
+
+FC_TEST(iter_collect_suite, test_resolve_reports_specific_rejection_statuses)
+{
+    char tmpdir[] = "/tmp/fc_input_list_statusXXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
+    char *fastq = fc_join_path(tmpdir, "reads.fastq");
+    char *unknown = fc_join_path(tmpdir, "reads.txt");
+    char *empty_dir = fc_join_path(tmpdir, "empty");
+    char *missing = fc_join_path(tmpdir, "missing.bam");
+    make_file(fastq, "x");
+    make_file(unknown, "x");
+    TEST_ASSERT_EQUAL_INT(0, mkdir(empty_dir, 0700));
+
+    fc_resolved_inputs inputs = { 0 };
+    char *fastq_path[] = { fastq };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_EMPTY,
+        resolve(fastq_path, 1, 0, false, true, FC_FILE_BAM, &inputs));
+    TEST_ASSERT_EQUAL_UINT(FC_FILE_KINDS_FASTQ, inputs.found_kinds);
+    fc_resolved_inputs_free(&inputs);
+
+    char *unknown_path[] = { unknown };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_UNKNOWN_FORMAT,
+        resolve(unknown_path, 1, 0, false, false, FC_FILE_FASTQ, &inputs));
+
+    char *empty_path[] = { empty_dir };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_EMPTY,
+        resolve(empty_path, 1, -1, false, false, FC_FILE_FASTQ, &inputs));
+
+    char *missing_path[] = { missing };
+    TEST_ASSERT_EQUAL_INT(FC_INPUT_RESOLVE_IO_ERROR,
+        resolve(missing_path, 1, 0, false, false, FC_FILE_FASTQ, &inputs));
+
+    TEST_ASSERT_EQUAL_INT(0, fc_test_remove_tree(tmpdir));
+    free(fastq);
+    free(unknown);
+    free(empty_dir);
+    free(missing);
 }
