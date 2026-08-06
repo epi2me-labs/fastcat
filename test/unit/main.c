@@ -17,9 +17,26 @@ typedef struct {
 static test_entry *tests = NULL;
 static size_t test_count = 0;
 static size_t test_capacity = 0;
+static fc_bam_rg_cache *test_rg_cache = NULL;
 
-void setUp(void) {}
-void tearDown(void) {}
+void setUp(void)
+{
+    test_rg_cache = fc_bam_rg_cache_create(NULL);
+    if (NULL == test_rg_cache) {
+        abort();
+    }
+}
+
+void tearDown(void)
+{
+    fc_bam_rg_cache_destroy(test_rg_cache);
+    test_rg_cache = NULL;
+}
+
+fc_bam_rg_cache *fc_test_rg_cache(void)
+{
+    return test_rg_cache;
+}
 
 void fc_register_test(
     const char *suite_name,

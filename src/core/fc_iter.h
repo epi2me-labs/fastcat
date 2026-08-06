@@ -79,6 +79,7 @@ typedef struct {
     const char *fname;
     gzFile fp;
     kseq_t *seq;
+    fc_bam_rg_cache *rg_cache;
     fc_iter_opts opts;
     bool apply_filters;
     fc_file_stats stats;

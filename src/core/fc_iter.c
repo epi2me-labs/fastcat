@@ -149,7 +149,7 @@ static bool fc_iter_filter_dust_bam(
 
 static bool fc_iter_process_bam_record(
     fc_read *out, const bam_hdr_t *hdr, const kstring_t *orig_comment,
-    const fc_bam_rg_cache *rg_cache,
+    fc_bam_rg_cache *rg_cache,
     const fc_iter_opts *opts, bool apply_filters, fc_file_stats *stats,
     double *q_sum, double *q_comp, dust_buffer *dust, size_t barcode)
 {
@@ -202,7 +202,7 @@ static bool fastq_iter_process_record(fc_fastq_iter *iter, fc_read *out)
     size_t barcode = fc_read_barcode_index_from_bam(out->bam, NULL, NULL);
     fc_run_summary_add_filter_event(
         iter->opts.run_summary, iter->opts.use_barcodes ? barcode : 0, R_RECORD_SEEN);
-    bool accepted = fc_iter_process_bam_record(out, NULL, &iter->seq->comment, NULL,
+    bool accepted = fc_iter_process_bam_record(out, NULL, &iter->seq->comment, iter->rg_cache,
         &iter->opts, iter->apply_filters, &iter->stats,
         &iter->q_sum, &iter->q_comp, &iter->dust, barcode);
     if (accepted) {
@@ -270,6 +270,10 @@ static void fastq_iter_close_resources(fc_fastq_iter *iter)
         gzclose(iter->fp);
         iter->fp = NULL;
     }
+    if (iter->rg_cache) {
+        fc_bam_rg_cache_destroy(iter->rg_cache);
+        iter->rg_cache = NULL;
+    }
     free_dust_buffer(&iter->dust);
 }
 
@@ -294,7 +298,6 @@ static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_i
     fc_file_stats_init(&iter->stats);
     fc_iter_opts_init(&iter->opts, opts);
     iter->apply_filters = iter_opts_enable_filters(&iter->opts);
-
     if (strcmp(fname, "-") == 0) {
         int fd = dup(fileno(stdin));
         if (fd < 0) {
@@ -331,6 +334,11 @@ static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_i
     if (!iter->seq) {
         FC_LOG_ERROR("could not allocate FASTQ iterator sequence buffer");
         iter->stats.failures[F_UNKNOWN_ERROR] = 1;
+        fastq_iter_close_resources(iter);
+        return ENOMEM;
+    }
+    iter->rg_cache = fc_bam_rg_cache_create(NULL);
+    if (NULL == iter->rg_cache) {
         fastq_iter_close_resources(iter);
         return ENOMEM;
     }

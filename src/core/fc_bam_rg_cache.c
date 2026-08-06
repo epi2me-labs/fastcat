@@ -30,6 +30,7 @@ static void fc_bam_rg_entry_destroy(fc_bam_rg_entry *entry)
     free(entry->pu);
     free(entry->sm);
     free(entry->al);
+    destroy_rg_info(entry->parsed_id);
     memset(entry, 0, sizeof(*entry));
 }
 
@@ -135,4 +136,34 @@ const fc_bam_rg_entry *fc_bam_rg_cache_find(const fc_bam_rg_cache *cache, const 
         return NULL;
     }
     return &cache->entries[(size_t)slot - 1];
+}
+
+const fc_bam_rg_entry *fc_bam_rg_cache_resolve(fc_bam_rg_cache *cache, const char *rg_id)
+{
+    if (NULL == cache || NULL == cache->index || NULL == rg_id || '\0' == rg_id[0]) {
+        return NULL;
+    }
+
+    int slot = kh_counter_val(cache->index, (char *)rg_id);
+    fc_bam_rg_entry *entry = NULL;
+    if (slot > 0) {
+        entry = &cache->entries[(size_t)slot - 1];
+    } else {
+        if ((size_t)INT_MAX <= cache->n) {
+            return NULL;
+        }
+        fc_bam_rg_cache_grow(cache);
+        entry = &cache->entries[cache->n];
+        entry->id = fc_strdup(rg_id, "bam rg id");
+        if ((size_t)-1 == kh_counter_add(cache->index, entry->id, (int)cache->n + 1)) {
+            fc_bam_rg_entry_destroy(entry);
+            return NULL;
+        }
+        cache->n += 1;
+    }
+
+    if (NULL == entry->parsed_id) {
+        entry->parsed_id = create_rg_info(entry->id);
+    }
+    return entry;
 }

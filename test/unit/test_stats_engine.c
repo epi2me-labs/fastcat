@@ -69,7 +69,7 @@ FC_TEST(stats_engine_suite, test_stats_engine_unmapped_tracked_in_canonical_stat
     bam_destroy1(fr->bam);
     fr->bam = b;
     fc_bam_ensure_mean_quality(b, false);
-    fc_read_reset_from_bam(fr, NULL, NULL, NULL);
+    fc_read_reset_from_bam(fr, NULL, fc_test_rg_cache(), NULL);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 0.0f, fr->meta->mean_q);
 
     fc_stats_engine* engine = fc_stats_engine_create(false, false, 0.0f, 0.0f, false);
@@ -93,7 +93,7 @@ FC_TEST(stats_engine_suite, test_stats_engine_aligned_metrics)
     bam_destroy1(fr->bam);
     fr->bam = b;
     fc_bam_ensure_mean_quality(b, false);
-    fc_read_reset_from_bam(fr, hdr, NULL, NULL);
+    fc_read_reset_from_bam(fr, hdr, fc_test_rg_cache(), NULL);
     TEST_ASSERT_FLOAT_WITHIN(1e-3, 0.0f, fr->meta->mean_q);
 
     fc_stats_engine* engine = fc_stats_engine_create(true, false, 0.0f, 0.0f, false);
@@ -148,8 +148,8 @@ FC_TEST(stats_engine_suite, test_stats_engine_alignment_histogram_populations)
     unmapped_read->bam = unmapped;
     fc_bam_ensure_mean_quality(mapped, false);
     fc_bam_ensure_mean_quality(unmapped, false);
-    fc_read_reset_from_bam(mapped_read, hdr, NULL, NULL);
-    fc_read_reset_from_bam(unmapped_read, NULL, NULL, NULL);
+    fc_read_reset_from_bam(mapped_read, hdr, fc_test_rg_cache(), NULL);
+    fc_read_reset_from_bam(unmapped_read, NULL, fc_test_rg_cache(), NULL);
     mapped_read->meta->poly_tail_length = 7;
 
     fc_stats_engine* engine = fc_stats_engine_create(true, true, 0.0f, 0.0f, false);
@@ -192,8 +192,8 @@ FC_TEST(stats_engine_suite, test_stats_engine_skips_additional_alignments)
     supplementary_read->bam = supplementary;
     fc_bam_ensure_mean_quality(secondary, false);
     fc_bam_ensure_mean_quality(supplementary, false);
-    fc_read_reset_from_bam(secondary_read, hdr, NULL, NULL);
-    fc_read_reset_from_bam(supplementary_read, hdr, NULL, NULL);
+    fc_read_reset_from_bam(secondary_read, hdr, fc_test_rg_cache(), NULL);
+    fc_read_reset_from_bam(supplementary_read, hdr, fc_test_rg_cache(), NULL);
 
     fc_stats_engine* engine = fc_stats_engine_create(true, false, 0.0f, 0.0f, false);
     TEST_ASSERT_EQUAL_INT(FC_STATS_SKIP, fc_stats_engine_add_read(engine, secondary_read, hdr, NULL));
