@@ -83,7 +83,7 @@ build_and_test:
         - *parallel-makeflags
         - make
         - !reference [.fastcat-test-base, script]
-        - BUILD_MODE=valgrind REPORT_DEMO_N=100 make test
+        - BUILD_MODE=valgrind make test
 
 build_and_test_macos_aarch64:
     stage: test
@@ -118,8 +118,8 @@ report_demo:
     extends: .fastcat-test-base
     tags: !reference [.eks-large-standard-tags, tags]
     script:
-        - make
-        - REPORT_DEMO_N=100000 REPORT_DEMO_DURATION_S=172800 make demo
+        - make -j"$(nproc)" --output-sync=target --no-print-directory
+        - REPORT_DEMO_N=100000 REPORT_DEMO_UBAM_N=200 REPORT_DEMO_DURATION_S=172800 make test_report
         - rm -f test/tmp/report_html/reads.*fastq* test/tmp/report_html/aligned_reads.bam
         - mv test/tmp/report_html/ demo
     artifacts:
