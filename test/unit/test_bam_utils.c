@@ -46,7 +46,7 @@ static void read_from_comment(fc_read *fr, const char* comment)
     }
 
     fc_bam_ensure_mean_quality(fr->bam, false);
-    fc_read_reset_from_bam(fr, NULL, NULL, &c);
+    fc_read_reset_from_bam(fr, NULL, fc_test_rg_cache(), &c);
 
     char *tmp = realloc(fr->meta->orig_comment, c.l + 1);
     TEST_ASSERT_NOT_NULL(tmp);

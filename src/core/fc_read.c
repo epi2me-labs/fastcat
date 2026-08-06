@@ -20,7 +20,7 @@ static void read_meta_destroy(read_meta *meta);
 static void read_meta_set_orig_comment(read_meta *meta, const kstring_t *orig_comment);
 static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment);
 static void read_meta_set_caller(read_meta *meta, bool mod, const char *caller, size_t caller_len);
-static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr, const fc_bam_rg_cache *rg_cache);
+static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr, fc_bam_rg_cache *rg_cache);
 
 typedef struct {
     char *barcode;
@@ -102,7 +102,7 @@ void fc_read_destroy(fc_read *read)
     free(read);
 }
 
-void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const fc_bam_rg_cache *rg_cache, const kstring_t *orig_comment)
+void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, fc_bam_rg_cache *rg_cache, const kstring_t *orig_comment)
 {
     if (!read) {
         return;
@@ -163,7 +163,6 @@ static void read_meta_destroy(read_meta *meta)
     free(meta->orig_comment);
     free(meta->_basecaller);
     free(meta->_modcallers);
-    destroy_rg_info(meta->rg_info);
     free(meta->tags_str->s);
     free(meta->tags_str);
     free(meta);
@@ -208,7 +207,6 @@ static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment)
 {
     read_meta_set_orig_comment(meta, orig_comment);
 
-    destroy_rg_info(meta->rg_info);
     meta->rg = "";
     meta->rg_info = NULL;
     meta->runid = "";
@@ -265,7 +263,7 @@ static void read_meta_set_caller(read_meta *meta, bool mod, const char *caller, 
     }
 }
 
-static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr, const fc_bam_rg_cache *rg_cache)
+static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const bam_hdr_t *hdr, fc_bam_rg_cache *rg_cache)
 {
     if (NULL == meta || NULL == b) {
         return;
@@ -411,9 +409,12 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
 
     // fall back to parsing the RG string itself if we didn't find an entry in the BAM header
     if (NULL != meta->rg && meta->rg[0] != '\0') {
-        meta->rg_info = create_rg_info(meta->rg);
-        if (meta->rg_info->runid && '\0' == meta->runid[0]) {
-            meta->runid = meta->rg_info->runid;
+        rg_entry = fc_bam_rg_cache_resolve(rg_cache, meta->rg);
+        if (NULL != rg_entry) {
+            meta->rg_info = rg_entry->parsed_id;
+            if (NULL != meta->rg_info->runid && '\0' == meta->runid[0]) {
+                meta->runid = meta->rg_info->runid;
+            }
         }
     }
 

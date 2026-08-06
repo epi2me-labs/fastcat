@@ -36,7 +36,7 @@ static void read_from_comment(fc_read *read, const char* comment) {
     }
 
     fc_bam_ensure_mean_quality(read->bam, false);
-    fc_read_reset_from_bam(read, NULL, NULL, &c);
+    fc_read_reset_from_bam(read, NULL, fc_test_rg_cache(), &c);
 
     char *tmp = realloc(read->meta->orig_comment, c.l + 1);
     TEST_ASSERT_NOT_NULL(tmp);
@@ -407,7 +407,7 @@ FC_TEST(fastqcomments_suite, test_reheader_roundtrip_preserves_aux)
     bam_destroy1(read2->bam);
     read2->bam = b2;
     fc_bam_ensure_mean_quality(read2->bam, false);
-    fc_read_reset_from_bam(read2, NULL, NULL, NULL);
+    fc_read_reset_from_bam(read2, NULL, fc_test_rg_cache(), NULL);
     const kstring_t *aux1 = fc_read_get_tags_str(read);
     const kstring_t *aux2 = fc_read_get_tags_str(read2);
     TEST_ASSERT_NOT_NULL(aux1);

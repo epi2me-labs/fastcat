@@ -1,6 +1,8 @@
 #ifndef TEST_UNIT_MAIN_H
 #define TEST_UNIT_MAIN_H
 
+#include "core/fc_bam_rg_cache.h"
+
 typedef void (*test_fn)(void);
 
 void fc_register_test(
@@ -10,6 +12,7 @@ void fc_register_test(
     int line,
     test_fn fn);
 void fc_run_registered_tests(void);
+fc_bam_rg_cache *fc_test_rg_cache(void);
 
 // Each test uses this macro instead of a plain `static void test_foo(void)`.
 // It defines the real test function and a constructor that registers the

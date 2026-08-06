@@ -190,3 +190,33 @@ FC_TEST(bam_rg_cache_suite, test_bam_rg_cache_handles_partial_or_missing_ds)
 
     run_rg_cache_fixture(&fixture);
 }
+
+FC_TEST(bam_rg_cache_suite, test_bam_rg_cache_reuses_legacy_rg_parsing)
+{
+    const char *header =
+        "@HD\tVN:1.6\n"
+        "@RG\tID:e4994c62-93f9-439a-bc8f-d20c95a137a5_dna_r10.4.1_e8.2_400bps_sup@v5.0.0\n";
+    bam_hdr_t *hdr = sam_hdr_parse((int)strlen(header), header);
+    TEST_ASSERT_NOT_NULL(hdr);
+
+    fc_bam_rg_cache *cache = fc_bam_rg_cache_create(hdr);
+    TEST_ASSERT_NOT_NULL(cache);
+
+    const char *header_rg = "e4994c62-93f9-439a-bc8f-d20c95a137a5_dna_r10.4.1_e8.2_400bps_sup@v5.0.0";
+    const fc_bam_rg_entry *first = fc_bam_rg_cache_resolve(cache, header_rg);
+    const fc_bam_rg_entry *second = fc_bam_rg_cache_resolve(cache, header_rg);
+    TEST_ASSERT_NOT_NULL(first);
+    TEST_ASSERT_EQUAL_PTR(first, second);
+    TEST_ASSERT_NOT_NULL(first->parsed_id);
+    TEST_ASSERT_EQUAL_STRING("e4994c62-93f9-439a-bc8f-d20c95a137a5", first->parsed_id->runid);
+
+    const char *unknown_rg = "d7dbdc6e-f26b-4d7f-995f-b7034bcf7290_dna_r10.4.1_e8.2_400bps_hac@v5.0.0";
+    const fc_bam_rg_entry *unknown_first = fc_bam_rg_cache_resolve(cache, unknown_rg);
+    const fc_bam_rg_entry *unknown_second = fc_bam_rg_cache_resolve(cache, unknown_rg);
+    TEST_ASSERT_NOT_NULL(unknown_first);
+    TEST_ASSERT_EQUAL_PTR(unknown_first, unknown_second);
+    TEST_ASSERT_NOT_NULL(unknown_first->parsed_id);
+
+    fc_bam_rg_cache_destroy(cache);
+    sam_hdr_destroy(hdr);
+}

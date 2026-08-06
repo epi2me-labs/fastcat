@@ -357,7 +357,7 @@ FC_TEST(time_bin_suite, test_time_bin_add_read_uses_bam_st_z_timestamp_tags)
     TEST_ASSERT_TRUE(bam_aux_update_str(read1->bam, "st", (int)strlen(time1), time1) >= 0);
     TEST_ASSERT_TRUE(bam_aux_update_float(read1->bam, "du", 2.0f) >= 0);
     TEST_ASSERT_TRUE(bam_aux_update_float(read1->bam, "qs", 10.0f) >= 0);
-    fc_read_reset_from_bam(read1, NULL, NULL, NULL);
+    fc_read_reset_from_bam(read1, NULL, fc_test_rg_cache(), NULL);
     TEST_ASSERT_EQUAL_STRING(time1, read1->meta->start_time);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 2.0, read1->meta->duration_s);
     fc_time_bin_add_read(model, 0, read1);
@@ -367,7 +367,7 @@ FC_TEST(time_bin_suite, test_time_bin_add_read_uses_bam_st_z_timestamp_tags)
     TEST_ASSERT_TRUE(bam_aux_update_str(read2->bam, "st", (int)strlen(time2), time2) >= 0);
     TEST_ASSERT_TRUE(bam_aux_update_float(read2->bam, "du", 4.0f) >= 0);
     TEST_ASSERT_TRUE(bam_aux_update_float(read2->bam, "qs", 20.0f) >= 0);
-    fc_read_reset_from_bam(read2, NULL, NULL, NULL);
+    fc_read_reset_from_bam(read2, NULL, fc_test_rg_cache(), NULL);
     double parsed = 0.0;
     TEST_ASSERT_TRUE(fc_time_bin_parse_timestamp(read2->meta->start_time, &parsed));
     TEST_ASSERT_DOUBLE_WITHIN(1e-6, 105.0, parsed);

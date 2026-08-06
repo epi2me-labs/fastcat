@@ -53,8 +53,9 @@ void fc_read_destroy(fc_read *read);
 int kseq_to_bam(bam1_t *b, kseq_t *seq);
 
 // Reset a reusable fc_read in-place from the current BAM record.
-// Expects mean quality tag policy to have been applied by the caller.
-void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, const fc_bam_rg_cache *rg_cache, const kstring_t *orig_comment);
+// Expects mean quality tag policy to have been applied by the caller. The
+// cache lifetime must enclose the returned read metadata.
+void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, fc_bam_rg_cache *rg_cache, const kstring_t *orig_comment);
 
 // Return the demultiplexing barcode index without constructing full read metadata.
 // This is used while accounting for reads rejected before normal metadata parsing.

@@ -35,7 +35,7 @@ static fc_read *read_sink_test_read(uint16_t flag)
         seq,
         qual,
         0) >= 0);
-    fc_read_reset_from_bam(read, NULL, NULL, NULL);
+    fc_read_reset_from_bam(read, NULL, fc_test_rg_cache(), NULL);
     read->meta->runid = "secondary-run";
     read->meta->basecaller = "secondary-basecaller";
     return read;

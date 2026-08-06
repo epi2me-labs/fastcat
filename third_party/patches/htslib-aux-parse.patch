@@ -28,7 +28,7 @@ index 0da5f047..ec378dd0 100644
  /** @param b   Pointer to the BAM record
      @return    Aux field pointer, or NULL if the record has none
 diff --git a/sam.c b/sam.c
-index 7e58da6e..28067f28 100644
+index 7e58da6e..c2f67845 100644
 --- a/sam.c
 +++ b/sam.c
 @@ -2865,6 +2865,12 @@ err_ret:
@@ -81,3 +81,17 @@ index 7e58da6e..28067f28 100644
  static inline uint8_t *skip_aux(uint8_t *s, uint8_t *end);
  int fastq_format1(fastq_state *x, const bam1_t *b, kstring_t *str)
  {
+@@ -4855,9 +4891,10 @@ static inline uint8_t *skip_aux(uint8_t *s, uint8_t *end)
+     size = aux_type2size(*s); ++s; // skip type
+     switch (size) {
+     case 'Z':
+-    case 'H':
+-        while (s < end && *s) ++s;
+-        return s < end ? s + 1 : end;
++    case 'H': {
++        uint8_t *terminator = memchr(s, '\0', end - s);
++        return terminator ? terminator + 1 : end;
++    }
+     case 'B':
+         if (end - s < 5) return NULL;
+         size = aux_type2size(*s); ++s;
