@@ -158,12 +158,11 @@ typedef struct {
         { "poly-a-rev", KEY_POLYA_REV, 0, 0, \
             "Allow reverse alignments (useful for cDNA; default is direct RNA).", 50 }
 
-static char fastcat_doc[] = "fastcat -- concatenate and summarise FASTQ or unaligned BAM reads.\
+static char fastcat_doc[] = "fastcat -- concatenate, filter, and summarise FASTQ reads.\
 \vReads input data from stdin when '-' is provided as an input path. \
-Use --input-fmt to choose FASTQ (default) or unaligned BAM input. \
 Use --fofn to interpret each input path as a file-of-filenames source. \
 Also accepts directories as input and looks for files matching the selected \
-input format in the top-level directory. Recurses into sub-directories when the \
+FASTQ format in the top-level directory. Recurses into sub-directories when the \
 -x option is given. The command \
 will exit non-zero if any file encountered cannot be read.";
 
@@ -172,11 +171,11 @@ static char fastcat_args_doc[] = "reads1 reads2 dir-with-reads ...";
 static struct argp_option fastcat_options[] = {
     { 0, 0, 0, 0, "General options:", 0 },
     { "recurse", 'x', 0, 0,
-        "Search directories recursively for files matching the selected input format.", 0 },
+        "Search directories recursively for FASTQ files.", 0 },
     { "fofn", KEY_FOFN, 0, 0,
         "Treat each input as a file-of-filenames source (use '-' to read that list from stdin).", 0 },
-    { "input-fmt", KEY_INPUT_FORMAT, "fastq|bam", 0,
-        "Input format for fastq mode (default: fastq). Use 'bam' for unaligned BAM input.", 0 },
+    { "input-fmt", KEY_INPUT_FORMAT, "fastq|bam", OPTION_HIDDEN,
+        "", 0 },
     { "threads", 't', "THREADS", 0,
         "Number of threads for output compression (only with --bam-out).", 0 },
     SHARED_GENERAL_OPTIONS,
@@ -240,10 +239,11 @@ static struct argp_option bam_options[] = {
 };
 
 static char qc_doc[] = "fastcat qc -- quality-control FASTQ or BAM input.\
-\vUse --input-fmt to choose FASTQ (default) or BAM input. FASTQ and headerless BAM\
-support read filtering and write retained reads to stdout. Reference-bearing BAM is analysed\
-without read filtering or read output. Use --region or --bed to select coordinates from a\
-reference-bearing BAM.";
+\vfastcat detects a common FASTQ or BAM format from named files, directories, and file-of-filenames\
+sources. Use --input-fmt for standard-input data or to require a particular input format. FASTQ and headerless BAM support\
+read filtering and write reads to stdout. Reference-bearing BAM is analysed without read\
+filtering or read output. Use --region or --bed to select coordinates from a reference-bearing\
+BAM.";
 
 static char qc_args_doc[] = "reads1 reads2 dir-with-reads ...";
 
@@ -254,7 +254,7 @@ static struct argp_option qc_options[] = {
     { "fofn", KEY_FOFN, 0, 0,
         "Treat each input as a file-of-filenames source (use '-' to read that list from stdin).", 0 },
     { "input-fmt", KEY_INPUT_FORMAT, "fastq|bam", 0,
-        "Input format (default: fastq).", 0 },
+        "Require FASTQ or BAM input; required when reading input data from standard input.", 0 },
     BAM_INPUT_OPTIONS,
     SHARED_GENERAL_OPTIONS,
 
@@ -325,11 +325,11 @@ static fc_catstats_args default_args(void)
     args.write_bam = 0;
     args.fofn = false;
     args.input_kind = FC_FILE_FASTQ;
+    args.input_kind_explicit = false;
     args.reads_per_file = 0;
     args.input_paths.paths = NULL;
     args.input_paths.n_paths = 0;
 
-    args.bam = NULL;
     args.region = NULL;
     args.bed = NULL;
 
@@ -531,6 +531,10 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         arguments->fofn = true;
         break;
     case KEY_INPUT_FORMAT:
+        if (ctx->program == FC_PROGRAM_FASTCAT) {
+            argp_error(state,
+                "fastcat fastq accepts FASTQ input only; use 'fastcat qc --input-fmt bam' for BAM input.");
+        }
         if (strcasecmp(arg, "fastq") == 0) {
             arguments->input_kind = FC_FILE_FASTQ;
         } else if (strcasecmp(arg, "bam") == 0) {
@@ -538,6 +542,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         } else {
             argp_error(state, "Unsupported --input-fmt '%s' (expected fastq or bam).", arg);
         }
+        arguments->input_kind_explicit = true;
         break;
     case KEY_RECALC_QUAL:
         arguments->force_recalc_qual = true;
@@ -620,21 +625,11 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         arguments->poly_a_rev = true;
         break;
     case ARGP_KEY_ARG:
-        if (ctx->program == FC_PROGRAM_FASTCAT || ctx->program == FC_PROGRAM_QC) {
-            arguments->input_paths.paths = &state->argv[state->next - 1];
-            state->next = state->argc;
-        } else {
-            if (state->arg_num == 0) {
-                arguments->bam = arg;
-            } else {
-                argp_usage(state);
-            }
-        }
+        arguments->input_paths.paths = &state->argv[state->next - 1];
+        state->next = state->argc;
         break;
     case ARGP_KEY_NO_ARGS:
-        if (ctx->program == FC_PROGRAM_BAMSTATS || ctx->program == FC_PROGRAM_FASTCAT || ctx->program == FC_PROGRAM_QC) {
-            argp_usage(state);
-        }
+        argp_usage(state);
         break;
     case ARGP_KEY_END:
         if (ctx->tag_items % 2 > 0) {
@@ -644,26 +639,15 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             argp_error(
                 state, "If --haplotype is given neither --tag-name nor --tag-value should be provided.");
         }
-        if (ctx->program == FC_PROGRAM_FASTCAT || ctx->program == FC_PROGRAM_QC) {
-            if (!arguments->input_paths.paths) {
-                argp_error(state, "Missing input path(s). Use '-' to read data from stdin.");
-                return 0; // argp_error doesn't return, but helps static analyzer
-            }
-            while (arguments->input_paths.paths[arguments->input_paths.n_paths]) {
-                arguments->input_paths.n_paths++;
-            }
-            if (ctx->program == FC_PROGRAM_QC) {
-                if (arguments->input_kind != FC_FILE_BAM
-                    && (arguments->region || arguments->bed || arguments->coverage
-                        || arguments->coverage_configured || arguments->poly_a)) {
-                    argp_error(state,
-                        "--region, --bed, coverage, and poly-A options require --input-fmt bam.");
-                }
-            }
-        } else {
-            if (!arguments->bam) {
-                argp_error(state, "Missing <reads.bam>");
-            }
+        if (!arguments->input_paths.paths) {
+            argp_error(state, "Missing input path(s). Use '-' to read data from stdin.");
+            return 0; // argp_error doesn't return, but helps static analyzer
+        }
+        while (arguments->input_paths.paths[arguments->input_paths.n_paths]) {
+            arguments->input_paths.n_paths++;
+        }
+        if (ctx->program == FC_PROGRAM_BAMSTATS && arguments->input_paths.n_paths != 1) {
+            argp_error(state, "fastcat bam accepts exactly one <reads.bam> input.");
         }
         if (ctx->program == FC_PROGRAM_BAMSTATS || ctx->program == FC_PROGRAM_QC) {
             if (arguments->region && arguments->bed) {

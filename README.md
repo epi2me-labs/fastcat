@@ -68,14 +68,16 @@ Try './fastcat <subcommand> --help' for subcommand options.
 ### `fastcat qc`
 
 Use `fastcat qc` to summarise FASTQ or BAM data and, optionally, create an offline HTML report.
-FASTQ is the default input format; add `--input-fmt bam` for BAM input.
+fastcat detects a common FASTQ or BAM format from named input files, directories, and
+file-of-filenames. Specify `--input-fmt` when reading input data from standard input, or to
+require a particular format.
 
 ```bash
 # FASTQ quality-control report
 fastcat qc reads.fastq.gz --html-report --output fastcat-qc
 
 # BAM quality-control report
-fastcat qc --input-fmt bam alignments.bam --html-report --output fastcat-qc
+fastcat qc alignments.bam --html-report --output fastcat-qc
 ```
 
 The primary QC output of `fastcat qc` is a summary.json file which includes all information

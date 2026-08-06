@@ -43,16 +43,16 @@ typedef struct {
     int tag_value;
     bool force_recalc_qual;
 
-    // fastcat-specific
+    // positional input discovery
     int recurse;
     size_t write_bam;
     bool fofn;
     fc_file_kind input_kind;
+    bool input_kind_explicit;
     size_t reads_per_file;
     fc_path_list input_paths;
 
     // BAM input options
-    const char *bam;
     char *region;
     char *bed;
 

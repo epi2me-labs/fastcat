@@ -119,6 +119,7 @@ static const char *config_file_kind(fc_file_kind kind)
 fc_report_arg_table fc_report_arg_table_from_catstats(
     fc_program_kind program,
     const fc_catstats_args *args,
+    fc_file_kind input_kind,
     size_t file_count)
 {
     report_config_builder builder = { 0 };
@@ -161,21 +162,18 @@ fc_report_arg_table fc_report_arg_table_from_catstats(
     config_add_strf(&builder, "time bin size seconds", "%.10g", args->time_bin_size_s);
     config_add_strf(&builder, "time bin sketch size", "%zu", args->time_bin_k);
 
+    char *input_paths = join_string_values(
+        (const char *const *)args->input_paths.paths, args->input_paths.n_paths);
+    config_add_str(&builder, "input paths", input_paths);
+    free(input_paths);
+    config_add_str(&builder, "input format", config_file_kind(input_kind));
     if (program == FC_PROGRAM_FASTCAT || program == FC_PROGRAM_QC) {
-        char *input_paths = join_string_values((const char *const *)args->input_paths.paths, args->input_paths.n_paths);
-        config_add_str(&builder, "input paths", input_paths);
-        free(input_paths);
-        config_add_str(&builder, "input format", config_file_kind(args->input_kind));
         config_add_bool(&builder, "recursive directory search", args->recurse < 0);
         config_add_bool(&builder, "file-of-filenames input", args->fofn);
         config_add_bool(&builder, "BAM output", args->write_bam != 0);
         config_add_limit(&builder, "reads per file", args->reads_per_file, false);
     }
-    if (program == FC_PROGRAM_BAMSTATS
-        || (program == FC_PROGRAM_QC && args->input_kind == FC_FILE_BAM)) {
-        if (program == FC_PROGRAM_BAMSTATS) {
-            config_add_str(&builder, "BAM input", args->bam);
-        }
+    if (input_kind == FC_FILE_BAM) {
         config_add_str(&builder, "region", args->region);
         config_add_str(&builder, "BED", args->bed);
         config_add_bool(&builder, "coverage", args->coverage);

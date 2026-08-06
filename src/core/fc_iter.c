@@ -1,7 +1,6 @@
 
 #include "core/fc_iter.h"
 
-#include <dirent.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
@@ -12,7 +11,6 @@
 
 #include "core/fc_bam_utils.h"
 #include "core/fc_filter.h"
-#include "core/fc_input_list.h"
 #include "core/fc_log.h"
 #include "core/fc_run_summary.h"
 #include "core/kseq_gz.h"
@@ -696,216 +694,20 @@ static int fc_bam_iter_open_path(fc_bam_iter *bmi, const char *path, const fc_it
     return 0;
 }
 
-static bool has_suffix(const char *path, const char *suffix)
-{
-    size_t lp = strlen(path);
-    size_t ls = strlen(suffix);
-    if (lp < ls) {
-        return false;
-    }
-    return strcmp(path + (lp - ls), suffix) == 0;
-}
-
-bool fc_path_matches_kind(const char *path, fc_file_kind expected_kind)
-{
-    if (!path) {
-        return false;
-    }
-
-    if (expected_kind == FC_FILE_FASTQ) {
-        return has_suffix(path, ".fastq") || has_suffix(path, ".fastq.gz") || has_suffix(path, ".fq") || has_suffix(path, ".fq.gz");
-    } else if (expected_kind == FC_FILE_BAM) {
-        return has_suffix(path, ".bam") || has_suffix(path, ".sam");
-    }
-    return false;
-}
-
-static int append_file(char ***files, size_t *n_files, const char *path)
-{
-    size_t new_count = *n_files + 1;
-    *files = fc_realloc(*files, new_count * sizeof(**files), "file list array");
-
-    char *dup = fc_strdup(path, "path string for region parsing");
-    (*files)[*n_files] = dup;
-    *n_files = new_count;
-    return 0;
-}
-
-typedef struct {
-    char *path;
-    int depth;
-} pending_path;
-
-static int collect_files_from_roots(
-    const fc_path_list *input_paths, int recurse,
-    fc_file_kind expected_kind, fc_path_list *out_paths)
-{
-    int status = 0;
-    char **files = NULL;
-    size_t n_files = 0;
-
-    pending_path *queue = NULL;
-    size_t qlen = 0, qcap = 0, qhead = 0;
-
-    if (!input_paths || !input_paths->paths || input_paths->n_paths == 0) {
-        return EINVAL;
-    }
-
-    // seed queue
-    for (size_t i = 0; i < input_paths->n_paths; ++i) {
-        if (qlen == qcap) {
-            size_t newcap = qcap ? qcap * 2 : 8;
-            queue = fc_realloc(queue, newcap * sizeof(*queue), "path iteration queue");
-            qcap = newcap;
-        }
-        queue[qlen].path = fc_strdup(input_paths->paths[i], "queued path for iteration");
-        queue[qlen].depth = recurse;
-        qlen++;
-    }
-
-    while (qhead < qlen) {
-        pending_path cur = queue[qhead++];
-        if (strcmp(cur.path, "-") == 0) {
-            int rc = append_file(&files, &n_files, cur.path);
-            if (rc != 0) {
-                status = (status == 0) ? rc : status;
-                free(cur.path);
-                break;
-            }
-            free(cur.path);
-            continue;
-        }
-        struct stat st = { 0 };
-        if (stat(cur.path, &st) != 0) {
-            FC_LOG_ERROR("could not stat '%s': %s", cur.path, strerror(errno));
-            status = (status == 0) ? errno : status;
-            free(cur.path);
-            continue;
-        }
-        if (S_ISDIR(st.st_mode)) {
-            // depth semantics:
-            //   0  => do not descend
-            //   N>0 => descend up to N levels (decrement each level)
-            //   N<0 => unbounded recursion
-            if (cur.depth == 0) {
-                free(cur.path);
-                continue;
-            }
-            DIR *dir = opendir(cur.path);
-            if (!dir) {
-                FC_LOG_ERROR("could not open directory '%s': %s", cur.path, strerror(errno));
-                status = (status == 0) ? errno : status;
-                free(cur.path);
-                continue;
-            }
-            struct dirent *ent;
-            while ((ent = readdir(dir)) != NULL) {
-                if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
-                    continue;
-                }
-                char *child = fc_asprintf("recursive input child path", "%s/%s", cur.path, ent->d_name);
-                if (qlen == qcap) {
-                    size_t newcap = qcap ? qcap * 2 : 8;
-                    queue = fc_realloc(queue, newcap * sizeof(*queue), "path iteration queue (recursive)");
-                    qcap = newcap;
-                }
-                queue[qlen].path = child;
-                queue[qlen].depth = (cur.depth < 0) ? -1 : (cur.depth - 1);
-                qlen++;
-            }
-            closedir(dir);
-            free(cur.path);
-            continue;
-        }
-
-        bool matches_expected = fc_path_matches_kind(cur.path, expected_kind);
-        bool matches_other = fc_path_matches_kind(
-            cur.path, expected_kind == FC_FILE_FASTQ ? FC_FILE_BAM : FC_FILE_FASTQ);
-
-        if (matches_expected) {
-            int rc = append_file(&files, &n_files, cur.path);
-            if (rc != 0) {
-                status = (status == 0) ? rc : status;
-                free(cur.path);
-                break;
-            }
-            free(cur.path);
-            continue;
-        }
-        if (matches_other) {
-            FC_LOG_ERROR("Input '%s' does not match required input type for this command.", cur.path);
-            status = (status == 0) ? EINVAL : status;
-        }
-        // Unknown extension: ignore
-        free(cur.path);
-    }
-
-    for (size_t i = qhead; i < qlen; ++i) {
-        free(queue[i].path);
-    }
-    free(queue);
-    if (status != 0) {
-        for (size_t i = 0; i < n_files; ++i) {
-            free(files[i]);
-        }
-        free(files);
-        files = NULL;
-        n_files = 0;
-    }
-    out_paths->paths = files;
-    out_paths->n_paths = n_files;
-    return status;
-}
-
-int fc_iter_collect_paths(
-    const fc_path_list *input_paths, int recurse,
-    fc_file_kind expected_kind, bool stdin_is_path_list, fc_path_list *out_paths)
-{
-    if (!out_paths) {
-        return EINVAL;
-    }
-
-    int rc = 0;
-    out_paths->paths = NULL;
-    out_paths->n_paths = 0;
-
-    if (stdin_is_path_list) {
-        rc = fc_read_paths_from_fofn_sources(input_paths, expected_kind, out_paths);
-    } else if (input_paths && input_paths->n_paths == 1 && input_paths->paths && strcmp(input_paths->paths[0], "-") == 0) {
-        // stdin carries data stream (FASTQ/BAM), not a path list
-        char **files = fc_alloc(1, sizeof(*files), "stdin path array");
-        files[0] = fc_strdup("-", "stdin path marker");
-        out_paths->paths = files;
-        out_paths->n_paths = 1;
-    } else {
-        rc = collect_files_from_roots(input_paths, recurse, expected_kind, out_paths);
-    }
-
-    return rc;
-}
-
 int fc_iter_init(
-    fc_iter *it, const fc_path_list *input_paths,
-    int recurse, bool verbose, fc_file_kind expected_kind, bool stdin_is_path_list)
+    fc_iter *it, fc_resolved_inputs *inputs, bool verbose)
 {
-    if (!it || !input_paths || !input_paths->paths || input_paths->n_paths == 0) {
+    if (!it || !inputs || !inputs->paths.paths || inputs->paths.n_paths == 0) {
         return EINVAL;
     }
-
-    int rc = 0;
-    fc_path_list collected = { 0 };
     memset(it, 0, sizeof(*it));
-    it->recurse = recurse;
     it->verbose = verbose;
-    it->expected_kind = expected_kind;
-    rc = fc_iter_collect_paths(
-        input_paths, recurse, expected_kind, stdin_is_path_list, &collected);
-    if (rc == 0) {
-        it->files = collected.paths;
-        it->n_files = collected.n_paths;
-    }
-
-    return rc;
+    it->expected_kind = inputs->kind;
+    it->files = inputs->paths.paths;
+    it->n_files = inputs->paths.n_paths;
+    inputs->paths.paths = NULL;
+    inputs->paths.n_paths = 0;
+    return 0;
 }
 
 bool fc_iter_next_file(fc_iter *it, const char **out_file)
@@ -942,9 +744,8 @@ int fc_iter_open_record_cursor(
         fc_file_stats_init(&it->fqi.stats);
         rc = fc_fastq_iter_open(&it->fqi, it->current, opts);
     } else {
-        // BAM path
-        // When iterating multiple BAM inputs (fastcat fastq --input-fmt bam),
-        // release any previous BAM cursor before opening the next file.
+        // When iterating multiple BAM inputs, release any previous BAM cursor
+        // before opening the next file.
         fc_bam_iter_close(&it->bmi);
         memset(&it->bmi, 0, sizeof(it->bmi));
         fc_file_stats_init(&it->bmi.stats);
@@ -1047,18 +848,4 @@ const fc_file_stats *fc_iter_stats(const fc_iter *it)
 bool fc_iter_has_hard_error(const fc_iter *it)
 {
     return it != NULL && it->expected_kind == FC_FILE_BAM && it->bmi.hard_error;
-}
-
-void fc_path_list_free(fc_path_list *paths)
-{
-    if (!paths || !paths->paths) {
-        return;
-    }
-
-    for (size_t i = 0; i < paths->n_paths; ++i) {
-        free(paths->paths[i]);
-    }
-    free(paths->paths);
-    paths->paths = NULL;
-    paths->n_paths = 0;
 }

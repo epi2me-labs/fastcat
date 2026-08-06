@@ -1248,70 +1248,19 @@ test_fastcat_nested_output_dir: $(FASTCAT_BIN)
 test_fastcat_output: test_fastcat_nested_output_dir
 
 
-.PHONY: test_fastcat_bam_input_equiv
-test_fastcat_bam_input_equiv: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Fastcat BAM input (unaligned) matches FASTQ input)
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/bam_input_equiv, \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz $(TEST_FIXTURES_FASTQ)/basic/bc2.fastq.gz --output out_fastq > out_fastq.fastq && \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output tmp1 -B > b1.bam && \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc2.fastq.gz --output tmp2 -B > b2.bam && \
-		$(RUN_FASTCAT) --input-fmt bam b1.bam b2.bam --output out_bam > out_bam.fastq && \
-		cat out_fastq.fastq \
-			| sed -E 's/\t[qQ][sS]:f:[^\t[:space:]]+//g' \
-			| $(DEV_TOOLS) sort_fastq > fc_bam_input_concat.sorted && \
-		cat out_bam.fastq \
-			| sed -E 's/\t[qQ][sS]:f:[^\t[:space:]]+//g' \
-			| $(DEV_TOOLS) sort_fastq > fc_bam_input_concat.expected.sorted && \
-		diff fc_bam_input_concat.sorted fc_bam_input_concat.expected.sorted && \
-		$(call COMPARE_TABLES_SKIP_FIRST,out_fastq/runids.tsv,out_bam/runids.tsv,fc_bam_input_runids) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,out_fastq/basecallers.tsv,out_bam/basecallers.tsv,fc_bam_input_basecallers) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,out_fastq/per_file.tsv,out_bam/per_file.tsv,fc_bam_input_perfile) && \
-		diff -r out_fastq/histograms out_bam/histograms)
-test_fastcat_inputs: test_fastcat_bam_input_equiv
-
-
-.PHONY: test_fastcat_bam_input_fofn_equiv
-test_fastcat_bam_input_fofn_equiv: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Fastcat BAM input via --fofn matches explicit BAM args)
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/bam_input_fofn_equiv, \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output tmp1 -B > b1.bam && \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc2.fastq.gz --output tmp2 -B > b2.bam && \
-		printf "%s\n%s\n" b1.bam b2.bam > bam_paths.txt && \
-		$(RUN_FASTCAT) --input-fmt bam b1.bam b2.bam --output out_file > out_file.fastq && \
-		$(RUN_FASTCAT) --input-fmt bam --fofn bam_paths.txt --output out_fofn > out_fofn.fastq && \
-		$(call COMPARE_FASTQ,out_file.fastq,out_fofn.fastq,fc_bam_fofn_concat) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,out_file/runids.tsv,out_fofn/runids.tsv,fc_bam_fofn_runids) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,out_file/basecallers.tsv,out_fofn/basecallers.tsv,fc_bam_fofn_basecallers) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,out_file/per_file.tsv,out_fofn/per_file.tsv,fc_bam_fofn_perfile) && \
-		diff -r out_file/histograms out_fofn/histograms)
-test_fastcat_inputs: test_fastcat_bam_input_fofn_equiv
-
-
-.PHONY: test_fastcat_bam_input_stdin_equiv
-test_fastcat_bam_input_stdin_equiv: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Fastcat BAM input from stdin matches file input)
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/bam_input_stdin_equiv, \
-		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output tmp1 -B > b1.bam && \
-		$(RUN_FASTCAT) --input-fmt bam b1.bam --output out_file > out_file.fastq && \
-		cat b1.bam | $(RUN_FASTCAT) --input-fmt bam - --output out_stdin > out_stdin.fastq && \
-		$(call COMPARE_FASTQ,out_file.fastq,out_stdin.fastq,fc_bam_stdin_concat) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,out_file/runids.tsv,out_stdin/runids.tsv,fc_bam_stdin_runids) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,out_file/basecallers.tsv,out_stdin/basecallers.tsv,fc_bam_stdin_basecallers) && \
-		$(call COMPARE_TABLES_SKIP_FIRST,out_file/per_file.tsv,out_stdin/per_file.tsv,fc_bam_stdin_perfile) && \
-		diff -r out_file/histograms out_stdin/histograms)
-test_fastcat_inputs: test_fastcat_bam_input_stdin_equiv
-
-
-.PHONY: test_fastcat_bam_input_rejects_mapped
-test_fastcat_bam_input_rejects_mapped: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Fastcat BAM input rejects mapped BAM)
-	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/bam_input_rejects_mapped, \
+.PHONY: test_fastcat_bam_input_redirects_qc
+test_fastcat_bam_input_redirects_qc: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Fastcat BAM input is redirected to QC)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/fastcat/bam_input_redirects_qc, \
 		set +e; \
-		$(RUN_FASTCAT) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --output out_bad > out.log 2>&1; \
-		rc=$$?; \
+		$(RUN_FASTCAT) $(TEST_FIXTURES_BAM)/basic/400ecoli.bam > detected.log 2>&1; \
+		detected_rc=$$?; \
+		$(RUN_FASTCAT) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam > option.log 2>&1; \
+		option_rc=$$?; \
 		set -e; \
-		test $$rc -ne 0 && grep -q "only accepts unaligned BAM input" out.log)
-test_fastcat_inputs: test_fastcat_bam_input_rejects_mapped
+		test $$detected_rc -ne 0 && grep -q "use 'fastcat qc'" detected.log && \
+		test $$option_rc -ne 0 && grep -q "fastcat qc --input-fmt bam" option.log)
+test_fastcat_inputs: test_fastcat_bam_input_redirects_qc
 
 
 .PHONY: mem_check_fastcat
@@ -1365,7 +1314,7 @@ test_qc: test_qc_fastq_default_output
 test_qc_reference_bam_policy: $(FASTCAT_BIN) $(REPORT_VENV)/.deps
 	@$(call TEST_DESC,Fastcat qc reference BAM is analysis-only)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/qc/reference_bam, \
-		$(RUN_QC) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --min-length 999999 --output out > reads.fastq 2> log && \
+		$(RUN_QC) $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --min-length 999999 --output out > reads.fastq 2> log && \
 		test ! -s reads.fastq && \
 		test -s out/summary.json && \
 		$(REPORT_PY) -c 'import json; assert json.load(open("out/summary.json"))["coverage"]["targets"]' && \

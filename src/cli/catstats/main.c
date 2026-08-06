@@ -20,12 +20,6 @@
 #include "core/fc_sinks.h"
 #include "core/fc_writer.h"
 
-static bool program_uses_bam(fc_program_kind program, const fc_catstats_args *args)
-{
-    return program == FC_PROGRAM_BAMSTATS
-        || (program == FC_PROGRAM_QC && args->input_kind == FC_FILE_BAM);
-}
-
 static bool filters_requested(const fc_catstats_args *args)
 {
     return args->min_length != 0 || args->max_length != (size_t)-1 || args->min_qscore != 0.0f
@@ -58,13 +52,52 @@ static void log_bam_input_error(fc_bam_input_status status, const char *path)
     }
 }
 
+static fc_input_resolve_status resolve_program_inputs(
+    fc_program_kind program,
+    const fc_catstats_args *args,
+    fc_resolved_inputs *inputs)
+{
+    bool filter_kind = true;
+    fc_file_kind requested_kind = FC_FILE_FASTQ;
+    if (program == FC_PROGRAM_BAMSTATS) {
+        requested_kind = FC_FILE_BAM;
+    } else if (program == FC_PROGRAM_QC) {
+        filter_kind = args->input_kind_explicit;
+        requested_kind = args->input_kind;
+    }
+    fc_input_resolve_status status = fc_resolve_input_paths(
+        &args->input_paths,
+        args->recurse,
+        args->fofn,
+        filter_kind,
+        requested_kind,
+        inputs);
+    if (status != FC_INPUT_RESOLVE_OK) {
+        return status;
+    }
+    if (program == FC_PROGRAM_BAMSTATS && inputs->paths.n_paths != 1) {
+        return FC_INPUT_RESOLVE_INVALID_ARGUMENT;
+    }
+    if (filter_kind) {
+        return FC_INPUT_RESOLVE_OK;
+    }
+    if (inputs->found_kinds == FC_FILE_KINDS_FASTQ) {
+        inputs->kind = FC_FILE_FASTQ;
+        return FC_INPUT_RESOLVE_OK;
+    }
+    if (inputs->found_kinds == FC_FILE_KINDS_BAM) {
+        inputs->kind = FC_FILE_BAM;
+        return FC_INPUT_RESOLVE_OK;
+    }
+    return FC_INPUT_RESOLVE_MIXED_FORMAT;
+}
+
 static int process_current_file(
     fc_iter *file_iter,
     fc_writer *writer,
     const char *path,
     const sam_hdr_t *hdr_for_records,
     const fc_iter_opts *iter_opts,
-    bool enforce_unmapped,
     bool enforce_coordinate_order,
     bool *hard_error,
     fc_file_stats *global_stats)
@@ -98,17 +131,6 @@ static int process_current_file(
     fc_bam_coordinate_order coordinate_order = { 0 };
     fc_iter_next_status next_rc = FC_ITER_RECORD;
     while ((next_rc = fc_iter_next_record(file_iter, fr)) == FC_ITER_RECORD) {
-        if (enforce_unmapped && !fc_is_unmapped(fr->bam)) {
-            FC_LOG_ERROR(
-                "Input BAM contains mapped reads (e.g. '%s'). "
-                "fastcat fastq with --input-fmt bam only accepts unaligned BAM input.",
-                bam_get_qname(fr->bam));
-            if (hard_error) {
-                *hard_error = true;
-            }
-            status = EXIT_FAILURE;
-            break;
-        }
         if (enforce_coordinate_order
             && !fc_bam_coordinate_order_check(&coordinate_order, fr->bam)) {
             FC_LOG_ERROR("Aligned BAM stream is not coordinate sorted.");
@@ -167,21 +189,49 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     fc_alignment_summary *alignment_summary = NULL;
     fc_coverage_summaries *coverage_summaries = NULL;
     fc_iter file_iter = { 0 };
+    fc_resolved_inputs resolved_inputs = { 0 };
     fc_bam_input_info bam_input_info = { 0 };
     const sam_hdr_t *reference_header = NULL;
     bool hard_error = false;
-    bool bam_mode = program_uses_bam(program, args);
+    bool bam_mode = false;
     bool has_reference_bam = false;
     bool calculate_coverage = false;
     bool output_created = false;
     bool output_published = false;
+    char *final_output_dir = NULL;
+    char *temporary_output_dir = NULL;
+    const char *output_dir = NULL;
+    fc_input_resolve_status resolve_status = resolve_program_inputs(
+        program, args, &resolved_inputs);
+    if (resolve_status != FC_INPUT_RESOLVE_OK) {
+        if (program == FC_PROGRAM_BAMSTATS
+            && resolve_status == FC_INPUT_RESOLVE_INVALID_ARGUMENT
+            && resolved_inputs.paths.n_paths > 1) {
+            FC_LOG_ERROR("fastcat bam accepts exactly one BAM input.");
+        } else if (program == FC_PROGRAM_FASTCAT
+            && resolve_status == FC_INPUT_RESOLVE_EMPTY
+            && resolved_inputs.found_kinds == FC_FILE_KINDS_BAM) {
+            FC_LOG_ERROR("No FASTQ input files found; use 'fastcat qc' for BAM input.");
+        } else {
+            FC_LOG_ERROR("Failed to resolve input paths: %s.",
+                fc_input_resolve_status_string(resolve_status));
+        }
+        status = EXIT_FAILURE;
+        goto cleanup;
+    }
+    fc_file_kind input_kind = resolved_inputs.kind;
+    bam_mode = input_kind == FC_FILE_BAM;
+    if (program == FC_PROGRAM_QC && !bam_mode
+        && (args->region || args->bed || args->coverage || args->coverage_configured || args->poly_a)) {
+        FC_LOG_ERROR("--region, --bed, coverage, and poly-A options require BAM input.");
+        status = EXIT_FAILURE;
+        goto cleanup;
+    }
     size_t final_output_len = strlen(args->output_dir);
     while (final_output_len > 1 && args->output_dir[final_output_len - 1] == '/') {
         --final_output_len;
     }
-    char *final_output_dir = fc_strndup(args->output_dir, final_output_len, "output directory");
-    char *temporary_output_dir = NULL;
-    const char *output_dir = NULL;
+    final_output_dir = fc_strndup(args->output_dir, final_output_len, "output directory");
 
 #ifdef NOTHREADS
     if (args->threads != 1) {
@@ -242,109 +292,12 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .thread_pool = (bam_mode && pool.pool) ? &pool : NULL,
         .use_barcodes = args->demultiplex
     };
-    if (program == FC_PROGRAM_FASTCAT || program == FC_PROGRAM_QC) {
-        if (fc_iter_init(
-                &file_iter,
-                &args->input_paths,
-                args->recurse,
-                args->verbose,
-                args->input_kind,
-                args->fofn)
-            != 0) {
-            FC_LOG_ERROR("Failed to initialise file iterator.");
-            status = EXIT_FAILURE;
-            goto cleanup;
-        }
-        if (file_iter.n_files == 0) {
-            FC_LOG_ERROR("No usable input files found.");
-            status = EXIT_FAILURE;
-            goto cleanup;
-        }
-
-        if (bam_mode) {
-            const char *failed_path = NULL;
-            fc_bam_input_status preflight = fc_bam_input_preflight(
-                (const char *const *)file_iter.files,
-                file_iter.n_files,
-                &bam_input_info,
-                &failed_path);
-            if (preflight != FC_BAM_INPUT_OK) {
-                log_bam_input_error(preflight, failed_path);
-                status = EXIT_FAILURE;
-                goto cleanup;
-            }
-            if (bam_input_info.has_stdin && file_iter.n_files != 1) {
-                FC_LOG_ERROR("BAM stdin cannot be combined with file inputs.");
-                status = EXIT_FAILURE;
-                goto cleanup;
-            }
-            if ((args->coverage || args->coverage_configured) && file_iter.n_files != 1) {
-                FC_LOG_ERROR("Coverage is supported only with one BAM input.");
-                status = EXIT_FAILURE;
-                goto cleanup;
-            }
-            if (bam_input_info.has_stdin) {
-                if (!fc_iter_next_file(&file_iter, NULL)
-                    || fc_iter_open_record_cursor(&file_iter, &iter_opts) != 0) {
-                    FC_LOG_ERROR("Failed to open BAM stream.");
-                    status = EXIT_FAILURE;
-                    goto cleanup;
-                }
-                fc_bam_input_status header_status = fc_bam_input_info_add_header(&bam_input_info, file_iter.bmi.hdr);
-                if (header_status != FC_BAM_INPUT_OK) {
-                    log_bam_input_error(header_status, file_iter.current);
-                    status = EXIT_FAILURE;
-                    goto cleanup;
-                }
-            }
-            has_reference_bam = bam_input_info.has_references;
-            reference_header = bam_input_info.reference_header;
-            if (has_reference_bam && filters_requested(args)) {
-                FC_LOG_WARN("Read filtering is disabled for reference-bearing BAM QC input.");
-                fc_iter_opts_disable_filters(&iter_opts);
-                if (file_iter.cursor_open) {
-                    fc_iter_opts_disable_filters(&file_iter.bmi.opts);
-                }
-            }
-            if ((args->coverage || args->coverage_configured) && !has_reference_bam) {
-                FC_LOG_ERROR("Coverage requires a reference-bearing BAM input.");
-                status = EXIT_FAILURE;
-                goto cleanup;
-            }
-            if (region_mode && !has_reference_bam) {
-                FC_LOG_ERROR("--region and --bed require a reference-bearing BAM input.");
-                status = EXIT_FAILURE;
-                goto cleanup;
-            }
-            if (has_reference_bam && file_iter.n_files == 1) {
-                if (fc_bam_header_is_coordinate_sorted(reference_header)) {
-                    calculate_coverage = true;
-                } else if (args->coverage || args->coverage_configured) {
-                    FC_LOG_ERROR("Coverage requires a coordinate-sorted BAM input.");
-                    status = EXIT_FAILURE;
-                    goto cleanup;
-                } else {
-                    FC_LOG_WARN("Coverage summary omitted because BAM input is not coordinate sorted.");
-                }
-            }
-            if (has_reference_bam) {
-                FC_LOG_WARN("Read output is disabled for reference-bearing BAM QC input.");
-            }
-        }
-    } else {
-        // BAMSTATS only takes a single BAM input, so we create a synthetic path list with just the one BAM
-        // then bootstrap the iterator on that. This allows us to reuse the same iteration logic for both programs.
-        char *bam_path_storage[] = { (char *)args->bam };
-        fc_path_list input_paths = {
-            .paths = bam_path_storage,
-            .n_paths = 1
-        };
-        if (fc_iter_init(&file_iter, &input_paths, 0, args->verbose, FC_FILE_BAM, false) != 0
-            || file_iter.n_files == 0) {
-            FC_LOG_ERROR("No BAM inputs found.");
-            status = EXIT_FAILURE;
-            goto cleanup;
-        }
+    if (fc_iter_init(&file_iter, &resolved_inputs, args->verbose) != 0) {
+        FC_LOG_ERROR("Failed to initialise file iterator.");
+        status = EXIT_FAILURE;
+        goto cleanup;
+    }
+    if (bam_mode) {
         const char *failed_path = NULL;
         fc_bam_input_status preflight = fc_bam_input_preflight(
             (const char *const *)file_iter.files, file_iter.n_files, &bam_input_info, &failed_path);
@@ -353,14 +306,53 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             status = EXIT_FAILURE;
             goto cleanup;
         }
+        if (bam_input_info.has_stdin && file_iter.n_files != 1) {
+            FC_LOG_ERROR("BAM stdin cannot be combined with file inputs.");
+            status = EXIT_FAILURE;
+            goto cleanup;
+        }
+        if (program == FC_PROGRAM_QC && (args->coverage || args->coverage_configured)
+            && file_iter.n_files != 1) {
+            FC_LOG_ERROR("Coverage is supported only with one BAM input.");
+            status = EXIT_FAILURE;
+            goto cleanup;
+        }
+        if (bam_input_info.has_stdin) {
+            if (!fc_iter_next_file(&file_iter, NULL)
+                || fc_iter_open_record_cursor(&file_iter, &iter_opts) != 0) {
+                FC_LOG_ERROR("Failed to open BAM stream.");
+                status = EXIT_FAILURE;
+                goto cleanup;
+            }
+            fc_bam_input_status header_status = fc_bam_input_info_add_header(
+                &bam_input_info, file_iter.bmi.hdr);
+            if (header_status != FC_BAM_INPUT_OK) {
+                log_bam_input_error(header_status, file_iter.current);
+                status = EXIT_FAILURE;
+                goto cleanup;
+            }
+        }
         reference_header = bam_input_info.reference_header;
         has_reference_bam = bam_input_info.has_references;
+        if (program == FC_PROGRAM_QC && has_reference_bam && filters_requested(args)) {
+            FC_LOG_WARN("Read filtering is disabled for reference-bearing BAM QC input.");
+            fc_iter_opts_disable_filters(&iter_opts);
+            if (file_iter.cursor_open) {
+                fc_iter_opts_disable_filters(&file_iter.bmi.opts);
+            }
+        }
         if (!has_reference_bam && (args->coverage || args->coverage_configured)) {
             FC_LOG_ERROR("Coverage requires a reference-bearing BAM input.");
             status = EXIT_FAILURE;
             goto cleanup;
         }
-        if (has_reference_bam && fc_bam_header_is_coordinate_sorted(reference_header)) {
+        if (region_mode && !has_reference_bam) {
+            FC_LOG_ERROR("--region and --bed require a reference-bearing BAM input.");
+            status = EXIT_FAILURE;
+            goto cleanup;
+        }
+        if (has_reference_bam && file_iter.n_files == 1
+            && fc_bam_header_is_coordinate_sorted(reference_header)) {
             calculate_coverage = true;
         } else if (args->coverage || args->coverage_configured) {
             FC_LOG_ERROR("Coverage requires a coordinate-sorted BAM input.");
@@ -368,6 +360,9 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
             goto cleanup;
         } else if (has_reference_bam) {
             FC_LOG_WARN("Coverage summary omitted because BAM input is not coordinate sorted.");
+        }
+        if (program == FC_PROGRAM_QC && has_reference_bam) {
+            FC_LOG_WARN("Read output is disabled for reference-bearing BAM QC input.");
         }
     }
 
@@ -531,8 +526,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
 
     // Reference-bearing BAM is analysis-only: concatenating selected coordinate
     // regions or multiple BAMs would not produce a valid alignment stream.
-    bool emit_reads = program == FC_PROGRAM_FASTCAT
-        || (program == FC_PROGRAM_QC && !has_reference_bam);
+    bool emit_reads = program != FC_PROGRAM_BAMSTATS && !has_reference_bam;
     if (emit_reads) {
         fc_output_sink_opts output_opts = {
             .output_root = args->demultiplex ? output_dir : NULL,
@@ -562,35 +556,17 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     fc_file_stats_init(&global_stats);
     size_t nfile = file_iter.n_files;
 
-    // go go gadget read iterator
-    if (program == FC_PROGRAM_BAMSTATS) {
-        const char *path = NULL;
-        if (!fc_iter_next_file(&file_iter, &path)) {
-            FC_LOG_ERROR("No BAM inputs found.");
-            status = EXIT_FAILURE;
-            goto cleanup;
-        }
+    const char *path = NULL;
+    if (file_iter.cursor_open) {
         status = process_current_file(
-            &file_iter, writer, path, reference_header, &iter_opts, false, false, &hard_error,
-            &global_stats);
-    } else {
-        const char *path = NULL;
-        if (file_iter.cursor_open) {
-            status = process_current_file(
-                &file_iter, writer, file_iter.current, reference_header, &iter_opts, false,
-                bam_mode && has_reference_bam, &hard_error, &global_stats);
-        }
-        while (fc_iter_next_file(&file_iter, &path)) {
-            int file_status = process_current_file(
-                &file_iter, writer, path, NULL, &iter_opts,
-                (program == FC_PROGRAM_FASTCAT && args->input_kind != FC_FILE_FASTQ),
-                false, &hard_error, &global_stats);
-            if (file_status != EXIT_SUCCESS) {
-                status = EXIT_FAILURE;
-            }
-            if (hard_error) {
-                break;
-            }
+            &file_iter, writer, file_iter.current, reference_header, &iter_opts,
+            bam_mode && has_reference_bam, &hard_error, &global_stats);
+    }
+    while (!hard_error && fc_iter_next_file(&file_iter, &path)) {
+        int file_status = process_current_file(
+            &file_iter, writer, path, NULL, &iter_opts, false, &hard_error, &global_stats);
+        if (file_status != EXIT_SUCCESS) {
+            status = EXIT_FAILURE;
         }
     }
 
@@ -603,7 +579,8 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     fc_writer_finish(writer);
 
     if (args->html_report) {
-        fc_report_arg_table report_arg_table = fc_report_arg_table_from_catstats(program, args, nfile);
+        fc_report_arg_table report_arg_table = fc_report_arg_table_from_catstats(
+            program, args, input_kind, nfile);
         fc_report_opts report_opts = {
             .output_root = output_dir,
             .sample = args->sample,
@@ -652,6 +629,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     FC_LOG_INFO("Total CPU time: %fs", (double)(end - begin) / CLOCKS_PER_SEC);
 
 cleanup:
+    fc_resolved_inputs_free(&resolved_inputs);
     fc_writer_destroy(writer);
     fc_alignment_summary_destroy(alignment_summary);
     fc_coverage_summaries_destroy(coverage_summaries);
