@@ -26,9 +26,23 @@ variables:
 stages:
     - preflight
     - test
+    - package
+    - package-artifacts
     - prerelease
     - release
 
+.package-rules: &package-rules
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "desktop")'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null'
+      when: manual
+      allow_failure: true
+
+.desktop-bundle-rules: &desktop-bundle-rules
+    - if: '$CI_COMMIT_TAG =~ /^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$/ && $CI_COMMIT_REF_PROTECTED == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "desktop")'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      when: manual
+      allow_failure: true
 
 check-changelog:
     stage: preflight
@@ -59,6 +73,7 @@ check-report-template:
     script:
         - ./build/fastcat fastq --help
         - ./build/fastcat bam --help
+        - ./build/fastcat qc --help
         - ./build/fastcat index --help
 
 build_and_test:
@@ -70,12 +85,42 @@ build_and_test:
         - !reference [.fastcat-test-base, script]
         - BUILD_MODE=valgrind REPORT_DEMO_N=100 make test
 
+build_and_test_macos_aarch64:
+    stage: test
+    tags:
+        - macos
+        - oxford
+        - arm
+        - shell
+    before_script:
+        - export HOMEBREW_NO_AUTO_UPDATE=1; brew list --versions argp-standalone openssl@3 > /dev/null || brew install argp-standalone openssl@3
+    script:
+        - export MAKEFLAGS="-j$(sysctl -n hw.ncpu) --output-sync=target --no-print-directory"
+        - make
+        - !reference [.fastcat-test-base, script]
+        - make test_unit
+
+build_and_test_windows_x86_64:
+    stage: test
+    tags:
+        - epi2melabs-win
+    before_script:
+        - $ErrorActionPreference = 'Stop'
+        - $env:MSYS2_ROOT = 'C:\msys64'
+        - if (-not (Test-Path "$env:MSYS2_ROOT\usr\bin\bash.exe")) { throw 'Missing provisioned MSYS2 installation at C:\msys64.' }
+        - $env:CHERE_INVOKING = 'yes'
+        - $env:MSYSTEM = 'UCRT64'
+    script:
+        - '& "$env:MSYS2_ROOT\usr\bin\bash.exe" tools/ci/windows_toolchain_probe.sh'
+        - '& "$env:MSYS2_ROOT\usr\bin\bash.exe" tools/ci/windows_build.sh check'
+
 report_demo:
     extends: .fastcat-test-base
+    tags: !reference [.eks-large-standard-tags, tags]
     script:
         - make
         - REPORT_DEMO_N=100000 REPORT_DEMO_DURATION_S=172800 make demo
-        - rm -f test/tmp/report_html/reads.*fastq* test/tmp/report_html/aligned_reads.sam
+        - rm -f test/tmp/report_html/reads.*fastq* test/tmp/report_html/aligned_reads.bam
         - mv test/tmp/report_html/ demo
     artifacts:
       when: always
@@ -183,33 +228,174 @@ conda-mac-arm:
         - *before-script
 
 test-conda-arm:
-    stage: test
+    stage: package
     extends: .deploy-conda-linux-arm
     variables:
         UPLOAD: "no"
     before_script:
         - *prep-image
         - *before-script
-    rules:
-    - if: $CI_COMMIT_BRANCH != null
+    rules: *package-rules
 
 test-conda-mac-arm:
-    stage: test
+    stage: package
     extends: .deploy-conda-mac-arm
     variables:
         UPLOAD: "no"
     before_script:
         - *before-script
-    rules:
-    - if: $CI_COMMIT_BRANCH != null
+    rules: *package-rules
 
 test-conda-x86:
-    stage: test
+    stage: package
     extends: .deploy-conda
     variables:
         UPLOAD: "no"
     before_script:
         - *prep-image
         - *before-script
-    rules:
-    - if: $CI_COMMIT_BRANCH != null
+    rules: *package-rules
+
+
+desktop-bundle-linux-x86_64:
+    stage: package
+    tags: !reference [.eks-large-standard-tags, tags]
+    rules: *desktop-bundle-rules
+    before_script:
+        - *prep-image
+    script:
+        - *parallel-makeflags
+        - BUILD_MODE=desktop DESKTOP_TARGET=linux-x86_64 make desktop_bundle
+    artifacts:
+      when: always
+      paths:
+        - build/desktop/
+
+
+desktop-bundle-linux-aarch64:
+    stage: package
+    extends: .deploy-conda-linux-arm
+    rules: *desktop-bundle-rules
+    before_script:
+        - *prep-image
+    script:
+        - *parallel-makeflags
+        - BUILD_MODE=desktop DESKTOP_TARGET=linux-aarch64 make desktop_bundle
+    artifacts:
+      when: always
+      paths:
+        - build/desktop/
+
+
+desktop-bundle-macos-aarch64:
+    stage: package
+    extends: .deploy-conda-mac-arm
+    rules: *desktop-bundle-rules
+    before_script:
+        - export HOMEBREW_NO_AUTO_UPDATE=1; brew list --versions argp-standalone > /dev/null || brew install argp-standalone
+    script:
+        - export MAKEFLAGS="-j$(sysctl -n hw.ncpu)"; CC=clang BUILD_MODE=desktop DESKTOP_TARGET=macos-aarch64 make desktop_bundle
+        - bundle=$(tar -tzf build/desktop/*-macos-aarch64.tar.gz | head -1 | cut -d/ -f1)
+        - mkdir -p build/desktop-stage
+        - tar -xzf build/desktop/*-macos-aarch64.tar.gz -C build/desktop-stage
+        - tools/desktop/sign_macos.sh build/desktop-stage/$bundle
+        - (cd build/desktop-stage/$bundle && shasum -a 256 fastcat nextflow_schema.json README.md LICENSE > SHA256SUMS)
+        - tar -C build/desktop-stage -czf build/desktop/$bundle.tar.gz $bundle
+        - ditto -c -k --keepParent build/desktop-stage/$bundle build/desktop/$bundle.zip
+        - xcrun notarytool submit build/desktop/$bundle.zip --wait --apple-id "$OSX_NOTARIZE_USERNAME" --password "$OSX_NOTARIZE_PASSWORD" --team-id "$OSX_NOTARIZE_TEAMID"
+        - rm build/desktop/$bundle.zip
+    artifacts:
+      when: always
+      paths:
+        - build/desktop/
+
+
+desktop-bundle-macos-x86_64:
+    stage: package
+    tags:
+        - x86
+        - macos
+        - oxford
+    rules: *desktop-bundle-rules
+    before_script:
+        - export HOMEBREW_NO_AUTO_UPDATE=1; brew list --versions argp-standalone > /dev/null || brew install argp-standalone
+    script:
+        - export MAKEFLAGS="-j$(sysctl -n hw.ncpu)"; CC=clang BUILD_MODE=desktop DESKTOP_TARGET=macos-x86_64 make desktop_bundle
+        - bundle=$(tar -tzf build/desktop/*-macos-x86_64.tar.gz | head -1 | cut -d/ -f1)
+        - mkdir -p build/desktop-stage
+        - tar -xzf build/desktop/*-macos-x86_64.tar.gz -C build/desktop-stage
+        - tools/desktop/sign_macos.sh build/desktop-stage/$bundle
+        - (cd build/desktop-stage/$bundle && shasum -a 256 fastcat nextflow_schema.json README.md LICENSE > SHA256SUMS)
+        - tar -C build/desktop-stage -czf build/desktop/$bundle.tar.gz $bundle
+        - ditto -c -k --keepParent build/desktop-stage/$bundle build/desktop/$bundle.zip
+        - xcrun notarytool submit build/desktop/$bundle.zip --wait --apple-id "$OSX_NOTARIZE_USERNAME" --password "$OSX_NOTARIZE_PASSWORD" --team-id "$OSX_NOTARIZE_TEAMID"
+        - rm build/desktop/$bundle.zip
+    artifacts:
+      when: always
+      paths:
+        - build/desktop/
+
+
+desktop-bundle-windows-x86_64:
+    stage: package
+    tags:
+        - epi2melabs-win
+    rules: *desktop-bundle-rules
+    before_script:
+        - $ErrorActionPreference = 'Stop'
+        - $env:MSYS2_ROOT = 'C:\msys64'
+        - if (-not (Test-Path "$env:MSYS2_ROOT\usr\bin\bash.exe")) { throw 'Missing provisioned MSYS2 installation at C:\msys64.' }
+        - $env:CHERE_INVOKING = 'yes'
+        - $env:MSYSTEM = 'UCRT64'
+        - 'Write-Host "PowerShell workspace: $(Get-Location)"'
+        - 'Write-Host "MSYS2 bash: $env:MSYS2_ROOT\usr\bin\bash.exe"'
+    script:
+        - '& "$env:MSYS2_ROOT\usr\bin\bash.exe" tools/ci/windows_toolchain_probe.sh'
+        - '& "$env:MSYS2_ROOT\usr\bin\bash.exe" tools/ci/windows_build.sh check'
+        - '& "$env:MSYS2_ROOT\usr\bin\bash.exe" tools/desktop/windows_bundle.sh'
+        - $archives = @(Get-ChildItem -Path build/desktop -Filter '*-windows-x86_64.tar.gz' -File)
+        - if ($archives.Count -ne 1) { throw "Expected exactly one Windows Desktop archive, found $($archives.Count)." }
+        - $archive = $archives[0]
+        - $bundle = (tar -tzf $archive.FullName | Select-Object -First 1).Split('/')[0]
+        - if ([string]::IsNullOrWhiteSpace($bundle)) { throw 'Desktop archive has no top-level bundle directory.' }
+        - New-Item -ItemType Directory -Force build/desktop-stage | Out-Null
+        - tar -xzf $archive.FullName -C build/desktop-stage
+        - if (-not (Test-Path "build/desktop-stage/$bundle/fastcat.exe")) { throw 'Desktop archive does not contain fastcat.exe.' }
+        - if (-not $env:CODESIGNTHUMBPRINT) { throw 'CODESIGNTHUMBPRINT must identify the Windows signing certificate.' }
+        - if (-not $env:SIGNTOOL_PATH) { throw 'SIGNTOOL_PATH must point to signtool.exe.' }
+        - if (-not (Test-Path $env:SIGNTOOL_PATH)) { throw "signtool.exe not found at $env:SIGNTOOL_PATH." }
+        - if (-not (Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -eq $env:CODESIGNTHUMBPRINT })) { throw 'Windows signing certificate was not found in LocalMachine\My.' }
+        - 'Write-Host "Signing with signtool: $env:SIGNTOOL_PATH"'
+        - powershell -ExecutionPolicy Bypass -File tools/desktop/sign_windows.ps1 -BundleDirectory "build/desktop-stage/$bundle"
+        - Get-FileHash -Algorithm SHA256 build/desktop-stage/$bundle/fastcat.exe,build/desktop-stage/$bundle/nextflow_schema.json,build/desktop-stage/$bundle/README.md,build/desktop-stage/$bundle/LICENSE | ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), $_.Path.Split([IO.Path]::DirectorySeparatorChar)[-1] } | Set-Content build/desktop-stage/$bundle/SHA256SUMS
+        - tar -C build/desktop-stage -czf $archive.FullName $bundle
+        - tar -tzf $archive.FullName
+    artifacts:
+      when: always
+      paths:
+        - build/desktop/
+
+
+desktop-bundles:
+    stage: package-artifacts
+    rules: *desktop-bundle-rules
+    needs:
+        - job: desktop-bundle-linux-x86_64
+          artifacts: true
+        - job: desktop-bundle-linux-aarch64
+          artifacts: true
+        - job: desktop-bundle-macos-aarch64
+          artifacts: true
+        - job: desktop-bundle-macos-x86_64
+          artifacts: true
+        - job: desktop-bundle-windows-x86_64
+          artifacts: true
+    script:
+        - mkdir -p build/desktop-bundles
+        - find build/desktop -maxdepth 1 -type f -name '*.tar.gz' -exec cp {} build/desktop-bundles/ \;
+        - test "$(find build/desktop-bundles -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 5
+        - (cd build/desktop-bundles && sha256sum *.tar.gz > SHA256SUMS)
+        - tar -C build/desktop-bundles -czf build/fastcat-desktop-bundles.tar.gz .
+    artifacts:
+      paths:
+        - build/fastcat-desktop-bundles.tar.gz

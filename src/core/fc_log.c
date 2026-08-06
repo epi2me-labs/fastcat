@@ -110,7 +110,10 @@ static void format_time(char *buf, size_t n)
     struct timespec ts;
     struct tm tm;
     clock_gettime(CLOCK_REALTIME, &ts);
-    localtime_r(&ts.tv_sec, &tm);
+    if (!fc_localtime(&ts.tv_sec, &tm)) {
+        FC_SNPRINTF_CHECK(buf, n, "??:??:??");
+        return;
+    }
     FC_SNPRINTF_CHECK(buf, n, "%02d:%02d:%02d", tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 

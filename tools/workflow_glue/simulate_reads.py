@@ -19,6 +19,7 @@ Example:
 """
 
 import argparse
+from array import array
 import bisect
 import csv
 import datetime as dt
@@ -26,6 +27,7 @@ import math
 from pathlib import Path
 import random
 import sys
+import time
 
 import pysam
 
@@ -352,7 +354,7 @@ def qscore_speed_penalty(speed_nt_s):
 
 
 def iso8601_with_seconds(base, seconds):
-    return (base + dt.timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (base + dt.timedelta(seconds=seconds)).isoformat(timespec="seconds") + "Z"
 
 
 def timestamp_duration_seconds(args):
@@ -478,7 +480,7 @@ def sam_record(header, args, name, flag, reference, position, cigar, sequence, q
     record.query_name = name
     record.flag = flag
     record.query_sequence = sequence
-    record.query_qualities = pysam.qualitystring_to_array(quality)
+    record.query_qualities = array("B", [ord(quality[0]) - 33]) * len(quality)
     record.set_tags(tags)
     if reference == "*":
         record.reference_id = -1
@@ -611,8 +613,11 @@ def argparser():
 
     output = p.add_argument_group("output")
     output.add_argument(
-        "--output-format", choices=["fastq", "sam"], default="fastq",
-        help="Record format to write; use samtools to convert SAM to BAM (default: fastq)")
+        "--output-format", choices=["fastq", "sam", "bam"], default="fastq",
+        help="Record format to write (default: fastq)")
+    output.add_argument(
+        "--output-threads", type=int, default=1,
+        help="BAM compression threads (default: 1)")
     output.add_argument("--random-seq", action="store_true", help="Emit random A/C/G/T instead of homopolymer A")
     output.add_argument("--progress-every", type=int, default=0, help="If >0, print progress to stderr every N reads")
 
@@ -713,6 +718,8 @@ def validate_args(p, args):
         p.error("--speed-sd must be finite and > 0")
     if args.progress_every < 0:
         p.error("--progress-every must be >= 0")
+    if args.output_threads <= 0:
+        p.error("--output-threads must be > 0")
     for option in (
             "aligned_rate", "secondary_rate", "supplementary_rate", "reverse_rate",
             "qcfail_rate", "duplicate_rate", "duplex_forming_rate", "second_reference_rate",
@@ -732,7 +739,7 @@ def validate_args(p, args):
     if not 0 <= args.sam_mapping_quality <= 255:
         p.error("--sam-mapping-quality must be in [0,255]")
     if (
-            args.output_format == "sam"
+            args.output_format in ("sam", "bam")
             and args.sam_reference_length < math.ceil(
                 args.max_len * (1.0 + args.deletion_rate_max))):
         p.error("--sam-reference-length must allow for --max-len plus simulated deletions")
@@ -762,6 +769,7 @@ def validate_args(p, args):
 
 def main(args):
     validate_args(argparser(), args)
+    started_at = time.perf_counter()
     rng = random.Random(args.seed)
     time_rng = random.Random(args.seed + 1_000_003)
     channel_rng = random.Random(args.seed + 2_000_003)
@@ -771,8 +779,11 @@ def main(args):
     sam_header_value = sam_header(args)
     sam_writer = None
     sam_records = None
-    if args.output_format == "sam":
-        sam_writer = pysam.AlignmentFile("-", "w", header=sam_header_value)
+    if args.output_format in ("sam", "bam"):
+        mode = "wb" if args.output_format == "bam" else "w"
+        writer_options = (
+            {"threads": args.output_threads} if args.output_format == "bam" else {})
+        sam_writer = pysam.AlignmentFile("-", mode, header=sam_header_value, **writer_options)
         if args.sam_coordinate_sort:
             sam_records = []
 
@@ -836,7 +847,7 @@ def main(args):
             ("dx", duplex_code),
         ]
         name = f"{args.id_prefix}_{i:09d}"
-        if args.output_format == "sam":
+        if args.output_format in ("sam", "bam"):
             if rng.random() < args.aligned_rate:
                 cigar, nm, reference_span = primary_alignment_cigar(rng, length, mean_q, args)
                 reference = "chr2" if rng.random() < args.second_reference_rate else "chr1"
@@ -896,14 +907,24 @@ def main(args):
         if args.progress_every > 0 and (i % args.progress_every) == 0:
             err.write(f"[simulate-reads] emitted {i} reads\n")
 
+    records_ready_at = time.perf_counter()
+    sort_started_at = records_ready_at
+    sort_finished_at = records_ready_at
+    write_finished_at = records_ready_at
     if sam_records is not None:
-        for record in sorted(
-                sam_records,
-                key=lambda record: (
-                    record.reference_id < 0, record.reference_id, record.reference_start)):
+        sorted_records = sorted(
+            sam_records,
+            key=lambda record: (
+                record.reference_id < 0, record.reference_id, record.reference_start))
+        sort_finished_at = time.perf_counter()
+        for record in sorted_records:
             sam_writer.write(record)
+        write_finished_at = time.perf_counter()
     if sam_writer is not None:
         sam_writer.close()
+    elif args.output_format == "fastq":
+        sys.stdout.flush()
+    finished_at = time.perf_counter()
 
     # Summary to stderr only (safe to pipe FASTQ stdout directly).
     if stats.count > 0:
@@ -928,10 +949,24 @@ def main(args):
     if barcode_counts:
         parts = [f"{k}:{v}" for k, v in sorted(barcode_counts.items())]
         err.write(f"[simulate-reads] barcodes {' '.join(parts)}\n")
-    if args.output_format == "sam":
+    if args.output_format in ("sam", "bam"):
         err.write(
             "[simulate-reads] alignments "
             f"primary={alignment_counts['primary']} unmapped={alignment_counts['unmapped']} "
             f"secondary={alignment_counts['secondary']} supplementary={alignment_counts['supplementary']}\n")
+    if sam_records is not None:
+        err.write(
+            "[simulate-reads] timing "
+            f"generate_and_buffer={records_ready_at - started_at:.3f}s "
+            f"sort={sort_finished_at - sort_started_at:.3f}s "
+            f"write={write_finished_at - sort_finished_at:.3f}s "
+            f"close={finished_at - write_finished_at:.3f}s "
+            f"total={finished_at - started_at:.3f}s\n")
+    else:
+        err.write(
+            "[simulate-reads] timing "
+            f"generate_and_stream={records_ready_at - started_at:.3f}s "
+            f"close={finished_at - records_ready_at:.3f}s "
+            f"total={finished_at - started_at:.3f}s\n")
 
     return 0

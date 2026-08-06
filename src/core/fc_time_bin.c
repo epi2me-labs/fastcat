@@ -52,6 +52,31 @@ struct fc_time_bin {
     fc_time_bin_barcode_state **barcode_states;
 };
 
+#ifdef _WIN32
+static bool parse_timestamp_component(const char *text, size_t offset, size_t digits, int *out)
+{
+    int value = 0;
+    for (size_t i = 0; i < digits; ++i) {
+        char character = text[offset + i];
+        if (character < '0' || character > '9') {
+            return false;
+        }
+        value = value * 10 + (character - '0');
+    }
+    *out = value;
+    return true;
+}
+#endif
+
+static time_t timestamp_to_utc(struct tm *tm)
+{
+#ifdef _WIN32
+    return _mkgmtime(tm);
+#else
+    return timegm(tm);
+#endif
+}
+
 typedef struct {
     int64_t index;
     const fc_time_bin_accum *accum;
@@ -84,11 +109,37 @@ bool fc_time_bin_parse_timestamp(const char *text, double *out)
 
     struct tm tm = { 0 };
     tm.tm_isdst = 0;
+#ifdef _WIN32
+    if (strlen(text) < 19 || text[4] != '-' || text[7] != '-' || text[10] != 'T'
+        || text[13] != ':' || text[16] != ':') {
+        return false;
+    }
+    int year = 0;
+    int month = 0;
+    int day = 0;
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+    if (!parse_timestamp_component(text, 0, 4, &year)
+        || !parse_timestamp_component(text, 5, 2, &month)
+        || !parse_timestamp_component(text, 8, 2, &day)
+        || !parse_timestamp_component(text, 11, 2, &hour)
+        || !parse_timestamp_component(text, 14, 2, &minute)
+        || !parse_timestamp_component(text, 17, 2, &second)) {
+        return false;
+    }
+    tm.tm_year = year - 1900;
+    tm.tm_mon = month - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = hour;
+    tm.tm_min = minute;
+    tm.tm_sec = second;
+#else
     if (NULL == strptime(text, "%Y-%m-%dT%H:%M:%S", &tm)) {
         return false;
     }
-
-    time_t epoch = timegm(&tm);
+#endif
+    time_t epoch = timestamp_to_utc(&tm);
     if (epoch == (time_t)-1) {
         return false;
     }

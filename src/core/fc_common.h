@@ -1,12 +1,14 @@
 #ifndef _FASTCAT_COMMON_H
 #define _FASTCAT_COMMON_H
 
-#include <argp.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
+#include "core/fc_argp.h"
 #include "core/fc_log.h"
 
 /** Simple min/max
@@ -37,7 +39,23 @@
         } \
     } while (0)
 
+static inline bool fc_localtime(const time_t *time_value, struct tm *result)
+{
+#ifdef _WIN32
+    return localtime_s(result, time_value) == 0;
+#else
+    return localtime_r(time_value, result) != NULL;
+#endif
+}
+
 char *fc_asprintf(const char *msg, const char *fmt, ...);
+
+/** Read one line, growing *line as needed.
+ *
+ * Mirrors POSIX getline: returns the number of bytes read (including a
+ * trailing newline), or -1 on EOF or error. The caller owns *line.
+ */
+ptrdiff_t fc_getline(char **line, size_t *capacity, FILE *stream);
 
 /** Duplicates a string with a message on failure.
  *
@@ -82,7 +100,7 @@ int mkdir_p(const char *path);
  */
 int mkdir_hier(char *path, bool fail_on_exist);
 
-/** Remove a file or directory tree without following symbolic links.
+/** Remove a file or directory tree. Symbolic links are not followed on POSIX.
  *
  * @param path path to remove; a missing path is treated as success.
  * @returns 0 on success, -1 on failure.

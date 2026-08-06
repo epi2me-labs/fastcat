@@ -9,6 +9,7 @@ help:  ## Show this help message
 	@printf "  \033[36msanitize\033[0m     Address/undefined/leak sanitizers enabled (-O1)\n"
 	@printf "  \033[36mprofile\033[0m      Profiling with gperftools (requires libprofiler)\n"
 	@printf "  \033[36mvalgrind\033[0m     Standard build, tests run under valgrind\n"
+	@printf "  \033[36mdesktop\033[0m      Self-contained local FASTQ/BAM report bundle\n"
 	@printf "\n"
 	@printf "\033[1mBuild Options:\033[0m\n"
 	@printf "  \033[36mUSE_DEFLATE=1\033[0m    Use libdeflate compression library\n"
@@ -37,7 +38,7 @@ REPORT_DEMO_N ?= 100000
 REPORT_DEMO_DURATION_S ?= 172800
 REPORT_DEMO_DIR = $(TEST_TMP_DIR)/report_html
 REPORT_DEMO_FASTQ = $(REPORT_DEMO_DIR)/reads.fastq.gz
-REPORT_DEMO_SAM = $(REPORT_DEMO_DIR)/aligned_reads.sam
+REPORT_DEMO_BAM = $(REPORT_DEMO_DIR)/aligned_reads.bam
 DEV_TOOLS_SCRIPT := $(REPO_ROOT)/tools/dev-tools
 DEV_TOOLS := python3 $(DEV_TOOLS_SCRIPT)
 SIMULATE_READS := $(REPORT_PY) $(DEV_TOOLS_SCRIPT) simulate_reads
@@ -75,7 +76,7 @@ HTSLIB_PATCH_STAMP ?= .fastcat_patch_applied
 # macOS: use homebrew packages
 OS := $(shell uname)
 ifeq ($(OS), Darwin)
-    EXTRA_LDFLAGS ?= -L$(shell brew --prefix openssl@1.1)/lib -L$(shell brew --prefix curl)/lib
+    EXTRA_LDFLAGS ?= -L$(shell brew --prefix openssl@3)/lib -L$(shell brew --prefix curl)/lib
     ARGP ?= $(shell brew --prefix argp-standalone)/lib/libargp.a
     ARGP_INC ?= -I$(shell brew --prefix argp-standalone)/include
     ZCAT = gzcat
@@ -87,14 +88,47 @@ ifeq ($(OS), Darwin)
     endif
 endif
 
+# Native MinGW/UCRT builds need argp-standalone and a reduced static HTSlib
+# feature set. Keep this platform setup independent of Desktop packaging so a
+# normal `make` builds and tests a Windows executable.
+WINDOWS_BUILD := $(filter MINGW% MSYS% CYGWIN%,$(OS))
+
 # initialize customizable variables if not set
 EXTRA_CFLAGS ?=
 EXTRA_LDFLAGS ?=
 EXTRA_LIBS ?=
 HTS_CONF_ARGS ?=
+HTSLIB_SYSTEM_LIBS ?= -llzma -lbz2 -lcurl -lcrypto
+DESKTOP_TARGET ?= local
+DESKTOP_VERSION := $(shell sed -n 's/^const char \*argp_program_version = "\([^"]*\)";.*/\1/p' src/version.c)
+DESKTOP_STAGE := $(BUILD_DIR)/desktop-stage/fastcat-$(DESKTOP_VERSION)-$(DESKTOP_TARGET)
+DESKTOP_ARCHIVE := $(BUILD_DIR)/desktop/fastcat-$(DESKTOP_VERSION)-$(DESKTOP_TARGET).tar.gz
+DESKTOP_SHA256 := shasum -a 256
+ifneq ($(findstring windows,$(DESKTOP_TARGET)),)
+DESKTOP_EXECUTABLE := fastcat.exe
+DESKTOP_SHA256 := sha256sum
+else
+DESKTOP_EXECUTABLE := fastcat
+endif
 PROFILER_LIBDIR ?=
 ARGP ?=
 ARGP_INC ?=
+
+# Windows does not provide argp as part of the MinGW runtime. Build the
+# vendored standalone implementation into the build directory for every
+# native Windows build, including ordinary release and unit-test builds.
+ifneq ($(WINDOWS_BUILD),)
+    ARGP_STANDALONE_DIR := third_party/argp-standalone
+    ARGP_STANDALONE_BUILD := $(BUILD_DIR)/argp-standalone
+    ARGP := $(ARGP_STANDALONE_BUILD)/libargp.a
+    ARGP_INC := -I$(ARGP_STANDALONE_DIR)
+    ARGP_STANDALONE_PATCH := third_party/patches/argp-standalone-windows.patch
+    ARGP_STANDALONE_CPPFLAGS := -DHAVE_DECL_FPUTS_UNLOCKED=0 \
+        -DHAVE_DECL_FWRITE_UNLOCKED=0 -DHAVE_DECL_PUTC_UNLOCKED=0
+    HTS_CONF_ARGS += --disable-libcurl --disable-plugins --disable-bz2 --disable-lzma --without-libdeflate
+    HTSLIB_SYSTEM_LIBS := -lregex -ltre -lintl -liconv -lws2_32
+    EXTRA_LDFLAGS += -static
+endif
 
 # base compiler flags (see also BUILD_MODE below)
 # Use ?= so conda/environment can override CFLAGS entirely
@@ -125,6 +159,7 @@ endif
 #   - sanitize  : Address/undefined/leak sanitizers, reduced optimization (-O1)
 #   - profile   : Profiling with gperftools, requires libprofiler installed
 #   - valgrind  : Optimized build (-O3), tests run under valgrind
+#   - desktop   : Optimized, self-contained local FASTQ/BAM report bundle
 #
 # USE_DEFLATE=1: Use libdeflate compression library with htslib
 # NOTHREADS=1: Disable threading support
@@ -132,7 +167,7 @@ endif
 BUILD_MODE ?= release
 
 # validate BUILD_MODE
-VALID_BUILD_MODES := release debug sanitize profile valgrind
+VALID_BUILD_MODES := release debug sanitize profile valgrind desktop
 ifeq ($(filter $(BUILD_MODE),$(VALID_BUILD_MODES)),)
     $(error Invalid BUILD_MODE: $(BUILD_MODE). Valid modes: $(VALID_BUILD_MODES))
 endif
@@ -187,6 +222,20 @@ else ifeq ($(BUILD_MODE),valgrind)
 else ifeq ($(BUILD_MODE),release)
     # release build: optimized, assertions disabled
     CFLAGS += -O3 -DNDEBUG
+
+else ifeq ($(BUILD_MODE),desktop)
+    # Desktop build: optimized local report tool, with no optional HTSlib transports/codecs.
+    CFLAGS += -O3 -DNDEBUG
+ifeq ($(WINDOWS_BUILD),)
+    HTS_CONF_ARGS += --disable-libcurl --disable-plugins --disable-bz2 --disable-lzma --without-libdeflate
+    HTSLIB_SYSTEM_LIBS :=
+endif
+    ifneq ($(findstring linux,$(DESKTOP_TARGET)),)
+        EXTRA_LDFLAGS += -static
+    endif
+    ifneq ($(findstring macos,$(DESKTOP_TARGET)),)
+        EXTRA_LDFLAGS :=
+    endif
 
 endif
 
@@ -347,6 +396,20 @@ third_party/zlib-ng/libz.a: third_party/zlib-ng/zlib.h
 	cd third_party/zlib-ng/ \
 		&& $(MAKE) libz.a
 
+ifdef ARGP_STANDALONE_BUILD
+ARGP_STANDALONE_SOURCES := $(shell find $(ARGP_STANDALONE_DIR) -type f)
+
+$(ARGP_STANDALONE_BUILD)/libargp.a: $(ARGP_STANDALONE_SOURCES) $(ARGP_STANDALONE_PATCH)
+	@echo Building bundled argp-standalone
+	rm -rf $(ARGP_STANDALONE_BUILD)
+	mkdir -p $(ARGP_STANDALONE_BUILD)
+	cp -R $(ARGP_STANDALONE_DIR)/. $(ARGP_STANDALONE_BUILD)/
+	cd $(ARGP_STANDALONE_BUILD) && patch -p1 < $(REPO_ROOT)/$(ARGP_STANDALONE_PATCH) \
+		&& autoreconf --install \
+		&& CPPFLAGS="$(ARGP_STANDALONE_CPPFLAGS)" ./configure \
+		&& $(MAKE) libargp.a
+endif
+
 # just for testing
 SAMVER=1.21
 samtools:
@@ -390,15 +453,33 @@ $(CORE_LIB): $(CORE_OBJS) $(BUILD_MAKEFILES) | $(BUILD_DIR)
 -include $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$(VERSION_OBJ))
 
 # oh, so thats what you wanted to do
-$(FASTCAT_BIN): $(VERSION_OBJ) $(CLI_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) third_party/zlib-ng/libz.a $(BUILD_MAKEFILES) | $(BUILD_DIR)
+$(FASTCAT_BIN): $(VERSION_OBJ) $(CLI_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) third_party/zlib-ng/libz.a $(ARGP) $(BUILD_MAKEFILES) | $(BUILD_DIR)
 	@echo "\x1b[1;32mLinking $@\x1b[0m"
 	$(CC) -pthread $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$(VERSION_OBJ) $(CLI_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) \
 		third_party/zlib-ng/libz.a \
 		$(ARGP) \
-		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
+		-lm -lz -lpthread $(HTSLIB_SYSTEM_LIBS) $(EXTRA_LIBS) \
 		-o $@
+
+.PHONY: desktop_bundle
+ifeq ($(BUILD_MODE),desktop)
+desktop_bundle: $(FASTCAT_BIN)  ## assemble a Desktop bundle (set DESKTOP_TARGET)
+	@rm -rf $(DESKTOP_STAGE)
+	@mkdir -p $(DESKTOP_STAGE) $(dir $(DESKTOP_ARCHIVE))
+	cp $(FASTCAT_BIN) $(DESKTOP_STAGE)/$(DESKTOP_EXECUTABLE)
+	cp tools/desktop/nextflow_schema.json $(DESKTOP_STAGE)/nextflow_schema.json
+	cp tools/desktop/README.md $(DESKTOP_STAGE)/README.md
+	cp LICENSE $(DESKTOP_STAGE)/
+	cd $(DESKTOP_STAGE) && $(DESKTOP_SHA256) $(DESKTOP_EXECUTABLE) nextflow_schema.json README.md LICENSE > SHA256SUMS
+	tar -C $(dir $(DESKTOP_STAGE)) -czf $(DESKTOP_ARCHIVE) $(notdir $(DESKTOP_STAGE))
+	@echo "Desktop bundle written to $(DESKTOP_ARCHIVE)"
+else
+desktop_bundle:
+	@echo "Use BUILD_MODE=desktop DESKTOP_TARGET=<platform> make desktop_bundle" >&2
+	@false
+endif
 
 .PHONY: clean
 clean:  ## clean first-party build artifacts
@@ -709,11 +790,11 @@ test/unity/%.o: test/unity/%.c $(BUILD_MAKEFILES)
 	$(CC) -Itest/unity $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
 
-test/unit/unit_tests: $(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) $(BUILD_MAKEFILES)
+test/unit/unit_tests: $(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) $(ARGP) $(BUILD_MAKEFILES)
 	$(CC) $(INCLUDES) $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
 		$(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) $(ARGP) \
-		-lm -lz -llzma -lbz2 -lpthread -lcurl -lcrypto $(EXTRA_LIBS) \
+		-lm -lz -lpthread $(HTSLIB_SYSTEM_LIBS) $(EXTRA_LIBS) \
 		-o $@
 
 -include $(UNIT_TEST_SRCS:.c=.d)
@@ -884,10 +965,11 @@ $(REPORT_DEMO_FASTQ): $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py 
 		--seed 7 \
 		| gzip -c > $@
 
-$(REPORT_DEMO_SAM): $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py $(REPORT_VENV)/.deps
+$(REPORT_DEMO_BAM): $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py $(REPORT_VENV)/.deps
 	@mkdir -p $(@D)
 	$(SIMULATE_READS) \
-		--output-format sam \
+		--output-format bam \
+		--output-threads 4 \
 		--sam-coordinate-sort \
 		--n $(REPORT_DEMO_N) \
 		--run-duration-s $(REPORT_DEMO_DURATION_S) \
@@ -897,7 +979,7 @@ $(REPORT_DEMO_SAM): $(DEV_TOOLS_SCRIPT) tools/workflow_glue/simulate_reads.py $(
 		> $@
 
 .PHONY: demo
-demo: report_vendor_template $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_SAM) test/fixtures/bam/coverage/report_simulated_regions.bed  ## generate FASTQ and aligned-BAM HTML report demos
+demo: report_vendor_template $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_BAM) test/fixtures/bam/coverage/report_simulated_regions.bed  ## generate FASTQ and aligned-BAM HTML report demos
 	@$(call TEST_DESC,HTML report demo)
 	rm -rf $(REPORT_DEMO_DIR)/fastcat_out $(REPORT_DEMO_DIR)/demux_out $(REPORT_DEMO_DIR)/aligned_out
 	$(RUN_FASTCAT) $(REPORT_DEMO_FASTQ) \
@@ -932,7 +1014,7 @@ demo: report_vendor_template $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_S
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/fastcat_report.html
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/summary.json
-	$(RUN_BAMSTATS) $(REPORT_DEMO_SAM) \
+	$(RUN_BAMSTATS) $(REPORT_DEMO_BAM) \
 		--output $(REPORT_DEMO_DIR)/aligned_out \
 		--coverage \
 		--coverage-beds test/fixtures/bam/coverage/report_simulated_regions.bed \
@@ -1297,16 +1379,32 @@ test_fastcat_memory: mem_check_fastcat_demultiplex_bam
 
 ###
 # fastcat qc tests
-
 .PHONY: test_qc_fastq_default_output
 test_qc_fastq_default_output: $(FASTCAT_BIN)
-	@$(call TEST_DESC,Fastcat qc FASTQ defaults to summary JSON)
+	@$(call TEST_DESC,Fastcat qc FASTQ streams reads unless an output path is requested)
 	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/qc/fastq_default, \
 		$(RUN_QC) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output out > reads.fastq && \
 		test -s reads.fastq && \
 		test -s out/summary.json && \
 		test ! -e out/per_file.tsv && \
-		test ! -d out/histograms)
+		test ! -d out/histograms && \
+		$(RUN_QC) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --reads-output saved --output saved > saved.stdout && \
+		test ! -s saved.stdout && \
+		test -s saved/saved.fastq.gz && \
+		gzip -dc saved/saved.fastq.gz | grep -q '^@' && \
+		$(RUN_QC) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --bam-out --reads-output saved --output saved_bam > saved_bam.stdout && \
+		test ! -s saved_bam.stdout && test -s saved_bam/saved.bam && \
+		$(RUN_QC) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --demultiplex --reads-output ignored.fastq.gz --output demultiplex > demultiplex.stdout && \
+		test ! -s demultiplex.stdout && \
+		test ! -e demultiplex/ignored.fastq.gz && \
+		test -n "$$({ find demultiplex -name '*.fastq.gz' -type f; })" && \
+		cp $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz reads.bam && \
+		$(RUN_QC) reads.bam --output detected_from_content > detected.fastq && \
+		test -s detected.fastq && test -s detected_from_content/summary.json && \
+		$(RUN_FASTCAT) $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz --output legacy > legacy.fastq && \
+		test -s legacy.fastq && \
+		$(RUN_QC) $(TEST_FIXTURES_FASTQ)/basic --output directory > directory.fastq && \
+		test -s directory.fastq && test -s directory/summary.json)
 test_qc: test_qc_fastq_default_output
 
 
@@ -1321,14 +1419,21 @@ test_qc_reference_bam_policy: $(FASTCAT_BIN) $(REPORT_VENV)/.deps
 		test ! -d out/coverage && \
 		test ! -e out/flagstats.tsv && \
 		grep -q "filtering is disabled" log && \
-		$(RUN_QC) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --legacy-outputs --output legacy > /dev/null && \
+		$(RUN_QC) $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --legacy-outputs --output legacy > /dev/null && \
 		test -f legacy/flagstats.tsv && \
 		test -f legacy/coverage/global.summary.txt && \
 		test -f legacy/coverage/global.dist.txt && \
 		test ! -e legacy/coverage/global.bed.gz && \
-		$(RUN_QC) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --coverage --output traces > /dev/null && \
+		$(RUN_QC) $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --coverage --output traces > /dev/null && \
 		test -f traces/coverage/global.bed.gz && \
-		test ! -e traces/coverage/global.summary.txt)
+		test ! -e traces/coverage/global.summary.txt && \
+		set +e; \
+		$(RUN_QC) --input-fmt bam $(TEST_FIXTURES_BAM)/basic/400ecoli.bam --reads-output saved --output rejected > /dev/null 2> rejected.log; \
+		rejected_rc=$$?; \
+		set -e; \
+		test $$rejected_rc -ne 0 && \
+		grep -q -- '--reads-output is not supported' rejected.log && \
+		test ! -e rejected && test ! -e rejected.tmp)
 test_qc: test_qc_reference_bam_policy
 
 

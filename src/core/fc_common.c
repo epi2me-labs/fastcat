@@ -7,7 +7,6 @@
 #include <libgen.h>
 #include <limits.h>
 #include <math.h>
-#include <regex.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -63,13 +62,23 @@ bool file_exists(const char *path)
 /* The following three functions were adpated from:
  * https://gist.github.com/JonathonReinhart/8c0d90191c38af2dcadb102c4e202950
  */
+static int fc_mkdir(const char *path, mode_t mode)
+{
+#ifdef _WIN32
+    (void)mode;
+    return mkdir(path);
+#else
+    return mkdir(path, mode);
+#endif
+}
+
 static int maybe_mkdir(const char *path, mode_t mode)
 {
     struct stat st;
     errno = 0;
 
     // Try to make the directory
-    if (mkdir(path, mode) == 0) {
+    if (fc_mkdir(path, mode) == 0) {
         return 0;
     }
 
@@ -93,6 +102,41 @@ static int maybe_mkdir(const char *path, mode_t mode)
     return 0;
 }
 
+static bool fc_path_separator(char character)
+{
+#ifdef _WIN32
+    return character == '/' || character == '\\';
+#else
+    return character == '/';
+#endif
+}
+
+static char *fc_path_after_root(char *path)
+{
+#ifdef _WIN32
+    if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':'
+        && fc_path_separator(path[2])) {
+        return path + 3;
+    }
+    if (fc_path_separator(path[0]) && fc_path_separator(path[1])) {
+        char *server_end = path + 2;
+        while (*server_end && !fc_path_separator(*server_end)) {
+            ++server_end;
+        }
+        if (*server_end) {
+            char *share_end = server_end + 1;
+            while (*share_end && !fc_path_separator(*share_end)) {
+                ++share_end;
+            }
+            if (*share_end) {
+                return share_end + 1;
+            }
+        }
+    }
+#endif
+    return path + 1;
+}
+
 /** mkdir a directory structure recursively.
  *
  * @param path directory path to ensure exists
@@ -109,13 +153,14 @@ int mkdir_p(const char *path)
 
     _path = fc_strdup(path, "path copy for mkdir_hier");
 
-    for (p = _path + 1; *p; p++) {
-        if (*p == '/') {
+    for (p = fc_path_after_root(_path); *p; p++) {
+        if (fc_path_separator(*p)) {
+            char separator = *p;
             *p = '\0';
             if (maybe_mkdir(_path, mode) != 0) {
                 goto out;
             }
-            *p = '/';
+            *p = separator;
         }
     }
 
@@ -146,7 +191,7 @@ int mkdir_hier(char *path, bool fail_on_exist)
 
     // if we can just make the directory, fine. If it exists
     // already then fail or succeed depending on fail_on_exist flag
-    int first_mkdir_result = mkdir(path, mode);
+    int first_mkdir_result = fc_mkdir(path, mode);
     int saved_errno = errno;
     if (first_mkdir_result != 0 && saved_errno == EEXIST) {
         return fail_on_exist ? -1 : 0;
@@ -158,13 +203,14 @@ int mkdir_hier(char *path, bool fail_on_exist)
 
     _path = fc_strdup(path, "path copy for mkdir_p");
 
-    for (p = _path + 1; *p; p++) {
-        if (*p == '/') {
+    for (p = fc_path_after_root(_path); *p; p++) {
+        if (fc_path_separator(*p)) {
+            char separator = *p;
             *p = '\0';
             if (maybe_mkdir(_path, mode) != 0) {
                 goto out;
             }
-            *p = '/';
+            *p = separator;
         }
     }
 
@@ -186,7 +232,12 @@ int fc_remove_tree(const char *path)
     }
 
     struct stat st;
-    if (lstat(path, &st) != 0) {
+#ifdef _WIN32
+    int stat_result = stat(path, &st);
+#else
+    int stat_result = lstat(path, &st);
+#endif
+    if (stat_result != 0) {
         return errno == ENOENT ? 0 : -1;
     }
     if (!S_ISDIR(st.st_mode)) {
@@ -233,11 +284,34 @@ int fc_remove_tree(const char *path)
  */
 int ensure_parent_dir_exists(const char *filepath)
 {
+#ifdef _WIN32
+    char *path_copy = fc_strdup(filepath, "filepath copy for parent dir check");
+    char *separator = NULL;
+    for (char *cursor = path_copy; *cursor; ++cursor) {
+        if (fc_path_separator(*cursor)) {
+            separator = cursor;
+        }
+    }
+    if (!separator) {
+        free(path_copy);
+        return 0;
+    }
+    if (separator == path_copy
+        || (separator == path_copy + 2 && path_copy[1] == ':')) {
+        separator[1] = '\0';
+    } else {
+        *separator = '\0';
+    }
+    int rtn = mkdir_p(path_copy);
+    free(path_copy);
+    return rtn;
+#else
     char *path_copy = fc_strdup(filepath, "filepath copy for parent dir check");
     char *dir = dirname(path_copy);
     int rtn = mkdir_p(dir);
     free(path_copy);
     return rtn;
+#endif
 }
 
 static void push_str(const char ***arr, size_t *n, const char *s)
@@ -251,6 +325,55 @@ static void push_str(const char ***arr, size_t *n, const char *s)
     }
     *arr = tmp;
     (*arr)[(*n)++] = s;
+}
+
+ptrdiff_t fc_getline(char **line, size_t *capacity, FILE *stream)
+{
+#ifndef _WIN32
+    return getline(line, capacity, stream);
+#else
+    if (!line || !capacity || !stream) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (!*line || *capacity == 0) {
+        char *new_line = realloc(*line, 128);
+        if (!new_line) {
+            errno = ENOMEM;
+            return -1;
+        }
+        *line = new_line;
+        *capacity = 128;
+    }
+
+    size_t length = 0;
+    int character = 0;
+    while ((character = fgetc(stream)) != EOF) {
+        if (length + 1 >= *capacity) {
+            if (*capacity > SIZE_MAX / 2) {
+                errno = ENOMEM;
+                return -1;
+            }
+            size_t new_capacity = *capacity * 2;
+            char *new_line = realloc(*line, new_capacity);
+            if (!new_line) {
+                errno = ENOMEM;
+                return -1;
+            }
+            *line = new_line;
+            *capacity = new_capacity;
+        }
+        (*line)[length++] = (char)character;
+        if (character == '\n') {
+            break;
+        }
+    }
+    if (length == 0 && character == EOF) {
+        return -1;
+    }
+    (*line)[length] = '\0';
+    return (ptrdiff_t)length;
+#endif
 }
 
 bool fc_parse_int_strict(const char *text, int *out)
@@ -754,9 +877,6 @@ inline float mean_qual_from_bam_naive(const uint8_t *qual, size_t len)
 // Strip hexadecimal suffixes that samtools merge can add to RG IDs
 static void strip_hex_suffix(char *str)
 {
-    regex_t regex;
-    regmatch_t matches[1];
-
     // samtools formats this as "%s-%0lX" which is a long formatted
     // as hex with leading zeros. BUT there's no field width specified!
     // https://github.com/samtools/samtools/issues/2086
@@ -764,16 +884,23 @@ static void strip_hex_suffix(char *str)
     // we could be probabilistic and require say 2 hex digits leaving
     // the 16 edge cases of 0 ("") to F. No one should have and RG ID
     // ending in "-", right?
-    if (regcomp(&regex, "-[0-9A-Fa-f]{0,8}$", REG_EXTENDED) != 0) {
-        FC_LOG_FATAL("Failed to compile regex for RG ID suffix stripping (internal error).");
+    size_t length = strlen(str);
+    size_t hex_digits = 0;
+    while (hex_digits < length && hex_digits < 8) {
+        char character = str[length - hex_digits - 1];
+        bool is_hex_digit = (character >= '0' && character <= '9')
+            || (character >= 'A' && character <= 'F')
+            || (character >= 'a' && character <= 'f');
+        if (!is_hex_digit) {
+            break;
+        }
+        ++hex_digits;
     }
 
-    // Check if the string matches the pattern, and strip the match from the src
-    if (regexec(&regex, str, 1, matches, 0) == 0) {
-        str[matches[0].rm_so] = '\0';
+    size_t suffix_start = length - hex_digits;
+    if (hex_digits < length && str[suffix_start - 1] == '-') {
+        str[suffix_start - 1] = '\0';
     }
-
-    regfree(&regex);
 }
 
 void destroy_rg_info(readgroup *rg)

@@ -85,6 +85,8 @@ garnered from the input files.
 
 FASTQ and unaligned BAM inputs can be filtered with the read-filtering options and are written to
 standard output.
+Use `--reads-output PREFIX` to save them as `PREFIX.fastq.gz`, or `PREFIX.bam` with `--bam-out`,
+beneath the report directory.
 When read filtering is enabled, read-level QC metrics describe reads that pass the filters; the summary also reports counts of records rejected by each filter.
 For a BAM with reference sequences, fastcat collects alignment statistics only; it does not filter or write reads.
 The `--region` and `--bed` options can be used to select genomic regions from indexed BAMs.

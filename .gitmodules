@@ -6,3 +6,6 @@
 	path = third_party/zlib-ng
 	url = https://github.com/zlib-ng/zlib-ng.git
 	ignore = dirty
+[submodule "argp-standalone"]
+	path = third_party/argp-standalone
+	url = https://github.com/argp-standalone/argp-standalone.git

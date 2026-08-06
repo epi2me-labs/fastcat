@@ -50,6 +50,7 @@ typedef struct {
     fc_file_kind input_kind;
     bool input_kind_explicit;
     size_t reads_per_file;
+    const char *reads_output;
     fc_path_list input_paths;
 
     // BAM input options

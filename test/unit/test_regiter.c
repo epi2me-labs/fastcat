@@ -7,6 +7,7 @@
 #include "main.h"
 #include "core/fc_regiter.h"
 #include "core/fc_common.h"
+#include "test_fs_utils.h"
 
 static sam_hdr_t* make_header(void) {
     sam_hdr_t* hdr = sam_hdr_init();
@@ -17,8 +18,8 @@ static sam_hdr_t* make_header(void) {
 }
 
 static char *write_temp_bed(const char *contents) {
-    char tmpl[] = "/tmp/fc_regiter_bedXXXXXX";
-    int fd = mkstemp(tmpl);
+    char tmpl[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fc_regiter_bedXXXXXX";
+    int fd = fc_test_mkstemp(tmpl, sizeof(tmpl));
     TEST_ASSERT_TRUE(fd >= 0);
     FILE *fp = fdopen(fd, "w");
     TEST_ASSERT_NOT_NULL(fp);

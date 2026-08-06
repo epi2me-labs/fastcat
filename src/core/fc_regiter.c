@@ -39,7 +39,7 @@ int region_from_bed(FILE *bed_fp, char **chr, int *start, int *end)
     *start = -1;
     *end = -1;
 
-    if (getline(&line, &len, bed_fp) != -1) {
+    if (fc_getline(&line, &len, bed_fp) != -1) {
         char *newline_pos = strchr(line, '\n');
         if (newline_pos != NULL) {
             *newline_pos = '\0'; // Null-terminate the string at the newline

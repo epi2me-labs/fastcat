@@ -115,6 +115,26 @@ FC_TEST(rg_parse_suite, test_hex_suffix_no_barcode) {
     free(rg);
 }
 
+FC_TEST(rg_parse_suite, test_hex_suffix_limits) {
+    char *eight_digits = strdup("12345678-1234-1234-1234-123456789012_sup@v1_barcode01-1A2B3C4D");
+    readgroup *info = create_rg_info(eight_digits);
+    TEST_ASSERT_EQUAL_STRING("barcode01", info->barcode);
+    destroy_rg_info(info);
+    free(eight_digits);
+
+    char *nine_digits = strdup("12345678-1234-1234-1234-123456789012_sup@v1_barcode01-1A2B3C4D5");
+    info = create_rg_info(nine_digits);
+    TEST_ASSERT_EQUAL_STRING("barcode01-1A2B3C4D5", info->barcode);
+    destroy_rg_info(info);
+    free(nine_digits);
+
+    char *no_digits = strdup("12345678-1234-1234-1234-123456789012_sup@v1_barcode01-");
+    info = create_rg_info(no_digits);
+    TEST_ASSERT_EQUAL_STRING("barcode01", info->barcode);
+    destroy_rg_info(info);
+    free(no_digits);
+}
+
 FC_TEST(rg_parse_suite, test_no_at_in_basecaller) {
     char* rg = strdup("12345678-1234-1234-1234-123456789012_supv1_barcode01");
     readgroup* info = create_rg_info(rg);

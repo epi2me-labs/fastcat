@@ -15,6 +15,7 @@
 #include "core/fc_read.h"
 #include "core/fc_failures.h"
 #include "core/fc_writer.h"
+#include "test_fs_utils.h"
 
 typedef struct {
     uint64_t passed_reads;
@@ -71,29 +72,29 @@ static const char *SAM_MISSING_QUAL_FIXTURE =
     "secondary\t256\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\t*\n";
 
 static void make_temp_gz_fastq(char *path, size_t path_len) {
-    char tmpl[] = "/tmp/fastcat_iter_fastqXXXXXX";
-    int fd = mkstemp(tmpl);
+    char tmpl[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_iter_fastqXXXXXX";
+    int fd = fc_test_mkstemp(tmpl, sizeof(tmpl));
     TEST_ASSERT_MESSAGE(fd != -1, "mkstemp failed for fastq fixture");
     close(fd);
     gzFile gz = gzopen(tmpl, "wb");
     TEST_ASSERT_MESSAGE(gz != NULL, "gzopen failed for fastq fixture");
     TEST_ASSERT_EQUAL_INT((int)strlen(FASTQ_FIXTURE), gzwrite(gz, FASTQ_FIXTURE, strlen(FASTQ_FIXTURE)));
     TEST_ASSERT_EQUAL_INT(0, gzclose(gz));
-    char renamed[64];
+    char renamed[FC_TEST_TEMP_PATH_CAPACITY];
     FC_SNPRINTF_CHECK(renamed, sizeof(renamed), "%s.fastq.gz", tmpl);
     TEST_ASSERT_EQUAL_INT(0, rename(tmpl, renamed));
     FC_SNPRINTF_CHECK(path, path_len, "%s", renamed);
 }
 
 static void make_temp_sam_contents(const char *sam_contents, char *path, size_t path_len) {
-    char tmpl[] = "/tmp/fastcat_iter_samXXXXXX";
-    int fd = mkstemp(tmpl);
+    char tmpl[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_iter_samXXXXXX";
+    int fd = fc_test_mkstemp(tmpl, sizeof(tmpl));
     TEST_ASSERT_MESSAGE(fd != -1, "mkstemp failed for sam fixture");
     FILE *fp = fdopen(fd, "w");
     TEST_ASSERT_NOT_NULL(fp);
     TEST_ASSERT_EQUAL_INT((int)strlen(sam_contents), fprintf(fp, "%s", sam_contents));
     TEST_ASSERT_EQUAL_INT(0, fclose(fp));
-    char renamed[64];
+    char renamed[FC_TEST_TEMP_PATH_CAPACITY];
     FC_SNPRINTF_CHECK(renamed, sizeof(renamed), "%s.sam", tmpl);
     TEST_ASSERT_EQUAL_INT(0, rename(tmpl, renamed));
     FC_SNPRINTF_CHECK(path, path_len, "%s", renamed);
@@ -210,14 +211,14 @@ static void _test_known_stats(const char *path) {
 }
 
 FC_TEST(iter_suite, test_iter_fastq_known_stats) {
-    char fq_path[64];
+    char fq_path[FC_TEST_TEMP_PATH_CAPACITY];
     make_temp_gz_fastq(fq_path, sizeof(fq_path));
     _test_known_stats(fq_path);
     remove(fq_path);
 }
 
 FC_TEST(iter_suite, test_iter_bam_known_stats) {
-    char sam_path[64];
+    char sam_path[FC_TEST_TEMP_PATH_CAPACITY];
     make_temp_sam(sam_path, sizeof(sam_path));
     _test_known_stats(sam_path);
     remove(sam_path);
@@ -235,21 +236,21 @@ static void _test_case_filters_length_and_quality(const char *path) {
 }
 
 FC_TEST(iter_suite, test_iter_fastq_filters_length_and_quality) {
-    char fq_path[64];
+    char fq_path[FC_TEST_TEMP_PATH_CAPACITY];
     make_temp_gz_fastq(fq_path, sizeof(fq_path));
     _test_case_filters_length_and_quality(fq_path);
     remove(fq_path);
 }
 
 FC_TEST(iter_suite, test_iter_bam_filters_length_and_quality) {
-    char sam_path[64];
+    char sam_path[FC_TEST_TEMP_PATH_CAPACITY];
     make_temp_sam(sam_path, sizeof(sam_path));
     _test_case_filters_length_and_quality(sam_path);
     remove(sam_path);
 }
 
 FC_TEST(iter_suite, test_iter_bam_lowercase_qs_used_for_quality_filtering) {
-    char sam_path[64];
+    char sam_path[FC_TEST_TEMP_PATH_CAPACITY];
     make_temp_sam_contents(SAM_LOWER_QS_FIXTURE, sam_path, sizeof(sam_path));
     fc_iter_opts opts = fq_opts_defaults();
     opts.min_qscore = 30.0f;
@@ -258,7 +259,7 @@ FC_TEST(iter_suite, test_iter_bam_lowercase_qs_used_for_quality_filtering) {
 }
 
 FC_TEST(iter_suite, test_iter_bam_missing_quality_reaches_record_level_accounting_only) {
-    char sam_path[64];
+    char sam_path[FC_TEST_TEMP_PATH_CAPACITY];
     make_temp_sam_contents(SAM_MISSING_QUAL_FIXTURE, sam_path, sizeof(sam_path));
     fc_iter_opts opts = fq_opts_defaults();
 
@@ -321,14 +322,14 @@ static void _test_case_all_filtered(const char *path) {
 }
 
 FC_TEST(iter_suite, test_iter_fastq_all_filtered_sets_minmax_zero) {
-    char fq_path[64];
+    char fq_path[FC_TEST_TEMP_PATH_CAPACITY];
     make_temp_gz_fastq(fq_path, sizeof(fq_path));
     _test_case_all_filtered(fq_path);
     remove(fq_path);
 }
 
 FC_TEST(iter_suite, test_iter_bam_all_filtered_sets_minmax_zero) {
-    char sam_path[64];
+    char sam_path[FC_TEST_TEMP_PATH_CAPACITY];
     make_temp_sam(sam_path, sizeof(sam_path));
     _test_case_all_filtered(sam_path);
     remove(sam_path);

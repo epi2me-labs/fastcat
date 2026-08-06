@@ -11,6 +11,7 @@
 
 #include "core/fc_coverage.h"
 #include "core/fc_common.h"
+#include "test_fs_utils.h"
 
 static bam_hdr_t *make_header(const int *lengths, size_t n_lengths)
 {
@@ -114,8 +115,8 @@ FC_TEST(bamcoverage_suite, test_coverage_process_exclude_flags)
     const int lengths[1] = { 100 };
     const size_t active_len = (size_t)lengths[0] + 1u;
 
-    char out_dir[] = "/tmp/fastcat_cov_flags_exclXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    char out_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_cov_flags_exclXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(out_dir, sizeof(out_dir)));
     TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
 
     // setup writer with an explicit exclude flag
@@ -154,8 +155,8 @@ FC_TEST(bamcoverage_suite, test_coverage_process_include_flags)
     const int lengths[1] = { 100 };
     const size_t active_len = (size_t)lengths[0] + 1u;
 
-    char out_dir[] = "/tmp/fastcat_cov_flags_inclXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    char out_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_cov_flags_inclXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(out_dir, sizeof(out_dir)));
     TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
 
     // setup writer requiring reads to match include flag
@@ -197,8 +198,8 @@ FC_TEST(bamcoverage_suite, test_coverage_process_use_cigar_mixed_ops)
     const int lengths[1] = { 100 };
     const size_t active_len = (size_t)lengths[0] + 1u;
 
-    char out_dir[] = "/tmp/fastcat_cov_cigarXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    char out_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_cov_cigarXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(out_dir, sizeof(out_dir)));
     TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
 
     // setup writer in CIGAR-aware mode
@@ -247,8 +248,8 @@ FC_TEST(bamcoverage_suite, test_coverage_process_end_marker_at_contig_len)
     const int lengths[1] = { 50 };
     const size_t active_len = (size_t)lengths[0] + 1u;
 
-    char out_dir[] = "/tmp/fastcat_cov_boundaryXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    char out_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_cov_boundaryXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(out_dir, sizeof(out_dir)));
     TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
 
     // setup a simple writer and process one boundary read
@@ -280,11 +281,11 @@ FC_TEST(bamcoverage_suite, test_coverage_process_end_marker_at_contig_len)
 FC_TEST(bamcoverage_suite, test_coverage_writer_init_destroy_no_data)
 {
     const int lengths[1] = { 80 };
-    char out_dir[] = "/tmp/fastcat_cov_lifecycleXXXXXX";
+    char out_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_cov_lifecycleXXXXXX";
     char summary[512];
     char dist[512];
 
-    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(out_dir, sizeof(out_dir)));
     TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
 
     // init writer without processing any reads
@@ -318,11 +319,11 @@ FC_TEST(bamcoverage_suite, test_coverage_writer_init_destroy_no_data)
 FC_TEST(bamcoverage_suite, test_coverage_thresholds_deduplicated)
 {
     const int lengths[1] = { 80 };
-    char out_dir[] = "/tmp/fastcat_cov_thresholdsXXXXXX";
+    char out_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_cov_thresholdsXXXXXX";
     uint32_t thresholds[] = { 20, 5, 20, 10, 5 };
     uint32_t expected[] = { 5, 10, 20 };
  
-    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(out_dir, sizeof(out_dir)));
     TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
 
     bam_hdr_t *hdr = make_header(lengths, 1);
@@ -344,10 +345,10 @@ FC_TEST(bamcoverage_suite, test_coverage_thresholds_deduplicated)
 FC_TEST(bamcoverage_suite, test_coverage_summary_thresholds_handle_depth_above_initial_cap)
 {
     const int lengths[1] = { 100 };
-    char out_dir[] = "/tmp/fastcat_cov_thresholdsXXXXXX";
+    char out_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_cov_thresholdsXXXXXX";
     char summary_path[512];
 
-    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(out_dir, sizeof(out_dir)));
     TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
 
     bam_hdr_t *hdr = make_header(lengths, 1);
@@ -397,8 +398,8 @@ FC_TEST(bamcoverage_suite, test_coverage_summary_thresholds_handle_depth_above_i
 FC_TEST(bamcoverage_suite, test_coverage_summary_snapshot_preserves_numeric_precision)
 {
     const int lengths[1] = { 7 };
-    char out_dir[] = "/tmp/fastcat_cov_snapshotXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    char out_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_cov_snapshotXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(out_dir, sizeof(out_dir)));
     TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
 
     bam_hdr_t *hdr = make_header(lengths, 1);
@@ -442,8 +443,8 @@ FC_TEST(bamcoverage_suite, test_coverage_process)
     const int32_t read_offset = 3;
     const uint32_t read_length = 10;
 
-    char out_dir[] = "/tmp/fastcat_cov_wXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(out_dir));
+    char out_dir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fastcat_cov_wXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(out_dir, sizeof(out_dir)));
     TEST_ASSERT_EQUAL_INT(0, rmdir(out_dir));
 
     bam_hdr_t *hdr = make_header(lengths, 7);

@@ -31,8 +31,8 @@ static fc_input_resolve_status resolve(
 
 FC_TEST(iter_collect_suite, test_resolve_named_fastq_and_bam_inputs)
 {
-    char tmpdir[] = "/tmp/fc_input_list_namedXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
+    char tmpdir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fc_input_list_namedXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(tmpdir, sizeof(tmpdir)));
     char *fastq = fc_join_path(tmpdir, "reads.fastq");
     char *bam = fc_join_path(tmpdir, "reads.bam");
     make_file(fastq, "x");
@@ -67,10 +67,10 @@ FC_TEST(iter_collect_suite, test_resolve_named_fastq_and_bam_inputs)
 
 FC_TEST(iter_collect_suite, test_resolve_directories_collects_recognised_types)
 {
-    char tmpdir[] = "/tmp/fc_input_list_directoryXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
+    char tmpdir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fc_input_list_directoryXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(tmpdir, sizeof(tmpdir)));
     char *nested = fc_join_path(tmpdir, "nested");
-    TEST_ASSERT_EQUAL_INT(0, mkdir(nested, 0700));
+    TEST_ASSERT_EQUAL_INT(0, fc_test_mkdir(nested));
     char *top = fc_join_path(tmpdir, "top.fastq");
     char *deep = fc_join_path(nested, "deep.fq");
     char *junk = fc_join_path(tmpdir, "ignore.txt");
@@ -114,10 +114,10 @@ FC_TEST(iter_collect_suite, test_resolve_directories_collects_recognised_types)
 
 FC_TEST(iter_collect_suite, test_resolve_bam_directory_with_and_without_recursion)
 {
-    char tmpdir[] = "/tmp/fc_input_list_bam_directoryXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
+    char tmpdir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fc_input_list_bam_directoryXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(tmpdir, sizeof(tmpdir)));
     char *nested = fc_join_path(tmpdir, "nested");
-    TEST_ASSERT_EQUAL_INT(0, mkdir(nested, 0700));
+    TEST_ASSERT_EQUAL_INT(0, fc_test_mkdir(nested));
     char *top = fc_join_path(tmpdir, "top.bam");
     char *deep = fc_join_path(nested, "deep.sam");
     make_file(top, "x");
@@ -145,8 +145,8 @@ FC_TEST(iter_collect_suite, test_resolve_bam_directory_with_and_without_recursio
 
 FC_TEST(iter_collect_suite, test_resolve_fofn_infers_homogeneous_paths)
 {
-    char tmpdir[] = "/tmp/fc_input_list_fofnXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
+    char tmpdir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fc_input_list_fofnXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(tmpdir, sizeof(tmpdir)));
     char *first = fc_join_path(tmpdir, "first.fastq");
     char *second = fc_join_path(tmpdir, "second.fq.gz");
     char *fofn = fc_join_path(tmpdir, "inputs.fofn");
@@ -205,15 +205,15 @@ FC_TEST(iter_collect_suite, test_resolve_stdin_requires_explicit_format)
 
 FC_TEST(iter_collect_suite, test_resolve_reports_specific_rejection_statuses)
 {
-    char tmpdir[] = "/tmp/fc_input_list_statusXXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(tmpdir));
+    char tmpdir[FC_TEST_TEMP_PATH_CAPACITY] = "/tmp/fc_input_list_statusXXXXXX";
+    TEST_ASSERT_NOT_NULL(fc_test_mkdtemp(tmpdir, sizeof(tmpdir)));
     char *fastq = fc_join_path(tmpdir, "reads.fastq");
     char *unknown = fc_join_path(tmpdir, "reads.txt");
     char *empty_dir = fc_join_path(tmpdir, "empty");
     char *missing = fc_join_path(tmpdir, "missing.bam");
     make_file(fastq, "x");
     make_file(unknown, "x");
-    TEST_ASSERT_EQUAL_INT(0, mkdir(empty_dir, 0700));
+    TEST_ASSERT_EQUAL_INT(0, fc_test_mkdir(empty_dir));
 
     fc_resolved_inputs inputs = { 0 };
     char *fastq_path[] = { fastq };

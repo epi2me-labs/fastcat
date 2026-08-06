@@ -1,6 +1,7 @@
 #include "cli/catstats/args.h"
 
 #include <argp.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -46,7 +47,8 @@ enum {
     KEY_HTML_REPORT,
     KEY_NO_LEGACY_OUTPUTS,
     KEY_LEGACY_OUTPUTS,
-    KEY_KEEP_FAILED_OUTPUT
+    KEY_KEEP_FAILED_OUTPUT,
+    KEY_READS_OUTPUT
 };
 
 typedef struct {
@@ -241,7 +243,7 @@ static struct argp_option bam_options[] = {
 static char qc_doc[] = "fastcat qc -- quality-control FASTQ or BAM input.\
 \vfastcat detects a common FASTQ or BAM format from named files, directories, and file-of-filenames\
 sources. Use --input-fmt for standard-input data or to require a particular input format. FASTQ and headerless BAM support\
-read filtering and write reads to stdout. Reference-bearing BAM is analysed without read\
+read filtering and write reads to stdout. Use --reads-output PREFIX to save reads beneath the report output directory. Reference-bearing BAM is analysed without read\
 filtering or read output. Use --region or --bed to select coordinates from a reference-bearing\
 BAM.";
 
@@ -260,6 +262,8 @@ static struct argp_option qc_options[] = {
 
     { 0, 0, 0, 0, "Output options:", 10 },
     QC_OUTPUT_OPTIONS,
+    { "reads-output", KEY_READS_OUTPUT, "PREFIX", 0,
+        "Write one file of reads at relative PREFIX.fastq.gz, or PREFIX.bam with --bam-out (ignored with --demultiplex).", 11 },
     { "bam-out", 'B', 0, 0, "Output reads as unaligned BAM when read output is enabled.", 11 },
     { "reads-per-file", 'c', "NUM", 0,
         "Split read output into files with a set number of reads (default: single file).", 11 },
@@ -327,6 +331,7 @@ static fc_catstats_args default_args(void)
     args.input_kind = FC_FILE_FASTQ;
     args.input_kind_explicit = false;
     args.reads_per_file = 0;
+    args.reads_output = NULL;
     args.input_paths.paths = NULL;
     args.input_paths.n_paths = 0;
 
@@ -349,6 +354,29 @@ static fc_catstats_args default_args(void)
     args.poly_a_qual = 10.0f;
     args.poly_a_rev = false;
     return args;
+}
+
+static bool output_path_is_safe_relative(const char *path)
+{
+    if (!path || path[0] == '\0' || path[0] == '/' || path[0] == '\\'
+        || (isalpha((unsigned char)path[0]) && path[1] == ':')) {
+        return false;
+    }
+    const char *component = path;
+    for (const char *cursor = path;; ++cursor) {
+        if (*cursor != '/' && *cursor != '\\' && *cursor != '\0') {
+            continue;
+        }
+        size_t length = (size_t)(cursor - component);
+        if (length == 0 || (length == 1 && component[0] == '.')
+            || (length == 2 && component[0] == '.' && component[1] == '.')) {
+            return false;
+        }
+        if (*cursor == '\0') {
+            return true;
+        }
+        component = cursor + 1;
+    }
 }
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
@@ -454,6 +482,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             argp_error(state, "Invalid --reads-per-file value: '%s'.", arg);
         }
         arguments->reads_per_file = size_value;
+        break;
+    case KEY_READS_OUTPUT:
+        arguments->reads_output = arg;
         break;
     case 'd':
         arguments->demultiplex = true;
@@ -659,6 +690,16 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
                     "Mismatched counts: --coverage-beds (%zu) vs --coverage-names (%zu).",
                     arguments->n_coverage_beds,
                     arguments->n_coverage_names);
+            }
+        }
+        if (ctx->program == FC_PROGRAM_QC && !arguments->demultiplex
+            && arguments->reads_output) {
+            if (!output_path_is_safe_relative(arguments->reads_output)) {
+                argp_error(state,
+                    "--reads-output must be a non-empty relative filename prefix beneath --output.");
+            }
+            if (arguments->reads_per_file != 0) {
+                argp_error(state, "--reads-per-file cannot be used with --reads-output.");
             }
         }
         break;
