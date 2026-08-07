@@ -3096,6 +3096,10 @@ static char *render_report_html(
         (summary && summary->flow_cell_id && summary->flow_cell_id[0] != '\0')
             ? summary->flow_cell_id
             : "(not found)");
+    char *device_html = html_escape(
+        (summary && summary->device_id && summary->device_id[0] != '\0')
+            ? summary->device_id
+            : "(not found)");
     char *run_date_html = html_escape((summary && summary->run_date && summary->run_date[0] != '\0')
             ? summary->run_date
             : "(not found)");
@@ -3152,6 +3156,7 @@ static char *render_report_html(
     replace_all(&html, "__FASTCAT_MODBASE_HTML__", modbase_html);
     replace_all(&html, "__FASTCAT_INPUT_TYPE_HTML__", input_type_html);
     replace_all(&html, "__FASTCAT_FLOW_CELL_ID_HTML__", flow_cell_html);
+    replace_all(&html, "__FASTCAT_DEVICE_ID_HTML__", device_html);
     replace_all(&html, "__FASTCAT_RUN_DATE_HTML__", run_date_html);
     replace_all(&html, "__FASTCAT_RUN_DURATION_HTML__", run_duration_html);
     replace_all(&html, "__FASTCAT_YIELD_HTML__", yield_html);
@@ -3179,6 +3184,7 @@ static char *render_report_html(
     free(modbase_html);
     free(input_type_html);
     free(flow_cell_html);
+    free(device_html);
     free(run_date_html);
     free(run_duration_text);
     free(yield_text);

@@ -35,6 +35,7 @@ import pysam
 DEFAULT_RUNID = "12345678-1234-1234-1234-123456789abc"
 DEFAULT_MODEL = "dna_r10.4.1_e8.2_400bps_hac@v5.0.0"
 DEFAULT_FLOW_CELL_ID = "XXX12345"
+DEFAULT_DEVICE_ID = "PCA000001"
 DEFAULT_SPEED_MEAN = 400.0
 DEFAULT_SPEED_IQR = 40.0
 DEFAULT_SPEED_FINAL_MEAN = 340.0
@@ -451,6 +452,7 @@ def sam_header(args):
             "LB": args.sample_id or "simulated-data",
             "PL": "ONT",
             "PU": args.flow_cell_id,
+            "PM": args.device_id,
         }
         if barcode != "unclassified":
             group["SM"] = barcode
@@ -569,6 +571,9 @@ def argparser():
     metadata.add_argument(
         "--flow-cell-id", default=DEFAULT_FLOW_CELL_ID,
         help=f"Flow cell ID metadata to emit (default: {DEFAULT_FLOW_CELL_ID})")
+    metadata.add_argument(
+        "--device-id", default=DEFAULT_DEVICE_ID,
+        help=f"Sequencing device ID to emit in BAM read groups (default: {DEFAULT_DEVICE_ID})")
     metadata.add_argument("--id-prefix", default="simread", help="Read ID prefix (default: simread)")
     metadata.add_argument("--sample-id", default="", help="Sample ID metadata to emit (default: unset)")
     metadata.add_argument(

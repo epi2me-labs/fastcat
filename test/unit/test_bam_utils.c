@@ -501,7 +501,7 @@ FC_TEST(bam_utils_suite, test_bam_rg_cache_lookup_and_rg_field_fallbacks)
 {
     const char *hdr_text =
         "@HD\tVN:1.6\n"
-        "@RG\tID:rg1\tDT:2025-01-06T10:06:36Z\tLB:sampleA\tPU:FLO-MIN114\tSM:barcode07\tal:alias07\tDS:runid=e4994c62-93f9-439a-bc8f-d20c95a137a5 basecall_model=rna004_130bps_fast@v5.1.0 modbase_models=rna004_130bps_hac@v5.1.0_inosine_m6A@v1\n"
+        "@RG\tID:rg1\tDT:2025-01-06T10:06:36Z\tLB:sampleA\tPU:FLO-MIN114\tPM:MIN-001\tSM:barcode07\tal:alias07\tDS:runid=e4994c62-93f9-439a-bc8f-d20c95a137a5 basecall_model=rna004_130bps_fast@v5.1.0 modbase_models=rna004_130bps_hac@v5.1.0_inosine_m6A@v1\n"
         "@RG\tID:rg2\tDS:basecall_model=rna004_130bps_sup@2025-06-12_canonical-integrity\n";
     bam_hdr_t *hdr = sam_hdr_parse((int)strlen(hdr_text), hdr_text);
     TEST_ASSERT_NOT_NULL(hdr);
@@ -517,6 +517,7 @@ FC_TEST(bam_utils_suite, test_bam_rg_cache_lookup_and_rg_field_fallbacks)
     TEST_ASSERT_EQUAL_STRING("2025-01-06T10:06:36Z", rg1->dt);
     TEST_ASSERT_EQUAL_STRING("sampleA", rg1->lb);
     TEST_ASSERT_EQUAL_STRING("FLO-MIN114", rg1->pu);
+    TEST_ASSERT_EQUAL_STRING("MIN-001", rg1->pm);
     TEST_ASSERT_EQUAL_STRING("barcode07", rg1->sm);
     TEST_ASSERT_EQUAL_STRING("alias07", rg1->al);
     TEST_ASSERT_NULL(fc_bam_rg_cache_find(cache, "missing"));
@@ -548,6 +549,7 @@ FC_TEST(bam_utils_suite, test_bam_rg_cache_lookup_and_rg_field_fallbacks)
     TEST_ASSERT_EQUAL_STRING("2025-01-06T10:06:36Z", fr->meta->start_time);
     TEST_ASSERT_EQUAL_STRING("sampleA", fr->meta->sample_id);
     TEST_ASSERT_EQUAL_STRING("FLO-MIN114", fr->meta->flow_cell_id);
+    TEST_ASSERT_EQUAL_STRING("MIN-001", fr->meta->device_id);
     TEST_ASSERT_EQUAL_STRING("barcode07", fr->meta->barcode);
     TEST_ASSERT_EQUAL_size_t(7, fr->meta->ibarcode);
     TEST_ASSERT_EQUAL_STRING("alias07", fr->meta->barcode_alias);

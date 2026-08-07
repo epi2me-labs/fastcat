@@ -421,7 +421,7 @@ def load_run_summary(summary, overrides=None):
     row = summary["run_summary"].copy()
     if overrides:
         row.update(overrides)
-    for key in ("run_ids", "basecaller_models", "modbase_models", "flow_cell_ids"):
+    for key in ("run_ids", "basecaller_models", "modbase_models", "flow_cell_ids", "device_ids"):
         if isinstance(row.get(key), list):
             row[key] = "; ".join(row[key])
     discovered = lambda key, formatter=str: _summary_display_text(
@@ -435,6 +435,7 @@ def load_run_summary(summary, overrides=None):
         ("Basecaller model", discovered("basecaller_models")),
         ("Modbase models", discovered("modbase_models")),
         ("Flowcell ID", discovered("flow_cell_ids")),
+        ("Device ID", discovered("device_ids")),
         ("Run date", discovered("run_date")),
         ("Run duration", discovered("run_duration_s", _format_duration_seconds)),
         ("Yield", _summary_display_text(row.get("base_count"), _format_yield_bases)),

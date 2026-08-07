@@ -224,6 +224,7 @@ The principal human-readable overview for this output sample or barcode: accepte
 | `basecaller_models` | `array` or `null` | Distinct basecaller model identifiers observed in accepted reads, or null when unavailable. |
 | `modbase_models` | `array` or `null` | Distinct modified-base model identifiers observed in accepted reads, or null when unavailable. |
 | `flow_cell_ids` | `array` or `null` | Distinct flow-cell identifiers observed in accepted reads, or null when unavailable. |
+| `device_ids` | `array` or `null` | Distinct sequencing-device identifiers observed in accepted BAM reads, or null when unavailable. |
 | `run_date` | `string` or `null` | Earliest observed sequencing start date, or null when timestamps are unavailable. |
 | `run_duration_s` | `number` | Elapsed sequencing duration in seconds; -1 denotes multiple flow cells and 0 is used when no valid timing range is available. |
 | `read_count` | `nonNegativeInt` | Number of reads that passed fastcat filtering. |

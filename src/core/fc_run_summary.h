@@ -20,6 +20,7 @@ typedef struct {
     char *basecaller_model;
     char *modbase_models;
     char *flow_cell_id;
+    char *device_id;
     char *run_date;
     double run_duration_s;
     size_t read_count;
