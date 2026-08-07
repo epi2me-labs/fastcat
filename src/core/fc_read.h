@@ -20,6 +20,7 @@ typedef struct read_meta {
     char *modcallers;
     char *_modcallers;
     char *flow_cell_id; // PU:Z
+    char *device_id; // PM:Z
     char *sample_id; // LB:Z
     char *barcode; // SM:Z
     size_t ibarcode;

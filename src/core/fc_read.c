@@ -217,6 +217,7 @@ static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment)
     meta->_modcallers = NULL;
     meta->modcallers = "";
     meta->flow_cell_id = "";
+    meta->device_id = "";
     meta->sample_id = "";
     meta->barcode = "";
     meta->ibarcode = 0;
@@ -294,6 +295,8 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             meta->start_time = bam_aux2Z(aux);
         } else if (((strcmp(tag, "PU") == 0) || (strcmp(tag, "FC") == 0)) && type == 'Z') {
             meta->flow_cell_id = bam_aux2Z(aux);
+        } else if (strcmp(tag, "PM") == 0 && type == 'Z') {
+            meta->device_id = bam_aux2Z(aux);
         } else if (strcmp(tag, "LB") == 0 && type == 'Z') {
             meta->sample_id = bam_aux2Z(aux);
         } else if (((strcmp(tag, "BA") == 0) || (strcmp(tag, "AL") == 0)) && type == 'Z') {
@@ -390,6 +393,9 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             }
             if ('\0' == meta->flow_cell_id[0] && NULL != rg_entry->pu && rg_entry->pu[0] != '\0') {
                 meta->flow_cell_id = rg_entry->pu;
+            }
+            if ('\0' == meta->device_id[0] && NULL != rg_entry->pm && rg_entry->pm[0] != '\0') {
+                meta->device_id = rg_entry->pm;
             }
             if ('\0' == meta->barcode[0] && NULL != rg_entry->sm && rg_entry->sm[0] != '\0') {
                 meta->barcode = rg_entry->sm;

@@ -14,6 +14,7 @@ typedef struct {
     char *dt;
     char *lb;
     char *pu;
+    char *pm;
     char *sm;
     char *al;
     readgroup *parsed_id; // cached legacy interpretation of ID

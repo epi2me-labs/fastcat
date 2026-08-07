@@ -1035,6 +1035,7 @@
         "basecaller_models",
         "modbase_models",
         "flow_cell_ids",
+        "device_ids",
         "run_date",
         "run_duration_s",
         "read_count",
@@ -1122,6 +1123,16 @@
         },
         "flow_cell_ids": {
           "description": "Distinct flow-cell identifiers observed in accepted reads, or null when unavailable.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "device_ids": {
+          "description": "Distinct sequencing-device identifiers observed in accepted BAM reads, or null when unavailable.",
           "type": [
             "array",
             "null"

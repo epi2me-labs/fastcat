@@ -28,6 +28,7 @@ static void fc_bam_rg_entry_destroy(fc_bam_rg_entry *entry)
     free(entry->dt);
     free(entry->lb);
     free(entry->pu);
+    free(entry->pm);
     free(entry->sm);
     free(entry->al);
     destroy_rg_info(entry->parsed_id);
@@ -82,6 +83,7 @@ fc_bam_rg_cache *fc_bam_rg_cache_create(const sam_hdr_t *hdr)
         entry->dt = fc_bam_rg_dup_tag(hdr, pos, "DT", "bam rg dt");
         entry->lb = fc_bam_rg_dup_tag(hdr, pos, "LB", "bam rg lb");
         entry->pu = fc_bam_rg_dup_tag(hdr, pos, "PU", "bam rg pu");
+        entry->pm = fc_bam_rg_dup_tag(hdr, pos, "PM", "bam rg pm");
         entry->sm = fc_bam_rg_dup_tag(hdr, pos, "SM", "bam rg sm");
         entry->al = fc_bam_rg_dup_tag(hdr, pos, "al", "bam rg al");
 

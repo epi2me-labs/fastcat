@@ -18,6 +18,7 @@ static void add_run_summary_read(
     const char *basecaller_model,
     const char *modbase_models,
     const char *flow_cell_id,
+    const char *device_id,
     const char *barcode_alias,
     const char *start_time)
 {
@@ -27,6 +28,7 @@ static void add_run_summary_read(
     const char *meta_basecaller_model = "";
     const char *meta_modbase_models = "";
     const char *meta_flow_cell_id = "";
+    const char *meta_device_id = "";
     const char *meta_barcode_alias = "";
     const char *meta_start_time = "";
 
@@ -45,6 +47,9 @@ static void add_run_summary_read(
     if (NULL != flow_cell_id) {
         meta_flow_cell_id = flow_cell_id;
     }
+    if (NULL != device_id) {
+        meta_device_id = device_id;
+    }
     if (NULL != barcode_alias) {
         meta_barcode_alias = barcode_alias;
     }
@@ -58,6 +63,7 @@ static void add_run_summary_read(
         .basecaller = (char *)meta_basecaller_model,
         .modcallers = (char *)meta_modbase_models,
         .flow_cell_id = (char *)meta_flow_cell_id,
+        .device_id = (char *)meta_device_id,
         .barcode_alias = (char *)meta_barcode_alias,
         .start_time = (char *)meta_start_time
     };
@@ -98,6 +104,7 @@ FC_TEST(run_summary_suite, test_run_summary_collapses_multiple_values)
         "model-a",
         MODBASE_MODELS_1,
         "flow-a",
+        "device-a",
         "alias-a",
         "2026-01-01T00:00:00Z");
     add_run_summary_read(
@@ -107,6 +114,7 @@ FC_TEST(run_summary_suite, test_run_summary_collapses_multiple_values)
         "model-b",
         MODBASE_MODELS_2,
         "flow-b",
+        "device-b",
         "alias-b",
         "2026-01-01T01:00:00Z");
 
@@ -126,6 +134,7 @@ FC_TEST(run_summary_suite, test_run_summary_collapses_multiple_values)
     assert_joined_pair(row.basecaller_model, "model-a", "model-b");
     assert_joined_pair(row.modbase_models, MODBASE_MODELS_1, MODBASE_MODELS_2);
     assert_joined_pair(row.flow_cell_id, "flow-a", "flow-b");
+    assert_joined_pair(row.device_id, "device-a", "device-b");
     TEST_ASSERT_EQUAL_STRING("(not meaningful)", row.run_date);
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, -1.0, row.run_duration_s);
     TEST_ASSERT_EQUAL_UINT64(2, row.read_count);
@@ -141,13 +150,13 @@ FC_TEST(run_summary_suite, test_run_summary_flow_cell_multiplicity_is_per_barcod
     TEST_ASSERT_NOT_NULL(model);
 
     add_run_summary_read(
-        model, 0, 100, "", "", "", "", "flow-a", "", "");
+        model, 0, 100, "", "", "", "", "flow-a", "", "", "");
     add_run_summary_read(
-        model, 0, 100, "", "", "", "", "flow-b", "", "");
+        model, 0, 100, "", "", "", "", "flow-b", "", "", "");
     add_run_summary_read(
-        model, 1, 100, "", "", "", "", "flow-a", "", "");
+        model, 1, 100, "", "", "", "", "flow-a", "", "", "");
     add_run_summary_read(
-        model, 1, 100, "", "", "", "", "", "", "");
+        model, 1, 100, "", "", "", "", "", "", "", "");
 
     TEST_ASSERT_TRUE(fc_run_summary_has_multiple_flow_cells(model, 0));
     TEST_ASSERT_FALSE(fc_run_summary_has_multiple_flow_cells(model, 1));
@@ -167,6 +176,7 @@ FC_TEST(run_summary_suite, test_run_summary_uses_fallback_sample_and_earliest_ti
         "model-a",
         "mod-a",
         "flow-a",
+        "device-a",
         "alias-a",
         "2026-01-01T02:00:00Z");
     add_run_summary_read(
@@ -176,6 +186,7 @@ FC_TEST(run_summary_suite, test_run_summary_uses_fallback_sample_and_earliest_ti
         "model-a",
         "mod-a",
         "flow-a",
+        "device-a",
         "alias-a",
         "2026-01-01T00:30:00Z");
 
@@ -192,6 +203,7 @@ FC_TEST(run_summary_suite, test_run_summary_uses_fallback_sample_and_earliest_ti
     TEST_ASSERT_EQUAL_STRING("model-a", row.basecaller_model);
     TEST_ASSERT_EQUAL_STRING("mod-a", row.modbase_models);
     TEST_ASSERT_EQUAL_STRING("flow-a", row.flow_cell_id);
+    TEST_ASSERT_EQUAL_STRING("device-a", row.device_id);
     TEST_ASSERT_EQUAL_STRING("2026-01-01 00:30:00", row.run_date);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 5400.0, row.run_duration_s);
     TEST_ASSERT_EQUAL_UINT64(2, row.read_count);
@@ -215,6 +227,7 @@ FC_TEST(run_summary_suite, test_run_summary_classifies_bam_input_type)
         "model-a",
         "",
         "flow-a",
+        "device-a",
         "alias-a",
         "2026-01-01T00:00:00Z");
 
@@ -302,9 +315,9 @@ FC_TEST(run_summary_suite, test_run_summary_nxx_lxx_metrics)
     TEST_ASSERT_NOT_NULL(model);
     TEST_ASSERT_NOT_NULL(length_stats);
 
-    add_run_summary_read(model, 0, 100, "sample", "run", "model", "", "flow", "alias", "");
-    add_run_summary_read(model, 0, 200, "sample", "run", "model", "", "flow", "alias", "");
-    add_run_summary_read(model, 0, 400, "sample", "run", "model", "", "flow", "alias", "");
+    add_run_summary_read(model, 0, 100, "sample", "run", "model", "", "flow", "", "alias", "");
+    add_run_summary_read(model, 0, 200, "sample", "run", "model", "", "flow", "", "alias", "");
+    add_run_summary_read(model, 0, 400, "sample", "run", "model", "", "flow", "", "alias", "");
     add_length_count(length_stats, 100);
     add_length_count(length_stats, 200);
     add_length_count(length_stats, 400);

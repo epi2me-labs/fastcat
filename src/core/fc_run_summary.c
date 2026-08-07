@@ -18,6 +18,7 @@ typedef struct {
     kh_counter_t *basecaller_model;
     kh_counter_t *modbase_models;
     kh_counter_t *flow_cell_id;
+    kh_counter_t *device_id;
     kh_counter_t *barcode_alias;
     char *run_date;
     double min_time_s;
@@ -190,6 +191,7 @@ void fc_run_summary_destroy(fc_run_summary *model)
         kh_counter_destroy(model->states[i].basecaller_model);
         kh_counter_destroy(model->states[i].modbase_models);
         kh_counter_destroy(model->states[i].flow_cell_id);
+        kh_counter_destroy(model->states[i].device_id);
         kh_counter_destroy(model->states[i].barcode_alias);
         free(model->states[i].run_date);
     }
@@ -210,6 +212,7 @@ void fc_run_summary_row_destroy(fc_run_summary_row *row)
     free(row->basecaller_model);
     free(row->modbase_models);
     free(row->flow_cell_id);
+    free(row->device_id);
     free(row->run_date);
     memset(row, 0, sizeof(*row));
 }
@@ -257,6 +260,12 @@ void fc_run_summary_add_read(fc_run_summary *model, size_t barcode, const fc_rea
             state->flow_cell_id = kh_counter_init();
         }
         kh_counter_increment(state->flow_cell_id, read->meta->flow_cell_id);
+    }
+    if (NULL != read->meta->device_id && read->meta->device_id[0] != '\0') {
+        if (NULL == state->device_id) {
+            state->device_id = kh_counter_init();
+        }
+        kh_counter_increment(state->device_id, read->meta->device_id);
     }
     if (NULL != read->meta->barcode_alias && read->meta->barcode_alias[0] != '\0') {
         if (NULL == state->barcode_alias) {
@@ -332,6 +341,7 @@ int fc_run_summary_materialize(
     out->basecaller_model = summary_join_counter(state->basecaller_model, "run_summary basecaller");
     out->modbase_models = summary_join_counter(state->modbase_models, "run_summary modbase models");
     out->flow_cell_id = summary_join_counter(state->flow_cell_id, "run_summary flow cell id");
+    out->device_id = summary_join_counter(state->device_id, "run_summary device id");
     out->run_date = NULL != state->flow_cell_id && kh_size(state->flow_cell_id) > 1
         ? fc_strdup("(not meaningful)", "run_summary run date")
         : fc_strdup(state->run_date ? state->run_date : "", "run_summary run date");
@@ -346,6 +356,9 @@ int fc_run_summary_materialize(
     }
     if (NULL == out->flow_cell_id) {
         out->flow_cell_id = fc_strdup("", "run_summary flow cell id empty");
+    }
+    if (NULL == out->device_id) {
+        out->device_id = fc_strdup("", "run_summary device id empty");
     }
     out->run_duration_s = NULL != state->flow_cell_id && kh_size(state->flow_cell_id) > 1
         ? -1.0

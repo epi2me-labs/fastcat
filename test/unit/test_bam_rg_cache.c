@@ -16,6 +16,7 @@ typedef struct {
     const char *dt;
     const char *lb;
     const char *pu;
+    const char *pm;
     const char *sm;
     const char *al;
 } rg_expectation;
@@ -47,6 +48,7 @@ static void assert_rg_entry(const fc_bam_rg_entry *entry, const rg_expectation *
     assert_optional_string(expected->dt, entry->dt);
     assert_optional_string(expected->lb, entry->lb);
     assert_optional_string(expected->pu, entry->pu);
+    assert_optional_string(expected->pm, entry->pm);
     assert_optional_string(expected->sm, entry->sm);
     assert_optional_string(expected->al, entry->al);
 }
@@ -133,6 +135,7 @@ FC_TEST(bam_rg_cache_suite, test_bam_rg_cache_lookups_and_rg_fields)
             .dt = "2025-01-13T10:45:28.681306+00:00",
             .lb = "sampleA",
             .pu = "FLO-MIN114",
+            .pm = "MIN-001",
             .sm = "barcode07",
             .al = "alias07",
         },
@@ -143,6 +146,7 @@ FC_TEST(bam_rg_cache_suite, test_bam_rg_cache_lookups_and_rg_fields)
             .dt = "2016-01-19T15:21:32.59+02:00",
             .lb = "sampleB",
             .pu = "FBH03097",
+            .pm = "PRO-002",
             .sm = "unclassified",
             .al = "unknown",
         },
@@ -150,8 +154,8 @@ FC_TEST(bam_rg_cache_suite, test_bam_rg_cache_lookups_and_rg_fields)
     static const rg_cache_fixture fixture = {
         .header =
             "@HD\tVN:1.6\n"
-            "@RG\tID:rg1\tDT:2025-01-13T10:45:28.681306+00:00\tLB:sampleA\tPU:FLO-MIN114\tSM:barcode07\tal:alias07\tDS:runid=e4994c62-93f9-439a-bc8f-d20c95a137a5 basecall_model=rna004_130bps_sup@2024-06-05_canonical modbase_models=modbase_model_version_id\n"
-            "@RG\tID:rg2\tDT:2016-01-19T15:21:32.59+02:00\tLB:sampleB\tPU:FBH03097\tSM:unclassified\tal:unknown\tDS:basecall_model=rna004_130bps_sup@2025-06-12_n1mpU-integrity\n",
+            "@RG\tID:rg1\tDT:2025-01-13T10:45:28.681306+00:00\tLB:sampleA\tPU:FLO-MIN114\tPM:MIN-001\tSM:barcode07\tal:alias07\tDS:runid=e4994c62-93f9-439a-bc8f-d20c95a137a5 basecall_model=rna004_130bps_sup@2024-06-05_canonical modbase_models=modbase_model_version_id\n"
+            "@RG\tID:rg2\tDT:2016-01-19T15:21:32.59+02:00\tLB:sampleB\tPU:FBH03097\tPM:PRO-002\tSM:unclassified\tal:unknown\tDS:basecall_model=rna004_130bps_sup@2025-06-12_n1mpU-integrity\n",
         .entries = entries,
         .n_entries = sizeof(entries) / sizeof(entries[0]),
         .missing_id = "missing",

@@ -1148,6 +1148,7 @@ static void summary_json_write_barcode_output(summary_json_sink *sink, size_t ba
     summary_json_set_semicolon_list_or_null(summary, "basecaller_models", row.basecaller_model);
     summary_json_set_semicolon_list_or_null(summary, "modbase_models", row.modbase_models);
     summary_json_set_semicolon_list_or_null(summary, "flow_cell_ids", row.flow_cell_id);
+    summary_json_set_semicolon_list_or_null(summary, "device_ids", row.device_id);
     summary_json_set_string_or_null(summary, "run_date", row.run_date);
     fc_json_object_set_number(summary, "run_duration_s", row.run_duration_s);
     fc_json_object_set_number(summary, "read_count", (double)row.read_count);
