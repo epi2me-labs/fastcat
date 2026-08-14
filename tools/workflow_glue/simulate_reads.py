@@ -526,6 +526,7 @@ def write_fastq_record(out, record, args, barcode, omit_metadata):
             f"RG:Z:{fastq_read_group_id(args, barcode)}",
             f"DT:Z:{args.start_time}",
             f"PU:Z:{args.flow_cell_id}",
+            f"PM:Z:{args.device_id}",
         ]
         if args.sample_id:
             header_tags.append(f"LB:Z:{args.sample_id}")

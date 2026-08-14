@@ -55,8 +55,8 @@ int cmp_double(const void *a, const void *b)
 bool file_exists(const char *path)
 {
     assert(path != NULL);
-    struct stat st;
-    return stat(path, &st) == 0;
+    fc_file_stat st;
+    return fc_stat_path(path, &st) == 0;
 }
 
 /* The following three functions were adpated from:
@@ -74,7 +74,7 @@ static int fc_mkdir(const char *path, mode_t mode)
 
 static int maybe_mkdir(const char *path, mode_t mode)
 {
-    struct stat st;
+    fc_file_stat st;
     errno = 0;
 
     // Try to make the directory
@@ -88,7 +88,7 @@ static int maybe_mkdir(const char *path, mode_t mode)
     }
 
     // Check if the existing path is a directory
-    if (stat(path, &st) != 0) {
+    if (fc_stat_path(path, &st) != 0) {
         return -1;
     }
 
@@ -231,9 +231,9 @@ int fc_remove_tree(const char *path)
         return -1;
     }
 
-    struct stat st;
+    fc_file_stat st;
 #ifdef _WIN32
-    int stat_result = stat(path, &st);
+    int stat_result = fc_stat_path(path, &st);
 #else
     int stat_result = lstat(path, &st);
 #endif

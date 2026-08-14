@@ -2,7 +2,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/stat.h>
 #include <time.h>
 
 #include "htslib/bgzf.h"
@@ -112,8 +111,8 @@ void index_fetch(const char *bam_fname, const char *index_fname, int chunk, int 
         hts_set_opt(fp, HTS_OPT_THREAD_POOL, &p);
     }
 
-    struct stat st;
-    if (stat(index_fname, &st) != 0) {
+    fc_file_stat st;
+    if (fc_stat_path(index_fname, &st) != 0) {
         fprintf(stderr, "Cannot open index file %s\n", index_fname);
         exit(EXIT_FAILURE);
     }
