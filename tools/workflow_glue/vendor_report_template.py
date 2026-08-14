@@ -791,6 +791,43 @@ def apply_fastcat_template_wording(html):
     return html
 
 
+def add_embedded_report_mode(html):
+    """Add an opt-in presentation mode for the native Fastcat application."""
+    embed_mode = """
+<style id="fastcat-embed-mode">
+html.fastcat-embedded header,
+html.fastcat-embedded #intro-content,
+html.fastcat-embedded footer {
+  display: none;
+}
+html.fastcat-embedded #main-content {
+  padding-top: 1.5rem;
+}
+html.fastcat-embedded,
+html.fastcat-embedded body {
+  -webkit-user-select: none;
+  background-color: var(--fastcat-embed-background, #fff) !important;
+  user-select: none;
+}
+</style>
+<script>
+const fastcatEmbedParameters = new URLSearchParams(window.location.search);
+if (fastcatEmbedParameters.get("embed") === "1") {
+  document.documentElement.classList.add("fastcat-embedded");
+  const background = fastcatEmbedParameters.get("embed-bg");
+  if (/^[0-9a-f]{6}$/i.test(background || "")) {
+    document.documentElement.style.setProperty("--fastcat-embed-background", `#${background}`);
+  }
+  document.addEventListener("contextmenu", (event) => event.preventDefault());
+}
+</script>
+"""
+    if "</head>" not in html:
+        raise RuntimeError("could not find report head for embedded-report mode")
+    html = html.replace("</head>", embed_mode + "</head>", 1)
+    return html
+
+
 def bytes_to_c_array(data, width=16):
     parts = [f"0x{b:02x}" for b in data]
     lines = []
@@ -939,6 +976,7 @@ def main(args):
     html = apply_fastcat_template_wording(html)
     html = canonicalize_generated_dom_ids(html)
     html, docs_json, bindings = extract_bokeh_document(html)
+    html = add_embedded_report_mode(html)
 
     if args.template_output:
         template_path = Path(args.template_output)

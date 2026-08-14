@@ -224,6 +224,76 @@ FC_TEST(iter_suite, test_iter_bam_known_stats) {
     remove(sam_path);
 }
 
+FC_TEST(iter_suite, test_iter_reports_regular_fastq_progress) {
+    char fq_path[FC_TEST_TEMP_PATH_CAPACITY];
+    make_temp_gz_fastq(fq_path, sizeof(fq_path));
+
+    fc_iter iter = { 0 };
+    char *paths[] = { fq_path };
+    fc_path_list input_paths = { .paths = paths, .n_paths = 1 };
+    fc_resolved_inputs inputs = { 0 };
+    TEST_ASSERT_EQUAL_INT(0, fc_resolve_input_paths(
+        &input_paths, 0, false, true, FC_FILE_FASTQ, &inputs));
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, &inputs, false));
+
+    fc_iter_progress progress = { 0 };
+    fc_iter_get_progress(&iter, &progress);
+    TEST_ASSERT_TRUE(progress.total_bytes_known);
+    TEST_ASSERT_TRUE(progress.total_bytes > 0);
+    TEST_ASSERT_EQUAL_UINT64(0, progress.records_read);
+    TEST_ASSERT_TRUE(fc_iter_next_file(&iter, NULL));
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, NULL));
+    fc_read *read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(read);
+    TEST_ASSERT_EQUAL_INT(FC_ITER_RECORD, fc_iter_next_record(&iter, read));
+    fc_iter_get_progress(&iter, &progress);
+    TEST_ASSERT_EQUAL_UINT64(1, progress.records_read);
+    TEST_ASSERT_EQUAL_UINT64(4, progress.bases_read);
+    TEST_ASSERT_TRUE(progress.bytes_read <= progress.total_bytes);
+    while (fc_iter_next_record(&iter, read) == FC_ITER_RECORD) {}
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_iter_finish_file(&iter));
+    fc_iter_get_progress(&iter, &progress);
+    TEST_ASSERT_EQUAL_UINT64(progress.total_bytes, progress.bytes_read);
+    TEST_ASSERT_EQUAL_UINT64(3, progress.records_read);
+    TEST_ASSERT_EQUAL_UINT64(15, progress.bases_read);
+
+    fc_read_destroy(read);
+    fc_iter_close(&iter);
+    remove(fq_path);
+}
+
+FC_TEST(iter_suite, test_iter_reports_regular_bam_progress) {
+    const char *bam_path = "test/fixtures/bam/basic/400.bam";
+    fc_iter iter = { 0 };
+    char *paths[] = { (char *)bam_path };
+    fc_path_list input_paths = { .paths = paths, .n_paths = 1 };
+    fc_resolved_inputs inputs = { 0 };
+    TEST_ASSERT_EQUAL_INT(0, fc_resolve_input_paths(
+        &input_paths, 0, false, true, FC_FILE_BAM, &inputs));
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, &inputs, false));
+    TEST_ASSERT_TRUE(fc_iter_next_file(&iter, NULL));
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, NULL));
+
+    fc_read *read = fc_read_init();
+    TEST_ASSERT_NOT_NULL(read);
+    TEST_ASSERT_EQUAL_INT(FC_ITER_RECORD, fc_iter_next_record(&iter, read));
+    fc_iter_progress progress = { 0 };
+    fc_iter_get_progress(&iter, &progress);
+    TEST_ASSERT_TRUE(progress.total_bytes_known);
+    TEST_ASSERT_TRUE(progress.total_bytes > 0);
+    TEST_ASSERT_EQUAL_UINT64(1, progress.records_read);
+    TEST_ASSERT_TRUE(progress.bytes_read <= progress.total_bytes);
+    while (fc_iter_next_record(&iter, read) == FC_ITER_RECORD) {}
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_iter_finish_file(&iter));
+    fc_iter_get_progress(&iter, &progress);
+    TEST_ASSERT_EQUAL_UINT64(progress.total_bytes, progress.bytes_read);
+    TEST_ASSERT_TRUE(progress.records_read > 0);
+    TEST_ASSERT_TRUE(progress.bases_read > 0);
+
+    fc_read_destroy(read);
+    fc_iter_close(&iter);
+}
+
 
 // filter some things in controlled cases
 

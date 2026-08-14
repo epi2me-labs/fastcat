@@ -48,7 +48,9 @@ enum {
     KEY_NO_LEGACY_OUTPUTS,
     KEY_LEGACY_OUTPUTS,
     KEY_KEEP_FAILED_OUTPUT,
-    KEY_READS_OUTPUT
+    KEY_READS_OUTPUT,
+    KEY_PROGRESS_INTERVAL,
+    KEY_JSONL_PROGRESS
 };
 
 typedef struct {
@@ -131,7 +133,10 @@ typedef struct {
     { "log-level", KEY_LOG_LEVEL, "LEVEL", 0, \
         "Log level: error, warn, info, debug (default: info).", 40 }, \
         { "log-file", KEY_LOG_FILE, "PATH", 0, "Write logs to PATH instead of stderr.", 40 }, \
-        { "log-mono", KEY_LOG_MONO, 0, 0, "Force monochrome logging output (disable ANSI colors).", 40 }
+        { "log-mono", KEY_LOG_MONO, 0, 0, "Force monochrome logging output (disable ANSI colors).", 40 }, \
+        { "jsonl-progress", KEY_JSONL_PROGRESS, "PATH", 0, \
+            "Write machine-readable lifecycle and progress events as JSON Lines to PATH.", 40 }, \
+        { "progress-interval", KEY_PROGRESS_INTERVAL, "SECONDS", OPTION_HIDDEN, "", 40 }
 
 #define BAM_INPUT_OPTIONS \
     { "region", 'r', "chr:start-end", 0, "Genomic region to process (BAM input).", 0 }, \
@@ -306,6 +311,8 @@ static fc_catstats_args default_args(void)
     args.log_level = FC_LOG_INFO;
     args.log_file = NULL;
     args.log_mono = false;
+    args.progress_interval_s = 10.0;
+    args.jsonl_progress = NULL;
     args.length_qscore_k = 400;
     args.length_qscore_qgrid = 257;
     args.length_qscore_qsmooth = 5;
@@ -409,6 +416,16 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         break;
     case KEY_KEEP_FAILED_OUTPUT:
         arguments->keep_failed_output = true;
+        break;
+    case KEY_PROGRESS_INTERVAL:
+        if (!fc_parse_double_strict(arg, &double_value) || !isfinite(double_value)
+            || double_value <= 0.0) {
+            argp_error(state, "--progress-interval must be a positive number of seconds.");
+        }
+        arguments->progress_interval_s = double_value;
+        break;
+    case KEY_JSONL_PROGRESS:
+        arguments->jsonl_progress = arg;
         break;
     case 'a':
         if (!fc_parse_size_strict(arg, &size_value)) {

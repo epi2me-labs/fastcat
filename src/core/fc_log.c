@@ -1,5 +1,6 @@
 #include "core/fc_log.h"
 
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,8 +13,11 @@ typedef struct {
     fc_log_level level;
     char module[11]; // 10 chars + NUL
     FILE *target;
+    FILE *jsonl_target;
     fc_log_color_mode color;
     pthread_mutex_t lock;
+    pthread_mutex_t jsonl_lock;
+    uint64_t jsonl_sequence;
 } fc_log_state;
 
 static fc_log_state g_log = {
@@ -21,7 +25,8 @@ static fc_log_state g_log = {
     .module = "fastcat",
     .target = NULL,
     .color = FC_LOG_COLOR_AUTO,
-    .lock = PTHREAD_MUTEX_INITIALIZER
+    .lock = PTHREAD_MUTEX_INITIALIZER,
+    .jsonl_lock = PTHREAD_MUTEX_INITIALIZER
 };
 
 static const char *LEVEL_NAME[] = { "ERROR", "WARN ", "INFO ", "DEBUG" };
@@ -103,6 +108,112 @@ void fc_log_destroy(void)
     }
     g_log.target = NULL;
     pthread_mutex_unlock(&g_log.lock);
+
+    pthread_mutex_lock(&g_log.jsonl_lock);
+    if (g_log.jsonl_target) {
+        fclose(g_log.jsonl_target);
+        g_log.jsonl_target = NULL;
+    }
+    pthread_mutex_unlock(&g_log.jsonl_lock);
+}
+
+int fc_log_jsonl_init(const char *target)
+{
+    if (!target) {
+        return 0;
+    }
+    FILE *jsonl_target = fopen(target, "w");
+    if (!jsonl_target) {
+        return -1;
+    }
+    /* A progress consumer needs completed lines promptly, not stderr's lock. */
+    (void)setvbuf(jsonl_target, NULL, _IOLBF, 0);
+    pthread_mutex_lock(&g_log.jsonl_lock);
+    if (g_log.jsonl_target) {
+        fclose(g_log.jsonl_target);
+    }
+    g_log.jsonl_target = jsonl_target;
+    g_log.jsonl_sequence = 0;
+    pthread_mutex_unlock(&g_log.jsonl_lock);
+    return 0;
+}
+
+bool fc_log_jsonl_enabled(void)
+{
+    pthread_mutex_lock(&g_log.jsonl_lock);
+    bool enabled = g_log.jsonl_target != NULL;
+    pthread_mutex_unlock(&g_log.jsonl_lock);
+    return enabled;
+}
+
+static bool jsonl_timestamp(char output[32])
+{
+    struct timespec now;
+    struct tm utc;
+    if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
+        return false;
+    }
+#ifdef _WIN32
+    if (gmtime_s(&utc, &now.tv_sec) != 0) {
+        return false;
+    }
+#else
+    if (gmtime_r(&now.tv_sec, &utc) == NULL) {
+        return false;
+    }
+#endif
+    int written = snprintf(output, 32, "%04d-%02d-%02dT%02d:%02d:%02d.%03ldZ",
+        utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday, utc.tm_hour, utc.tm_min, utc.tm_sec,
+        now.tv_nsec / 1000000L);
+    return written > 0 && written < 32;
+}
+
+void fc_log_jsonl_event(const char *event, const char *fields_fmt, ...)
+{
+    if (!event) {
+        return;
+    }
+
+    char *fields = NULL;
+    if (fields_fmt) {
+        va_list ap;
+        va_start(ap, fields_fmt);
+        va_list measure_ap;
+        va_copy(measure_ap, ap);
+        int required = vsnprintf(NULL, 0, fields_fmt, measure_ap);
+        va_end(measure_ap);
+        if (required < 0) {
+            va_end(ap);
+            return;
+        }
+        fields = malloc((size_t)required + 1);
+        if (!fields) {
+            va_end(ap);
+            return;
+        }
+        int wrote = vsnprintf(fields, (size_t)required + 1, fields_fmt, ap);
+        va_end(ap);
+        if (wrote != required) {
+            free(fields);
+            return;
+        }
+    }
+
+    char timestamp[32] = { 0 };
+    if (!jsonl_timestamp(timestamp)) {
+        free(fields);
+        return;
+    }
+    pthread_mutex_lock(&g_log.jsonl_lock);
+    if (g_log.jsonl_target) {
+        fprintf(g_log.jsonl_target,
+            "{\"schema_version\":1,\"sequence\":%" PRIu64
+            ",\"timestamp\":\"%s\",\"event\":\"%s\"%s%s}\n",
+            ++g_log.jsonl_sequence, timestamp, event, fields ? "," : "", fields ? fields : "");
+        fflush(g_log.jsonl_target);
+    }
+    pthread_mutex_unlock(&g_log.jsonl_lock);
+    free(fields);
 }
 
 static void format_time(char *buf, size_t n)

@@ -24,6 +24,8 @@ typedef struct {
     fc_log_level log_level;
     char *log_file;
     bool log_mono;
+    double progress_interval_s;
+    const char *jsonl_progress;
     size_t length_qscore_k;
     size_t length_qscore_qgrid;
     size_t length_qscore_qsmooth;

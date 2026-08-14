@@ -32,14 +32,14 @@ stages:
     - release
 
 .package-rules: &package-rules
-    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "desktop")'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"'
     - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null'
       when: manual
       allow_failure: true
 
 .desktop-bundle-rules: &desktop-bundle-rules
     - if: '$CI_COMMIT_TAG =~ /^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$/ && $CI_COMMIT_REF_PROTECTED == "true"'
-    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "desktop")'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"'
     - if: '$CI_PIPELINE_SOURCE == "push"'
       when: manual
       allow_failure: true
