@@ -722,7 +722,7 @@ report_template: report_vendor_template  ## build the wf-template-derived HTML r
 .PHONY: report_vendor_template
 report_vendor_template: $(REPORT_TEMPLATE_VENDOR_STAMP)  ## vendor report template into C assets
 
-$(REPORT_TEMPLATE_VENDOR_STAMP): $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py $(REPORT_TEMPLATE_HEADER) $(REPORT_TEMPLATE_SOURCE) | $(REPORT_DIR)
+$(REPORT_TEMPLATE_VENDOR_STAMP): $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py tools/workflow_glue/assets/fonts/NotoSans-Latin-Variable.woff2 tools/workflow_glue/assets/fonts/NotoSans-Greek-Variable.woff2 $(REPORT_TEMPLATE_HEADER) $(REPORT_TEMPLATE_SOURCE) | $(REPORT_DIR)
 	$(DEV_TOOLS) vendor_report_template \
 		--input $(REPORT_DIR)/template_wf_report.html \
 		--template-output $(REPORT_DIR)/fastcat_report_template.html \
@@ -751,6 +751,8 @@ report_template_staged:  ## refresh staged report-template C assets when their i
 		tools/requirements.txt \
 		tools/workflow_glue/__init__.py \
 		tools/workflow_glue/vendor_report_template.py \
+		tools/workflow_glue/assets/fonts/NotoSans-Latin-Variable.woff2 \
+		tools/workflow_glue/assets/fonts/NotoSans-Greek-Variable.woff2 \
 		tools/workflow_glue/report.py \
 		tools/workflow_glue/summary_json.py \
 		tools/workflow_glue/bokeh_relational.py \

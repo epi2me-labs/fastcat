@@ -1,6 +1,7 @@
 """Convert a wf-template report into embedded fastcat C report assets."""
 
 import argparse
+import base64
 import gzip
 import json
 from pathlib import Path
@@ -18,6 +19,18 @@ RENDER_ITEMS_RE = re.compile(
 DOCS_JSON_PLACEHOLDER = "__FASTCAT_BOKEH_DOCS_JSON__"
 BOUND_VALUE_SENTINEL = "__FASTCAT_DEADBEEF__"
 DOM_UUID_RE = re.compile(r"[0-9a-f]{32}")
+
+FONT_ASSET_DIR = Path(__file__).with_name("assets") / "fonts"
+REPORT_FONT_ASSETS = (
+    (
+        "NotoSans-Latin-Variable.woff2",
+        "U+0000-036F,U+1D00-1DBF,U+1E00-1EFF,U+2000-22FF,U+FEFF,U+FFFD",
+    ),
+    (
+        "NotoSans-Greek-Variable.woff2",
+        "U+0370-03FF,U+1F00-1FFF",
+    ),
+)
 
 MIN_EXPECTED_FIGURES = 17
 _MODEL_INDEX = {}
@@ -791,6 +804,31 @@ def apply_fastcat_template_wording(html):
     return html
 
 
+def add_embedded_report_fonts(html):
+    """Embed the plot font so reports render consistently without host fonts."""
+    font_faces = []
+    for filename, unicode_range in REPORT_FONT_ASSETS:
+        font_path = FONT_ASSET_DIR / filename
+        try:
+            payload = base64.b64encode(font_path.read_bytes()).decode("ascii")
+        except OSError as error:
+            raise RuntimeError(f"could not read report font {font_path}: {error}") from error
+        font_faces.append(f"""
+@font-face {{
+  font-family: \"Noto Sans\";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+  src: url(data:font/woff2;base64,{payload}) format(\"woff2\");
+  unicode-range: {unicode_range};
+}}""")
+
+    font_style = "<style id=\"fastcat-report-fonts\">" + "\n".join(font_faces) + "\n</style>\n"
+    if "</head>" not in html:
+        raise RuntimeError("could not find report head for embedded fonts")
+    return html.replace("</head>", font_style + "</head>", 1)
+
+
 def add_embedded_report_mode(html):
     """Add an opt-in presentation mode for the native Fastcat application."""
     embed_mode = """
@@ -976,6 +1014,7 @@ def main(args):
     html = apply_fastcat_template_wording(html)
     html = canonicalize_generated_dom_ids(html)
     html, docs_json, bindings = extract_bokeh_document(html)
+    html = add_embedded_report_fonts(html)
     html = add_embedded_report_mode(html)
 
     if args.template_output:

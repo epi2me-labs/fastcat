@@ -121,8 +121,8 @@ static fc_input_resolve_status resolve_roots(
             continue;
         }
 
-        struct stat st = { 0 };
-        if (stat(current.path, &st) != 0) {
+        fc_file_stat st = { 0 };
+        if (fc_stat_path(current.path, &st) != 0) {
             FC_LOG_ERROR("could not stat '%s': %s", current.path, strerror(errno));
             status = FC_INPUT_RESOLVE_IO_ERROR;
             free(current.path);
@@ -262,7 +262,7 @@ static fc_input_resolve_status read_paths_from_stream(
     ptrdiff_t nchr = 0;
 
     while ((nchr = fc_getline(&line, &cap, fp)) != -1) {
-        struct stat st = { 0 };
+        fc_file_stat st = { 0 };
         // Remove trailing newline
         if (nchr > 0 && (line[nchr - 1] == '\n' || line[nchr - 1] == '\r')) {
             line[nchr - 1] = '\0';
@@ -279,7 +279,7 @@ static fc_input_resolve_status read_paths_from_stream(
             status = status == FC_INPUT_RESOLVE_OK ? FC_INPUT_RESOLVE_FOFN_ERROR : status;
             continue;
         }
-        if (stat(line, &st) != 0) {
+        if (fc_stat_path(line, &st) != 0) {
             FC_LOG_ERROR("%s: could not stat '%s': %s", source_name, line, strerror(errno));
             status = status == FC_INPUT_RESOLVE_OK ? FC_INPUT_RESOLVE_IO_ERROR : status;
             continue;

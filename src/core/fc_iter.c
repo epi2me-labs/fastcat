@@ -341,8 +341,8 @@ static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_i
             close(fd);
         }
     } else {
-        struct stat finfo;
-        if (stat(fname, &finfo) == -1) {
+        fc_file_stat finfo;
+        if (fc_stat_path(fname, &finfo) == -1) {
             FC_LOG_ERROR("could not process file %s: %s", fname, strerror(errno));
             iter->stats.failures[F_UNKNOWN_ERROR] = 1;
             return errno;
@@ -749,9 +749,9 @@ int fc_iter_init(
     it->file_sizes = fc_alloc(it->n_files, sizeof(*it->file_sizes), "input file sizes");
     it->total_bytes_known = true;
     for (size_t i = 0; i < it->n_files; ++i) {
-        struct stat file_info;
+        fc_file_stat file_info;
         if (strcmp(it->files[i], "-") == 0
-            || stat(it->files[i], &file_info) != 0
+            || fc_stat_path(it->files[i], &file_info) != 0
             || !S_ISREG(file_info.st_mode)
             || file_info.st_size < 0
             || (uint64_t)file_info.st_size > UINT64_MAX - it->total_bytes) {

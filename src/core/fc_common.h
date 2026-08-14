@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #include "core/fc_argp.h"
@@ -47,6 +48,25 @@ static inline bool fc_localtime(const time_t *time_value, struct tm *result)
     return localtime_r(time_value, result) != NULL;
 #endif
 }
+
+/*
+ * Use an explicitly 64-bit status structure on Windows.  MinGW's plain
+ * stat() compatibility entry point can report EOVERFLOW for input files over
+ * 2 GiB, even though fastcat otherwise supports them.
+ */
+#ifdef _WIN32
+typedef struct _stat64 fc_file_stat;
+static inline int fc_stat_path(const char *path, fc_file_stat *result)
+{
+    return _stat64(path, result);
+}
+#else
+typedef struct stat fc_file_stat;
+static inline int fc_stat_path(const char *path, fc_file_stat *result)
+{
+    return stat(path, result);
+}
+#endif
 
 char *fc_asprintf(const char *msg, const char *fmt, ...);
 

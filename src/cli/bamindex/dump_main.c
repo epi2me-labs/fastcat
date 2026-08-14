@@ -2,10 +2,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/stat.h>
 #include <time.h>
 
 #include "core/fc_argp.h"
+#include "core/fc_common.h"
 #include "core/fc_log.h"
 #include "index.h"
 
@@ -57,8 +57,8 @@ static arguments_t parse_arguments(int argc, char **argv)
 
 void index_dump(const char *filename)
 {
-    struct stat st;
-    if (stat(filename, &st) != 0) {
+    fc_file_stat st;
+    if (fc_stat_path(filename, &st) != 0) {
         fprintf(stderr, "Cannot open index file %s\n", filename);
         exit(EXIT_FAILURE);
     }
