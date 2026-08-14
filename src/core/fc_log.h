@@ -30,6 +30,11 @@ typedef struct {
 void fc_log_init(const fc_log_config *cfg);
 void fc_log_set_level(fc_log_level level);
 void fc_log_destroy(void);
+// Optional JSON Lines event stream. Each event includes schema_version, sequence, timestamp,
+// and event; fields_fmt emits any event-specific fields without surrounding braces.
+int fc_log_jsonl_init(const char *target);
+bool fc_log_jsonl_enabled(void);
+void fc_log_jsonl_event(const char *event, const char *fields_fmt, ...);
 fc_log_level fc_log_level_from_string(const char *s, fc_log_level default_level);
 void fc_logv(fc_log_level level, const char *fmt, va_list ap);
 void fc_log(fc_log_level level, const char *fmt, ...);

@@ -96,6 +96,11 @@ For BAM input, `--poly-a` enables poly-A metrics for alignments with suitable da
 
 Useful options include `--html-report`, `--output DIRECTORY`, `--threads THREADS`, `--sample NAME`,
 `--demultiplex`, and `--legacy-outputs`. Run `fastcat qc --help` for the complete option reference.
+Use `--jsonl-progress PATH` when a wrapper needs machine-readable lifecycle and progress events;
+each line in that file is a complete JSON object. Progress events are emitted at most once per
+second, independently of the less-frequent human-readable terminal progress log. Every event has
+`schema_version`, a per-run monotonically increasing `sequence`, an ISO 8601 UTC `timestamp`, and
+an `event` type; remaining fields are specific to that event.
 
 ### Legacy commands
 
@@ -112,6 +117,8 @@ Use `fastcat fastq --help` or `fastcat bam --help` for their option reference.
 must not already exist).
 Results are first written to `DIRECTORY.tmp` and published as `DIRECTORY` only after a successful run.
 Use `--keep-failed-output` to retain that temporary directory for debugging after a failure.
+Input and output failures use the conventional `sysexits` status values where applicable; an
+interrupted run exits with `128 +` its signal number after removing its temporary output.
 With `--demultiplex`, it writes one output directory for each observed
 barcode under `<output>/{unclassified,barcodeXXXX/}`.
 

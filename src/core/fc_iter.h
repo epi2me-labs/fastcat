@@ -73,6 +73,8 @@ typedef struct {
     bool apply_filters;
     fc_file_stats stats;
     bool truncated;
+    uint64_t records_read;
+    uint64_t bases_read;
     int status;
     double q_sum;
     double q_comp;
@@ -97,13 +99,30 @@ typedef struct {
     bool hard_error;
     fc_bam_coordinate_order coordinate_order;
     int status;
+    uint64_t records_read;
+    uint64_t bases_read;
     dust_buffer dust;
 } fc_bam_iter;
+
+typedef struct {
+    uint64_t bytes_read;
+    uint64_t total_bytes;
+    uint64_t records_read;
+    uint64_t bases_read;
+    bool total_bytes_known;
+} fc_iter_progress;
 
 typedef struct {
     char **files;
     size_t n_files;
     size_t idx;
+    size_t current_index;
+    uint64_t *file_sizes;
+    uint64_t completed_bytes;
+    uint64_t completed_records;
+    uint64_t completed_bases;
+    uint64_t total_bytes;
+    bool total_bytes_known;
     fc_file_kind expected_kind;
     fc_fastq_iter fqi;
     fc_bam_iter bmi;
@@ -128,4 +147,5 @@ void fc_iter_close(fc_iter *it);
 void fc_iter_merge_file_stats(const fc_iter *it, fc_file_stats *dst);
 const fc_file_stats *fc_iter_stats(const fc_iter *it);
 bool fc_iter_has_hard_error(const fc_iter *it);
+void fc_iter_get_progress(const fc_iter *it, fc_iter_progress *out);
 #endif

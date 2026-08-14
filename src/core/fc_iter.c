@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "htslib/bgzf.h"
+
 #include "core/fc_bam_utils.h"
 #include "core/fc_filter.h"
 #include "core/fc_log.h"
@@ -275,6 +277,37 @@ static void fastq_iter_close_resources(fc_fastq_iter *iter)
     free_dust_buffer(&iter->dust);
 }
 
+static bool fastq_iter_input_offset(const fc_fastq_iter *iter, uint64_t *out)
+{
+    if (!iter || !iter->fp || !out) {
+        return false;
+    }
+    z_off_t offset = gzoffset(iter->fp);
+    if (offset < 0) {
+        return false;
+    }
+    *out = (uint64_t)offset;
+    return true;
+}
+
+static bool bam_iter_input_offset(const fc_bam_iter *iter, uint64_t *out)
+{
+    if (!iter || !iter->fp || !out || iter->fp->format.format != bam
+        || (iter->use_regions && iter->idx != NULL)) {
+        return false;
+    }
+    BGZF *bgzf = iter->fp->fp.bgzf;
+    if (!bgzf) {
+        return false;
+    }
+    int64_t virtual_offset = bgzf_tell(bgzf);
+    if (virtual_offset < 0) {
+        return false;
+    }
+    *out = (uint64_t)virtual_offset >> 16;
+    return true;
+}
+
 static bool iter_opts_enable_filters(const fc_iter_opts *opts)
 {
     if (!opts) {
@@ -366,6 +399,8 @@ static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
         }
 
         iter->truncated = false;
+        iter->records_read++;
+        iter->bases_read += iter->seq->seq.l;
         iter->stats.failures[R_RECORD_SEEN]++;
 
         // convert from kseq to BAM record in-place for filtering and metadata extraction
@@ -593,6 +628,9 @@ static fc_iter_next_status fc_bam_iter_next(fc_bam_iter *iter, fc_read *out)
             }
         }
 
+        iter->records_read++;
+        iter->bases_read += out->bam->core.l_qseq;
+
         if (fc_bam_qualities_missing(out->bam)) {
             if (fc_is_canonical_read_record(out->bam)) {
                 iter->stats.failures[F_QUAL_MISSING]++;
@@ -707,6 +745,22 @@ int fc_iter_init(
     it->n_files = inputs->paths.n_paths;
     inputs->paths.paths = NULL;
     inputs->paths.n_paths = 0;
+
+    it->file_sizes = fc_alloc(it->n_files, sizeof(*it->file_sizes), "input file sizes");
+    it->total_bytes_known = true;
+    for (size_t i = 0; i < it->n_files; ++i) {
+        struct stat file_info;
+        if (strcmp(it->files[i], "-") == 0
+            || stat(it->files[i], &file_info) != 0
+            || !S_ISREG(file_info.st_mode)
+            || file_info.st_size < 0
+            || (uint64_t)file_info.st_size > UINT64_MAX - it->total_bytes) {
+            it->total_bytes_known = false;
+            continue;
+        }
+        it->file_sizes[i] = (uint64_t)file_info.st_size;
+        it->total_bytes += it->file_sizes[i];
+    }
     return 0;
 }
 
@@ -716,6 +770,7 @@ bool fc_iter_next_file(fc_iter *it, const char **out_file)
         return false;
     }
 
+    it->current_index = it->idx;
     it->current = it->files[it->idx++];
     if (it->verbose) {
         FC_LOG_INFO("Processing %s", it->current);
@@ -777,6 +832,17 @@ int fc_iter_finish_file(fc_iter *it)
         return EINVAL;
     }
 
+    uint64_t current_bytes = 0;
+    bool current_bytes_known = it->expected_kind == FC_FILE_FASTQ
+        ? fastq_iter_input_offset(&it->fqi, &current_bytes)
+        : bam_iter_input_offset(&it->bmi, &current_bytes);
+    uint64_t records_read = it->expected_kind == FC_FILE_FASTQ
+        ? it->fqi.records_read
+        : it->bmi.records_read;
+    uint64_t bases_read = it->expected_kind == FC_FILE_FASTQ
+        ? it->fqi.bases_read
+        : it->bmi.bases_read;
+
     int rc = EINVAL;
     if (it->expected_kind == FC_FILE_FASTQ) {
         rc = fc_fastq_iter_finish(&it->fqi, NULL);
@@ -784,6 +850,15 @@ int fc_iter_finish_file(fc_iter *it)
         rc = fc_bam_iter_finish(&it->bmi, NULL);
     }
     it->cursor_open = false;
+    it->completed_records += records_read;
+    it->completed_bases += bases_read;
+    if (!current_bytes_known) {
+        it->total_bytes_known = false;
+    } else if (it->total_bytes_known && rc == EXIT_SUCCESS) {
+        it->completed_bytes += it->file_sizes[it->current_index];
+    } else {
+        it->completed_bytes += min(current_bytes, it->file_sizes[it->current_index]);
+    }
 
     return rc;
 }
@@ -806,6 +881,8 @@ void fc_iter_close(fc_iter *it)
     it->n_files = paths.n_paths;
     it->idx = 0;
     it->current = NULL;
+    free(it->file_sizes);
+    it->file_sizes = NULL;
 }
 
 void fc_iter_merge_file_stats(const fc_iter *it, fc_file_stats *dst)
@@ -848,4 +925,41 @@ const fc_file_stats *fc_iter_stats(const fc_iter *it)
 bool fc_iter_has_hard_error(const fc_iter *it)
 {
     return it != NULL && it->expected_kind == FC_FILE_BAM && it->bmi.hard_error;
+}
+
+void fc_iter_get_progress(const fc_iter *it, fc_iter_progress *out)
+{
+    if (!out) {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+    if (!it) {
+        return;
+    }
+
+    out->bytes_read = it->completed_bytes;
+    out->total_bytes = it->total_bytes;
+    out->records_read = it->completed_records;
+    out->bases_read = it->completed_bases;
+    out->total_bytes_known = it->total_bytes_known;
+    if (!it->cursor_open) {
+        return;
+    }
+
+    uint64_t current_bytes = 0;
+    bool current_bytes_known = it->expected_kind == FC_FILE_FASTQ
+        ? fastq_iter_input_offset(&it->fqi, &current_bytes)
+        : bam_iter_input_offset(&it->bmi, &current_bytes);
+    if (!current_bytes_known) {
+        out->total_bytes_known = false;
+    } else {
+        out->bytes_read += min(current_bytes, it->file_sizes[it->current_index]);
+    }
+    if (it->expected_kind == FC_FILE_FASTQ) {
+        out->records_read += it->fqi.records_read;
+        out->bases_read += it->fqi.bases_read;
+    } else {
+        out->records_read += it->bmi.records_read;
+        out->bases_read += it->bmi.bases_read;
+    }
 }

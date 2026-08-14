@@ -13,7 +13,7 @@ locally, rather than after a large upload has started a workflow that cannot con
 ## Choose your input
 
 Select a FASTQ file or a BAM file. fastcat automatically detects the format of a single file.
-When you select a directory, choose whether it contains FASTQ or BAM files.
+When you select a directory, choose the expected format so fastcat searches only for that type of file.
 
 - **FASTQ**: use for basecalled reads before alignment. The report includes yield, read length,
   read quality, sequencing-over-time, channel, and quality-diagnostic summaries when that
@@ -28,6 +28,7 @@ are summarised together.
 ## Optional settings
 
 - **Demultiplex barcodes**: creates separate summaries for each detected barcode.
+- **Search subfolders**: includes matching files in subfolders of a selected input directory.
 - **Check input integrity**: stops the analysis if fastcat finds an
   unreadable input file or invalid read records, helping identify issues before data are uploaded
   or used in later analysis.
