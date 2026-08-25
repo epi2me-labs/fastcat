@@ -22,7 +22,7 @@ variables:
 .prep-image: &prep-image |
     DEBIAN_FRONTEND=noninteractive
     apt update -qq
-    apt install -y --no-install-recommends gcc autoconf automake valgrind make curl wget zlib1g-dev libbz2-dev libreadline-dev libssl-dev libffi-dev liblzma-dev libcurl4-gnutls-dev cmake python3 python3-venv clang-format clang-tidy clang-tools
+    apt install -y --no-install-recommends git gcc autoconf automake valgrind make curl wget zlib1g-dev libbz2-dev libreadline-dev libssl-dev libffi-dev liblzma-dev libcurl4-gnutls-dev cmake python3 python3-venv clang-format clang-tidy clang-tools
 
 stages:
     - preflight
@@ -80,11 +80,27 @@ check-report-template:
 build_and_test:
     extends: .fastcat-test-base
     tags: !reference [.eks-large-standard-tags, tags]
+    before_script:
+        - *prep-image
+        - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
+        - git submodule update --init --checkout third_party/purrflate
     script:
         - *parallel-makeflags
         - make
         - !reference [.fastcat-test-base, script]
         - BUILD_MODE=valgrind make test
+
+build_and_test_without_purrflate:
+    extends: .fastcat-test-base
+    tags: !reference [.eks-large-standard-tags, tags]
+    variables:
+        GIT_SUBMODULE_PATHS: "third_party/argp-standalone third_party/htslib third_party/zlib-ng"
+    script:
+        - *parallel-makeflags
+        - test ! -e third_party/purrflate/src/zngp_reader.c
+        - make NOPURRFLATE=1
+        - !reference [.fastcat-test-base, script]
+        - NOPURRFLATE=1 make test
 
 build_and_test_macos_aarch64:
     stage: test
@@ -95,6 +111,7 @@ build_and_test_macos_aarch64:
         - shell
     before_script:
         - export HOMEBREW_NO_AUTO_UPDATE=1; brew list --versions argp-standalone openssl@3 > /dev/null || brew install argp-standalone openssl@3
+        - git submodule update --init --checkout third_party/purrflate
     script:
         - export MAKEFLAGS="-j$(sysctl -n hw.ncpu) --output-sync=target --no-print-directory"
         - make
@@ -107,6 +124,7 @@ build_and_test_windows_x86_64:
         - epi2melabs-win
     before_script:
         - $ErrorActionPreference = 'Stop'
+        - git submodule update --init --checkout third_party/purrflate
         - $env:MSYS2_ROOT = 'C:\msys64'
         - if (-not (Test-Path "$env:MSYS2_ROOT\usr\bin\bash.exe")) { throw 'Missing provisioned MSYS2 installation at C:\msys64.' }
         - $env:CHERE_INVOKING = 'yes'

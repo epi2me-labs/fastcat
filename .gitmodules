@@ -12,4 +12,5 @@
 [submodule "third_party/purrflate"]
 	path = third_party/purrflate
 	url = ../purrflate.git
+	update = none
 	ignore = dirty

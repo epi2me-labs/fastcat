@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
+This is a substantial release centred on `fastcat qc`, a new unified FASTQ and BAM quality-control command. It introduces JSON-first summaries, optional portable HTML reports, richer alignment and coverage metrics, and support for Windows and EPI2ME Desktop.
+
+It also changes several established behaviours and output formats, including FASTQ/BAM input handling, legacy TSV output, and BAM read-level metrics. FASTQ input has been reworked for substantially faster parallel gzip decompression with the specially developed Purrflate library.
+
 ### Changed
 - `fastcat bam` recorded records with missing quality as being low quality. The behaviour has been changed to be the same as `fastcat fastq`, where records with missing quality are dropped and the program will finish processing inputs but exit with a non-zero exit code.
 - Changed the default fallback for `sample_id` field in outputs to be `SAMPLE`, rather than empty text.
@@ -15,13 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Programs now write their outputs to a temporary directory, before moving on success (or deleting on failure).
 - `fastcat fastq` now accepts FASTQ input only. Use `fastcat qc` for BAM quality control.
 ### Added
-- `fastcat qc`, the opt-in unified quality-control command for FASTQ and BAM inputs. It writes
-  `summary.json` by default, supports optional HTML reports and legacy outputs, accepts multiple
-  compatible reference-bearing BAM files, and suppresses filtering/read-stream output for aligned
-  BAM input.
+- `fastcat qc`, the opt-in unified quality-control command for FASTQ and BAM inputs. It writes `summary.json` by default, supports optional HTML reports and legacy outputs, accepts multiple compatible reference-bearing BAM files, and suppresses filtering/read-stream output for aligned BAM input.
 - JSON summary and metrics output containing data from previous TSV outputs, as well as data corresponding to all plots within the new HTML report. This includes read length and quality histograms and summaries, sequencing-over-time metrics, channel metrics and maps, and quality-diagnostics heat maps. BAM and alignment specific metrics are also included: mapping counts, alignment flag counts, reference concordance mettics, coverage and CDF tables. A JSON schema documenting the structure of the `summary.json` file is available by running `fastcat json-schema`.
 - HTML report outputs in the style of EPI2ME workflows, enabled by setting `--html-report` on the command line. The report includes run statistics, time plots, channel occupancy, diagnostics heatmaps, plus alignment and coverage sections where applicable.
-- Legacy TSV outputs can be disabled with `--no-legacy-outputs`. These will be removed in a future release.
+- Summary JSON and HTML reports now include sequencer/device identifiers where present in input metadata.
+- Other new options:
+  - `--no-legacy-outputs`, disables TSV outputs and retains only JSON summary. TSV outputs will be removed in a future release.
+  - `--metrics-only` calculates metrics without writing reads.
+  - `--jsonl-progress PATH` writes machine-readable lifecycle and progress events.
+- FASTQ input uses Purrflate parallel decompression library where available, `--threads` argument now controls FASTQ input decompression threads as well as its analogous use for BAM input.
 ### Fixed
 - Secondary alignment count missing from flagstat output when base qualities were missing.
 - Region selection through `--bed` could lead to over-counting statistics. The BED file is now preprocessed to normalize and sort the regions contained.

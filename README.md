@@ -16,7 +16,7 @@ mamba create -n fastcat -c conda-forge -c bioconda -c nanoporetech fastcat
 
 ### Build from source
 
-`fastcat` depends on bundled third-party sources in git submodules (`third_party/htslib` and `third_party/zlib-ng`). Therefore when cloning be sure to also clone these submodules (or initialize them after clone) before building.
+`fastcat` depends on bundled third-party sources in git submodules (`third_party/htslib`, `third_party/zlib-ng`, and `third_party/argp-standalone`). Purrflate is an optional acceleration submodule for multithreaded fastq.gz decompression.
 
 Building requires several prerequisites:
 
@@ -42,11 +42,13 @@ cd fastcat
 make fastcat
 ```
 
-If you already cloned without submodules, run the following to initialise them:
+`--recursive` initialises the public dependencies and deliberately skips the private optional Purrflate submodule. If you already cloned without submodules, run the following to initialise the public dependencies:
 
 ```bash
-git submodule update --init --recursive
+git submodule update --init third_party/htslib third_party/zlib-ng third_party/argp-standalone
 ```
+
+Internal builds that have the Purrflate submodule use it automatically. Set `NOPURRFLATE=1` to explicitly select the portable zlib FASTQ reader, while retaining Fastcat's normal threading support.
 
 ## CLI overview
 

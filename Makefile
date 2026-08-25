@@ -14,6 +14,7 @@ help:  ## Show this help message
 	@printf "\033[1mBuild Options:\033[0m\n"
 	@printf "  \033[36mUSE_DEFLATE=1\033[0m    Use libdeflate compression library\n"
 	@printf "  \033[36mNOTHREADS=1\033[0m      Disable threading support\n"
+	@printf "  \033[36mNOPURRFLATE=1\033[0m    Use zlib FASTQ decompression instead of Purrflate\n"
 	@printf "\n"
 	@printf "\033[1mAvailable Targets:\033[0m\n"
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -167,6 +168,7 @@ endif
 #
 # USE_DEFLATE=1: Use libdeflate compression library with htslib
 # NOTHREADS=1: Disable threading support
+# NOPURRFLATE=1: Use the zlib FASTQ reader even if Purrflate is available
 
 BUILD_MODE ?= release
 
@@ -180,6 +182,21 @@ endif
 NOTHREADS ?=
 ifeq ($(NOTHREADS), 1)
     CFLAGS += -DNOTHREADS
+endif
+
+# Purrflate is an optional private submodule. Source users who clone Fastcat
+# from GitHub will normally not have it, so use the established zlib/kseq
+# reader automatically in that case. Internal builds retain Purrflate by
+# default, and NOPURRFLATE=1 remains useful for explicit fallback testing.
+NOPURRFLATE ?=
+PURRFLATE_ENABLED := 0
+ifneq ($(NOPURRFLATE),1)
+    ifneq ($(wildcard third_party/purrflate/src/zngp_reader.c),)
+        PURRFLATE_ENABLED := 1
+    endif
+endif
+ifeq ($(PURRFLATE_ENABLED),0)
+    CFLAGS += -DNOPURRFLATE
 endif
 
 # configure build based on BUILD_MODE
@@ -280,6 +297,7 @@ endif
 # include paths
 INCLUDES := -Isrc -Ithird_party/htslib -Ithird_party/zlib-ng
 
+ifeq ($(PURRFLATE_ENABLED),1)
 ifneq ($(NOTHREADS),1)
     INCLUDES += -Ithird_party/purrflate/src -Ithird_party/purrflate/src/include
     PURRFLATE_SRCS := \
@@ -294,6 +312,7 @@ ifneq ($(NOTHREADS),1)
         third_party/purrflate/src/zngp_reader.c \
         third_party/purrflate/src/zngp_symbolic.c
     PURRFLATE_OBJS := $(patsubst third_party/purrflate/src/%.c,$(OBJ_DIR)/purrflate/%.o,$(PURRFLATE_SRCS))
+endif
 endif
 
 # core library object files
@@ -811,6 +830,9 @@ test: test_functional test_unit  ## run all tests
 # unit tests use unity framework
 
 UNIT_TEST_SRCS = test/unit/main.c $(sort $(wildcard test/unit/test_*.c)) test/unity/unity.c
+ifeq ($(PURRFLATE_ENABLED),0)
+UNIT_TEST_SRCS := $(filter-out test/unit/test_fastq_parser.c,$(UNIT_TEST_SRCS))
+endif
 UNITY_DEFS = -DUNITY_INCLUDE_DOUBLE -DUNITY_DOUBLE_PRECISION=1e-6
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.c=.o)
 .SECONDARY: $(UNIT_TEST_OBJS) $(CORE_LIB)

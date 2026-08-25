@@ -7,19 +7,19 @@
 #include <stdlib.h>
 #include <zlib.h>
 
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
 #include "zngp.h"
 #endif
 
 struct fc_fastq_stream {
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
     ZNGP *reader;
 #else
     gzFile gz;
 #endif
 };
 
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
 enum { FC_HIGH_THREAD_VIEW_BUFFER_BYTES = 32 * 1024 * 1024 };
 #endif
 
@@ -33,7 +33,7 @@ fc_fastq_stream *fc_fastq_stream_open_path(const char *path, unsigned workers)
     if (!stream) {
         return NULL;
     }
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
     stream->reader = zngp_open(path, "rb");
     if (!stream->reader) {
         free(stream);
@@ -71,7 +71,7 @@ fc_fastq_stream *fc_fastq_stream_open_fd(int fd)
     if (!stream) {
         return NULL;
     }
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
     stream->reader = zngp_dopen(fd, "rb");
     if (!stream->reader) {
         free(stream);
@@ -92,7 +92,7 @@ int fc_fastq_stream_read(fc_fastq_stream *stream, void *buffer, int capacity)
     if (!stream) {
         return -1;
     }
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
     return (int)zngp_read(stream->reader, buffer, (size_t)capacity);
 #else
     return gzread(stream->gz, buffer, (unsigned)capacity);
@@ -104,7 +104,7 @@ int fc_fastq_stream_close(fc_fastq_stream *stream)
     if (!stream) {
         return -1;
     }
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
     int status = zngp_close(stream->reader);
 #else
     int status = gzclose(stream->gz) == Z_OK ? 0 : -1;
@@ -119,7 +119,7 @@ bool fc_fastq_stream_input_offset(const fc_fastq_stream *stream,
     if (!stream || !out) {
         return false;
     }
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
     if (!stream->reader) {
         return false;
     }
@@ -143,7 +143,7 @@ int fc_fastq_stream_next(fc_fastq_stream *stream, fc_fastq_span *span)
         errno = EINVAL;
         return -1;
     }
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
     zngp_view view;
     int status = zngp_next(stream->reader, &view);
     span->data = view.data;

@@ -358,7 +358,7 @@ static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_i
         return errno;
     }
 
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
     iter->parser = fc_fastq_parser_create(iter->fp);
     if (!iter->parser) {
         FC_LOG_ERROR("could not allocate FASTQ parser");
@@ -385,7 +385,7 @@ static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
         return FC_ITER_ERROR;
     }
 
-#ifndef NOTHREADS
+#if !defined(NOTHREADS) && !defined(NOPURRFLATE)
     for (;;) {
         int status = fc_fastq_parser_next(iter->parser, out->bam, &iter->fastq_record);
         if (status == 0) {
