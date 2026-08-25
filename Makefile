@@ -280,6 +280,22 @@ endif
 # include paths
 INCLUDES := -Isrc -Ithird_party/htslib -Ithird_party/zlib-ng
 
+ifneq ($(NOTHREADS),1)
+    INCLUDES += -Ithird_party/purrflate/src -Ithird_party/purrflate/src/include
+    PURRFLATE_SRCS := \
+        third_party/purrflate/src/zngp_candidates.c \
+        third_party/purrflate/src/zngp_chunk.c \
+        third_party/purrflate/src/zngp_chunk_find.c \
+        third_party/purrflate/src/zngp_deflate_header.c \
+        third_party/purrflate/src/zngp_direct.c \
+        third_party/purrflate/src/zngp_input.c \
+        third_party/purrflate/src/zngp_decode.c \
+        third_party/purrflate/src/zngp_pool.c \
+        third_party/purrflate/src/zngp_reader.c \
+        third_party/purrflate/src/zngp_symbolic.c
+    PURRFLATE_OBJS := $(patsubst third_party/purrflate/src/%.c,$(OBJ_DIR)/purrflate/%.o,$(PURRFLATE_SRCS))
+endif
+
 # core library object files
 CORE_SRCS := \
 	src/core/fc_common.c \
@@ -296,10 +312,12 @@ CORE_SRCS := \
 	src/core/fc_length_qscore_2d.c \
 	src/core/fc_run_summary.c \
 	src/core/fc_speed_qscore_2d.c \
+	src/core/fc_time.c \
 	src/core/fc_time_bin.c \
 	src/core/kh_int64_map.c \
 	src/core/fc_stats_engine.c \
 	src/core/fc_fastqcomments.c \
+	src/core/fc_fastq_parser.c \
 	src/core/fc_json.c \
 	src/core/fc_report.c \
 	src/core/fc_report_arg_table.c \
@@ -431,6 +449,12 @@ $(OBJ_DIR)/%.o: src/%.c third_party/zlib-ng/zlib.h $(BUILD_MAKEFILES) | $(OBJ_DI
 	$(CC) $(INCLUDES) -c -pthread $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) -MF $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$@) $< -o $@
 
+$(OBJ_DIR)/purrflate/%.o: third_party/purrflate/src/%.c third_party/zlib-ng/zlib.h $(BUILD_MAKEFILES) | $(OBJ_DIR) $(DEP_DIR)
+	@mkdir -p $(dir $@)
+	@mkdir -p $(dir $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$@))
+	$(CC) $(INCLUDES) -c -pthread $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
+		$(CFLAGS) $(EXTRA_CFLAGS) -MF $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$@) $< -o $@
+
 src/cli/summary_json_schema_data.c src/cli/summary_json_schema_data.h: test/fixtures/misc/summary_json.schema.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/generate_json_schema_c.py
 	$(DEV_TOOLS) generate_json_schema_c --input $< --header src/cli/summary_json_schema_data.h --source src/cli/summary_json_schema_data.c
 
@@ -447,12 +471,13 @@ $(VERSION_OBJ): src/version.c third_party/zlib-ng/zlib.h $(BUILD_MAKEFILES) | $(
 $(OBJ_DIR)/core/fc_fastqcomments.o: | $(HTSLIB_PATCH_STAMP)
 $(OBJ_DIR)/core/fc_read.o: | $(HTSLIB_PATCH_STAMP)
 
-$(CORE_LIB): $(CORE_OBJS) $(BUILD_MAKEFILES) | $(BUILD_DIR)
+$(CORE_LIB): $(CORE_OBJS) $(PURRFLATE_OBJS) $(BUILD_MAKEFILES) | $(BUILD_DIR)
 	rm -f $@
-	$(AR) rcs $@ $(CORE_OBJS)
+	$(AR) rcs $@ $(CORE_OBJS) $(PURRFLATE_OBJS)
 
 # include dependency files
 -include $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$(CORE_OBJS))
+-include $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$(PURRFLATE_OBJS))
 -include $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$(CLI_OBJS))
 -include $(patsubst $(OBJ_DIR)/%.o,$(DEP_DIR)/%.d,$(VERSION_OBJ))
 
@@ -799,10 +824,10 @@ test/unity/%.o: test/unity/%.c $(BUILD_MAKEFILES)
 	$(CC) -Itest/unity $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(UNITY_DEFS) -c $< -o $@
 
-test/unit/unit_tests: $(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) $(ARGP) $(BUILD_MAKEFILES)
+test/unit/unit_tests: $(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) third_party/zlib-ng/libz.a $(ARGP) $(BUILD_MAKEFILES)
 	$(CC) $(INCLUDES) $(WARNINGS) -fstack-protector-strong $(FORTIFY_CFLAG) \
 		$(CFLAGS) $(EXTRA_CFLAGS) $(EXTRA_LDFLAGS) \
-		$(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) $(ARGP) \
+		$(UNIT_TEST_OBJS) $(CORE_LIB) $(STATIC_HTSLIB) third_party/zlib-ng/libz.a $(ARGP) \
 		-lm -lz -lpthread $(HTSLIB_SYSTEM_LIBS) $(EXTRA_LIBS) \
 		-o $@
 

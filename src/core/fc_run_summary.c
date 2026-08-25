@@ -8,7 +8,7 @@
 #include "core/fc_common.h"
 #include "core/fc_filter.h"
 #include "core/fc_stats_engine.h"
-#include "core/fc_time_bin.h"
+#include "core/fc_time.h"
 #include "core/kh_counter.h"
 
 typedef struct {
@@ -275,8 +275,12 @@ void fc_run_summary_add_read(fc_run_summary *model, size_t barcode, const fc_rea
     }
 
     if (NULL != read->meta->start_time && read->meta->start_time[0] != '\0') {
-        double time_s = 0.0;
-        if (fc_time_bin_parse_timestamp(read->meta->start_time, &time_s)) {
+        double time_s = read->meta->start_time_s;
+        bool timestamp_valid = read->meta->start_time_valid;
+        if (!read->meta->start_time_parsed) {
+            timestamp_valid = fc_time_parse_timestamp(read->meta->start_time, &time_s);
+        }
+        if (timestamp_valid) {
             if (!state->has_time || time_s < state->min_time_s) {
                 state->min_time_s = time_s;
                 free(state->run_date);

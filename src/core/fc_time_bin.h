@@ -52,8 +52,6 @@ typedef struct {
 fc_time_bin *fc_time_bin_create(size_t barcode_count, double bin_size_s, size_t kll_k);
 void fc_time_bin_destroy(fc_time_bin *model);
 
-bool fc_time_bin_parse_timestamp(const char *text, double *out);
-
 void fc_time_bin_add_read(fc_time_bin *model, size_t barcode, const fc_read *read);
 void fc_time_bin_add_accuracy(fc_time_bin *model, size_t barcode, const fc_read *read, float accuracy);
 

@@ -197,15 +197,21 @@ static bool fc_iter_process_bam_record(
     return true;
 }
 
-static bool fastq_iter_process_record(fc_fastq_iter *iter, fc_read *out)
+static bool fastq_iter_process_record(fc_fastq_iter *iter, fc_read *out,
+    const kstring_t *comment, const fc_fastq_record *parsed_record)
 {
     size_t barcode = fc_read_barcode_index_from_bam(out->bam, NULL, NULL);
     fc_run_summary_add_filter_event(
         iter->opts.run_summary, iter->opts.use_barcodes ? barcode : 0, R_RECORD_SEEN);
-    bool accepted = fc_iter_process_bam_record(out, NULL, &iter->seq->comment, iter->rg_cache,
+    bool accepted = fc_iter_process_bam_record(out, NULL, comment, iter->rg_cache,
         &iter->opts, iter->apply_filters, &iter->stats,
         &iter->q_sum, &iter->q_comp, &iter->dust, barcode);
     if (accepted) {
+        // kseq storage remains valid until the next fc_iter_next_record call.
+        // The writer consumes this record before then, allowing FASTQ output
+        // to avoid unpacking SEQ and QUAL from its BAM representation.
+        out->fastq = parsed_record ? NULL : iter->seq;
+        out->fastq_record = parsed_record;
         fc_run_summary_add_filter_event(
             iter->opts.run_summary, iter->opts.use_barcodes ? barcode : 0, R_RECORD_OK);
     }
@@ -262,12 +268,16 @@ static void fastq_iter_close_resources(fc_fastq_iter *iter)
     if (!iter) {
         return;
     }
+    if (iter->parser) {
+        fc_fastq_parser_destroy(iter->parser);
+        iter->parser = NULL;
+    }
     if (iter->seq) {
         kseq_destroy(iter->seq);
         iter->seq = NULL;
     }
     if (iter->fp) {
-        gzclose(iter->fp);
+        (void)fc_fastq_stream_close(iter->fp);
         iter->fp = NULL;
     }
     if (iter->rg_cache) {
@@ -275,19 +285,6 @@ static void fastq_iter_close_resources(fc_fastq_iter *iter)
         iter->rg_cache = NULL;
     }
     free_dust_buffer(&iter->dust);
-}
-
-static bool fastq_iter_input_offset(const fc_fastq_iter *iter, uint64_t *out)
-{
-    if (!iter || !iter->fp || !out) {
-        return false;
-    }
-    z_off_t offset = gzoffset(iter->fp);
-    if (offset < 0) {
-        return false;
-    }
-    *out = (uint64_t)offset;
-    return true;
 }
 
 static bool bam_iter_input_offset(const fc_bam_iter *iter, uint64_t *out)
@@ -336,7 +333,7 @@ static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_i
             iter->stats.failures[F_UNKNOWN_ERROR] = 1;
             return errno;
         }
-        iter->fp = gzdopen(fd, "r");
+        iter->fp = fc_fastq_stream_open_fd(fd);
         if (!iter->fp) {
             close(fd);
         }
@@ -353,7 +350,7 @@ static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_i
             return EISDIR;
         }
 
-        iter->fp = gzopen(fname, "r");
+        iter->fp = fc_fastq_stream_open_path(fname, iter->opts.fastq_threads);
     }
     if (iter->fp == NULL) {
         FC_LOG_ERROR("could not open file %s: %s", fname, strerror(errno));
@@ -361,9 +358,15 @@ static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_i
         return errno;
     }
 
+#ifndef NOTHREADS
+    iter->parser = fc_fastq_parser_create(iter->fp);
+    if (!iter->parser) {
+        FC_LOG_ERROR("could not allocate FASTQ parser");
+#else
     iter->seq = kseq_init(iter->fp);
     if (!iter->seq) {
         FC_LOG_ERROR("could not allocate FASTQ iterator sequence buffer");
+#endif
         iter->stats.failures[F_UNKNOWN_ERROR] = 1;
         fastq_iter_close_resources(iter);
         return ENOMEM;
@@ -378,10 +381,49 @@ static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_i
 
 static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
 {
-    if (!iter || !iter->seq || !out || !out->bam) {
+    if (!iter || (!iter->parser && !iter->seq) || !out || !out->bam) {
         return FC_ITER_ERROR;
     }
 
+#ifndef NOTHREADS
+    for (;;) {
+        int status = fc_fastq_parser_next(iter->parser, out->bam, &iter->fastq_record);
+        if (status == 0) {
+            iter->status = iter->truncated ? -3 : -1;
+            return FC_ITER_EOF;
+        }
+        if (status == -2) {
+            iter->stats.failures[F_QUAL_TRUNCATED]++;
+            iter->truncated = true;
+            continue;
+        }
+        if (status == -4) {
+            iter->stats.failures[F_QUAL_MISSING]++;
+            iter->truncated = true;
+            continue;
+        }
+        if (status < 0) {
+            iter->status = -3;
+            return FC_ITER_ERROR;
+        }
+
+        iter->truncated = false;
+        iter->records_read++;
+        iter->bases_read += iter->fastq_record.sequence_len;
+        iter->stats.failures[R_RECORD_SEEN]++;
+
+        kstring_t comment = {
+            .l = iter->fastq_record.comment_len,
+            .m = iter->fastq_record.comment_len,
+            .s = (char *)iter->fastq_record.comment,
+        };
+        if (fastq_iter_process_record(
+                iter, out, &comment, &iter->fastq_record)) {
+            iter->stats.failures[R_RECORD_OK]++;
+            return FC_ITER_RECORD;
+        }
+    }
+#else
     while ((iter->status = kseq_read(iter->seq)) != -1) {
         if (iter->status == -2) {
             iter->stats.failures[F_QUAL_TRUNCATED]++;
@@ -403,11 +445,14 @@ static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
         iter->bases_read += iter->seq->seq.l;
         iter->stats.failures[R_RECORD_SEEN]++;
 
-        // convert from kseq to BAM record in-place for filtering and metadata extraction
-        if (kseq_to_bam(out->bam, iter->seq) < 0) {
+        if (fc_fastq_record_to_bam(out->bam,
+                iter->seq->name.s, iter->seq->name.l,
+                iter->seq->comment.s, iter->seq->comment.l,
+                iter->seq->seq.s, iter->seq->qual.s, iter->seq->seq.l)
+            < 0) {
             FC_LOG_FATAL("Error building BAM record for read '%s'", iter->seq->name.s);
         }
-        if (fastq_iter_process_record(iter, out)) {
+        if (fastq_iter_process_record(iter, out, &iter->seq->comment, NULL)) {
             iter->stats.failures[R_RECORD_OK]++;
             return FC_ITER_RECORD;
         }
@@ -420,6 +465,7 @@ static fc_iter_next_status fc_fastq_iter_next(fc_fastq_iter *iter, fc_read *out)
     }
 
     return FC_ITER_EOF;
+#endif
 }
 
 static int fc_fastq_iter_finish(fc_fastq_iter *iter, fc_file_stats *out_stats)
@@ -834,7 +880,7 @@ int fc_iter_finish_file(fc_iter *it)
 
     uint64_t current_bytes = 0;
     bool current_bytes_known = it->expected_kind == FC_FILE_FASTQ
-        ? fastq_iter_input_offset(&it->fqi, &current_bytes)
+        ? fc_fastq_stream_input_offset(it->fqi.fp, &current_bytes)
         : bam_iter_input_offset(&it->bmi, &current_bytes);
     uint64_t records_read = it->expected_kind == FC_FILE_FASTQ
         ? it->fqi.records_read
@@ -948,7 +994,7 @@ void fc_iter_get_progress(const fc_iter *it, fc_iter_progress *out)
 
     uint64_t current_bytes = 0;
     bool current_bytes_known = it->expected_kind == FC_FILE_FASTQ
-        ? fastq_iter_input_offset(&it->fqi, &current_bytes)
+        ? fc_fastq_stream_input_offset(it->fqi.fp, &current_bytes)
         : bam_iter_input_offset(&it->bmi, &current_bytes);
     if (!current_bytes_known) {
         out->total_bytes_known = false;

@@ -1,20 +1,13 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <zlib.h>
-
 #include "unity.h"
 #include "main.h"
-#include "htslib/kseq.h"
-
-#ifndef KSEQ_DECLARED
-#define KSEQ_DECLARED
-KSEQ_DECLARE(gzFile)
-#endif
 
 #include "core/fc_bam_rg_cache.h"
 #include "core/fc_bam_utils.h"
 #include "core/fc_fastqcomments.h"
+#include "core/fc_fastq_parser.h"
 #include "core/fc_read.h"
 
 static void read_from_comment(fc_read *fr, const char* comment)
@@ -123,7 +116,7 @@ static fc_read *read_from_rg_header_ds(const char *rg_id, const char *ds_text, b
     return fr;
 }
 
-FC_TEST(bam_utils_suite, test_kseq_to_bam_unmapped_aux)
+FC_TEST(bam_utils_suite, test_unmapped_bam_aux)
 {
     fc_read *fr = fc_read_init();
     TEST_ASSERT_NOT_NULL(fr);
@@ -145,6 +138,117 @@ FC_TEST(bam_utils_suite, test_kseq_to_bam_unmapped_aux)
     TEST_ASSERT_EQUAL_STRING("foo", aux_str);
 
     destroy_read(fr);
+}
+
+FC_TEST(bam_utils_suite, test_fastq_record_to_bam_converts_long_quality_string)
+{
+    char name[] = "read1";
+    char sequence[65];
+    char quality[65];
+    memset(sequence, 'A', sizeof(sequence) - 1);
+    memset(quality, 'I', sizeof(quality) - 1);
+    sequence[sizeof(sequence) - 1] = '\0';
+    quality[sizeof(quality) - 1] = '\0';
+
+    bam1_t *bam = bam_init1();
+    TEST_ASSERT_NOT_NULL(bam);
+    TEST_ASSERT_EQUAL_INT(0, fc_fastq_record_to_bam(bam,
+                                 name, strlen(name), NULL, 0,
+                                 sequence, quality, strlen(sequence)));
+    uint8_t *qual = bam_get_qual(bam);
+    for (size_t i = 0; i < strlen(quality); ++i) {
+        TEST_ASSERT_EQUAL_UINT8(40, qual[i]);
+    }
+
+    bam_destroy1(bam);
+}
+
+FC_TEST(bam_utils_suite, test_fastq_record_to_bam_matches_htslib_for_iupac_sequence)
+{
+    char name[] = "iupac-read";
+    char sequence[] = "ACGTNacgtnMRWSYKVHDBX=mrwsykvhdbxA";
+    char quality[sizeof(sequence)];
+    memset(quality, 'I', sizeof(quality) - 1);
+    quality[sizeof(quality) - 1] = '\0';
+
+    bam1_t *actual = bam_init1();
+    bam1_t *expected = bam_init1();
+    TEST_ASSERT_NOT_NULL(actual);
+    TEST_ASSERT_NOT_NULL(expected);
+    TEST_ASSERT_EQUAL_INT(0, fc_fastq_record_to_bam(actual,
+                                 name, strlen(name), NULL, 0,
+                                 sequence, quality, strlen(sequence)));
+    TEST_ASSERT_TRUE(bam_set1(
+        expected,
+        strlen(name) + 1, name,
+        BAM_FUNMAP, -1, -1, 0,
+        0, NULL,
+        -1, -1, 0,
+        strlen(sequence), sequence, quality,
+        0) >= 0);
+    uint8_t *expected_qual = bam_get_qual(expected);
+    for (size_t i = 0; i < strlen(quality); ++i) {
+        expected_qual[i] -= 33;
+    }
+
+    TEST_ASSERT_EQUAL_MEMORY(&expected->core, &actual->core, sizeof(actual->core));
+    TEST_ASSERT_EQUAL_INT(expected->l_data, actual->l_data);
+    TEST_ASSERT_EQUAL_MEMORY(expected->data, actual->data, (size_t)actual->l_data);
+
+    bam_destroy1(actual);
+    bam_destroy1(expected);
+}
+
+FC_TEST(bam_utils_suite, test_fastq_record_to_bam_matches_htslib_for_long_common_sequence)
+{
+    char name[] = "common-read";
+    char sequence[] =
+        "ACGTNacgtnACGTNacgtnACGTNacgtnAC"
+        "GTNacgtnACGTNacgtnACGTNacgtnACGTN";
+    char quality[sizeof(sequence)];
+    memset(quality, 'I', sizeof(quality) - 1);
+    quality[sizeof(quality) - 1] = '\0';
+
+    bam1_t *actual = bam_init1();
+    bam1_t *expected = bam_init1();
+    TEST_ASSERT_NOT_NULL(actual);
+    TEST_ASSERT_NOT_NULL(expected);
+    TEST_ASSERT_EQUAL_INT(0, fc_fastq_record_to_bam(actual,
+                                 name, strlen(name), NULL, 0,
+                                 sequence, quality, strlen(sequence)));
+    TEST_ASSERT_TRUE(bam_set1(
+        expected,
+        strlen(name) + 1, name,
+        BAM_FUNMAP, -1, -1, 0,
+        0, NULL,
+        -1, -1, 0,
+        strlen(sequence), sequence, quality,
+        0) >= 0);
+    uint8_t *expected_qual = bam_get_qual(expected);
+    for (size_t i = 0; i < strlen(quality); ++i) {
+        expected_qual[i] -= 33;
+    }
+
+    TEST_ASSERT_EQUAL_MEMORY(&expected->core, &actual->core, sizeof(actual->core));
+    TEST_ASSERT_EQUAL_INT(expected->l_data, actual->l_data);
+    TEST_ASSERT_EQUAL_MEMORY(expected->data, actual->data, (size_t)actual->l_data);
+
+    bam_destroy1(actual);
+    bam_destroy1(expected);
+}
+
+FC_TEST(bam_utils_suite, test_fastq_record_to_bam_accepts_borrowed_fields)
+{
+    static const char input[] = "read42 comment=value\nACGTN\nIIIII";
+    bam1_t *bam = bam_init1();
+    TEST_ASSERT_NOT_NULL(bam);
+
+    TEST_ASSERT_EQUAL_INT(0, fc_fastq_record_to_bam(bam, input, 6, input + 7, 13, input + 21, input + 27, 5));
+    TEST_ASSERT_EQUAL_STRING("read42", bam_get_qname(bam));
+    TEST_ASSERT_EQUAL_INT(5, bam->core.l_qseq);
+    TEST_ASSERT_EQUAL_UINT8(40, bam_get_qual(bam)[0]);
+
+    bam_destroy1(bam);
 }
 
 FC_TEST(bam_utils_suite, test_bam_input_info_retains_matching_reference_header)

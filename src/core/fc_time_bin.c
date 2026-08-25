@@ -4,16 +4,15 @@
 
 #include "core/fc_time_bin.h"
 
-#include <errno.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "core/fc_common.h"
 #include "core/fc_filter.h"
 #include "core/fc_kll.h"
+#include "core/fc_time.h"
 #include "core/kh_int64_map.h"
 
 typedef struct {
@@ -52,31 +51,6 @@ struct fc_time_bin {
     fc_time_bin_barcode_state **barcode_states;
 };
 
-#ifdef _WIN32
-static bool parse_timestamp_component(const char *text, size_t offset, size_t digits, int *out)
-{
-    int value = 0;
-    for (size_t i = 0; i < digits; ++i) {
-        char character = text[offset + i];
-        if (character < '0' || character > '9') {
-            return false;
-        }
-        value = value * 10 + (character - '0');
-    }
-    *out = value;
-    return true;
-}
-#endif
-
-static time_t timestamp_to_utc(struct tm *tm)
-{
-#ifdef _WIN32
-    return _mkgmtime(tm);
-#else
-    return timegm(tm);
-#endif
-}
-
 typedef struct {
     int64_t index;
     const fc_time_bin_accum *accum;
@@ -90,65 +64,6 @@ static bool time_bin_index(double timestamp_s, double bin_size_s, int64_t *out)
         return false;
     }
     *out = (int64_t)index;
-    return true;
-}
-
-bool fc_time_bin_parse_timestamp(const char *text, double *out)
-{
-    if (NULL == text || NULL == out || text[0] == '\0') {
-        return false;
-    }
-
-    errno = 0;
-    char *end = NULL;
-    double value = strtod(text, &end);
-    if (errno == 0 && end != text && *end == '\0' && isfinite(value)) {
-        *out = value;
-        return true;
-    }
-
-    struct tm tm = { 0 };
-    tm.tm_isdst = 0;
-#ifdef _WIN32
-    if (strlen(text) < 19 || text[4] != '-' || text[7] != '-' || text[10] != 'T'
-        || text[13] != ':' || text[16] != ':') {
-        return false;
-    }
-    int year = 0;
-    int month = 0;
-    int day = 0;
-    int hour = 0;
-    int minute = 0;
-    int second = 0;
-    if (!parse_timestamp_component(text, 0, 4, &year)
-        || !parse_timestamp_component(text, 5, 2, &month)
-        || !parse_timestamp_component(text, 8, 2, &day)
-        || !parse_timestamp_component(text, 11, 2, &hour)
-        || !parse_timestamp_component(text, 14, 2, &minute)
-        || !parse_timestamp_component(text, 17, 2, &second)) {
-        return false;
-    }
-    tm.tm_year = year - 1900;
-    tm.tm_mon = month - 1;
-    tm.tm_mday = day;
-    tm.tm_hour = hour;
-    tm.tm_min = minute;
-    tm.tm_sec = second;
-#else
-    if (NULL == strptime(text, "%Y-%m-%dT%H:%M:%S", &tm)) {
-        return false;
-    }
-#endif
-    time_t epoch = timestamp_to_utc(&tm);
-    if (epoch == (time_t)-1) {
-        return false;
-    }
-
-    double epoch_s = (double)epoch;
-    if (!isfinite(epoch_s)) {
-        return false;
-    }
-    *out = epoch_s;
     return true;
 }
 
@@ -342,8 +257,12 @@ void fc_time_bin_add_read(fc_time_bin *model, size_t barcode, const fc_read *rea
         return;
     }
 
-    double timestamp_s = 0.0;
-    if (!fc_time_bin_parse_timestamp(timestamp, &timestamp_s)) {
+    double timestamp_s = read->meta->start_time_s;
+    bool timestamp_valid = read->meta->start_time_valid;
+    if (!read->meta->start_time_parsed) {
+        timestamp_valid = fc_time_parse_timestamp(timestamp, &timestamp_s);
+    }
+    if (!timestamp_valid) {
         state->skipped_invalid++;
         model->skipped_invalid++;
         return;
@@ -406,8 +325,15 @@ void fc_time_bin_add_accuracy(fc_time_bin *model, size_t barcode, const fc_read 
         return;
     }
     const char *timestamp = read->meta->start_time;
-    double timestamp_s = 0.0;
-    if (!timestamp || timestamp[0] == '\0' || !fc_time_bin_parse_timestamp(timestamp, &timestamp_s)) {
+    if (!timestamp || timestamp[0] == '\0') {
+        return;
+    }
+    double timestamp_s = read->meta->start_time_s;
+    bool timestamp_valid = read->meta->start_time_valid;
+    if (!read->meta->start_time_parsed) {
+        timestamp_valid = fc_time_parse_timestamp(timestamp, &timestamp_s);
+    }
+    if (!timestamp_valid) {
         return;
     }
     int64_t bin_idx = 0;

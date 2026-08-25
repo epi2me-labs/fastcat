@@ -9,9 +9,9 @@
 
 #include "core/fc_bam_utils.h"
 #include "core/fc_common.h"
-#include "core/fc_fastqcomments.h"
 #include "core/fc_filter.h"
 #include "core/fc_log.h"
+#include "core/fc_time.h"
 
 // these are tucked away at the bottom of this file
 static void build_tags_string_from_bam(const bam1_t *b, read_meta *meta);
@@ -113,6 +113,8 @@ void fc_read_reset_from_bam(fc_read *read, const bam_hdr_t *hdr, fc_bam_rg_cache
     if (!read->meta) {
         read->meta = read_meta_create_empty();
     }
+    read->fastq = NULL;
+    read->fastq_record = NULL;
     read_meta_reset(read->meta, orig_comment);
     read_meta_populate_from_bam(read->meta, read->bam, hdr, rg_cache);
 }
@@ -223,6 +225,9 @@ static void read_meta_reset(read_meta *meta, const kstring_t *orig_comment)
     meta->ibarcode = 0;
     meta->barcode_alias = "";
     meta->start_time = "";
+    meta->start_time_s = NAN;
+    meta->start_time_parsed = false;
+    meta->start_time_valid = false;
     meta->edit_distance = -1;
     meta->parent_read = "";
     meta->poly_tail_length = -1;
@@ -472,39 +477,9 @@ static void read_meta_populate_from_bam(read_meta *meta, const bam1_t *b, const 
             meta->modcallers = meta->rg_info->modcaller;
         }
     }
-}
 
-int kseq_to_bam(bam1_t *b, kseq_t *seq)
-{
-    if (!b || !seq) {
-        return -1;
-    }
-
-    if (bam_set1(
-            b,
-            seq->name.l + 1, seq->name.s,
-            BAM_FUNMAP, -1, -1, 0,
-            0, NULL,
-            -1, -1, 0,
-            seq->seq.l, seq->seq.s, seq->qual.s,
-            0)
-        < 0) {
-        return -1;
-    }
-
-    // bam_set1 uses raw numeric qualities; convert from ASCII
-    uint8_t *qual = bam_get_qual(b);
-    for (int i = 0; i < b->core.l_qseq; ++i) {
-        qual[i] -= 33;
-    }
-
-    if (seq->comment.l > 0) {
-        if (fastq_comment_to_bam(&seq->comment, b) < 0) {
-            return -1;
-        }
-    }
-
-    return 0;
+    meta->start_time_parsed = true;
+    meta->start_time_valid = fc_time_parse_timestamp(meta->start_time, &meta->start_time_s);
 }
 
 static void build_tags_string_from_bam(const bam1_t *b, read_meta *meta)

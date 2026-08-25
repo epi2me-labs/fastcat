@@ -13,6 +13,7 @@
 #include "core/fc_bam_utils.h"
 #include "core/fc_common.h"
 #include "core/fc_failures.h"
+#include "core/fc_fastq_parser.h"
 #include "core/fc_filter.h"
 #include "core/fc_input_list.h"
 #include "core/fc_read.h"
@@ -57,6 +58,7 @@ typedef struct {
     const char *region; /* "chr:start-end" */
     const char *bed; /* BED filepath */
     htsThreadPool *thread_pool; /* optional: attach thread pool to BAM handle */
+    unsigned fastq_threads; /* gzip decoder workers; Purrflate uses zlib-ng directly for zero/one */
     bool use_barcodes; /* route per-read filter counts by barcode */
     fc_run_summary *run_summary; /* per-barcode filtering counters */
 } fc_iter_opts;
@@ -66,8 +68,10 @@ void fc_iter_opts_disable_filters(fc_iter_opts *opts);
 
 typedef struct {
     const char *fname;
-    gzFile fp;
+    fc_fastq_stream *fp;
     kseq_t *seq;
+    fc_fastq_parser *parser;
+    fc_fastq_record fastq_record;
     fc_bam_rg_cache *rg_cache;
     fc_iter_opts opts;
     bool apply_filters;

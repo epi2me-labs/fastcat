@@ -7,12 +7,13 @@
 
 #include "unity.h"
 #include "main.h"
+#include "core/fc_time.h"
 #include "core/fc_time_bin.h"
 
 static void assert_parse_time(const char *text, double expected)
 {
     double observed = NAN;
-    TEST_ASSERT_TRUE(fc_time_bin_parse_timestamp(text, &observed));
+    TEST_ASSERT_TRUE(fc_time_parse_timestamp(text, &observed));
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, expected, observed);
 }
 
@@ -84,10 +85,16 @@ FC_TEST(time_bin_suite, test_time_bin_parse_timestamp_variants)
     assert_parse_time("2024-01-24T17:15:41.615+00:00", 1706116541.0);
     assert_parse_time("2025-01-13T10:45:28.681306+00:00", 1736765128.0);
     assert_parse_time("2016-01-19T15:21:32.59+02:00", 1453216892.0);
+    assert_parse_time("2000-02-29T00:00:00Z", 951782400.0);
+    assert_parse_time("1969-12-31T23:59:59Z", -1.0);
 
     double out = 0.0;
-    TEST_ASSERT_FALSE(fc_time_bin_parse_timestamp("", &out));
-    TEST_ASSERT_FALSE(fc_time_bin_parse_timestamp("not-a-time", &out));
+    TEST_ASSERT_FALSE(fc_time_parse_timestamp("", &out));
+    TEST_ASSERT_FALSE(fc_time_parse_timestamp("not-a-time", &out));
+    TEST_ASSERT_FALSE(fc_time_parse_timestamp("2023-02-29T00:00:00Z", &out));
+    TEST_ASSERT_FALSE(fc_time_parse_timestamp("2024-13-01T00:00:00Z", &out));
+    TEST_ASSERT_FALSE(fc_time_parse_timestamp("2024-04-31T00:00:00Z", &out));
+    TEST_ASSERT_FALSE(fc_time_parse_timestamp("2024-01-01T24:00:00Z", &out));
 }
 
 FC_TEST(time_bin_suite, test_time_bin_counts_means_quantiles_and_cumulative_totals)
@@ -359,6 +366,9 @@ FC_TEST(time_bin_suite, test_time_bin_add_read_uses_bam_st_z_timestamp_tags)
     TEST_ASSERT_TRUE(bam_aux_update_float(read1->bam, "qs", 10.0f) >= 0);
     fc_read_reset_from_bam(read1, NULL, fc_test_rg_cache(), NULL);
     TEST_ASSERT_EQUAL_STRING(time1, read1->meta->start_time);
+    TEST_ASSERT_TRUE(read1->meta->start_time_parsed);
+    TEST_ASSERT_TRUE(read1->meta->start_time_valid);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, 100.0, read1->meta->start_time_s);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 2.0, read1->meta->duration_s);
     fc_time_bin_add_read(model, 0, read1);
 
@@ -368,9 +378,9 @@ FC_TEST(time_bin_suite, test_time_bin_add_read_uses_bam_st_z_timestamp_tags)
     TEST_ASSERT_TRUE(bam_aux_update_float(read2->bam, "du", 4.0f) >= 0);
     TEST_ASSERT_TRUE(bam_aux_update_float(read2->bam, "qs", 20.0f) >= 0);
     fc_read_reset_from_bam(read2, NULL, fc_test_rg_cache(), NULL);
-    double parsed = 0.0;
-    TEST_ASSERT_TRUE(fc_time_bin_parse_timestamp(read2->meta->start_time, &parsed));
-    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 105.0, parsed);
+    TEST_ASSERT_TRUE(read2->meta->start_time_parsed);
+    TEST_ASSERT_TRUE(read2->meta->start_time_valid);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 105.0, read2->meta->start_time_s);
     fc_time_bin_add_read(model, 0, read2);
 
     fc_time_bin_table table = { 0 };
