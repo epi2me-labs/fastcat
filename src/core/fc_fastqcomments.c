@@ -20,25 +20,26 @@
 #define ksprintf_with_opt_delim(s, d, fmt, ...) \
     ksprintf((s), "%s" fmt, (s)->l == 0 ? "" : d, __VA_ARGS__)
 
-static bool comment_has_sam_tags(const char *comment)
+static bool comment_has_sam_tags(const char *comment, size_t length)
 {
-    if (!comment || *comment == '\0') {
+    if (!comment || length == 0) {
         return false;
     }
     const char *p = comment;
-    while (*p) {
-        while (*p == ' ' || *p == '\t') {
+    const char *end = comment + length;
+    while (p < end) {
+        while (p < end && (*p == ' ' || *p == '\t')) {
             p++;
         }
-        if (!*p) {
+        if (p == end) {
             break;
         }
-        if (isalnum((unsigned char)p[0]) && isalnum((unsigned char)p[1])
-            && p[2] && p[3] && p[4]
+        if ((size_t)(end - p) >= 5
+            && isalnum((unsigned char)p[0]) && isalnum((unsigned char)p[1])
             && p[2] == ':' && p[4] == ':') {
             return true;
         }
-        while (*p && *p != ' ' && *p != '\t') {
+        while (p < end && *p != ' ' && *p != '\t') {
             p++;
         }
     }
@@ -244,13 +245,26 @@ int fastq_comment_to_bam(const kstring_t *comment, bam1_t *b)
         return 0;
     }
 
-    bool sam_like = comment_has_sam_tags(comment->s);
+    bool sam_like = comment_has_sam_tags(comment->s, comment->l);
     if (sam_like) {
+        char *owned = NULL;
+        char *sam_comment = comment->s;
+        if (comment->m <= comment->l || comment->s[comment->l] != '\0') {
+            owned = malloc(comment->l + 1);
+            if (!owned) {
+                return -1;
+            }
+            memcpy(owned, comment->s, comment->l);
+            owned[comment->l] = '\0';
+            sam_comment = owned;
+        }
         int orig_len = b->l_data;
-        if (sam_aux_parse(comment->s, comment->s + comment->l, b, 1) < 0) {
+        if (sam_aux_parse(sam_comment, sam_comment + comment->l, b, 1) < 0) {
+            free(owned);
             FC_LOG_WARN("Error parsing SAM-style tags from FASTQ comment.");
             return -1;
         }
+        free(owned);
         if (b->l_data > orig_len) {
             return 0;
         }

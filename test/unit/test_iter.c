@@ -232,6 +232,7 @@ FC_TEST(iter_suite, test_iter_reports_regular_fastq_progress) {
     char *paths[] = { fq_path };
     fc_path_list input_paths = { .paths = paths, .n_paths = 1 };
     fc_resolved_inputs inputs = { 0 };
+    fc_iter_opts opts = { .fastq_threads = 4 };
     TEST_ASSERT_EQUAL_INT(0, fc_resolve_input_paths(
         &input_paths, 0, false, true, FC_FILE_FASTQ, &inputs));
     TEST_ASSERT_EQUAL_INT(0, fc_iter_init(&iter, &inputs, false));
@@ -242,17 +243,20 @@ FC_TEST(iter_suite, test_iter_reports_regular_fastq_progress) {
     TEST_ASSERT_TRUE(progress.total_bytes > 0);
     TEST_ASSERT_EQUAL_UINT64(0, progress.records_read);
     TEST_ASSERT_TRUE(fc_iter_next_file(&iter, NULL));
-    TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, NULL));
+    TEST_ASSERT_EQUAL_INT(0, fc_iter_open_record_cursor(&iter, &opts));
     fc_read *read = fc_read_init();
     TEST_ASSERT_NOT_NULL(read);
     TEST_ASSERT_EQUAL_INT(FC_ITER_RECORD, fc_iter_next_record(&iter, read));
     fc_iter_get_progress(&iter, &progress);
     TEST_ASSERT_EQUAL_UINT64(1, progress.records_read);
     TEST_ASSERT_EQUAL_UINT64(4, progress.bases_read);
+    TEST_ASSERT_TRUE(progress.bytes_read > 0);
     TEST_ASSERT_TRUE(progress.bytes_read <= progress.total_bytes);
+    TEST_ASSERT_TRUE(progress.total_bytes_known);
     while (fc_iter_next_record(&iter, read) == FC_ITER_RECORD) {}
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, fc_iter_finish_file(&iter));
     fc_iter_get_progress(&iter, &progress);
+    TEST_ASSERT_TRUE(progress.total_bytes_known);
     TEST_ASSERT_EQUAL_UINT64(progress.total_bytes, progress.bytes_read);
     TEST_ASSERT_EQUAL_UINT64(3, progress.records_read);
     TEST_ASSERT_EQUAL_UINT64(15, progress.bases_read);

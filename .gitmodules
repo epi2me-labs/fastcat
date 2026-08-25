@@ -9,3 +9,7 @@
 [submodule "argp-standalone"]
 	path = third_party/argp-standalone
 	url = https://github.com/argp-standalone/argp-standalone.git
+[submodule "third_party/purrflate"]
+	path = third_party/purrflate
+	url = ../purrflate.git
+	ignore = dirty

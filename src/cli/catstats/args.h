@@ -15,6 +15,7 @@ typedef struct {
     char *output_dir;
     bool demultiplex;
     bool per_read;
+    bool metrics_only;
     bool html_report;
     bool legacy_outputs;
     int threads;

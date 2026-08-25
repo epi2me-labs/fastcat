@@ -136,6 +136,7 @@ fc_report_arg_table fc_report_arg_table_from_catstats(
     config_add_strf(&builder, "input files discovered", "%zu", file_count);
     config_add_bool(&builder, "demultiplex", args->demultiplex);
     config_add_bool(&builder, "per-read output", args->per_read);
+    config_add_bool(&builder, "metrics only", args->metrics_only);
     config_add_bool(&builder, "html report", args->html_report);
     config_add_strf(&builder, "threads", "%d", args->threads);
     config_add_bool(&builder, "force error", args->force_error);

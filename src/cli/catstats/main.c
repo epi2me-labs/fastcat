@@ -183,8 +183,6 @@ static void log_progress_maybe(fc_progress_logger *logger, const fc_iter *iter)
     fc_iter_progress progress = { 0 };
     fc_iter_get_progress(iter, &progress);
     double elapsed = now - logger->started_at;
-    char bases[32] = { 0 };
-    format_base_count(progress.bases_read, bases, sizeof(bases));
     double throughput_mbps = elapsed > 0.0
         ? (double)progress.bases_read / elapsed / 1000000.0
         : 0.0;
@@ -210,19 +208,10 @@ static void log_progress_maybe(fc_progress_logger *logger, const fc_iter *iter)
         return;
     }
     logger->last_log_at = now;
-    if (progress.total_bytes_known && progress.total_bytes > 0) {
-        char read_size[32] = { 0 };
-        char total_size[32] = { 0 };
-        format_input_size(progress.bytes_read, read_size, sizeof(read_size));
-        format_input_size(progress.total_bytes, total_size, sizeof(total_size));
-        unsigned int percent = (unsigned int)(100.0 * (double)progress.bytes_read
-            / (double)progress.total_bytes);
-        FC_LOG_INFO("Progress: %u%% (%s / %s), %" PRIu64 " records, %s, %.1f Mbp/s, %.0fs elapsed.",
-            percent, read_size, total_size, progress.records_read, bases, throughput_mbps, elapsed);
-    } else {
-        FC_LOG_INFO("Progress: %" PRIu64 " records, %s, %.1f Mbp/s, %.0fs elapsed.",
-            progress.records_read, bases, throughput_mbps, elapsed);
-    }
+    char bases[32] = { 0 };
+    format_base_count(progress.bases_read, bases, sizeof(bases));
+    FC_LOG_INFO("Progress: %" PRIu64 " records, %s, %.1f Mbp/s, %.0fs elapsed.",
+        progress.records_read, bases, throughput_mbps, elapsed);
 }
 
 static void log_completion(
@@ -474,7 +463,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
     bool bam_mode = false;
     bool has_reference_bam = false;
     bool calculate_coverage = false;
-    bool direct_reads_output = program == FC_PROGRAM_QC && args->reads_output != NULL
+    bool direct_reads_output = program == FC_PROGRAM_QC && !args->metrics_only && args->reads_output != NULL
         && !args->demultiplex;
     bool output_created = false;
     bool output_published = false;
@@ -582,6 +571,8 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         } else {
             FC_LOG_WARN("Failed to create thread pool; continuing single-threaded.");
         }
+    } else if (!bam_mode && args->threads > 1) {
+        FC_LOG_INFO("Using up to %d threads for gzip FASTQ decompression.", args->threads);
     }
 
     // setup file/read iterator. This handles details of iterating over multiple files, directories, and/or file-of-filenames (fofn),
@@ -601,6 +592,7 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
         .region = region_mode ? args->region : NULL,
         .bed = region_mode ? args->bed : NULL,
         .thread_pool = (bam_mode && pool.pool) ? &pool : NULL,
+        .fastq_threads = (unsigned)args->threads,
         .use_barcodes = args->demultiplex
     };
     if (fc_iter_init(&file_iter, &resolved_inputs, args->verbose) != 0) {
@@ -866,7 +858,11 @@ int fc_run_program(fc_program_kind program, const fc_catstats_args *args)
 
     // Reference-bearing BAM is analysis-only: concatenating selected coordinate
     // regions or multiple BAMs would not produce a valid alignment stream.
-    bool emit_reads = program != FC_PROGRAM_BAMSTATS && !has_reference_bam;
+    bool emit_reads = program != FC_PROGRAM_BAMSTATS && !has_reference_bam && !args->metrics_only;
+    if (program == FC_PROGRAM_QC && args->metrics_only) {
+        FC_LOG_INFO("Read output disabled; calculating metrics only.");
+        jsonl_decision("read_output", "disabled_for_metrics_only");
+    }
     if (emit_reads) {
         fc_output_sink_opts output_opts = {
             .output_root = args->demultiplex ? output_dir : NULL,

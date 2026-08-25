@@ -9,6 +9,7 @@
 #include "htslib/thread_pool.h"
 
 #include "core/fc_common.h"
+#include "core/fc_fastq_parser.h"
 #include "core/fc_filter.h"
 #include "core/fc_log.h"
 #include "core/fc_sinks.h"
@@ -77,20 +78,58 @@ static void output_write_fastq(output_sink *sink, const fc_read *read, void *han
     static const char *sam_comment_fmt = "@%s\t%s\n%s\n+\n%s\n";
     static const char *no_comment_fmt = "@%s\n%s\n+\n%s\n";
 
-    bam1_t *bam = read->bam;
-    char *qname = bam_get_qname(bam);
-    size_t len = bam->core.l_qseq;
-    uint8_t *seq_data = bam_get_seq(bam);
-    uint8_t *qual_data = bam_get_qual(bam);
-
-    char *seq_str = fc_alloc(len + 1, sizeof(char), "bam seq");
-    char *qual_str = fc_alloc(len + 1, sizeof(char), "bam qual");
-    for (size_t i = 0; i < len; ++i) {
-        seq_str[i] = seq_nt16_str[bam_seqi(seq_data, i)];
-        qual_str[i] = (qual_data[0] == 0xff) ? '!' : (char)(qual_data[i] + 33);
+    const fc_fastq_record *record = read->fastq_record;
+    if (record) {
+        const kstring_t *tags = fc_read_get_tags_str(read);
+        int rc;
+        if (tags && tags->l > 0) {
+            rc = sink_write(handle, "@%.*s\t%s\n%.*s\n+\n%.*s\n",
+                (int)record->name_len, record->name, tags->s,
+                (int)record->sequence_len, record->sequence,
+                (int)record->sequence_len, record->quality);
+        } else {
+            rc = sink_write(handle, "@%.*s\n%.*s\n+\n%.*s\n",
+                (int)record->name_len, record->name,
+                (int)record->sequence_len, record->sequence,
+                (int)record->sequence_len, record->quality);
+        }
+        if (rc < 0) {
+            FC_LOG_FATAL("Error writing FASTQ output.");
+        }
+        return;
     }
-    seq_str[len] = '\0';
-    qual_str[len] = '\0';
+
+    const kseq_t *fastq = read->fastq;
+    bool use_fastq = fastq && fastq->name.s && fastq->seq.s && fastq->qual.s
+        && fastq->seq.l == fastq->qual.l;
+    const char *qname = NULL;
+    const char *seq_str = NULL;
+    const char *qual_str = NULL;
+    char *bam_seq_str = NULL;
+    char *bam_qual_str = NULL;
+
+    if (use_fastq) {
+        qname = fastq->name.s;
+        seq_str = fastq->seq.s;
+        qual_str = fastq->qual.s;
+    } else {
+        bam1_t *bam = read->bam;
+        qname = bam_get_qname(bam);
+        size_t len = bam->core.l_qseq;
+        uint8_t *seq_data = bam_get_seq(bam);
+        uint8_t *qual_data = bam_get_qual(bam);
+
+        bam_seq_str = fc_alloc(len + 1, sizeof(char), "bam seq");
+        bam_qual_str = fc_alloc(len + 1, sizeof(char), "bam qual");
+        for (size_t i = 0; i < len; ++i) {
+            bam_seq_str[i] = seq_nt16_str[bam_seqi(seq_data, i)];
+            bam_qual_str[i] = (qual_data[0] == 0xff) ? '!' : (char)(qual_data[i] + 33);
+        }
+        bam_seq_str[len] = '\0';
+        bam_qual_str[len] = '\0';
+        seq_str = bam_seq_str;
+        qual_str = bam_qual_str;
+    }
 
     int rc = 0;
     const kstring_t *tags = fc_read_get_tags_str(read);
@@ -103,8 +142,8 @@ static void output_write_fastq(output_sink *sink, const fc_read *read, void *han
         FC_LOG_FATAL("Error writing FASTQ output.");
     }
 
-    free(seq_str);
-    free(qual_str);
+    free(bam_seq_str);
+    free(bam_qual_str);
 }
 
 static void output_write_bam(output_sink *sink, bam1_t *bam, htsFile *handle)

@@ -10,7 +10,7 @@
 
 int fastlint_main(int argc, char *argv[])
 {
-    gzFile fp;
+    fc_fastq_stream *fp;
     kseq_t *ks;
 
     fc_log_config log_cfg = {
@@ -26,9 +26,9 @@ int fastlint_main(int argc, char *argv[])
     for (size_t i = 0; i < args.nfiles; ++i) {
         const char *input_name = args.fastq[i];
         if ((strcmp(args.fastq[i], "-") == 0) && (strlen(args.fastq[i]) == 1)) {
-            fp = gzdopen(fileno(stdin), "r");
+            fp = fc_fastq_stream_open_fd(fileno(stdin));
         } else {
-            fp = gzopen(args.fastq[i], "r");
+            fp = fc_fastq_stream_open_path(args.fastq[i], 1);
         }
         if (fp == NULL) {
             FC_LOG_ERROR("Failed to open FASTQ input: %s", input_name);
@@ -38,7 +38,7 @@ int fastlint_main(int argc, char *argv[])
         ks = kseq_init(fp);
         if (ks == NULL) {
             FC_LOG_ERROR("Failed to initialize FASTQ reader for input: %s", input_name);
-            gzclose(fp);
+            (void)fc_fastq_stream_close(fp);
             fc_log_destroy();
             return EXIT_FAILURE;
         }
@@ -82,12 +82,12 @@ int fastlint_main(int argc, char *argv[])
         if (kseq_status < -1) {
             FC_LOG_ERROR("Failed to parse FASTQ input: %s", input_name);
             kseq_destroy(ks);
-            gzclose(fp);
+            (void)fc_fastq_stream_close(fp);
             fc_log_destroy();
             return EXIT_FAILURE;
         }
         kseq_destroy(ks);
-        if (gzclose(fp) != Z_OK) {
+        if (fc_fastq_stream_close(fp) != 0) {
             FC_LOG_ERROR("Failed to close FASTQ input stream: %s", input_name);
             fc_log_destroy();
             return EXIT_FAILURE;

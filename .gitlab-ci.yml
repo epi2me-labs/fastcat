@@ -15,6 +15,7 @@ default:
 
 variables:
     GIT_SUBMODULE_STRATEGY: recursive
+    GIT_SUBMODULE_FORCE_HTTPS: "true"
     IMAGE_CLANG: ${UBUNTUIMAGE}:26.04
 
 

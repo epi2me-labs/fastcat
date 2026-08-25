@@ -10,6 +10,8 @@
 #include "core/fc_stats.h"
 #include "core/kseq_gz.h"
 
+typedef struct fc_fastq_record fc_fastq_record;
+
 typedef struct read_meta {
     char *orig_comment;
     char *rg; // RG:Z
@@ -26,6 +28,9 @@ typedef struct read_meta {
     size_t ibarcode;
     char *barcode_alias; // al:Z
     char *start_time; // st:Z
+    double start_time_s; // parsed st:Z, when start_time_parsed && start_time_valid
+    bool start_time_parsed;
+    bool start_time_valid;
     int edit_distance; // NM:i
     char *parent_read; // pi:Z (parent_read_id)
     int poly_tail_length; // pt:i
@@ -42,6 +47,12 @@ typedef struct read_meta {
 typedef struct {
     bam1_t *bam;
     read_meta *meta;
+    // Borrowed FASTQ record for the duration of one iterator result.  This is
+    // set only for FASTQ input and must be consumed before the next iterator
+    // call, which reuses kseq storage.
+    const kseq_t *fastq;
+    // Borrowed parser fields with the same one-result lifetime.
+    const fc_fastq_record *fastq_record;
 } fc_read;
 
 // Allocate and initialize a heap-owned fc_read and its BAM record storage.
@@ -49,9 +60,6 @@ fc_read *fc_read_init(void);
 
 // Destroy a caller-owned fc_read and free all owned allocations.
 void fc_read_destroy(fc_read *read);
-
-// Convert a FASTQ kseq record into an unaligned BAM record, including FASTQ comment tags.
-int kseq_to_bam(bam1_t *b, kseq_t *seq);
 
 // Reset a reusable fc_read in-place from the current BAM record.
 // Expects mean quality tag policy to have been applied by the caller. The

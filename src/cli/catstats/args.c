@@ -49,6 +49,7 @@ enum {
     KEY_LEGACY_OUTPUTS,
     KEY_KEEP_FAILED_OUTPUT,
     KEY_READS_OUTPUT,
+    KEY_METRICS_ONLY,
     KEY_PROGRESS_INTERVAL,
     KEY_JSONL_PROGRESS
 };
@@ -90,6 +91,8 @@ typedef struct {
         { "sample", 's', "SAMPLE NAME", 0, \
             "Sample identifier (defaults to 'SAMPLE' if files don't provide sample_id metadata).", 10 }, \
         { "per-read", 'p', 0, 0, "Write per-read TSV (large). Disabled by default.", 12 }, \
+        { "metrics-only", KEY_METRICS_ONLY, 0, 0, \
+            "Calculate QC metrics without writing passing reads to stdout or read-output files.", 12 }, \
         { "html-report", KEY_HTML_REPORT, 0, 0, \
             "Write a single-sample HTML report using aggregate fastcat histograms.", 13 }, \
         { "legacy-outputs", KEY_LEGACY_OUTPUTS, 0, 0, \
@@ -142,7 +145,7 @@ typedef struct {
     { "region", 'r', "chr:start-end", 0, "Genomic region to process (BAM input).", 0 }, \
         { "bed", 'b', "BEDFILE", 0, "BED file for regions to process (BAM input).", 0 }, \
         { "threads", 't', "THREADS", 0, \
-            "Number of threads for BAM decompression and output compression.", 0 }
+            "Number of threads for input decompression and output compression.", 0 }
 
 #define BAM_COVERAGE_OPTIONS \
     { "coverage", KEY_COVERAGE, 0, 0, \
@@ -302,6 +305,7 @@ static fc_catstats_args default_args(void)
     args.sample = NULL;
     args.demultiplex = false;
     args.per_read = false;
+    args.metrics_only = false;
     args.html_report = false;
     args.legacy_outputs = false;
     args.threads = 1;
@@ -404,6 +408,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         break;
     case 'p':
         arguments->per_read = true;
+        break;
+    case KEY_METRICS_ONLY:
+        arguments->metrics_only = true;
         break;
     case KEY_HTML_REPORT:
         arguments->html_report = true;
@@ -718,6 +725,10 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             if (arguments->reads_per_file != 0) {
                 argp_error(state, "--reads-per-file cannot be used with --reads-output.");
             }
+        }
+        if (ctx->program == FC_PROGRAM_QC && arguments->metrics_only
+            && arguments->reads_output) {
+            argp_error(state, "--metrics-only cannot be used with --reads-output.");
         }
         break;
     default:
