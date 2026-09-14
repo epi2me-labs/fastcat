@@ -77,13 +77,16 @@ check-report-template:
         - ./build/fastcat qc --help
         - ./build/fastcat index --help
 
+.purrflate-submodule: &purrflate-submodule |
+    git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
+    git submodule update --init --checkout third_party/purrflate
+
 build_and_test:
     extends: .fastcat-test-base
     tags: !reference [.eks-large-standard-tags, tags]
     before_script:
         - *prep-image
-        - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
-        - git submodule update --init --checkout third_party/purrflate
+        - *purrflate-submodule
     script:
         - *parallel-makeflags
         - make
@@ -233,17 +236,20 @@ conda:
     extends: .deploy-conda
     before_script:
         - *prep-image
+        - *purrflate-submodule
         - *before-script
 
 conda-arm:
     extends: .deploy-conda-linux-arm
     before_script:
         - *prep-image
+        - *purrflate-submodule
         - *before-script
 
 conda-mac-arm:
     extends: .deploy-conda-mac-arm
     before_script:
+        - *purrflate-submodule
         - *before-script
 
 test-conda-arm:
@@ -253,6 +259,7 @@ test-conda-arm:
         UPLOAD: "no"
     before_script:
         - *prep-image
+        - *purrflate-submodule
         - *before-script
     rules: *package-rules
 
@@ -262,6 +269,7 @@ test-conda-mac-arm:
     variables:
         UPLOAD: "no"
     before_script:
+        - *purrflate-submodule
         - *before-script
     rules: *package-rules
 
@@ -272,6 +280,7 @@ test-conda-x86:
         UPLOAD: "no"
     before_script:
         - *prep-image
+        - *purrflate-submodule
         - *before-script
     rules: *package-rules
 
