@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ezcharts.plots import BokehPlot
-from .bokeh_style import ReportFontSizes, ReportFonts, apply_colorbar_fonts
+from ezcharts.plots.util import ReportFontSizes, ReportFonts, style_colorbar
 from . import bokeh_null
 
 
@@ -188,7 +188,7 @@ def heatmap(
             color_mapper=mapper,
             ticker=colorbar_ticker,
             title=colorbar_title)
-        apply_colorbar_fonts(color_bar)
+        style_colorbar(color_bar, theme=plt.theme)
         for attr, value in colorbar_options.items():
             setattr(color_bar, attr, value)
         plt._fig.add_layout(color_bar, "right")

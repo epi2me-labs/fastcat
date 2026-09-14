@@ -24,6 +24,14 @@ variables:
     apt update -qq
     apt install -y --no-install-recommends git gcc autoconf automake valgrind make curl wget zlib1g-dev libbz2-dev libreadline-dev libssl-dev libffi-dev liblzma-dev libcurl4-gnutls-dev cmake python3 python3-venv clang-format clang-tidy clang-tools
 
+.git-auth: &git-auth
+    - git config --global --add url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
+    - git config --global --add url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "ssh://git@${CI_SERVER_HOST}/"
+
+.purrflate-submodule: &purrflate-submodule
+    - *git-auth
+    - git submodule update --init --checkout third_party/purrflate
+
 stages:
     - preflight
     - test
@@ -64,6 +72,7 @@ check-report-template:
     stage: test
     before_script:
         - *prep-image
+        - *git-auth
     script:
         - make report_template_check
 
@@ -71,15 +80,12 @@ check-report-template:
     stage: test
     before_script:
         - *prep-image
+        - *git-auth
     script:
         - ./build/fastcat fastq --help
         - ./build/fastcat bam --help
         - ./build/fastcat qc --help
         - ./build/fastcat index --help
-
-.purrflate-submodule: &purrflate-submodule |
-    git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
-    git submodule update --init --checkout third_party/purrflate
 
 build_and_test:
     extends: .fastcat-test-base

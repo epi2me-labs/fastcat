@@ -729,7 +729,7 @@ $(REPORT_DIR)/template_inputs/run_summary_overrides.json: $(REPORT_DIR)/template
 $(REPORT_DIR)/example_inputs/metadata.json: $(DEV_TOOLS_SCRIPT) tools/workflow_glue/write_wf_report_inputs.py | $(REPORT_DIR)
 	$(DEV_TOOLS) write_wf_report_inputs --out-dir $(REPORT_DIR)/example_inputs
 
-$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_bam/summary.json $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary_overrides.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/summary_json.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/bokeh_style.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_bam/summary.json $(REPORT_DIR)/template_inputs/metadata.json $(REPORT_DIR)/template_inputs/run_summary_overrides.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/summary_json.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--summary-json $(REPORT_DIR)/template_bam/summary.json \
@@ -739,7 +739,7 @@ $(REPORT_DIR)/template_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/templa
 		--params $(REPORT_DIR)/template_inputs/params.json \
 		--wf_version __FASTCAT_VERSION_HTML__
 
-$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_bam/summary.json $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/summary_json.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/bokeh_style.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_bam/summary.json $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/summary_json.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--summary-json $(REPORT_DIR)/template_bam/summary.json \
@@ -748,7 +748,7 @@ $(REPORT_DIR)/example_wf_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/templat
 		--params $(REPORT_DIR)/example_inputs/params.json \
 		--wf_version dev
 
-$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_bam/summary.json $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/summary_json.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/bokeh_style.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
+$(REPORT_DIR)/time_plots_report.html: $(REPORT_VENV)/.deps $(REPORT_DIR)/template_bam/summary.json $(REPORT_DIR)/example_inputs/metadata.json $(DEV_TOOLS_SCRIPT) tools/workflow_glue/report.py tools/workflow_glue/summary_json.py tools/workflow_glue/bokeh_relational.py tools/workflow_glue/bokeh_matrix.py tools/workflow_glue/bokeh_boxplot.py tools/workflow_glue/bokeh_ribbon.py tools/workflow_glue/bokeh_seqsummary.py tools/workflow_glue/util.py | $(REPORT_MPLCONFIGDIR)
 	MPLCONFIGDIR=$(REPORT_MPLCONFIGDIR) \
 		$(REPORT_PY) $(DEV_TOOLS_SCRIPT) report $@ \
 		--summary-json $(REPORT_DIR)/template_bam/summary.json \
@@ -766,7 +766,7 @@ report_template: report_vendor_template  ## build the wf-template-derived HTML r
 .PHONY: report_vendor_template
 report_vendor_template: $(REPORT_TEMPLATE_VENDOR_STAMP)  ## vendor report template into C assets
 
-$(REPORT_TEMPLATE_VENDOR_STAMP): $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py tools/workflow_glue/assets/fonts/NotoSans-Latin-Variable.woff2 tools/workflow_glue/assets/fonts/NotoSans-Greek-Variable.woff2 $(REPORT_TEMPLATE_HEADER) $(REPORT_TEMPLATE_SOURCE) | $(REPORT_DIR)
+$(REPORT_TEMPLATE_VENDOR_STAMP): $(REPORT_DIR)/template_wf_report.html $(DEV_TOOLS_SCRIPT) tools/workflow_glue/vendor_report_template.py $(REPORT_TEMPLATE_HEADER) $(REPORT_TEMPLATE_SOURCE) | $(REPORT_DIR)
 	$(DEV_TOOLS) vendor_report_template \
 		--input $(REPORT_DIR)/template_wf_report.html \
 		--template-output $(REPORT_DIR)/fastcat_report_template.html \
@@ -795,8 +795,6 @@ report_template_staged:  ## refresh staged report-template C assets when their i
 		tools/requirements.txt \
 		tools/workflow_glue/__init__.py \
 		tools/workflow_glue/vendor_report_template.py \
-		tools/workflow_glue/assets/fonts/NotoSans-Latin-Variable.woff2 \
-		tools/workflow_glue/assets/fonts/NotoSans-Greek-Variable.woff2 \
 		tools/workflow_glue/report.py \
 		tools/workflow_glue/summary_json.py \
 		tools/workflow_glue/bokeh_relational.py \
@@ -804,7 +802,6 @@ report_template_staged:  ## refresh staged report-template C assets when their i
 		tools/workflow_glue/bokeh_boxplot.py \
 		tools/workflow_glue/bokeh_ribbon.py \
 		tools/workflow_glue/bokeh_seqsummary.py \
-		tools/workflow_glue/bokeh_style.py \
 		tools/workflow_glue/simulate_reads.py \
 		tools/workflow_glue/write_wf_report_inputs.py \
 		tools/workflow_glue/util.py \

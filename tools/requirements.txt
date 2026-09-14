@@ -1,4 +1,4 @@
-ezcharts
+ezcharts @ git+ssh://git@git.oxfordnanolabs.local/epi2melabs/packages/ezcharts.git@594abd47281ab504014be0851b034567bcabf59c
 jsonschema>=4.23,<5
 numpy
 pandas

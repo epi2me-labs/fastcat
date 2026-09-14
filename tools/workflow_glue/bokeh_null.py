@@ -2,8 +2,7 @@
 
 from bokeh.models import Label
 from ezcharts.plots import BokehPlot
-
-from .bokeh_style import ReportFontSizes, ReportFonts
+from ezcharts.plots.util import ReportFontSizes, ReportFonts
 
 
 NULL_LABEL_NAME = "fastcat_null_label"

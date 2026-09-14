@@ -4,7 +4,7 @@ from bokeh.models import ColumnDataSource, HoverTool, Title
 from ezcharts.plots import BokehPlot
 import numpy as np
 import pandas as pd
-from .bokeh_style import ReportFontSizes, ReportFonts
+from ezcharts.plots.util import ReportFontSizes, ReportFonts
 from . import bokeh_null
 from . import bokeh_relational
 
