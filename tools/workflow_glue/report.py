@@ -4,7 +4,7 @@ from pathlib import Path
 
 from bokeh.models import (
     ColumnDataSource, CustomJS, HoverTool, LinearColorMapper, Range1d, Title)
-from dominate.tags import a, b, p, script, table, tbody, td, th, thead, tr
+from dominate.tags import a, b, div, h3, p, script, table, tbody, td, th, thead, tr
 from dominate.util import raw
 import ezcharts as ezc
 from ezcharts.components.ezchart import EZChart
@@ -20,7 +20,6 @@ from . import bokeh_null
 from . import bokeh_ribbon
 from . import bokeh_seqsummary
 from . import summary_json
-from .bokeh_style import patch_bokeh_plot_class
 from .util import get_main_logger, get_named_logger, wf_parser  # noqa: ABS101
 
 
@@ -79,9 +78,6 @@ def summary_heatmap(summary, name):
     if heatmap is None:
         return None
     return heatmap, summary_json.decode_ndarray(heatmap["data"])
-
-
-patch_bokeh_plot_class(ezc.plots.BokehPlot)
 
 
 COVERAGE_TAB_SCRIPT = """
@@ -179,17 +175,24 @@ def aspect_matched_chart_styles(plot):
 
 
 def simple_kv_table(rows):
-    """Render a plain key/value table."""
-    with table(cls="table table-sm"):
-        with thead():
-            with tr():
-                th("Property")
-                th("Value")
-        with tbody():
-            for key, value in rows:
-                with tr():
-                    td(str(key))
-                    td("" if value is None else str(value))
+    """Render run properties in two responsive key/value tables."""
+    midpoint = (len(rows) + 1) // 2
+    with div(cls="row g-4"):
+        panels = (
+            ("Run and input", rows[:midpoint]),
+            ("Output and filtering", rows[midpoint:]),
+        )
+        for title, column_rows in panels:
+            with div(cls="col-12 col-lg-6"):
+                with div(cls="card h-100"):
+                    h3(title, cls="card-header h6 mb-0")
+                    with div(cls="card-body p-3"):
+                        with table(cls="table table-sm mb-0"):
+                            with tbody():
+                                for key, value in column_rows:
+                                    with tr():
+                                        td(str(key))
+                                        td("" if value is None else str(value))
 
 
 def load_alignment_counts(summary):

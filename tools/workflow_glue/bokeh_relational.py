@@ -6,7 +6,7 @@ from bokeh.models import ColumnDataSource, HoverTool, Title
 from seaborn.relational import _LinePlotter
 
 from ezcharts.plots import BokehPlot, util
-from .bokeh_style import ReportFontSizes, ReportFonts
+from ezcharts.plots.util import ReportFontSizes, ReportFonts
 
 
 DEFAULT_PALETTE = util.choose_palette()

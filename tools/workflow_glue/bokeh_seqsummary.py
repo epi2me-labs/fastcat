@@ -11,7 +11,7 @@ from ezcharts.plots.util import empty_plot
 import numpy as np
 import pandas as pd
 from . import bokeh_relational
-from .bokeh_style import ReportFontSizes, ReportFonts
+from ezcharts.plots.util import ReportFontSizes, ReportFonts
 
 
 QUALITY_BINWIDTH = 0.2
