@@ -26,7 +26,7 @@ int fastlint_main(int argc, char *argv[])
     for (size_t i = 0; i < args.nfiles; ++i) {
         const char *input_name = args.fastq[i];
         if ((strcmp(args.fastq[i], "-") == 0) && (strlen(args.fastq[i]) == 1)) {
-            fp = fc_fastq_stream_open_fd(fileno(stdin));
+            fp = fc_fastq_stream_open_fd(fileno(stdin), 1);
         } else {
             fp = fc_fastq_stream_open_path(args.fastq[i], 1);
         }

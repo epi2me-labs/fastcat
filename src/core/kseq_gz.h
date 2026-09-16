@@ -14,7 +14,7 @@ typedef struct {
 } fc_fastq_span;
 
 fc_fastq_stream *fc_fastq_stream_open_path(const char *path, unsigned workers);
-fc_fastq_stream *fc_fastq_stream_open_fd(int fd);
+fc_fastq_stream *fc_fastq_stream_open_fd(int fd, unsigned workers);
 int fc_fastq_stream_read(fc_fastq_stream *stream, void *buffer, int capacity);
 int fc_fastq_stream_close(fc_fastq_stream *stream);
 bool fc_fastq_stream_input_offset(const fc_fastq_stream *stream, uint64_t *out);

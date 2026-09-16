@@ -65,7 +65,7 @@ fc_fastq_stream *fc_fastq_stream_open_path(const char *path, unsigned workers)
 #endif
 }
 
-fc_fastq_stream *fc_fastq_stream_open_fd(int fd)
+fc_fastq_stream *fc_fastq_stream_open_fd(int fd, unsigned workers)
 {
     fc_fastq_stream *stream = calloc(1, sizeof(*stream));
     if (!stream) {
@@ -77,7 +77,15 @@ fc_fastq_stream *fc_fastq_stream_open_fd(int fd)
         free(stream);
         return NULL;
     }
+    if (zngp_mt(stream->reader, (int)(workers ? workers : 1), 0) != 0) {
+        int saved_errno = errno;
+        (void)zngp_close(stream->reader);
+        free(stream);
+        errno = saved_errno;
+        return NULL;
+    }
 #else
+    (void)workers;
     stream->gz = gzdopen(fd, "r");
     if (!stream->gz) {
         free(stream);
