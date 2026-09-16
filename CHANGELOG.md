@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.1.0]
+## [v2.0.0]
 
 This is a substantial release centred on `fastcat qc`, a new unified FASTQ and BAM quality-control command. It introduces JSON-first summaries, optional portable HTML reports, richer alignment and coverage metrics, and support for Windows and EPI2ME Desktop.
 

@@ -1495,6 +1495,18 @@ test_qc_fastq_input_matrix: $(FASTCAT_BIN)
 test_qc: test_qc_fastq_input_matrix
 
 
+.PHONY: test_qc_gzip_stdin_large_stream
+test_qc_gzip_stdin_large_stream: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Fastcat qc reads a large gzipped FASTQ stream with one thread)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/qc/gzip_stdin_large_stream, \
+		perl -e 'for (1 .. 32770) { print "\@read$$_\n"; print "A" x 32768; print "\n+\n"; print "I" x 32768; print "\n" }' \
+			| gzip -1 \
+			| $(RUN_QC) --metrics-only --input-fmt fastq --threads 1 --output out - > stdout && \
+		test ! -s stdout && \
+		grep -Eq '"read_count"[[:space:]]*:[[:space:]]*32770([,}])' out/summary.json)
+test_qc: test_qc_gzip_stdin_large_stream
+
+
 .PHONY: test_qc_reference_bam_policy
 test_qc_reference_bam_policy: $(FASTCAT_BIN) $(REPORT_VENV)/.deps
 	@$(call TEST_DESC,Fastcat qc reference BAM is analysis-only)
