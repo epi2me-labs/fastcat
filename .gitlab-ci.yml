@@ -327,6 +327,7 @@ desktop-bundle-macos-aarch64:
     rules: *desktop-bundle-rules
     before_script:
         - export HOMEBREW_NO_AUTO_UPDATE=1; brew list --versions argp-standalone > /dev/null || brew install argp-standalone
+        - *purrflate-submodule
     script:
         - export MAKEFLAGS="-j$(sysctl -n hw.ncpu)"; CC=clang BUILD_MODE=desktop DESKTOP_TARGET=macos-aarch64 make desktop_bundle
         - bundle=$(tar -tzf build/desktop/*-macos-aarch64.tar.gz | head -1 | cut -d/ -f1)
@@ -353,6 +354,7 @@ desktop-bundle-macos-x86_64:
     rules: *desktop-bundle-rules
     before_script:
         - export HOMEBREW_NO_AUTO_UPDATE=1; brew list --versions argp-standalone > /dev/null || brew install argp-standalone
+        - *purrflate-submodule
     script:
         - export MAKEFLAGS="-j$(sysctl -n hw.ncpu)"; CC=clang BUILD_MODE=desktop DESKTOP_TARGET=macos-x86_64 make desktop_bundle
         - bundle=$(tar -tzf build/desktop/*-macos-x86_64.tar.gz | head -1 | cut -d/ -f1)
