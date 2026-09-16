@@ -4,6 +4,8 @@
 Use `fastcat qc` for new analyses; it supports read filtering, optional barcode demultiplexing,
 alignment metrics, and coverage summaries where applicable.
 
+`fastcat` is also quite fast! See [Performance](#performance).
+
 ## Installation
 
 ### Conda
@@ -595,6 +597,43 @@ A set of files is produced for each user-provided BED file (`--coverage-beds`/`-
 The summary file contains user-configurable entries (`--thresholds`) enumerating a sparse coverage CDF:
 the default is to output the proportion of positions covered at 1x, 5x, 10x, 20x, 30x, and 40x.
 This is done independently for all regions in the BED, as well as the final total line.
+
+### Performance
+
+`fastcat qc` is somewhat highly optimised. It is designed as a single-pass streaming analysis: records are parsed, filtered, and passed to the requested metric sinks without retaining the read set in memory. The FASTQ reader uses our high-performance, zero-copy, parallel gzip decoder `purrflate`. BAM input and BAM output use HTSlib's parallel functionality.
+
+When unaligned BAM output is requested from FASTQ, Fastcat uses a specialised converter rather than the general-purpose HTSlib record constructor. Fastcat also trusts a valid `qs`/`QS` mean-quality tag by default, avoiding a per-base quality scan.
+
+For coordinate-sorted BAM coverage, Fastcat records interval-boundary deltas in separate forward- and reverse-strand arrays for one contig at a time. A cumulative sweep then produces coverage summaries and, when requested, coalesced bedGraph intervals.
+
+Several distribution and time-series summaries use [KLL](https://arxiv.org/abs/1603.05346) quantile sketches. Their compactors retain a bounded `O(k log n)` sample of `n` observations instead of every observed value, allowing Fastcat to estimate quantiles and smooth report densities with predictable memory use even for very large runs.
+
+Runtime numbers are shown below for a dataset containing 500,000 reads with an average length of 20 kbase.
+Results are presented for four input scenarios:
+
+* BAM file (including methylation data), 12Gb
+* FASTQ.gz file, 8.2Gb
+* FASTQ.gz data piped from standard input stream
+* FASTQ plain-text file, 18Gb
+
+The program was run as:
+
+``` bash
+  fastcat qc --input-fmt fastq --metrics-only --threads N --html-report --output REPORT
+```
+
+Production distributions of `fastcat` benefit from the use of our `purrflate` parallel gzip decoder for FASTQ input; building from source will not show scaling with thread count for FASTQ.
+
+| Threads | BAM | FASTQ.gz file | FASTQ.gz stdin | FASTQ stdin
+|---:|---:|---:|---:|---:|
+| 1 | 88.74 s | 59.08 s | 60.87 s | 6.88 s |
+| 2 | 49.55 s | 30.05 s | 29.84 s | 7.04 s |
+| 4 | 34.94 s | 15.54 s | 15.49 s | 6.97 s |
+| 8 | 27.16 s | 8.32 s | 8.96 s | 6.89 s |
+
+The plain-text FASTQ control shows baseline performance of the `fastcat` code.
+The results show that for compressed inputs (including BAM) the runtime is overwhelmingly dominated by decompression performance.
+The BAM results are slower than FASTQ as the files are larger, requiring decompression of the additional data.
 
 
 ## fastcat lint
