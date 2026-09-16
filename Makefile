@@ -41,6 +41,7 @@ REPORT_EXAMPLE_N ?= 2000
 REPORT_DEMO_N ?= 100000
 REPORT_DEMO_UBAM_N ?= $(REPORT_DEMO_N)
 REPORT_DEMO_DURATION_S ?= 172800
+REPORT_DEMO_THREADS ?= 4
 REPORT_DEMO_DIR = $(TEST_TMP_DIR)/report_html
 REPORT_DEMO_FASTQ = $(REPORT_DEMO_DIR)/reads.fastq.gz
 REPORT_DEMO_BAM = $(REPORT_DEMO_DIR)/aligned_reads.bam
@@ -1043,6 +1044,7 @@ demo_prebuilt: $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_BAM) test/fixtu
 	rm -rf $(REPORT_DEMO_DIR)/fastcat_out $(REPORT_DEMO_DIR)/demux_out $(REPORT_DEMO_DIR)/aligned_out
 	$(RUN_FASTCAT) $(REPORT_DEMO_FASTQ) \
 		--output $(REPORT_DEMO_DIR)/fastcat_out \
+		--threads $(REPORT_DEMO_THREADS) \
 		--html-report \
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
@@ -1068,6 +1070,7 @@ demo_prebuilt: $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_BAM) test/fixtu
 	grep -q "Bokeh" $(TEST_TMP_DIR)/report_html/fastcat_out/fastcat_report.html
 	$(RUN_FASTCAT) $(REPORT_DEMO_FASTQ) \
 		--output $(REPORT_DEMO_DIR)/demux_out \
+		--threads $(REPORT_DEMO_THREADS) \
 		--demultiplex \
 		--html-report \
 		> /dev/null
@@ -1075,6 +1078,7 @@ demo_prebuilt: $(FASTCAT_BIN) $(REPORT_DEMO_FASTQ) $(REPORT_DEMO_BAM) test/fixtu
 	test -s $(TEST_TMP_DIR)/report_html/demux_out/unclassified/summary.json
 	$(RUN_BAMSTATS) $(REPORT_DEMO_BAM) \
 		--output $(REPORT_DEMO_DIR)/aligned_out \
+		--threads $(REPORT_DEMO_THREADS) \
 		--coverage \
 		--coverage-beds test/fixtures/bam/coverage/report_simulated_regions.bed \
 		--coverage-names regions \
@@ -1111,6 +1115,7 @@ demo_ubam: $(FASTCAT_BIN) $(REPORT_VENV)/.deps samtools  ## generate a synthetic
 		$(TEST_TMP_DIR)/report_html_ubam/reads.fastq.gz
 	$(RUN_BAMSTATS) $(TEST_TMP_DIR)/report_html_ubam/reads.bam \
 		--output $(TEST_TMP_DIR)/report_html_ubam/bam_out \
+		--threads $(REPORT_DEMO_THREADS) \
 		--html-report \
 		> /dev/null
 	test -s $(TEST_TMP_DIR)/report_html_ubam/bam_out/fastcat_report.html

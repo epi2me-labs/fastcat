@@ -493,7 +493,10 @@ def sam_record(header, args, name, flag, reference, position, cigar, sequence, q
     record.query_name = name
     record.flag = flag
     record.query_sequence = sequence
-    record.query_qualities = array("B", (ord(value) - 33 for value in quality))
+    if args.random_qual:
+        record.query_qualities = array("B", (ord(value) - 33 for value in quality))
+    else:
+        record.query_qualities = array("B", [ord(quality[0]) - 33]) * len(quality)
     record.set_tags(tags)
     if reference == "*":
         record.reference_id = -1
