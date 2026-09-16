@@ -333,7 +333,7 @@ static int fc_fastq_iter_open(fc_fastq_iter *iter, const char *fname, const fc_i
             iter->stats.failures[F_UNKNOWN_ERROR] = 1;
             return errno;
         }
-        iter->fp = fc_fastq_stream_open_fd(fd);
+        iter->fp = fc_fastq_stream_open_fd(fd, iter->opts.fastq_threads);
         if (!iter->fp) {
             close(fd);
         }

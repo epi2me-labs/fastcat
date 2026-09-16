@@ -56,6 +56,7 @@ DEVICE_CHANNELS = {
     "promethion": 3000,
 }
 READ_CLASSES = ("good", "mediocre", "junk_short")
+DNA_TRANSLATION = bytes(b"ACGT"[value & 3] for value in range(256))
 
 
 class RunningStats:
@@ -335,8 +336,18 @@ def phred_char(q):
 def make_seq(rng, length, random_seq):
     if not random_seq:
         return "A" * length
-    bases = "ACGT"
-    return "".join(bases[rng.getrandbits(2)] for _ in range(length))
+    return rng.randbytes(length).translate(DNA_TRANSLATION).decode("ascii")
+
+
+def make_qual(rng, length, mean_q, random_qual):
+    if not random_qual:
+        return phred_char(mean_q) * length
+    centre = int(round(mean_q))
+    low = max(0, centre - 6)
+    high = min(40, centre + 6)
+    quality_translation = bytes(
+        33 + low + value % (high - low + 1) for value in range(256))
+    return rng.randbytes(length).translate(quality_translation).decode("ascii")
 
 
 def sample_speed(rng, mean, sd):
@@ -482,7 +493,7 @@ def sam_record(header, args, name, flag, reference, position, cigar, sequence, q
     record.query_name = name
     record.flag = flag
     record.query_sequence = sequence
-    record.query_qualities = array("B", [ord(quality[0]) - 33]) * len(quality)
+    record.query_qualities = array("B", (ord(value) - 33 for value in quality))
     record.set_tags(tags)
     if reference == "*":
         record.reference_id = -1
@@ -625,6 +636,9 @@ def argparser():
         "--output-threads", type=int, default=1,
         help="BAM compression threads (default: 1)")
     output.add_argument("--random-seq", action="store_true", help="Emit random A/C/G/T instead of homopolymer A")
+    output.add_argument(
+        "--random-qual", action="store_true",
+        help="Jitter per-base quality around each read's simulated mean Q")
     output.add_argument("--progress-every", type=int, default=0, help="If >0, print progress to stderr every N reads")
 
     alignment = p.add_argument_group("SAM alignment simulation")
@@ -834,8 +848,7 @@ def main(args):
         stats.add(length, mean_q)
 
         seq = make_seq(rng, length, args.random_seq)
-        qchar = phred_char(mean_q)
-        qual = qchar * length
+        qual = make_qual(rng, length, mean_q, args.random_qual)
         duration_s = float(length) / speed_nt_s
 
         # Construct one pysam record representation for both SAM and FASTQ output.

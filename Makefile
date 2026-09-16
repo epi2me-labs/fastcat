@@ -310,6 +310,8 @@ ifneq ($(NOTHREADS),1)
         third_party/purrflate/src/zngp_decode.c \
         third_party/purrflate/src/zngp_pool.c \
         third_party/purrflate/src/zngp_reader.c \
+        third_party/purrflate/src/zngp_stream_pages.c \
+        third_party/purrflate/src/zngp_win.c \
         third_party/purrflate/src/zngp_symbolic.c
     PURRFLATE_OBJS := $(patsubst third_party/purrflate/src/%.c,$(OBJ_DIR)/purrflate/%.o,$(PURRFLATE_SRCS))
 endif
@@ -1466,6 +1468,31 @@ test_qc_fastq_default_output: $(FASTCAT_BIN)
 		$(RUN_QC) $(TEST_FIXTURES_FASTQ)/basic --output directory > directory.fastq && \
 		test -s directory.fastq && test -s directory/summary.json)
 test_qc: test_qc_fastq_default_output
+
+
+.PHONY: test_qc_fastq_input_matrix
+test_qc_fastq_input_matrix: $(FASTCAT_BIN)
+	@$(call TEST_DESC,Fastcat qc supports plain and gzip FASTQ from files and stdin)
+	$(call RUN_IN_TMP,$(TEST_TMP_DIR)/qc/fastq_input_matrix, \
+		gzip -dc $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz > reads.fastq && \
+		expected_reads=$$(grep -c '^@' reads.fastq) && \
+		failed=0 && \
+		check_case() { \
+			case_name=$$1; case_status=$$2; \
+			actual_reads=$$(grep -c '^@' $$case_name.fastq); \
+			if test $$case_status -ne 0 || test "$$actual_reads" != "$$expected_reads"; then \
+				printf '%s: exit %s expected %s reads got %s\n' "$$case_name" "$$case_status" "$$expected_reads" "$$actual_reads" >&2; \
+				failed=1; \
+			fi; \
+		}; \
+		for threads in 1 2; do \
+			$(RUN_QC) --input-fmt fastq --threads $$threads --output plain_file_$$threads reads.fastq > plain_file_$$threads.fastq; check_case plain_file_$$threads $$?; \
+			set -o pipefail; cat reads.fastq | $(RUN_QC) --input-fmt fastq --threads $$threads --output plain_stdin_$$threads - > plain_stdin_$$threads.fastq; check_case plain_stdin_$$threads $$?; \
+			$(RUN_QC) --input-fmt fastq --threads $$threads --output gzip_file_$$threads $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz > gzip_file_$$threads.fastq; check_case gzip_file_$$threads $$?; \
+			set -o pipefail; cat $(TEST_FIXTURES_FASTQ)/basic/bc1.fastq.gz | $(RUN_QC) --input-fmt fastq --threads $$threads --output gzip_stdin_$$threads - > gzip_stdin_$$threads.fastq; check_case gzip_stdin_$$threads $$?; \
+		done; \
+		test $$failed -eq 0)
+test_qc: test_qc_fastq_input_matrix
 
 
 .PHONY: test_qc_reference_bam_policy
