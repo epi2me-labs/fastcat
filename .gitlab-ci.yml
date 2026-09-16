@@ -224,6 +224,7 @@ sanitize:
 
 deploy-checks:
     stage: prerelease
+    image: ${WHALEFISH}/${CWG_GLEEOK_IMAGE}
     script:
         - !reference [.check, argp-c-version]
         - !reference [.check, changelog]
